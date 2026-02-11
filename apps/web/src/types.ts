@@ -32,4 +32,7 @@ export type DashboardStats = {
   open: number;
   resolved: number;
   total: number;
+  unassigned?: number;
+  assignedToMe?: number;
+  resolvedByMe?: number;
 };

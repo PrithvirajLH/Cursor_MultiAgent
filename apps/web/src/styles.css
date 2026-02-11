@@ -10,38 +10,52 @@
     --surface-muted: 248 250 252;
     --ink: 15 23 42;
     --ink-muted: 100 116 139;
-    --accent: 0 0% 96.1%;
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --background: 228 25% 97%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 222 47% 11%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 158 64% 52%;
+    --chart-3: 262 83% 58%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --radius: 0.875rem;
+    --shadow-soft: 0 2px 8px -2px rgba(0, 0, 0, 0.05), 0 4px 16px -4px rgba(0, 0, 0, 0.08);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-elevated: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 24px -6px rgba(0, 0, 0, 0.1);
+    --status-open: 142 71% 45%;
+    --status-open-bg: 142 76% 94%;
+    --status-progress: 217 91% 60%;
+    --status-progress-bg: 217 91% 94%;
+    --status-new: 262 83% 58%;
+    --status-new-bg: 262 83% 94%;
+    --status-resolved: 158 64% 52%;
+    --status-resolved-bg: 158 64% 94%;
+    --kpi-blue: 217 91% 96%;
+    --kpi-green: 158 76% 95%;
+    --kpi-yellow: 45 93% 95%;
   }
 
   body {
-    @apply text-slate-900;
+    @apply text-foreground bg-background antialiased;
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
-    background-color: rgb(248, 250, 252);
     min-height: 100vh;
+    overflow: hidden;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -71,14 +85,6 @@
   }
 }
 
-body {
-  background-image: radial-gradient(rgba(100, 116, 139, 0.35) 1px, transparent 1px);
-  background-size: 20px 20px;
-  background-position: -4px -4px;
-  background-attachment: fixed;
-  overflow: hidden;
-}
-
 @layer utilities {
   .glass-card {
     @apply rounded-3xl backdrop-blur-md bg-white/95 border border-slate-300 shadow-xl shadow-slate-900/10;
@@ -86,6 +92,18 @@ body {
 
   .glass-card-strong {
     @apply rounded-3xl backdrop-blur-lg bg-white border border-slate-300 shadow-2xl shadow-slate-900/15;
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
   }
 
   .text-muted {

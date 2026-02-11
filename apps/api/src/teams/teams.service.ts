@@ -30,6 +30,9 @@ export class TeamsService {
       }
       baseWhere.id = user.primaryTeamId;
     }
+    if (user?.role === UserRole.LEAD && user.primaryTeamId) {
+      baseWhere.id = user.primaryTeamId;
+    }
     // OWNER and non-admins: no team filter (full list or caller restricts elsewhere)
     const where = {
       ...baseWhere,

@@ -7,8 +7,8 @@ export function AgentScorecard({ data }: { data: AgentPerformanceResponse['data'
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="w-full max-w-full min-w-0 overflow-x-auto">
+      <table className="w-full min-w-[480px] text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-left text-slate-600">
             <th className="pb-2 pr-4 font-medium">Agent</th>

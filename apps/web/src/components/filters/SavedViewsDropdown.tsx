@@ -125,7 +125,7 @@ export function SavedViewsDropdown({
       <button
         type="button"
         onClick={openDropdown}
-        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+        className="inline-flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground shadow-sm hover:bg-muted/30 transition-colors"
       >
         Saved views
         <ChevronDown className={`h-4 w-4 ${open ? 'rotate-180' : ''}`} />
@@ -133,7 +133,7 @@ export function SavedViewsDropdown({
       {open && (
         <>
           <div className="fixed inset-0 z-10" aria-hidden onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border border-slate-200 bg-white py-2 shadow-lg">
+          <div className="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border border-border bg-popover py-2 shadow-elevated">
             {showSaveInput ? (
               <div className="px-3 py-2">
                 <input
@@ -141,7 +141,7 @@ export function SavedViewsDropdown({
                   value={saveName}
                   onChange={(e) => setSaveName(e.target.value)}
                   placeholder="View name"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
                   autoFocus
                 />
                 <div className="mt-2 flex gap-2">
@@ -149,14 +149,14 @@ export function SavedViewsDropdown({
                     type="button"
                     onClick={handleSave}
                     disabled={saving || !saveName.trim()}
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
                   >
                     {saving ? 'Saving…' : 'Save'}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setShowSaveInput(false); setSaveName(''); }}
-                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/30 transition-colors"
                   >
                     Cancel
                   </button>
@@ -167,35 +167,35 @@ export function SavedViewsDropdown({
                 <button
                   type="button"
                   onClick={() => setShowSaveInput(true)}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted/30 transition-colors"
                 >
                   <Save className="h-4 w-4" />
                   Save current filters
                 </button>
-                <div className="border-t border-slate-100" />
+                <div className="border-t border-border" />
                 {loading ? (
-                  <p className="px-3 py-4 text-xs text-slate-500">Loading…</p>
+                  <p className="px-3 py-4 text-xs text-muted-foreground">Loading…</p>
                 ) : views.length === 0 ? (
-                  <p className="px-3 py-4 text-xs text-slate-500">No saved views</p>
+                  <p className="px-3 py-4 text-xs text-muted-foreground">No saved views</p>
                 ) : (
                   <ul className="max-h-48 overflow-y-auto">
                     {views.map((view) => (
                       <li key={view.id}>
-                        <div className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/30 transition-colors">
                           <button
                             type="button"
                             onClick={() => applyView(view)}
-                            className="min-w-0 flex-1 truncate text-left text-sm text-slate-800"
+                            className="min-w-0 flex-1 truncate text-left text-sm text-foreground"
                           >
                             {view.name}
                             {view.isDefault && (
-                              <span className="ml-1 text-[10px] text-slate-400">(default)</span>
+                              <span className="ml-1 text-[10px] text-muted-foreground">(default)</span>
                             )}
                           </button>
                           <button
                             type="button"
                             onClick={(e) => handleDelete(e, view.id)}
-                            className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
                             aria-label="Delete view"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

@@ -20,6 +20,7 @@ import type { Express } from 'express';
 import { createReadStream, promises as fs } from 'fs';
 import path from 'path';
 import { AuthUser } from '../auth/current-user.decorator';
+import { RuleEngineService } from '../automation/rule-engine.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,6 +33,8 @@ import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
+import { TicketActivityDto } from './dto/ticket-activity.dto';
+import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 
@@ -43,6 +46,7 @@ export class TicketsService {
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
     private readonly customFieldsService: CustomFieldsService,
+    private readonly ruleEngine: RuleEngineService,
   ) {}
 
   private defaultSlaConfig: Record<
@@ -60,6 +64,8 @@ export class TicketsService {
     TicketStatus.WAITING_ON_VENDOR,
   ];
 
+  private defaultActivityDays = 7;
+
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
   private toEndExclusive(dateStr: string): Date {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -76,6 +82,47 @@ export class TicketsService {
     if (Array.isArray(value)) return value.filter((v): v is T => v != null && v !== '');
     if (typeof value === 'string') return value.split(',').map((s) => s.trim() as T).filter(Boolean);
     return [];
+  }
+
+  private activityDateRange(from?: string, to?: string) {
+    const now = new Date();
+    const toBase = to ? new Date(to) : now;
+    const toDateInclusive = new Date(Date.UTC(toBase.getUTCFullYear(), toBase.getUTCMonth(), toBase.getUTCDate()));
+    const toEndExclusive = this.toEndExclusive(to ?? toDateInclusive.toISOString().slice(0, 10));
+    const fromBase = from ? new Date(from) : new Date(toDateInclusive);
+    if (!from) {
+      fromBase.setUTCDate(fromBase.getUTCDate() - (this.defaultActivityDays - 1));
+    }
+    const fromDate = new Date(Date.UTC(fromBase.getUTCFullYear(), fromBase.getUTCMonth(), fromBase.getUTCDate()));
+    return { fromDate, toEndExclusive, toDateInclusive };
+  }
+
+  private accessConditionSql(user: AuthUser, alias = 't'): Prisma.Sql {
+    const col = (name: string) => Prisma.raw(`${alias}."${name}"`);
+    const accessGrant = (teamId: string) =>
+      Prisma.sql`EXISTS (SELECT 1 FROM "TicketAccess" ta WHERE ta."ticketId" = ${col('id')} AND ta."teamId" = ${teamId})`;
+
+    if (user.role === UserRole.OWNER) {
+      return Prisma.sql`TRUE`;
+    }
+
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      return Prisma.sql`(${col('assignedTeamId')} = ${user.primaryTeamId} OR ${accessGrant(user.primaryTeamId)})`;
+    }
+
+    if (user.role === UserRole.EMPLOYEE) {
+      return Prisma.sql`${col('requesterId')} = ${user.id}`;
+    }
+
+    if (!user.teamId) {
+      return Prisma.sql`${col('requesterId')} = ${user.id}`;
+    }
+
+    if (user.role === UserRole.LEAD) {
+      return Prisma.sql`(${col('assignedTeamId')} = ${user.teamId} OR ${accessGrant(user.teamId)})`;
+    }
+
+    return Prisma.sql`((${col('assignedTeamId')} = ${user.teamId} AND (${col('assigneeId')} = ${user.id} OR ${col('assigneeId')} IS NULL)) OR ${accessGrant(user.teamId)})`;
   }
 
   async list(query: ListTicketsDto, user: AuthUser) {
@@ -222,11 +269,42 @@ export class TicketsService {
         skip,
         take: pageSize,
         orderBy,
-        include: {
-          requester: true,
-          assignee: true,
-          assignedTeam: true,
-          category: true,
+        select: {
+          id: true,
+          number: true,
+          displayId: true,
+          subject: true,
+          status: true,
+          priority: true,
+          channel: true,
+          createdAt: true,
+          updatedAt: true,
+          resolvedAt: true,
+          closedAt: true,
+          completedAt: true,
+          dueAt: true,
+          firstResponseDueAt: true,
+          firstResponseAt: true,
+          slaPausedAt: true,
+          requester: {
+            select: { id: true, email: true, displayName: true },
+          },
+          assignee: {
+            select: { id: true, email: true, displayName: true },
+          },
+          assignedTeam: {
+            select: { id: true, name: true, assignmentStrategy: true },
+          },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              description: true,
+              isActive: true,
+              parentId: true,
+            },
+          },
         },
       }),
     ]);
@@ -246,39 +324,164 @@ export class TicketsService {
     assignedToMe: number;
     triage: number;
     open: number;
+    unassigned: number;
+  }> {
+    const accessCondition = this.accessConditionSql(user, 't');
+    const rows = await this.prisma.$queryRaw<
+      { assignedToMe: bigint; triage: bigint; open: bigint; unassigned: bigint }[]
+    >`
+      SELECT
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."assigneeId" = ${user.id}
+          THEN 1 ELSE 0 END) AS "assignedToMe",
+        SUM(CASE
+          WHEN (t."status")::text = ${TicketStatus.NEW}
+            AND t."assigneeId" IS NULL
+          THEN 1 ELSE 0 END) AS "triage",
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+          THEN 1 ELSE 0 END) AS "open",
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."assigneeId" IS NULL
+          THEN 1 ELSE 0 END) AS "unassigned"
+      FROM "Ticket" t
+      WHERE ${accessCondition}
+    `;
+
+    const row = rows[0] ?? { assignedToMe: 0n, triage: 0n, open: 0n, unassigned: 0n };
+    return {
+      assignedToMe: Number(row.assignedToMe ?? 0),
+      triage: Number(row.triage ?? 0),
+      open: Number(row.open ?? 0),
+      unassigned: Number(row.unassigned ?? 0),
+    };
+  }
+
+  async getMetrics(user: AuthUser): Promise<{
+    total: number;
+    open: number;
+    resolved: number;
+    byPriority: Record<TicketPriority, number>;
+    byTeam: Array<{ teamId: string | null; total: number }>;
   }> {
     const accessFilter = this.buildAccessFilter(user);
     const openFilter: Prisma.TicketWhereInput = {
       status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
     };
+    const resolvedFilter: Prisma.TicketWhereInput = {
+      status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+    };
 
-    const [assignedToMe, triage, openTotal] = await Promise.all([
-      this.prisma.ticket.count({
-        where: {
-          AND: [
-            accessFilter,
-            openFilter,
-            { assigneeId: user.id },
-          ],
-        },
+    const [total, open, resolved, priorityRows, teamRows] = await Promise.all([
+      this.prisma.ticket.count({ where: accessFilter }),
+      this.prisma.ticket.count({ where: { AND: [accessFilter, openFilter] } }),
+      this.prisma.ticket.count({ where: { AND: [accessFilter, resolvedFilter] } }),
+      this.prisma.ticket.groupBy({
+        by: ['priority'],
+        where: accessFilter,
+        _count: { _all: true },
       }),
-      this.prisma.ticket.count({
-        where: {
-          AND: [
-            accessFilter,
-            openFilter,
-            { status: TicketStatus.NEW, assigneeId: null },
-          ],
-        },
-      }),
-      this.prisma.ticket.count({
-        where: {
-          AND: [accessFilter, openFilter],
-        },
+      this.prisma.ticket.groupBy({
+        by: ['assignedTeamId'],
+        where: accessFilter,
+        _count: { _all: true },
       }),
     ]);
 
-    return { assignedToMe, triage, open: openTotal };
+    const byPriority: Record<TicketPriority, number> = {
+      [TicketPriority.P1]: 0,
+      [TicketPriority.P2]: 0,
+      [TicketPriority.P3]: 0,
+      [TicketPriority.P4]: 0,
+    };
+    for (const row of priorityRows) {
+      byPriority[row.priority] = row._count._all;
+    }
+
+    return {
+      total,
+      open,
+      resolved,
+      byPriority,
+      byTeam: teamRows.map((row) => ({
+        teamId: row.assignedTeamId,
+        total: row._count._all,
+      })),
+    };
+  }
+
+  async getActivity(query: TicketActivityDto, user: AuthUser) {
+    const { fromDate, toEndExclusive, toDateInclusive } = this.activityDateRange(query.from, query.to);
+    const accessCondition = this.accessConditionSql(user, 't');
+    const assigneeCondition =
+      query.scope === 'assigned'
+        ? Prisma.sql`AND t."assigneeId" = ${user.id}`
+        : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<
+      { date: Date; open: bigint; resolved: bigint }[]
+    >`
+      SELECT d::date as date,
+        coalesce(o.open_count, 0)::bigint as open,
+        coalesce(r.resolved_count, 0)::bigint as resolved
+      FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
+      LEFT JOIN (
+        SELECT date_trunc('day', t."createdAt")::date as day, count(*)::bigint as open_count
+        FROM "Ticket" t
+        WHERE ${accessCondition} ${assigneeCondition}
+          AND t."createdAt" >= ${fromDate}
+          AND t."createdAt" < ${toEndExclusive}
+        GROUP BY 1
+      ) o ON o.day = d::date
+      LEFT JOIN (
+        SELECT date_trunc('day', t."completedAt")::date as day, count(*)::bigint as resolved_count
+        FROM "Ticket" t
+        WHERE ${accessCondition} ${assigneeCondition}
+          AND t."completedAt" IS NOT NULL
+          AND t."completedAt" >= ${fromDate}
+          AND t."completedAt" < ${toEndExclusive}
+        GROUP BY 1
+      ) r ON r.day = d::date
+      ORDER BY 1
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+        open: Number(row.open),
+        resolved: Number(row.resolved),
+      })),
+    };
+  }
+
+  async getStatusBreakdown(query: TicketStatusDto, user: AuthUser) {
+    const { fromDate, toEndExclusive } = this.activityDateRange(query.from, query.to);
+    const accessCondition = this.accessConditionSql(user, 't');
+    const assigneeCondition =
+      query.scope === 'assigned'
+        ? Prisma.sql`AND t."assigneeId" = ${user.id}`
+        : Prisma.empty;
+    const dateField = query.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateColumn = Prisma.raw(`t."${dateField}"`);
+
+    const rows = await this.prisma.$queryRaw<{ status: TicketStatus; count: bigint }[]>`
+      SELECT t."status" as status, count(*)::bigint as count
+      FROM "Ticket" t
+      WHERE ${accessCondition} ${assigneeCondition}
+        AND ${dateColumn} >= ${fromDate}
+        AND ${dateColumn} < ${toEndExclusive}
+      GROUP BY t."status"
+      ORDER BY t."status" ASC
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        status: row.status,
+        count: Number(row.count),
+      })),
+    };
   }
 
   async getById(id: string, user: AuthUser) {
@@ -298,15 +501,6 @@ export class TicketsService {
           include: { uploadedBy: true },
           orderBy: { createdAt: 'asc' },
         },
-        messages: {
-          where:
-            user.role === UserRole.EMPLOYEE
-              ? { type: MessageType.PUBLIC }
-            : undefined,
-          orderBy: { createdAt: 'asc' },
-          include: { author: true },
-        },
-        events: { orderBy: { createdAt: 'asc' }, include: { createdBy: true } },
         customFieldValues: {
           include: { customField: true },
         },
@@ -321,7 +515,79 @@ export class TicketsService {
       throw new ForbiddenException('No access to this ticket');
     }
 
-    return ticket;
+    const { accessGrants, ...rest } = ticket;
+    return rest;
+  }
+
+  async listMessages(ticketId: string, user: AuthUser, take = 50, cursor?: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { accessGrants: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    const limit = Math.max(1, Math.min(100, take));
+    const where: Prisma.TicketMessageWhereInput = {
+      ticketId,
+      ...(user.role === UserRole.EMPLOYEE ? { type: MessageType.PUBLIC } : {}),
+    };
+
+    const messages = await this.prisma.ticketMessage.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { author: true },
+    });
+
+    const hasMore = messages.length > limit;
+    const page = hasMore ? messages.slice(0, limit) : messages;
+    const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null;
+
+    return {
+      data: page.reverse(),
+      nextCursor,
+    };
+  }
+
+  async listEvents(ticketId: string, user: AuthUser, take = 50, cursor?: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { accessGrants: true },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    const limit = Math.max(1, Math.min(100, take));
+    const events = await this.prisma.ticketEvent.findMany({
+      where: { ticketId },
+      orderBy: { createdAt: 'desc' },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { createdBy: true },
+    });
+
+    const hasMore = events.length > limit;
+    const page = hasMore ? events.slice(0, limit) : events;
+    const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null;
+
+    return {
+      data: page.reverse(),
+      nextCursor,
+    };
   }
 
   async create(payload: CreateTicketDto, user: AuthUser) {
@@ -463,7 +729,11 @@ export class TicketsService {
         data: {
           ticketId: updatedTicket.id,
           type: 'TICKET_ASSIGNED',
-          payload: { assigneeId },
+          payload: {
+            assigneeId,
+            assigneeName: updatedTicket.assignee?.displayName ?? null,
+            assigneeEmail: updatedTicket.assignee?.email ?? null,
+          },
           createdById: user.id,
         },
       });
@@ -471,6 +741,10 @@ export class TicketsService {
 
     await this.safeNotify(() =>
       this.notifications.ticketCreated(updatedTicket, user),
+    );
+
+    this.ruleEngine.runForTicket(updatedTicket.id, 'TICKET_CREATED').catch((err) =>
+      console.error('Automation TICKET_CREATED failed', err),
     );
 
     const result = await this.prisma.ticket.findUnique({
@@ -667,7 +941,11 @@ export class TicketsService {
       data: {
         ticketId: ticket.id,
         type: 'TICKET_ASSIGNED',
-        payload: { assigneeId },
+        payload: {
+          assigneeId,
+          assigneeName: updated.assignee?.displayName ?? null,
+          assigneeEmail: updated.assignee?.email ?? null,
+        },
         createdById: user.id,
       },
     });
@@ -784,6 +1062,7 @@ export class TicketsService {
         payload: {
           fromTeamId: priorTeamId,
           toTeamId: payload.newTeamId,
+          toTeamName: updated.assignedTeam?.name ?? null,
           assigneeId: payload.assigneeId ?? null,
         },
         createdById: user.id,
@@ -909,6 +1188,10 @@ export class TicketsService {
 
     await this.safeNotify(() =>
       this.notifications.ticketStatusChanged(updated, ticket.status, user),
+    );
+
+    this.ruleEngine.runForTicket(ticketId, 'STATUS_CHANGED').catch((err) =>
+      console.error('Automation STATUS_CHANGED failed', err),
     );
 
     return updated;

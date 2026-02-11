@@ -21,6 +21,18 @@ export class ReportQueryDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+  @IsOptional()
+  @IsIn(['assigned'])
+  scope?: 'assigned';
+
+  @IsOptional()
+  @IsIn(['createdAt', 'updatedAt'])
+  dateField?: 'createdAt' | 'updatedAt';
+
+  @IsOptional()
+  @IsIn(['open', 'resolved', 'all'])
+  statusGroup?: 'open' | 'resolved' | 'all';
 }
 
 export class ResolutionTimeQueryDto extends ReportQueryDto {

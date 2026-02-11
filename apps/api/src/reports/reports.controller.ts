@@ -9,6 +9,11 @@ import { ReportsService } from './reports.service';
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  @Get('summary')
+  getSummary(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getSummary(query, user);
+  }
+
   @Get('ticket-volume')
   getTicketVolume(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
     return this.reportsService.getTicketVolume(query, user);
@@ -40,5 +45,35 @@ export class ReportsController {
   @Get('agent-performance')
   getAgentPerformance(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
     return this.reportsService.getAgentPerformance(query, user);
+  }
+
+  @Get('agent-workload')
+  getAgentWorkload(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getAgentWorkload(query, user);
+  }
+
+  @Get('tickets-by-age')
+  getTicketsByAge(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getTicketsByAge(query, user);
+  }
+
+  @Get('reopen-rate')
+  getReopenRate(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getReopenRate(query, user);
+  }
+
+  @Get('tickets-by-category')
+  getTicketsByCategory(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getTicketsByCategory(query, user);
+  }
+
+  @Get('team-summary')
+  getTeamSummary(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getTeamSummary(query, user);
+  }
+
+  @Get('transfers')
+  getTransfers(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getTransfers(query, user);
   }
 }

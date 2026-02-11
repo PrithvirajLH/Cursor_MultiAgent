@@ -134,27 +134,25 @@ export function initialsFor(name: string) {
 }
 
 export function statusBadgeClass(status?: string | null) {
+  const neutral = 'bg-slate-100 text-slate-700 border-slate-200';
+  const newTone = 'bg-sky-100 text-sky-700 border-sky-200';
+  const progressTone = 'bg-amber-100 text-amber-700 border-amber-200';
+  const resolvedTone = 'bg-emerald-100 text-emerald-700 border-emerald-200';
   switch (status) {
     case 'NEW':
-      return 'bg-purple-100 text-purple-700 border-purple-200';
+      return newTone;
     case 'TRIAGED':
-      return 'bg-amber-100 text-amber-700 border-amber-200';
     case 'ASSIGNED':
-      return 'bg-blue-100 text-blue-700 border-blue-200';
     case 'IN_PROGRESS':
-      return 'bg-sky-100 text-sky-700 border-sky-200';
     case 'WAITING_ON_REQUESTER':
-      return 'bg-pink-100 text-pink-700 border-pink-200';
     case 'WAITING_ON_VENDOR':
-      return 'bg-orange-100 text-orange-700 border-orange-200';
+      return progressTone;
     case 'RESOLVED':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200';
     case 'CLOSED':
-      return 'bg-slate-100 text-slate-700 border-slate-200';
+      return resolvedTone;
     case 'REOPENED':
-      return 'bg-rose-100 text-rose-700 border-rose-200';
     default:
-      return 'bg-slate-100 text-slate-700 border-slate-200';
+      return neutral;
   }
 }
 

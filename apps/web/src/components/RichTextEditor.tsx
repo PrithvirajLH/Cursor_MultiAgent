@@ -14,7 +14,9 @@ import { CannedResponsePicker } from './CannedResponsePicker';
 import { normalizeDivToP } from '../utils/messageBody';
 import DOMPurify from 'dompurify';
 
-export type RichTextEditorRef = { focus: () => void };
+// Note: getValue() reads the current DOM and sanitizes immediately. Use this for "Send" so we never
+// send stale state when onChange is debounced.
+export type RichTextEditorRef = { focus: () => void; getValue: () => string };
 
 const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'blockquote', 'span'];
 const ALLOWED_ATTR = ['href', 'target', 'rel', 'class', 'data-user-id'];
@@ -99,6 +101,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
   const savedRangeRef = useRef<Range | null>(null);
   /** Last HTML we sent via onChange; skip syncing value→DOM when prop equals this (avoids wiping selection). */
   const lastSentHtmlRef = useRef<string>('');
+  const flushTimerRef = useRef<number | null>(null);
   const [showMentions, setShowMentions] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -110,6 +113,18 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     () => ({
       focus() {
         editableRef.current?.focus();
+      },
+      getValue() {
+        // If a debounced flush is pending, cancel it so we don't resurrect cleared content after Send.
+        if (flushTimerRef.current != null) {
+          window.clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        const el = editableRef.current;
+        if (!el) return '';
+        const html = el.innerHTML;
+        if (html === EMPTY_HTML || html.trim() === '<br>') return '';
+        return sanitizeEditorHtml(html);
       },
     }),
     [],
@@ -132,6 +147,11 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     const isEmpty = value.trim() === '';
     // When parent clears (e.g. after send), always sync so the editor empties.
     if (isEmpty) {
+      // Cancel pending debounced flush so it can't re-populate cleared state.
+      if (flushTimerRef.current != null) {
+        window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       lastSentHtmlRef.current = value;
       el.innerHTML = EMPTY_HTML;
       return;
@@ -154,12 +174,27 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     return sanitizeEditorHtml(html);
   }, []);
 
+  const flushToParent = useCallback(() => {
+    const el = editableRef.current;
+    if (!el) return;
+    const html = el.innerHTML;
+    const sanitized = html === EMPTY_HTML || html.trim() === '<br>' ? '' : sanitizeEditorHtml(html);
+    lastSentHtmlRef.current = sanitized;
+    onChange(sanitized);
+  }, [onChange]);
+
   const handleInput = useCallback(() => {
     const el = editableRef.current;
     if (!el) return;
-    const html = getHtml();
-    lastSentHtmlRef.current = html;
-    onChange(html);
+
+    // Debounce sanitization + parent state updates to reduce main-thread work while typing.
+    if (flushTimerRef.current != null) {
+      window.clearTimeout(flushTimerRef.current);
+    }
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      flushToParent();
+    }, 150);
 
     const textBefore = getTextBeforeCursor(el);
     const lastAt = textBefore.lastIndexOf('@');
@@ -176,7 +211,15 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
     setMentionQuery(afterAt);
     setMentionAtOffset(lastAt);
     setMentionIndex(0);
-  }, [onChange, getHtml]);
+  }, [flushToParent]);
+
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current != null) {
+        window.clearTimeout(flushTimerRef.current);
+      }
+    };
+  }, []);
 
   const selectMention = useCallback(
     (user: UserRef) => {
@@ -287,7 +330,6 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
 
   const handleCannedSelect = useCallback(
     (content: string) => {
-      const el = editableRef.current;
       restoreSelection();
       const html = sanitizeEditorHtml(content);
       document.execCommand('insertHTML', false, html);

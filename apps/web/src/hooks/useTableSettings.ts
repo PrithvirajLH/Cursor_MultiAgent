@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'tickets-table-settings';
 
@@ -19,7 +19,7 @@ export const TABLE_COLUMN_IDS = [
 
 export type TableColumnId = (typeof TABLE_COLUMN_IDS)[number];
 
-const DEFAULT_WIDTHS: Record<TableColumnId, number> = {
+export const DEFAULT_WIDTHS: Record<TableColumnId, number> = {
   checkbox: 44,
   id: 100,
   subject: 240,
@@ -93,13 +93,43 @@ export function useTableSettings() {
     return mergeWithDefaults(stored);
   });
 
+  const persistTimerRef = useRef<number | null>(null);
+  const lastScheduledSettingsRef = useRef<TableSettings | null>(null);
+
+  const schedulePersist = useCallback((next: TableSettings) => {
+    // localStorage writes are synchronous; debounce to avoid jank during drag resizing.
+    lastScheduledSettingsRef.current = next;
+    if (persistTimerRef.current != null) {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = window.setTimeout(() => {
+      persist(next);
+      persistTimerRef.current = null;
+      lastScheduledSettingsRef.current = null;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimerRef.current != null) {
+        // Ensure last settings aren't dropped if the component unmounts before debounce fires.
+        if (lastScheduledSettingsRef.current) {
+          persist(lastScheduledSettingsRef.current);
+          lastScheduledSettingsRef.current = null;
+        }
+        window.clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const setViewMode = useCallback((viewMode: ViewMode) => {
     setSettings((prev) => {
       const next = { ...prev, viewMode };
-      persist(next);
+      schedulePersist(next);
       return next;
     });
-  }, []);
+  }, [schedulePersist]);
 
   const setColumnWidth = useCallback((columnId: TableColumnId, width: number) => {
     const clamped = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width));
@@ -108,10 +138,10 @@ export function useTableSettings() {
         ...prev,
         columnWidths: { ...prev.columnWidths, [columnId]: clamped },
       };
-      persist(next);
+      schedulePersist(next);
       return next;
     });
-  }, []);
+  }, [schedulePersist]);
 
   const setColumnVisible = useCallback((columnId: TableColumnId, visible: boolean) => {
     setSettings((prev) => {
@@ -119,10 +149,10 @@ export function useTableSettings() {
         ...prev,
         columnVisibility: { ...prev.columnVisibility, [columnId]: visible },
       };
-      persist(next);
+      schedulePersist(next);
       return next;
     });
-  }, []);
+  }, [schedulePersist]);
 
   const visibleColumns = useMemo(
     () => TABLE_COLUMN_IDS.filter((id) => settings.columnVisibility[id]),

@@ -78,7 +78,7 @@ export function useFilters(presetScope?: TicketScope, presetStatus?: StatusFilte
   const PAGE_KEYS = ['page', 'pageSize'] as const;
 
   const setFilters = useCallback(
-    (updates: Partial<TicketFilters>) => {
+    (updates: Partial<TicketFilters>, options?: { replace?: boolean }) => {
       const hasNonPageUpdates = Object.keys(updates).some(
         (k) => !PAGE_KEYS.includes(k as (typeof PAGE_KEYS)[number]),
       );
@@ -87,7 +87,7 @@ export function useFilters(presetScope?: TicketScope, presetStatus?: StatusFilte
         next.page = 1;
       }
       const params = filtersToSearchParams(next);
-      setSearchParams(params, { replace: false });
+      setSearchParams(params, { replace: options?.replace ?? false });
     },
     [filters, setSearchParams],
   );

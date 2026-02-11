@@ -30,6 +30,10 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const [page, setPage] = useState(1);
   // Track when userKey is synced to storage to prevent fetching with stale credentials
   const [userKeySynced, setUserKeySynced] = useState(false);
+  const [isTabVisible, setIsTabVisible] = useState(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  });
 
   const pollingRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -37,6 +41,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   // Track current userKey for guarding stale responses - updated synchronously
   const currentUserKeyRef = useRef(userKey);
   currentUserKeyRef.current = userKey;
+  const countInFlightRef = useRef(false);
 
   // Check if userKey matches the persisted email to prevent fetching with stale credentials
   const isUserKeySynced = useCallback(() => {
@@ -107,6 +112,10 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       return;
     }
 
+    // Avoid overlapping poll requests (can happen on slow networks).
+    if (countInFlightRef.current) return;
+    countInFlightRef.current = true;
+
     // Capture userKey at request start to guard against stale responses
     const requestUserKey = currentUserKeyRef.current;
 
@@ -118,6 +127,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       }
     } catch (err) {
       console.error('Failed to fetch unread count', err);
+    } finally {
+      countInFlightRef.current = false;
     }
   }, [isUserKeySynced]);
 
@@ -179,6 +190,14 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     }
   }, [userKey]);
 
+  // Pause polling when the tab is not visible to reduce background contention.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibility = () => setIsTabVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   // Check if userKey is synced to storage and trigger fetch when ready
   useEffect(() => {
     if (!userKey) {
@@ -233,7 +252,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
   // Set up polling (only when user is synced)
   useEffect(() => {
-    if (!enablePolling || pollingInterval <= 0 || !userKeySynced) {
+    if (!enablePolling || pollingInterval <= 0 || !userKeySynced || !isTabVisible) {
       return;
     }
 
@@ -248,7 +267,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         pollingRef.current = null;
       }
     };
-  }, [enablePolling, pollingInterval, fetchCount, userKeySynced]);
+  }, [enablePolling, pollingInterval, fetchCount, userKeySynced, isTabVisible]);
 
   return {
     notifications,

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, TicketPriority, TicketStatus, TeamRole, User } from '@prisma/client';
+import { RuleEngineService } from '../automation/rule-engine.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,6 +38,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     private readonly inAppNotifications: InAppNotificationsService,
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
+    private readonly ruleEngine: RuleEngineService,
   ) {}
 
   onModuleInit() {
@@ -127,6 +129,13 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       // This prevents duplicate notifications if transaction rolls back
       for (const intent of notificationIntents) {
         await this.dispatchNotification(intent);
+      }
+      // Run automation rules for SLA breach / at-risk
+      for (const intent of notificationIntents) {
+        const trigger = intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_APPROACHING';
+        this.ruleEngine.runForTicket(intent.ticketId, trigger).catch((err) =>
+          console.error(`Automation ${trigger} failed for ticket ${intent.ticketId}`, err),
+        );
       }
     } finally {
       this.running = false;

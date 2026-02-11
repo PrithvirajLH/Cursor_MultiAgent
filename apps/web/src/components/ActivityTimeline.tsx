@@ -24,6 +24,8 @@ function getDateKey(createdAt: string): string {
 
 type ActivityTimelineProps = {
   ticket: TicketDetail;
+  events: TicketEvent[];
+  messages: TicketMessage[];
   /** When 'EMPLOYEE', internal note events are excluded from the timeline. */
   role?: string;
   /** Event type filter: show only these types (empty = all). */
@@ -34,6 +36,8 @@ type ActivityTimelineProps = {
 
 export function ActivityTimeline({
   ticket,
+  events: timelineEvents,
+  messages,
   role,
   eventTypeFilter = [],
   collapseGroups = false
@@ -41,7 +45,7 @@ export function ActivityTimeline({
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(() => new Set());
   const [typeFilter, setTypeFilter] = useState<string[]>(eventTypeFilter);
 
-  const rawEvents = ticket.events ?? [];
+  const rawEvents = timelineEvents ?? [];
 
   const events = useMemo(() => {
     if (role !== 'EMPLOYEE') return rawEvents;
@@ -66,9 +70,9 @@ export function ActivityTimeline({
 
   const messageById = useMemo(() => {
     const map = new Map<string, TicketMessage>();
-    ticket.messages.forEach((m) => map.set(m.id, m));
+    messages.forEach((m) => map.set(m.id, m));
     return map;
-  }, [ticket.messages]);
+  }, [messages]);
 
   const sortedEvents = useMemo(() => {
     const list = [...events].sort(

@@ -16,14 +16,14 @@ export function TicketVolumeChart({ data }: { data: Point[] }) {
     short: d.date.slice(5),
   }));
   return (
-    <div className="h-[240px] w-full">
+    <div className="h-[240px] w-full min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={display} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="short" tick={{ fontSize: 11 }} stroke="#64748b" />
           <YAxis tick={{ fontSize: 11 }} stroke="#64748b" allowDecimals={false} />
           <Tooltip
-            formatter={(value: number) => [value, 'Tickets']}
+            formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
             labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ''}
             contentStyle={{ fontSize: 12 }}
           />

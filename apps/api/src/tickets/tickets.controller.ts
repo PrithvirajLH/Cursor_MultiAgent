@@ -20,7 +20,11 @@ import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
+import { ListTicketEventsDto } from './dto/list-ticket-events.dto';
+import { ListTicketMessagesDto } from './dto/list-ticket-messages.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
+import { TicketActivityDto } from './dto/ticket-activity.dto';
+import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { TicketsService } from './tickets.service';
@@ -37,6 +41,21 @@ export class TicketsController {
   @Get('counts')
   async getCounts(@CurrentUser() user: AuthUser) {
     return this.ticketsService.getCounts(user);
+  }
+
+  @Get('activity')
+  async getActivity(@Query() query: TicketActivityDto, @CurrentUser() user: AuthUser) {
+    return this.ticketsService.getActivity(query, user);
+  }
+
+  @Get('status-breakdown')
+  async getStatusBreakdown(@Query() query: TicketStatusDto, @CurrentUser() user: AuthUser) {
+    return this.ticketsService.getStatusBreakdown(query, user);
+  }
+
+  @Get('metrics')
+  async getMetrics(@CurrentUser() user: AuthUser) {
+    return this.ticketsService.getMetrics(user);
   }
 
   @Get(':id')
@@ -82,6 +101,15 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.bulkPriority(payload, user);
+  }
+
+  @Get(':id/messages')
+  async listMessages(
+    @Param('id') id: string,
+    @Query() query: ListTicketMessagesDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.listMessages(id, user, query.take, query.cursor);
   }
 
   @Post(':id/messages')
@@ -132,6 +160,15 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.transition(id, payload, user);
+  }
+
+  @Get(':id/events')
+  async listEvents(
+    @Param('id') id: string,
+    @Query() query: ListTicketEventsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.listEvents(id, user, query.take, query.cursor);
   }
 
   @Get(':id/followers')

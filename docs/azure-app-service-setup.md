@@ -104,8 +104,8 @@ This guide creates a **single App Service** that runs the API (and optionally se
 
 1. **Configuration** → **General settings**.
 2. **Startup Command**:  
-   `node dist/main`  
-   (or `npm run start:prod` if you prefer; ensure `start:prod` runs `node dist/main`).
+   `node dist/src/main.js`  
+   (or `npm run start:prod` if you prefer; ensure `start:prod` runs `node dist/src/main.js`).
 3. **Save**.
 
 #### Step 6: Allow App Service to reach PostgreSQL
@@ -172,7 +172,7 @@ az webapp config appsettings set --resource-group $rg --name $appName --settings
   NOTIFICATIONS_QUEUE_ENABLED=false
 
 # 7. Startup command
-az webapp config set --resource-group $rg --name $appName --startup-file "node dist/main"
+az webapp config set --resource-group $rg --name $appName --startup-file "node dist/src/main.js"
 ```
 
 Then in Azure Portal, open **PostgreSQL** → **Networking** and allow access from Azure services (or add your App Service outbound IPs).
@@ -197,7 +197,7 @@ npm run build -w apps/web
 
 ### 2. Create the deployment package (ZIP)
 
-Create a folder that will become the **root** of the App Service (so `node dist/main` runs from this root).
+Create a folder that will become the **root** of the App Service (so `node dist/src/main.js` runs from this root).
 
 **API-only deploy** (no SPA in this zip):
 
@@ -216,7 +216,7 @@ Copy-Item -Path ".\apps\api\prisma" -Destination "$deployDir\prisma" -Recurse
 Compress-Archive -Path "$deployDir\*" -DestinationPath ".\ticketing-deploy.zip" -Force
 ```
 
-**Single-app deploy** (API + SPA): only after you’ve added static serving in the API (e.g. NestJS serving `apps/web/dist`). Then also copy `apps/web/dist` into a folder the API serves (e.g. `$deployDir\public`) and ensure startup command is still `node dist/main`.
+**Single-app deploy** (API + SPA): only after you’ve added static serving in the API (e.g. NestJS serving `apps/web/dist`). Then also copy `apps/web/dist` into a folder the API serves (e.g. `$deployDir\public`) and ensure startup command is still `node dist/src/main.js`.
 
 ### 3. Deploy the ZIP (Kudu)
 
@@ -258,7 +258,9 @@ App Service runs `npm install` when it sees `package.json`; it does **not** run 
 
   Then deploy the zip (with `prisma` folder and generated client in `node_modules` from a local `npm install` in `apps/api`, or ensure the deploy zip triggers install and you run generate in a startup script).
 
-- **Option B:** Add a custom startup script that runs `npx prisma generate && npx prisma migrate deploy && node dist/main`, and ensure `prisma` CLI is in `apps/api` dependencies. Then set **Startup Command** to that script.
+- **Option B:** Add a custom startup script that runs `npx prisma generate && npx prisma migrate deploy && node dist/src/main.js`, and ensure `prisma` CLI is in `apps/api` dependencies. Then set **Startup Command** to that script.
+
+**Prisma binary targets:** The schema uses `binaryTargets = ["native", "debian-openssl-3.0.x"]`, which is correct for Azure App Service (Linux) and Debian with OpenSSL 3. If you deploy to **Windows** App Service or a different Linux base, either add that target in `apps/api/prisma/schema.prisma` or generate the client on the target machine so Prisma runs correctly at runtime.
 
 After the first deploy, open:  
 `https://ticketing-app-xxx.azurewebsites.net/api`  
@@ -272,7 +274,7 @@ After the first deploy, open:
 - [ ] PostgreSQL Flexible Server created; firewall allows App Service (or Azure services)  
 - [ ] App Service (Web App) created; Runtime = Node 20 (or 18)  
 - [ ] Application settings: `DATABASE_URL`, `DIRECT_URL`, `PORT`, `NODE_ENV`, `CORS_ORIGIN`, `WEB_APP_URL`  
-- [ ] Startup command: `node dist/main`  
+- [ ] Startup command: `node dist/src/main.js`  
 - [ ] Prisma migrations run against production DB  
 - [ ] Build and zip created from repo root  
 - [ ] ZIP deployed via Kudu; site loads and API responds  
@@ -281,7 +283,7 @@ After the first deploy, open:
 
 ## Troubleshooting
 
-- **502 / App not loading:** Check **Monitoring** → **Log stream** and **Diagnose and solve problems**. Ensure startup command is `node dist/main` and that `dist/main.js` exists in the zip.  
+- **502 / App not loading:** Check **Monitoring** → **Log stream** and **Diagnose and solve problems**. Ensure startup command is `node dist/src/main.js` (or npm start) and that `dist/src/main.js` exists in the zip.  
 - **DB connection errors:** Check `DATABASE_URL`/`DIRECT_URL`, SSL (`?sslmode=require`), and PostgreSQL firewall.  
 - **CORS errors:** Set `CORS_ORIGIN` to your app URL (e.g. `https://ticketing-app-xxx.azurewebsites.net`).
 

@@ -241,6 +241,11 @@ async function seedDev() {
     data: { primaryTeamId: aiTeam.id }
   });
 
+  await prisma.user.update({
+    where: { id: maria.id },
+    data: { primaryTeamId: hrTeam.id }
+  });
+
   await prisma.teamMember.upsert({
     where: { teamId_userId: { teamId: itTeam.id, userId: alex.id } },
     update: { role: TeamRole.AGENT },

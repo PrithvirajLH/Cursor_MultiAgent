@@ -1,40 +1,455 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 import {
+  ApiError,
   createRoutingRule,
   deleteRoutingRule,
   fetchRoutingRules,
   updateRoutingRule,
+  type NotificationRecord,
   type RoutingRule,
   type TeamRef
 } from '../api/client';
+import { TopBar } from '../components/TopBar';
+import { useToast } from '../hooks/useToast';
 
-export function RoutingRulesPage({ teamsList }: { teamsList: TeamRef[] }) {
+type RoutingHeaderProps = {
+  title: string;
+  subtitle: string;
+  currentEmail: string;
+  personas: { label: string; email: string }[];
+  onEmailChange: (email: string) => void;
+  onOpenSearch?: () => void;
+  notificationProps?: {
+    notifications: NotificationRecord[];
+    unreadCount: number;
+    loading: boolean;
+    hasMore: boolean;
+    onLoadMore: () => void;
+    onMarkAsRead: (id: string) => void;
+    onMarkAllAsRead: () => void;
+    onRefresh: () => void;
+  };
+};
+
+type RoutingCondition = {
+  field: string;
+  op: string;
+  val: string;
+};
+
+type RoutingAction = {
+  type: string;
+  val: string;
+};
+
+type RoutingForm = {
+  id: string | null;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  conditions: RoutingCondition[];
+  actions: RoutingAction[];
+};
+
+type RuleUiMeta = {
+  conditions: RoutingCondition[];
+  actions: RoutingAction[];
+};
+
+const FIELDS = ['subject', 'requester_tag', 'ticket_type', 'channel', 'priority', 'team'];
+const OPS = ['contains', 'is', 'is_not', 'starts_with', 'ends_with'];
+const ACTION_LABELS: Record<string, string> = {
+  assign_team: 'Assign Team',
+  assign_agent: 'Assign Agent',
+  set_priority: 'Set Priority',
+  add_tag: 'Add Tag',
+  round_robin: 'Round Robin',
+  notify_role: 'Notify Role'
+};
+
+const DEFAULT_CONDITION: RoutingCondition = { field: 'subject', op: 'contains', val: '' };
+const DEFAULT_ACTION: RoutingAction = { type: 'assign_team', val: '' };
+
+function apiErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(err.message) as { message?: string };
+      if (typeof parsed.message === 'string' && parsed.message.trim()) {
+        return parsed.message;
+      }
+    } catch {
+      // fall through
+    }
+    return err.message || 'Request failed';
+  }
+  if (err instanceof Error) return err.message;
+  return 'Request failed';
+}
+
+function normalizeKeyword(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function toUniqueKeywords(conditions: RoutingCondition[]): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  conditions.forEach((condition) => {
+    const normalized = normalizeKeyword(condition.val);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    next.push(normalized);
+  });
+  return next;
+}
+
+function resolveTeamId(actionValue: string, teamsList: TeamRef[]): string | null {
+  const trimmed = actionValue.trim();
+  if (!trimmed) return null;
+  const byId = teamsList.find((team) => team.id === trimmed);
+  if (byId) return byId.id;
+  const lowered = trimmed.toLowerCase();
+  const byName = teamsList.find((team) => team.name.toLowerCase() === lowered);
+  return byName?.id ?? null;
+}
+
+function resolveTeamName(teamId: string, teamsList: TeamRef[]): string {
+  return teamsList.find((team) => team.id === teamId)?.name ?? teamId;
+}
+
+function deriveMetaFromRule(rule: RoutingRule, teamsList: TeamRef[]): RuleUiMeta {
+  const conditions =
+    rule.keywords.length > 0
+      ? rule.keywords.map((keyword) => ({
+          field: 'subject',
+          op: 'contains',
+          val: keyword
+        }))
+      : [{ ...DEFAULT_CONDITION }];
+
+  const actions: RoutingAction[] = [
+    {
+      type: 'assign_team',
+      val: resolveTeamName(rule.teamId, teamsList)
+    }
+  ];
+
+  return { conditions, actions };
+}
+
+function Toggle({
+  checked,
+  onChange,
+  disabled
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="relative inline-flex h-[22px] w-10 items-center">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="peer sr-only"
+      />
+      <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600 peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
+      <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
+    </label>
+  );
+}
+
+function ConfirmDeleteModal({
+  ruleName,
+  onConfirm,
+  onCancel
+}: {
+  ruleName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+        <div className="mb-3 flex items-center space-x-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+            <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01M10.293 4.293a1 1 0 011.414 0L21 13.586V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-5.414l9.293-9.293z"
+              />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold text-slate-900">Delete Routing Rule</h3>
+        </div>
+        <p className="mb-5 text-sm leading-relaxed text-slate-600">
+          Delete "{ruleName}"? This cannot be undone.
+        </p>
+        <div className="flex justify-end space-x-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RuleEditorModal({
+  form,
+  isNew,
+  loading,
+  onClose,
+  onSubmit,
+  onChange,
+  onAddCondition,
+  onRemoveCondition,
+  onUpdateCondition,
+  onAddAction,
+  onRemoveAction,
+  onUpdateAction
+}: {
+  form: RoutingForm;
+  isNew: boolean;
+  loading: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+  onChange: (next: Partial<RoutingForm>) => void;
+  onAddCondition: () => void;
+  onRemoveCondition: (index: number) => void;
+  onUpdateCondition: (index: number, key: keyof RoutingCondition, value: string) => void;
+  onAddAction: () => void;
+  onRemoveAction: (index: number) => void;
+  onUpdateAction: (index: number, key: keyof RoutingAction, value: string) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <p className="text-base font-semibold text-slate-900">
+              {isNew ? 'Create Routing Rule' : 'Edit Routing Rule'}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">Define conditions and actions</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto p-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="mb-1 block text-xs font-medium text-slate-700">Rule Name *</label>
+              <input
+                value={form.name}
+                onChange={(event) => onChange({ name: event.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g. VIP Fast Lane"
+              />
+            </div>
+            <div className="col-span-2 flex items-end pb-1 sm:col-span-1">
+              <div className="flex items-center space-x-2">
+                <Toggle checked={form.enabled} onChange={(value) => onChange({ enabled: value })} />
+                <span className="text-sm text-slate-700">Enabled</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-800">Conditions</p>
+              <span className="text-xs text-slate-400">ALL conditions must match</span>
+            </div>
+            <div className="space-y-2">
+              {form.conditions.map((condition, index) => (
+                <div key={`condition-${index}`} className="flex items-center space-x-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                  <select
+                    value={condition.field}
+                    onChange={(event) => onUpdateCondition(index, 'field', event.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Field...</option>
+                    {FIELDS.map((field) => (
+                      <option key={field} value={field}>
+                        {field.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={condition.op}
+                    onChange={(event) => onUpdateCondition(index, 'op', event.target.value)}
+                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  >
+                    {OPS.map((op) => (
+                      <option key={op} value={op}>
+                        {op.replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={condition.val}
+                    onChange={(event) => onUpdateCondition(index, 'val', event.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    placeholder="value..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onRemoveCondition(index)}
+                    className="flex-shrink-0 text-slate-400 hover:text-red-500"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={onAddCondition}
+                className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Add Condition</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-800">Actions</p>
+              <span className="text-xs text-slate-400">Applied in order</span>
+            </div>
+            <div className="space-y-2">
+              {form.actions.map((action, index) => (
+                <div key={`action-${index}`} className="flex items-center space-x-2 rounded-lg border border-blue-100 bg-blue-50 p-2.5">
+                  <svg className="h-4 w-4 flex-shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <select
+                    value={action.type}
+                    onChange={(event) => onUpdateAction(index, 'type', event.target.value)}
+                    className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={action.val}
+                    onChange={(event) => onUpdateAction(index, 'val', event.target.value)}
+                    className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    placeholder="value..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAction(index)}
+                    className="flex-shrink-0 text-slate-400 hover:text-red-500"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={onAddAction}
+                className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>Add Action</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end space-x-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={loading}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          >
+            {loading ? 'Saving...' : isNew ? 'Create Rule' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function RoutingRulesPage({
+  teamsList,
+  headerProps
+}: {
+  teamsList: TeamRef[];
+  headerProps?: RoutingHeaderProps;
+}) {
+  const toast = useToast();
   const [rules, setRules] = useState<RoutingRule[]>([]);
+  const [uiMetaById, setUiMetaById] = useState<Record<string, RuleUiMeta>>({});
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [updatingRuleId, setUpdatingRuleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({
+
+  const [showEditor, setShowEditor] = useState(false);
+  const [form, setForm] = useState<RoutingForm>({
+    id: null,
     name: '',
-    keywords: [] as string[],
-    teamId: '',
-    priority: 100,
-    isActive: true
+    enabled: true,
+    priority: 1,
+    conditions: [{ ...DEFAULT_CONDITION }],
+    actions: [{ ...DEFAULT_ACTION }]
   });
-  const [editForm, setEditForm] = useState({
-    name: '',
-    keywords: [] as string[],
-    teamId: '',
-    priority: 100,
-    isActive: true
-  });
-  const [keywordInput, setKeywordInput] = useState('');
-  const [editKeywordInput, setEditKeywordInput] = useState('');
+
+  const [deleteTarget, setDeleteTarget] = useState<RoutingRule | null>(null);
 
   useEffect(() => {
-    loadRules();
+    void loadRules();
   }, []);
+
+  function updateMetaFromRules(nextRules: RoutingRule[]) {
+    setUiMetaById((prev) => {
+      const next: Record<string, RuleUiMeta> = {};
+      nextRules.forEach((rule) => {
+        next[rule.id] = prev[rule.id] ?? deriveMetaFromRule(rule, teamsList);
+      });
+      return next;
+    });
+  }
 
   async function loadRules() {
     setLoading(true);
@@ -42,8 +457,11 @@ export function RoutingRulesPage({ teamsList }: { teamsList: TeamRef[] }) {
     try {
       const response = await fetchRoutingRules();
       setRules(response.data);
+      updateMetaFromRules(response.data);
     } catch (err) {
-      setError('Unable to load routing rules.');
+      const message = apiErrorMessage(err);
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -53,390 +471,400 @@ export function RoutingRulesPage({ teamsList }: { teamsList: TeamRef[] }) {
     return [...rules].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
   }, [rules]);
 
-  function normalizeKeyword(value: string) {
-    return value.trim().toLowerCase();
-  }
-
-  function addKeyword(list: string[], value: string) {
-    const normalized = normalizeKeyword(value);
-    if (!normalized) {
-      return list;
-    }
-    if (list.includes(normalized)) {
-      return list;
-    }
-    return [...list, normalized];
-  }
-
-  function removeKeyword(list: string[], value: string) {
-    return list.filter((item) => item !== value);
-  }
-
-  async function handleCreate() {
-    setError(null);
-    setNotice(null);
-    if (!form.name.trim() || form.keywords.length === 0 || !form.teamId) {
-      setError('Name, team, and keywords are required.');
-      return;
-    }
-    try {
-      const rule = await createRoutingRule({
-        name: form.name.trim(),
-        keywords: form.keywords,
-        teamId: form.teamId,
-        priority: Number(form.priority),
-        isActive: form.isActive
-      });
-      setRules((prev) => [...prev, rule]);
-      setForm({ name: '', keywords: [], teamId: '', priority: 100, isActive: true });
-      setKeywordInput('');
-      setNotice('Routing rule created.');
-    } catch (err) {
-      setError('Unable to create routing rule.');
-    }
-  }
-
-  function startEdit(rule: RoutingRule) {
-    setEditingId(rule.id);
-    setEditForm({
-      name: rule.name,
-      keywords: rule.keywords,
-      teamId: rule.teamId,
-      priority: rule.priority,
-      isActive: rule.isActive
+  function openCreateModal() {
+    const nextPriority =
+      sortedRules.length > 0
+        ? Math.max(...sortedRules.map((rule) => rule.priority)) + 1
+        : 1;
+    setForm({
+      id: null,
+      name: '',
+      enabled: true,
+      priority: nextPriority,
+      conditions: [{ ...DEFAULT_CONDITION }],
+      actions: [{ ...DEFAULT_ACTION }]
     });
-    setEditKeywordInput('');
+    setShowEditor(true);
   }
 
-  async function handleUpdate(ruleId: string) {
-    setError(null);
-    setNotice(null);
-    if (!editForm.name.trim() || editForm.keywords.length === 0 || !editForm.teamId) {
-      setError('Name, team, and keywords are required.');
+  function openEditModal(rule: RoutingRule) {
+    const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, teamsList);
+    setForm({
+      id: rule.id,
+      name: rule.name,
+      enabled: rule.isActive,
+      priority: rule.priority,
+      conditions:
+        meta.conditions.length > 0
+          ? meta.conditions.map((item) => ({ ...item }))
+          : [{ ...DEFAULT_CONDITION }],
+      actions:
+        meta.actions.length > 0
+          ? meta.actions.map((item) => ({ ...item }))
+          : [{ ...DEFAULT_ACTION }]
+    });
+    setShowEditor(true);
+  }
+
+  function validateForm(nextForm: RoutingForm): {
+    payload?: {
+      name: string;
+      keywords: string[];
+      teamId: string;
+      priority: number;
+      isActive: boolean;
+    };
+    error?: string;
+  } {
+    if (!nextForm.name.trim()) {
+      return { error: 'Rule name is required.' };
+    }
+
+    const keywords = toUniqueKeywords(nextForm.conditions);
+    if (keywords.length === 0) {
+      return { error: 'Add at least one condition value.' };
+    }
+
+    const teamAction = nextForm.actions.find(
+      (action) => action.type === 'assign_team' || action.type === 'round_robin'
+    );
+    const teamId = teamAction ? resolveTeamId(teamAction.val, teamsList) : null;
+    if (!teamId) {
+      return { error: 'Add an action to assign or round-robin to a valid team.' };
+    }
+
+    return {
+      payload: {
+        name: nextForm.name.trim(),
+        keywords,
+        teamId,
+        priority: Math.max(1, Number(nextForm.priority) || 1),
+        isActive: nextForm.enabled
+      }
+    };
+  }
+
+  async function handleSaveRule() {
+    const parsed = validateForm(form);
+    if (!parsed.payload) {
+      const message = parsed.error ?? 'Invalid form values.';
+      setError(message);
+      toast.error(message);
       return;
     }
-    try {
-      const updated = await updateRoutingRule(ruleId, {
-        name: editForm.name.trim(),
-        keywords: editForm.keywords,
-        teamId: editForm.teamId,
-        priority: Number(editForm.priority),
-        isActive: editForm.isActive
-      });
-      setRules((prev) => prev.map((item) => (item.id === ruleId ? updated : item)));
-      setEditingId(null);
-      setNotice('Routing rule updated.');
-    } catch (err) {
-      setError('Unable to update routing rule.');
-    }
-  }
 
-  async function handleDelete(ruleId: string) {
+    setSaving(true);
     setError(null);
-    setNotice(null);
     try {
-      await deleteRoutingRule(ruleId);
-      setRules((prev) => prev.filter((item) => item.id !== ruleId));
-      setNotice('Routing rule deleted.');
-      setConfirmDeleteId(null);
+      if (form.id) {
+        const updated = await updateRoutingRule(form.id, parsed.payload);
+        setRules((prev) => prev.map((rule) => (rule.id === form.id ? updated : rule)));
+        setUiMetaById((prev) => ({
+          ...prev,
+          [form.id!]: {
+            conditions: form.conditions.map((condition) => ({ ...condition })),
+            actions: form.actions.map((action) => ({ ...action }))
+          }
+        }));
+        toast.success('Routing rule updated.');
+      } else {
+        const created = await createRoutingRule(parsed.payload);
+        setRules((prev) => [...prev, created]);
+        setUiMetaById((prev) => ({
+          ...prev,
+          [created.id]: {
+            conditions: form.conditions.map((condition) => ({ ...condition })),
+            actions: form.actions.map((action) => ({ ...action }))
+          }
+        }));
+        toast.success('Routing rule created.');
+      }
+
+      setShowEditor(false);
     } catch (err) {
-      setError('Unable to delete routing rule.');
+      const message = apiErrorMessage(err);
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
     }
   }
 
-  function renderKeywordChips(keywords: string[], onRemove?: (keyword: string) => void) {
-    if (keywords.length === 0) {
-      return null;
+  async function handleToggleRule(rule: RoutingRule, nextEnabled: boolean) {
+    setUpdatingRuleId(rule.id);
+    setError(null);
+    try {
+      const updated = await updateRoutingRule(rule.id, { isActive: nextEnabled });
+      setRules((prev) => prev.map((item) => (item.id === rule.id ? updated : item)));
+      toast.success(nextEnabled ? 'Rule enabled.' : 'Rule disabled.');
+    } catch (err) {
+      const message = apiErrorMessage(err);
+      setError(message);
+      toast.error(message);
+    } finally {
+      setUpdatingRuleId(null);
     }
-    return (
-      <div className="mt-2 flex flex-wrap gap-2">
-        {keywords.map((keyword) => (
-          <span
-            key={`chip-${keyword}`}
-            className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600"
-          >
-            {keyword}
-            {onRemove && (
-              <button
-                type="button"
-                onClick={() => onRemove(keyword)}
-                className="ml-1 rounded-full border border-slate-200 bg-white px-1 text-[10px] text-slate-500"
-              >
-                x
-              </button>
-            )}
-          </span>
-        ))}
-      </div>
-    );
   }
 
-  function handleKeywordInputKeyDown(
-    event: KeyboardEvent<HTMLInputElement>,
-    list: string[],
-    setList: (next: string[]) => void,
-    inputValue: string,
-    setInput: (value: string) => void
-  ) {
-    if (event.key === 'Enter' || event.key === ',' || event.key === 'Tab') {
-      event.preventDefault();
-      const next = addKeyword(list, inputValue);
-      setList(next);
-      setInput('');
-    } else if (event.key === 'Backspace' && inputValue.length === 0 && list.length > 0) {
-      event.preventDefault();
-      setList(list.slice(0, -1));
+  async function handleDeleteRule(rule: RoutingRule) {
+    setError(null);
+    try {
+      await deleteRoutingRule(rule.id);
+      setRules((prev) => prev.filter((item) => item.id !== rule.id));
+      setUiMetaById((prev) => {
+        const next = { ...prev };
+        delete next[rule.id];
+        return next;
+      });
+      setDeleteTarget(null);
+      toast.success('Routing rule deleted.');
+    } catch (err) {
+      const message = apiErrorMessage(err);
+      setError(message);
+      toast.error(message);
     }
+  }
+
+  function updateCondition(index: number, key: keyof RoutingCondition, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      conditions: prev.conditions.map((condition, itemIndex) =>
+        itemIndex === index ? { ...condition, [key]: value } : condition
+      )
+    }));
+  }
+
+  function updateAction(index: number, key: keyof RoutingAction, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      actions: prev.actions.map((action, itemIndex) =>
+        itemIndex === index ? { ...action, [key]: value } : action
+      )
+    }));
   }
 
   return (
-    <section className="mt-8 space-y-6 animate-fade-in">
-      <div className="glass-card p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <section className="min-h-full bg-slate-50 animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-[1600px] py-4 pl-6 pr-2">
+          {headerProps ? (
+            <TopBar
+              title={headerProps.title}
+              subtitle={headerProps.subtitle}
+              currentEmail={headerProps.currentEmail}
+              personas={headerProps.personas}
+              onEmailChange={headerProps.onEmailChange}
+              onOpenSearch={headerProps.onOpenSearch}
+              notificationProps={headerProps.notificationProps}
+              leftContent={
+                <div className="min-w-0">
+                  <h1 className="text-xl font-semibold text-slate-900">Routing Rules</h1>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Auto-assign teams and priorities using ticket conditions.
+                  </p>
+                </div>
+              }
+            />
+          ) : (
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-slate-900">Routing Rules</h1>
+              <p className="mt-0.5 text-sm text-slate-500">
+                Auto-assign teams and priorities using ticket conditions.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-[1600px] p-6">
+        <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          Live backend fields: name, status, keywords, team, priority. IF/THEN structured builder is UI-mapped for now (demo) until dedicated backend fields are added.
+        </div>
+
+        {error && (
+          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="mb-5 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">Routing rules</h3>
-            <p className="text-sm text-slate-500">Automatically route tickets based on keywords.</p>
+            <p className="text-sm text-slate-600">
+              Rules are evaluated in order. The first matching rule wins.
+            </p>
           </div>
           <button
             type="button"
-            onClick={loadRules}
-            className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white"
+            onClick={openCreateModal}
+            className="flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
           >
-            Refresh
+            <Plus className="h-4 w-4" />
+            <span>New Rule</span>
           </button>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.8fr_0.6fr_0.4fr_auto]">
-          <input
-            className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-            placeholder="Rule name"
-            value={form.name}
-            onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-          />
-          <input
-            className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-            placeholder="Add keyword and press Enter"
-            value={keywordInput}
-            onChange={(event) => setKeywordInput(event.target.value)}
-            onKeyDown={(event) =>
-              handleKeywordInputKeyDown(
-                event,
-                form.keywords,
-                (next) => setForm((prev) => ({ ...prev, keywords: next })),
-                keywordInput,
-                setKeywordInput
-              )
-            }
-          />
-          <select
-            className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-            value={form.teamId}
-            onChange={(event) => setForm((prev) => ({ ...prev, teamId: event.target.value }))}
-          >
-            <option value="">Select team</option>
-            {teamsList.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={1}
-            className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-            value={form.priority}
-            onChange={(event) => setForm((prev) => ({ ...prev, priority: Number(event.target.value) }))}
-          />
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white"
-          >
-            Add rule
-          </button>
-        </div>
-        {renderKeywordChips(form.keywords, (keyword) =>
-          setForm((prev) => ({ ...prev, keywords: removeKeyword(prev.keywords, keyword) }))
-        )}
-        <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={form.isActive}
-              onChange={(event) => setForm((prev) => ({ ...prev, isActive: event.target.checked }))}
-            />
-            Active
-          </label>
-          {error && <span className="text-red-600">{error}</span>}
-          {notice && <span className="text-emerald-600">{notice}</span>}
-        </div>
-      </div>
 
-      {loading && (
-        <div className="glass-card p-6">
-          <div className="h-4 w-40 rounded-full skeleton-shimmer" />
-        </div>
-      )}
-
-      {!loading && sortedRules.length === 0 && (
-        <div className="glass-card p-6">
-          <p className="text-sm text-slate-500">No routing rules yet.</p>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {sortedRules.map((rule) => {
-          const isEditing = editingId === rule.id;
-          return (
-            <div key={rule.id} className="glass-card p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{rule.name}</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {rule.team?.name ?? 'Unassigned'} · Priority {rule.priority}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {rule.keywords.map((keyword) => (
-                      <span
-                        key={`${rule.id}-${keyword}`}
-                        className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold ${
-                      rule.isActive
-                        ? 'border-emerald-200 bg-emerald-100 text-emerald-700'
-                        : 'border-slate-200 bg-slate-100 text-slate-600'
-                    }`}
-                  >
-                    {rule.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                  {!isEditing && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => startEdit(rule)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                      >
-                        Edit
-                      </button>
-                      {confirmDeleteId === rule.id ? (
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(rule.id)}
-                            className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-600"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
-                          >
-                            Cancel
-                          </button>
+        {loading ? (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+            Loading routing rules...
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sortedRules.map((rule, index) => {
+              const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, teamsList);
+              return (
+                <div
+                  key={rule.id}
+                  className={`rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-md ${
+                    !rule.isActive ? 'opacity-60' : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex flex-col items-center pt-1">
+                        <div className="cursor-grab opacity-40 transition-opacity hover:opacity-80">
+                          <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                          </svg>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(rule.id)}
-                          className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs text-rose-600"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
+                        <span className="mt-1 text-xs font-medium text-slate-400">#{index + 1}</span>
+                      </div>
+                      <div>
+                        <div className="mb-2 flex items-center space-x-2">
+                          <span className="text-sm font-semibold text-slate-900">{rule.name}</span>
+                          {!rule.isActive && (
+                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                              Disabled
+                            </span>
+                          )}
+                        </div>
 
-              {isEditing && (
-                <>
-                  <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.8fr_0.6fr_0.4fr_auto]">
-                  <input
-                    className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-                    value={editForm.name}
-                    onChange={(event) => setEditForm((prev) => ({ ...prev, name: event.target.value }))}
-                  />
-                  <input
-                    className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-                    placeholder="Add keyword and press Enter"
-                    value={editKeywordInput}
-                    onChange={(event) => setEditKeywordInput(event.target.value)}
-                    onKeyDown={(event) =>
-                      handleKeywordInputKeyDown(
-                        event,
-                        editForm.keywords,
-                        (next) => setEditForm((prev) => ({ ...prev, keywords: next })),
-                        editKeywordInput,
-                        setEditKeywordInput
-                      )
-                    }
-                  />
-                  <select
-                    className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-                    value={editForm.teamId}
-                    onChange={(event) => setEditForm((prev) => ({ ...prev, teamId: event.target.value }))}
-                  >
-                    <option value="">Select team</option>
-                    {teamsList.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min={1}
-                    className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-sm"
-                    value={editForm.priority}
-                    onChange={(event) =>
-                      setEditForm((prev) => ({ ...prev, priority: Number(event.target.value) }))
-                    }
-                  />
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs text-slate-500 flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={editForm.isActive}
-                        onChange={(event) =>
-                          setEditForm((prev) => ({ ...prev, isActive: event.target.checked }))
-                        }
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          <span className="mt-0.5 text-xs font-medium text-slate-400">IF</span>
+                          {meta.conditions.map((condition, conditionIndex) => (
+                            <span key={`${rule.id}-condition-${conditionIndex}`} className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              <span className="text-slate-500">{condition.field.replace('_', ' ')}</span>&nbsp;
+                              {condition.op.replace('_', ' ')}&nbsp;
+                              <span className="font-semibold">"{condition.val}"</span>
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="mt-0.5 text-xs font-medium text-blue-500">THEN</span>
+                          {meta.actions.map((action, actionIndex) => (
+                            <span key={`${rule.id}-action-${actionIndex}`} className="inline-flex items-center rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                              {ACTION_LABELS[action.type] ?? action.type}
+                              {action.val ? `: ${action.val}` : ''}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="ml-3 flex flex-shrink-0 items-center space-x-2">
+                      <Toggle
+                        checked={rule.isActive}
+                        disabled={updatingRuleId === rule.id}
+                        onChange={(value) => void handleToggleRule(rule, value)}
                       />
-                      Active
-                    </label>
-                    <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => handleUpdate(rule.id)}
-                        className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white"
+                        onClick={() => openEditModal(rule)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
                       >
-                        Save
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setEditingId(null)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600"
+                        onClick={() => setDeleteTarget(rule)}
+                        className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                       >
-                        Cancel
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       </button>
                     </div>
                   </div>
-                  </div>
-                  {renderKeywordChips(editForm.keywords, (keyword) =>
-                    setEditForm((prev) => ({ ...prev, keywords: removeKeyword(prev.keywords, keyword) }))
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
+                </div>
+              );
+            })}
+
+            {sortedRules.length === 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
+                <p className="text-sm font-semibold text-slate-700">No routing rules</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Create your first rule to automatically assign and prioritize incoming tickets.
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Add Routing Rule</span>
+            </button>
+          </div>
+        )}
       </div>
+
+      {showEditor && (
+        <RuleEditorModal
+          form={form}
+          isNew={!form.id}
+          loading={saving}
+          onClose={() => setShowEditor(false)}
+          onSubmit={() => void handleSaveRule()}
+          onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
+          onAddCondition={() =>
+            setForm((prev) => ({
+              ...prev,
+              conditions: [...prev.conditions, { ...DEFAULT_CONDITION }]
+            }))
+          }
+          onRemoveCondition={(index) =>
+            setForm((prev) => ({
+              ...prev,
+              conditions:
+                prev.conditions.length > 1
+                  ? prev.conditions.filter((_, itemIndex) => itemIndex !== index)
+                  : prev.conditions
+            }))
+          }
+          onUpdateCondition={updateCondition}
+          onAddAction={() =>
+            setForm((prev) => ({
+              ...prev,
+              actions: [...prev.actions, { ...DEFAULT_ACTION }]
+            }))
+          }
+          onRemoveAction={(index) =>
+            setForm((prev) => ({
+              ...prev,
+              actions:
+                prev.actions.length > 1
+                  ? prev.actions.filter((_, itemIndex) => itemIndex !== index)
+                  : prev.actions
+            }))
+          }
+          onUpdateAction={updateAction}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          ruleName={deleteTarget.name}
+          onConfirm={() => void handleDeleteRule(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </section>
   );
 }
+

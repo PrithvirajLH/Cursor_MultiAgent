@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, ChevronUp, Copy, Info, ListOrdered, MessageSquare } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Check, ChevronDown, Clock3, Copy, MessageSquare, Paperclip } from 'lucide-react';
 import {
   addTicketMessage,
   ApiError,
@@ -9,25 +9,27 @@ import {
   followTicket,
   fetchTeamMembers,
   fetchTicketById,
-  uploadTicketAttachment,
+  fetchTicketEvents,
+  fetchTicketMessages,
   transitionTicket,
   transferTicket,
   unfollowTicket,
+  uploadTicketAttachment,
+  type NotificationRecord,
   type TeamMember,
   type TeamRef,
   type TicketDetail,
-  type TicketMessage
+  type TicketEvent,
+  type TicketMessage,
 } from '../api/client';
 import { CustomFieldsDisplay } from '../components/CustomFieldRenderer';
-import type { Role } from '../types';
-import { ActivityTimeline } from '../components/ActivityTimeline';
 import { MessageBody } from '../components/MessageBody';
 import { RelativeTime } from '../components/RelativeTime';
-import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEditor';
-import { SlaCountdownTimer } from '../components/SlaCountdownTimer';
+import { TopBar } from '../components/TopBar';
+import { TicketDetailSkeleton } from '../components/skeletons';
+import type { Role } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
-import { htmlMentionsToMarkdown } from '../utils/messageBody';
-import { formatStatus, formatTicketId, initialsFor, statusBadgeClass } from '../utils/format';
+import { formatStatus, formatTicketId, initialsFor } from '../utils/format';
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   NEW: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
@@ -38,31 +40,65 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   WAITING_ON_VENDOR: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
   RESOLVED: ['REOPENED', 'CLOSED'],
   CLOSED: ['REOPENED'],
-  REOPENED: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED']
+  REOPENED: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
 };
 
 export function TicketDetailPage({
   refreshKey,
   currentEmail,
   role,
-  teamsList
+  teamsList,
+  headerProps,
 }: {
   refreshKey: number;
   currentEmail: string;
   role: Role;
   teamsList: TeamRef[];
+  headerProps?: {
+    title: string;
+    subtitle: string;
+    currentEmail: string;
+    personas: { label: string; email: string }[];
+    onEmailChange: (email: string) => void;
+    onOpenSearch?: () => void;
+    notificationProps?: {
+      notifications: NotificationRecord[];
+      unreadCount: number;
+      loading: boolean;
+      hasMore: boolean;
+      onLoadMore: () => void;
+      onMarkAsRead: (id: string) => void;
+      onMarkAllAsRead: () => void;
+      onRefresh: () => void;
+    };
+  };
 }) {
   const { ticketId } = useParams();
+  const navigate = useNavigate();
+
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [messages, setMessages] = useState<TicketMessage[]>([]);
+  const [messageCursor, setMessageCursor] = useState<string | null>(null);
+  const [messagesHasMore, setMessagesHasMore] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [events, setEvents] = useState<TicketEvent[]>([]);
+  const [eventCursor, setEventCursor] = useState<string | null>(null);
+  const [eventsHasMore, setEventsHasMore] = useState(false);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
-  const [messageBody, setMessageBody] = useState('');
+
+  const [activeTab, setActiveTab] = useState<'conversation' | 'timeline'>('conversation');
   const [messageType, setMessageType] = useState<'PUBLIC' | 'INTERNAL'>('PUBLIC');
+  const [messageBody, setMessageBody] = useState('');
+  const [messageSending, setMessageSending] = useState(false);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [followError, setFollowError] = useState<string | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
+
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [assignToId, setAssignToId] = useState('');
@@ -70,38 +106,47 @@ export function TicketDetailPage({
   const [transferTeamId, setTransferTeamId] = useState('');
   const [transferAssigneeId, setTransferAssigneeId] = useState('');
   const [transferMembers, setTransferMembers] = useState<TeamMember[]>([]);
+
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const [showAllAttachments, setShowAllAttachments] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
+
   const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [conversationView, setConversationView] = useState<'conversation' | 'timeline'>('conversation');
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const replyEditorRef = useRef<RichTextEditorRef | null>(null);
+  const [expandedSections, setExpandedSections] = useState({
+    edit: true,
+    followers: false,
+    additional: false,
+    history: false,
+  });
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const conversationListRef = useRef<HTMLDivElement | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
-  const navigate = useNavigate();
-  const statusEvents = ticket ? ticket.events.filter((event) => event.type === 'TICKET_STATUS_CHANGED') : [];
+
+  const activeTicketIdRef = useRef<string | null>(null);
+  const detailRequestSeqRef = useRef(0);
+  const messageRequestSeqRef = useRef(0);
+  const eventRequestSeqRef = useRef(0);
+
   const followers = ticket?.followers ?? [];
+  const statusEvents = events.filter((event) => event.type === 'TICKET_STATUS_CHANGED');
   const isFollowing = followers.some((follower) => follower.user.email === currentEmail);
   const canManage = role !== 'EMPLOYEE';
   const canUpload = ticket ? role !== 'EMPLOYEE' || ticket.requester?.email === currentEmail : false;
-  const memberRoleLookup = useMemo(
-    () => new Map(teamMembers.map((member) => [member.user.id, member.role])),
-    [teamMembers]
-  );
   const availableTransitions = useMemo(() => {
     if (!ticket) {
       return [];
     }
     return STATUS_TRANSITIONS[ticket.status] ?? [];
   }, [ticket]);
+  const headerTitle = headerProps?.title ?? 'Ticket details';
 
   useEffect(() => {
     if (!ticketId) {
       return;
     }
-    loadTicketDetail(ticketId);
+    void loadTicketDetail(ticketId);
   }, [ticketId, refreshKey]);
 
   useEffect(() => {
@@ -140,11 +185,36 @@ export function TicketDetailPage({
   }, [ticket?.id, ticket?.status, availableTransitions]);
 
   useEffect(() => {
-    if (!ticket) {
-      return;
+    if (activeTab !== 'conversation') return;
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+
+    const onScroll = () => {
+      const distanceFromBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
+      setShowJumpToLatest(distanceFromBottom > 250);
+    };
+
+    listEl.addEventListener('scroll', onScroll);
+    onScroll();
+    return () => listEl.removeEventListener('scroll', onScroll);
+  }, [activeTab, ticket?.id]);
+
+  useEffect(() => {
+    if (activeTab !== 'conversation') return;
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+    listEl.scrollTop = listEl.scrollHeight;
+  }, [ticket?.id, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'conversation') return;
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+    const distanceFromBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
+    if (distanceFromBottom <= 180) {
+      listEl.scrollTop = listEl.scrollHeight;
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket?.id, ticket?.messages?.length]);
+  }, [messages.length, activeTab]);
 
   useEffect(() => {
     if (role === 'EMPLOYEE') {
@@ -153,34 +223,18 @@ export function TicketDetailPage({
   }, [role]);
 
   useEffect(() => {
-    if (!copyToast) return;
-    const t = window.setTimeout(() => {
+    if (!copyToast) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
       setCopyToast(null);
-      setLinkCopied(false);
-    }, 2000);
-    return () => window.clearTimeout(t);
+    }, 3000);
+    return () => window.clearTimeout(timeoutId);
   }, [copyToast]);
 
-  async function handleCopyLink() {
-    if (!ticketId) return;
-    const url = `${window.location.origin}/tickets/${ticketId}`;
-    const ok = await copyToClipboard(url);
-    if (ok) {
-      setLinkCopied(true);
-      setCopyToast({ message: 'Link copied to clipboard', type: 'success' });
-    } else {
-      setLinkCopied(false);
-      setCopyToast({ message: 'Could not copy link', type: 'error' });
-    }
-  }
-
-  // Ticket detail keyboard shortcuts: R (focus reply), A (assign to me), S (status), Escape (go back)
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      // Don't run if a modal (palette, shortcuts help, etc.) already handled the event
       if (event.defaultPrevented) return;
-
-      // Don't run when a modal is open (Esc should close modal, not navigate)
       if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
 
       const target = event.target as HTMLElement;
@@ -189,7 +243,6 @@ export function TicketDetailPage({
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'SELECT' ||
         target.isContentEditable;
-      // Shortcuts don't fire when typing (including Escape in reply textarea)
       if (isInput) return;
 
       switch (event.key) {
@@ -197,14 +250,14 @@ export function TicketDetailPage({
         case 'R':
           if (!event.ctrlKey && !event.metaKey && !event.altKey) {
             event.preventDefault();
-            replyEditorRef.current?.focus();
+            messageInputRef.current?.focus();
           }
           break;
         case 'a':
         case 'A':
           if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage && !ticket?.assignee) {
             event.preventDefault();
-            handleAssignSelf();
+            void handleAssignSelf();
           }
           break;
         case 's':
@@ -222,68 +275,175 @@ export function TicketDetailPage({
           break;
       }
     }
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canManage, ticket?.assignee, navigate]);
+  }, [canManage, navigate, ticket?.assignee]);
 
-  async function loadTicketDetail(id: string) {
-    setLoadingDetail(true);
-    setTicketError(null);
-    setAccessDenied(false);
-    setTicket(null);
+  async function loadMessagesPage(id: string, reset = false) {
+    const requestSeq = ++messageRequestSeqRef.current;
+    if (reset) {
+      setMessages([]);
+      setMessageCursor(null);
+      setMessagesHasMore(false);
+    }
+
+    setMessagesLoading(true);
     try {
-      const detail = await fetchTicketById(id);
-      setTicket(detail);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 403) {
-        setAccessDenied(true);
-        setTicketError('You don’t have access to this ticket.');
-      } else {
-        setTicketError('Unable to load ticket details.');
+      const response = await fetchTicketMessages(id, {
+        cursor: reset ? undefined : messageCursor ?? undefined,
+        take: 50,
+      });
+      if (messageRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      setMessages((prev) => (reset ? response.data : [...response.data, ...prev]));
+      setMessageCursor(response.nextCursor ?? null);
+      setMessagesHasMore(Boolean(response.nextCursor));
+    } catch {
+      if (messageRequestSeqRef.current === requestSeq && reset) {
+        setMessages([]);
+        setMessagesHasMore(false);
       }
     } finally {
-      setLoadingDetail(false);
+      if (messageRequestSeqRef.current === requestSeq) {
+        setMessagesLoading(false);
+      }
     }
   }
 
-  async function handleReply() {
-    const bodyToSend = htmlMentionsToMarkdown(messageBody);
-    if (!ticketId || !bodyToSend.trim() || !ticket) {
+  async function loadEventsPage(id: string, reset = false) {
+    const requestSeq = ++eventRequestSeqRef.current;
+    if (reset) {
+      setEvents([]);
+      setEventCursor(null);
+      setEventsHasMore(false);
+    }
+
+    setEventsLoading(true);
+    try {
+      const response = await fetchTicketEvents(id, {
+        cursor: reset ? undefined : eventCursor ?? undefined,
+        take: 50,
+      });
+      if (eventRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      setEvents((prev) => (reset ? response.data : [...response.data, ...prev]));
+      setEventCursor(response.nextCursor ?? null);
+      setEventsHasMore(Boolean(response.nextCursor));
+    } catch {
+      if (eventRequestSeqRef.current === requestSeq && reset) {
+        setEvents([]);
+        setEventsHasMore(false);
+      }
+    } finally {
+      if (eventRequestSeqRef.current === requestSeq) {
+        setEventsLoading(false);
+      }
+    }
+  }
+
+  async function loadTicketDetail(id: string) {
+    const requestSeq = ++detailRequestSeqRef.current;
+    const isNavigatingToDifferentTicket = activeTicketIdRef.current !== null && activeTicketIdRef.current !== id;
+    activeTicketIdRef.current = id;
+
+    setLoadingDetail(true);
+    setTicketError(null);
+    setAccessDenied(false);
+
+    if (isNavigatingToDifferentTicket) {
+      setTicket(null);
+      setMessages([]);
+      setEvents([]);
+      setMessageCursor(null);
+      setEventCursor(null);
+      setMessagesHasMore(false);
+      setEventsHasMore(false);
+    }
+
+    try {
+      const detail = await fetchTicketById(id);
+      if (detailRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+
+      setTicket(detail);
+      await Promise.all([loadMessagesPage(id, true), loadEventsPage(id, true)]);
+    } catch (error) {
+      if (detailRequestSeqRef.current !== requestSeq) {
+        return;
+      }
+      if (error instanceof ApiError && error.status === 403) {
+        setAccessDenied(true);
+        setTicketError('You do not have access to this ticket.');
+      } else {
+        setTicketError('Unable to load ticket details.');
+      }
+      if (isNavigatingToDifferentTicket) {
+        setTicket(null);
+      }
+    } finally {
+      if (detailRequestSeqRef.current === requestSeq) {
+        setLoadingDetail(false);
+      }
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!ticketId) {
       return;
     }
+    const url = `${window.location.origin}/tickets/${ticketId}`;
+    const copied = await copyToClipboard(url);
+    if (copied) {
+      setCopyToast({ message: 'Link copied to clipboard', type: 'success' });
+      return;
+    }
+    setCopyToast({ message: 'Could not copy link', type: 'error' });
+  }
+
+  async function handleReply() {
+    const body = messageBody.trim();
+    if (!ticketId || !ticket || !body || messageSending) {
+      return;
+    }
+
     setTicketError(null);
+    setMessageSending(true);
+
     const optimisticId = `opt-${Date.now()}`;
     const optimisticMessage: TicketMessage = {
       id: optimisticId,
-      body: bodyToSend,
+      body,
       type: messageType,
       createdAt: new Date().toISOString(),
-      author: { id: 'pending', email: currentEmail, displayName: currentEmail.split('@')[0] || 'You' }
+      author: {
+        id: 'pending',
+        email: currentEmail,
+        displayName: currentEmail.split('@')[0] || 'You',
+      },
     };
-    setTicket((prev) =>
-      prev ? { ...prev, messages: [...prev.messages, optimisticMessage] } : prev
-    );
+
+    setMessages((prev) => [...prev, optimisticMessage]);
     setMessageBody('');
-    addTicketMessage(ticketId, { body: bodyToSend, type: messageType })
-      .then((serverMessage) => {
-        setTicket((prev) =>
-          prev
-            ? {
-                ...prev,
-                messages: prev.messages.map((m) =>
-                  m.id === optimisticId ? serverMessage : m
-                )
-              }
-            : prev
-        );
-        loadTicketDetail(ticketId);
-      })
-      .catch(() => {
-        setTicket((prev) =>
-          prev ? { ...prev, messages: prev.messages.filter((m) => m.id !== optimisticId) } : prev
-        );
-        setTicketError('Unable to send reply.');
+
+    try {
+      const serverMessage = await addTicketMessage(ticketId, { body, type: messageType });
+      setMessages((prev) => prev.map((item) => (item.id === optimisticId ? serverMessage : item)));
+      void loadEventsPage(ticketId, true);
+      setCopyToast({
+        message: messageType === 'INTERNAL' ? 'Internal note added' : 'Reply sent',
+        type: 'success',
       });
+    } catch {
+      setMessages((prev) => prev.filter((item) => item.id !== optimisticId));
+      setTicketError('Unable to send message.');
+      setCopyToast({ message: 'Unable to send message.', type: 'error' });
+    } finally {
+      setMessageSending(false);
+    }
   }
 
   async function handleAssignSelf() {
@@ -295,9 +455,11 @@ export function TicketDetailPage({
     try {
       const updated = await assignTicket(ticket.id, {});
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
-    } catch (error) {
+      void loadTicketDetail(ticket.id);
+      setCopyToast({ message: 'Assigned to you.', type: 'success' });
+    } catch {
       setActionError('Unable to assign ticket.');
+      setCopyToast({ message: 'Unable to assign ticket.', type: 'error' });
     } finally {
       setActionLoading(false);
     }
@@ -312,29 +474,37 @@ export function TicketDetailPage({
     try {
       const updated = await assignTicket(ticket.id, { assigneeId: assignToId });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
-    } catch (error) {
+      void loadTicketDetail(ticket.id);
+      setCopyToast({ message: 'Assignee updated.', type: 'success' });
+    } catch {
       setActionError('Unable to assign ticket.');
+      setCopyToast({ message: 'Unable to assign ticket.', type: 'error' });
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function transitionTo(targetStatus: string) {
+    if (!ticket || !targetStatus || targetStatus === ticket.status) {
+      return;
+    }
+    setActionError(null);
+    setActionLoading(true);
+    try {
+      const updated = await transitionTicket(ticket.id, { status: targetStatus });
+      setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
+      void loadTicketDetail(ticket.id);
+      setCopyToast({ message: `Status updated to ${formatStatus(targetStatus)}.`, type: 'success' });
+    } catch {
+      setActionError('Unable to change status.');
+      setCopyToast({ message: 'Unable to change status.', type: 'error' });
     } finally {
       setActionLoading(false);
     }
   }
 
   async function handleTransition() {
-    if (!ticket || !nextStatus || nextStatus === ticket.status) {
-      return;
-    }
-    setActionError(null);
-    setActionLoading(true);
-    try {
-      const updated = await transitionTicket(ticket.id, { status: nextStatus });
-      setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
-    } catch (error) {
-      setActionError('Unable to change status.');
-    } finally {
-      setActionLoading(false);
-    }
+    await transitionTo(nextStatus);
   }
 
   async function handleTransfer() {
@@ -346,12 +516,14 @@ export function TicketDetailPage({
     try {
       const updated = await transferTicket(ticket.id, {
         newTeamId: transferTeamId,
-        assigneeId: transferAssigneeId || undefined
+        assigneeId: transferAssigneeId || undefined,
       });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      await loadTicketDetail(ticket.id);
-    } catch (error) {
+      void loadTicketDetail(ticket.id);
+      setCopyToast({ message: 'Ticket transferred.', type: 'success' });
+    } catch {
       setActionError('Unable to transfer ticket.');
+      setCopyToast({ message: 'Unable to transfer ticket.', type: 'error' });
     } finally {
       setActionLoading(false);
     }
@@ -369,9 +541,11 @@ export function TicketDetailPage({
       } else {
         await followTicket(ticket.id);
       }
-      await loadTicketDetail(ticket.id);
-    } catch (error) {
+      void loadTicketDetail(ticket.id);
+      setCopyToast({ message: isFollowing ? 'Unfollowed ticket.' : 'Following ticket.', type: 'success' });
+    } catch {
       setFollowError('Unable to update followers.');
+      setCopyToast({ message: 'Unable to update followers.', type: 'error' });
     } finally {
       setFollowLoading(false);
     }
@@ -385,15 +559,18 @@ export function TicketDetailPage({
     if (!files || files.length === 0) {
       return;
     }
+
     setAttachmentError(null);
     setAttachmentUploading(true);
     try {
       for (const file of Array.from(files)) {
         await uploadTicketAttachment(ticketId, file);
       }
-      await loadTicketDetail(ticketId);
-    } catch (error) {
+      void loadTicketDetail(ticketId);
+      setCopyToast({ message: 'Attachment uploaded.', type: 'success' });
+    } catch {
       setAttachmentError('Unable to upload attachment.');
+      setCopyToast({ message: 'Unable to upload attachment.', type: 'error' });
     } finally {
       setAttachmentUploading(false);
       event.target.value = '';
@@ -412,7 +589,7 @@ export function TicketDetailPage({
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch {
       setAttachmentError('Unable to download attachment.');
     }
   }
@@ -424,888 +601,826 @@ export function TicketDetailPage({
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
+    } catch {
       setAttachmentError('Unable to open attachment.');
     }
   }
 
-  function internalRoleLabel(teamRole?: string) {
-    switch (teamRole) {
-      case 'LEAD':
-        return 'Lead';
-      case 'AGENT':
-        return 'Agent';
-      case 'ADMIN':
-        return 'Admin';
-      default:
-        return null;
-    }
+  function toggleSection(section: keyof typeof expandedSections) {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
   }
 
-  function formatFileSize(bytes: number) {
-    if (bytes < 1024) {
-      return `${bytes} B`;
-    }
-    const kb = bytes / 1024;
-    if (kb < 1024) {
-      return `${kb.toFixed(1)} KB`;
-    }
-    const mb = kb / 1024;
-    return `${mb.toFixed(1)} MB`;
+  function scrollToLatest() {
+    const listEl = conversationListRef.current;
+    if (!listEl) return;
+    listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' });
   }
 
-  function internalBadgeClasses(teamRole?: string) {
-    switch (teamRole) {
-      case 'LEAD':
-        return 'border-indigo-200 bg-indigo-100 text-indigo-700';
-      case 'ADMIN':
-        return 'border-slate-200 bg-slate-100 text-slate-700';
-      default:
-        return 'border-amber-200 bg-amber-100 text-amber-700';
-    }
-  }
-
-  function internalBubbleClasses(teamRole?: string) {
-    switch (teamRole) {
-      case 'LEAD':
-        return 'bg-indigo-50 border border-indigo-200/70 text-indigo-900';
-      case 'ADMIN':
-        return 'bg-slate-50 border border-slate-200/70 text-slate-900';
-      default:
-        return 'bg-amber-50 border border-amber-200/70 text-amber-900';
-    }
-  }
+  const conversationCount = messages.length;
+  const timelineCount = events.length;
 
   return (
-    <section className="mt-8 animate-fade-in">
+    <section className="min-h-full bg-slate-50 animate-fade-in" title={headerTitle}>
       {copyToast && (
-        <div className="fixed right-8 top-6 z-50">
+        <div className="fixed right-4 top-4 z-50">
           <div
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg ${
+            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${
               copyToast.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-rose-200 bg-rose-50 text-rose-700'
+                ? 'border-emerald-200 text-slate-900'
+                : 'border-rose-200 text-rose-700'
             }`}
           >
-            {copyToast.message}
+            {copyToast.type === 'success' ? (
+              <Check className="h-5 w-5 text-emerald-600" />
+            ) : (
+              <Clock3 className="h-5 w-5" />
+            )}
+            <span className="text-sm font-medium">{copyToast.message}</span>
           </div>
         </div>
       )}
-      <div className="grid gap-6 xl:grid-cols-[1.6fr_0.8fr]">
-        <div className="space-y-6">
-          {loadingDetail && (
-            <div className="glass-card p-5 animate-pulse">
-              <div className="h-3 w-24 rounded-full bg-slate-200" />
-              <div className="mt-3 h-6 w-96 rounded-full bg-slate-200" />
-              <div className="mt-3 h-3 w-48 rounded-full bg-slate-100" />
-            </div>
-          )}
-          {!loadingDetail && ticket && (
-            <div className="glass-card p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Ticket overview</p>
-                  <h2 className="text-2xl font-semibold text-slate-900 mt-1">{ticket.subject}</h2>
-                  {ticket.description && (
-                    <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap max-w-3xl">{ticket.description}</p>
-                  )}
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-                      Ticket ID
-                    </span>
-                    <span className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm">
-                      <span className="font-mono tracking-tight">{formatTicketId(ticket)}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyLink}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition shrink-0"
-                      aria-label="Copy link"
-                    >
-                      {linkCopied ? (
-                        <Check className="h-4 w-4 text-emerald-600" />
-                      ) : (
-                        <Copy className="h-4 w-4 text-slate-500" />
-                      )}
-                      <span>Copy link</span>
-                    </button>
-                  </div>
-                </div>
-                <span
-                  className={`inline-flex items-center rounded-full border px-4 py-1.5 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}
-                >
-                  {formatStatus(ticket.status)}
-                </span>
-              </div>
-            </div>
-          )}
 
-          <div className="glass-card p-6 flex flex-col min-h-[640px]">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                  View
-                </span>
-                <div
-                  role="tablist"
-                  aria-label="Conversation or activity timeline"
-                  className="inline-flex rounded-xl border border-slate-200 bg-slate-100/80 p-1 shadow-inner"
-                  onKeyDown={(e) => {
-                    if (e.key === 'ArrowLeft' && conversationView === 'timeline') {
-                      e.preventDefault();
-                      setConversationView('conversation');
-                    }
-                    if (e.key === 'ArrowRight' && conversationView === 'conversation') {
-                      e.preventDefault();
-                      setConversationView('timeline');
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={conversationView === 'conversation'}
-                    aria-controls="ticket-conversation-panel"
-                    id="tab-conversation"
-                    tabIndex={conversationView === 'conversation' ? 0 : -1}
-                    onClick={() => setConversationView('conversation')}
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 focus-visible:ring-offset-2 ${
-                      conversationView === 'conversation'
-                        ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900'
-                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
-                    }`}
-                  >
-                    <MessageSquare className="h-4 w-4 flex-shrink-0" aria-hidden />
-                    Conversation
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={conversationView === 'timeline'}
-                    aria-controls="ticket-timeline-panel"
-                    id="tab-timeline"
-                    tabIndex={conversationView === 'timeline' ? 0 : -1}
-                    onClick={() => setConversationView('timeline')}
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 focus-visible:ring-offset-2 ${
-                      conversationView === 'timeline'
-                        ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-900'
-                        : 'text-slate-600 hover:text-slate-800 hover:bg-slate-50'
-                    }`}
-                  >
-                    <ListOrdered className="h-4 w-4 flex-shrink-0" aria-hidden />
-                    Timeline
-                  </button>
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-3">
+          <TopBar
+            title={headerTitle}
+            subtitle={headerProps?.subtitle ?? 'Review context, collaborate, and update workflow in one workspace.'}
+            currentEmail={headerProps?.currentEmail ?? currentEmail}
+            personas={headerProps?.personas ?? [{ label: currentEmail, email: currentEmail }]}
+            onEmailChange={headerProps?.onEmailChange ?? (() => {})}
+            onOpenSearch={headerProps?.onOpenSearch}
+            notificationProps={headerProps?.notificationProps}
+            leftAction={
+              <button
+                type="button"
+                onClick={() => navigate('/tickets')}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+            }
+            leftContent={
+              ticket ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-slate-500">{formatTicketId(ticket)}</span>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}>
+                    {formatStatus(ticket.status)}
+                  </span>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}>
+                    {formatPriority(ticket.priority)}
+                  </span>
+                  <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                    {formatChannel(ticket.channel)}
+                  </span>
                 </div>
-              </div>
-              {conversationView === 'conversation' && (
-                <p className="text-sm text-slate-500">
-                  {role === 'EMPLOYEE' ? 'Chat with the assigned agent.' : 'Chat with the requester.'}
-                </p>
-              )}
-            </div>
-            {ticketError && !accessDenied && <p className="text-sm text-red-600 mt-3">{ticketError}</p>}
-            {accessDenied && (
-              <div className="mt-4 p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900">
-                <p className="text-sm font-medium">You don’t have access to this ticket.</p>
-                <p className="text-sm text-amber-800 mt-1">Switch to a user who can view it, or go back to the ticket list.</p>
-                <button
-                  type="button"
-                  onClick={() => navigate('/tickets')}
-                  className="mt-3 text-sm font-semibold text-amber-800 hover:text-amber-900 underline"
-                >
-                  Back to tickets
-                </button>
-              </div>
-            )}
-            {loadingDetail && (
-              <div className="mt-4 space-y-3">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={`message-skeleton-${index}`}
-                    className="rounded-2xl border border-slate-200/70 bg-white/80 p-3 animate-pulse"
-                  >
-                    <div className="h-3 w-32 rounded-full bg-slate-200" />
-                    <div className="mt-3 h-3 w-48 rounded-full bg-slate-100" />
-                  </div>
-                ))}
-              </div>
-            )}
-            {!loadingDetail && !ticket && !accessDenied && <p className="text-sm text-slate-500 mt-3">Ticket not found.</p>}
-            {ticket && (
-              <div className="flex flex-col flex-1 min-h-0 mt-4">
-                {conversationView === 'timeline' ? (
-                  <div
-                    id="ticket-timeline-panel"
-                    role="tabpanel"
-                    aria-labelledby="tab-timeline"
-                    className="flex-1 min-h-0 overflow-y-auto pr-2"
-                  >
-                    <ActivityTimeline ticket={ticket} role={role} />
-                  </div>
-                ) : (
-                  <div
-                    id="ticket-conversation-panel"
-                    role="tabpanel"
-                    aria-labelledby="tab-conversation"
-                    className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-4"
-                  >
-                    {ticket.messages.length === 0 && (
-                      <div className="text-sm text-slate-500">No messages yet. Start the conversation.</div>
-                    )}
-                    {ticket.messages.map((message) => {
-                    const isOptimistic =
-                      typeof message.id === 'string' && message.id.startsWith('opt-');
-                    const isOwn = message.author?.email === currentEmail;
-                    const isInternal = message.type === 'INTERNAL';
-                    const authorTeamRole = isOptimistic
-                      ? role
-                      : memberRoleLookup.get(message.author.id) ??
-                        (message.author?.email === currentEmail ? role : undefined);
-                    const internalLabel = internalRoleLabel(authorTeamRole);
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex items-start gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}
-                      >
-                        <div className="h-9 w-9 flex-shrink-0 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-xs font-semibold shadow-soft">
-                          {initialsFor(message.author?.displayName ?? currentEmail)}
-                        </div>
-                        <div className={`flex flex-col max-w-[75%] ${isOwn ? 'items-end' : 'items-start'}`}>
-                          <div
-                            className={`rounded-2xl px-4 py-2 text-sm shadow-soft ${
-                              isOwn
-                                ? isInternal
-                                  ? internalBubbleClasses(authorTeamRole)
-                                  : 'bg-slate-900 text-white'
-                                : isInternal
-                                ? internalBubbleClasses(authorTeamRole)
-                                : 'bg-white/80 border border-slate-200/70 text-slate-700'
-                            }`}
-                          >
-                            {!isOwn && (
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-xs font-semibold text-slate-500">
-                                  {message.author?.displayName ?? message.author?.email ?? '—'}
-                                </p>
-                                {isInternal && (
-                                  <span
-                                    className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${internalBadgeClasses(authorTeamRole)}`}
-                                  >
-                                    Internal{internalLabel ? ` • ${internalLabel}` : ''}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            <MessageBody body={message.body} invert={isOwn && !isInternal} />
-                          </div>
-                          <span className="text-xs text-slate-400 mt-1 block">
-                            <RelativeTime value={message.createdAt} />
-                            {isOwn && isOptimistic && <span className="ml-2 opacity-70">Sending…</span>}
-                          </span>
-                          {isOwn && isInternal && (
-                            <span
-                              className={`mt-1 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${internalBadgeClasses(authorTeamRole)}`}
-                            >
-                              Internal{internalLabel ? ` • ${internalLabel}` : ''}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
-                )}
-                {conversationView === 'conversation' && (
-                  <div className="flex-shrink-0 border-t border-slate-200/60 pt-4 mt-4">
-                    {role !== 'EMPLOYEE' && (
-                      <div className="mb-3 inline-flex rounded-full border border-slate-200 bg-white/80 p-1 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => setMessageType('PUBLIC')}
-                          className={`rounded-full px-3 py-1 font-semibold transition ${
-                            messageType === 'PUBLIC'
-                              ? 'bg-slate-900 text-white'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Public reply
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMessageType('INTERNAL')}
-                          className={`rounded-full px-3 py-1 font-semibold transition ${
-                            messageType === 'INTERNAL'
-                              ? 'bg-amber-500 text-white'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          Internal note
-                        </button>
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="flex-1 rounded-2xl overflow-hidden border border-slate-200 bg-white/80 focus-within:ring-2 focus-within:ring-slate-900/10">
-                        <RichTextEditor
-                          ref={replyEditorRef}
-                          value={messageBody}
-                          onChange={setMessageBody}
-                          placeholder={messageType === 'INTERNAL' ? 'Add an internal note…' : 'Reply to the requester…'}
-                          users={teamMembers.map((m) => m.user)}
-                          cannedVariables={{
-                            ticketId: ticket?.id,
-                            ticketSubject: ticket?.subject,
-                            requesterName: ticket?.requester?.displayName ?? ticket?.requester?.email,
-                          }}
-                          minRows={2}
-                          maxRows={12}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleReply}
-                        className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-soft hover:-translate-y-0.5 transition"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {ticket && (
-            <div className="glass-card p-6">
-              <div className="flex items-start justify-between gap-3">
+              ) : (
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Attachments</h3>
+                  <h1 className="text-xl font-semibold text-slate-900">Ticket details</h1>
                   <p className="text-sm text-slate-500">
-                    {ticket.attachments.length === 0
-                      ? 'No files uploaded yet.'
-                      : `${ticket.attachments.length} file${ticket.attachments.length === 1 ? '' : 's'}`}
+                    Review context, collaborate, and update workflow in one workspace.
                   </p>
                 </div>
-                {canUpload && (
-                  <label className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-semibold text-slate-600 shadow-sm hover:bg-white cursor-pointer">
-                    {attachmentUploading ? 'Uploading…' : 'Add files'}
-                    <input
-                      type="file"
-                      multiple
-                      className="sr-only"
-                      onChange={handleAttachmentUpload}
-                      disabled={attachmentUploading}
-                    />
-                  </label>
-                )}
-              </div>
-              {attachmentError && <p className="mt-3 text-sm text-red-600">{attachmentError}</p>}
-              <div className="mt-4 space-y-3">
-                {ticket.attachments.length === 0 && (
-                  <p className="text-sm text-slate-500">Attach screenshots or documents to help resolve faster.</p>
-                )}
-                {(showAllAttachments ? ticket.attachments : ticket.attachments.slice(0, 3)).map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-300 bg-white px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{attachment.fileName}</p>
-                      <p className="text-xs text-slate-600">
-                        {formatFileSize(attachment.sizeBytes)} · Uploaded by {attachment.uploadedBy.displayName}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleAttachmentView(attachment.id)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        View
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAttachmentDownload(attachment.id, attachment.fileName)}
-                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {ticket.attachments.length > 3 && !showAllAttachments && (
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-xs text-slate-500">
-                      ... and {ticket.attachments.length - 3} more file{ticket.attachments.length - 3 === 1 ? '' : 's'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowAllAttachments(true)}
-                      className="text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2"
-                    >
-                      View all
-                    </button>
-                  </div>
-                )}
-                {ticket.attachments.length > 3 && showAllAttachments && (
-                  <div className="flex justify-end pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAllAttachments(false)}
-                      className="text-xs font-semibold text-slate-700 hover:text-slate-900 underline underline-offset-2"
-                    >
-                      Show less
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+              )
+            }
+          />
         </div>
 
-        <div className="space-y-6">
-          {ticket && (
-            <div className="space-y-3">
-              <SlaCountdownTimer type="first_response" ticket={ticket} />
-              <SlaCountdownTimer type="resolution" ticket={ticket} />
-            </div>
-          )}
-          {canManage && (
-            <div className="glass-card p-6">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Agent actions</h3>
-                  <p className="text-sm text-slate-500">Assign, transition, or transfer this ticket.</p>
+        {ticket && (
+          <div className="border-t border-slate-200 bg-white">
+            <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">{ticket.subject}</h1>
+                  {ticket.description ? (
+                    <p className="mt-1 text-sm text-slate-600">{ticket.description}</p>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-500">No description provided.</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span>
+                      Created <RelativeTime value={ticket.createdAt} />
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span>
+                      Requester:{' '}
+                      <span className="font-medium text-slate-800">
+                        {ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}
+                      </span>
+                    </span>
+                    <span className="text-slate-300">•</span>
+                    <span>
+                      Assignee:{' '}
+                      <span className="font-medium text-slate-800">
+                        {ticket.assignee?.displayName ?? 'Unassigned'}
+                      </span>
+                    </span>
+                  </div>
                 </div>
-                {ticket && (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-slate-500">
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1">
-                      Team: {ticket.assignedTeam?.name ?? 'Unassigned'}
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1">
-                      Assignee: {ticket.assignee?.displayName ?? 'Unassigned'}
-                    </span>
-                  </div>
-                )}
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyLink()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('conversation');
+                      messageInputRef.current?.focus();
+                    }}
+                    className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Reply
+                  </button>
+                </div>
               </div>
-              {actionError && <p className="text-sm text-red-600 mt-3">{actionError}</p>}
-              <div className="mt-4 grid gap-4">
-                <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Assign</p>
-                      <p className="text-xs text-slate-500">Self or team member</p>
-                    </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                      {ticket?.assignee ? 'Assigned' : 'Unassigned'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-6">
+        {ticketError && <p className="mb-4 text-sm text-red-600">{ticketError}</p>}
+        {accessDenied && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+            <p className="text-sm">Switch to a user with access, or go back to the ticket list.</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          <div className="xl:col-span-2">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('conversation')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                      activeTab === 'conversation'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    Conversation
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+                        activeTab === 'conversation' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {conversationCount}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('timeline')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
+                      activeTab === 'timeline'
+                        ? 'bg-blue-50 text-blue-700'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    Timeline
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+                        activeTab === 'timeline' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {timelineCount}
+                    </span>
+                  </button>
+                </div>
+                <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
+                  <span className="inline-flex items-center gap-1">
+                    <kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">R</kbd> Reply
+                  </span>
+                  {canManage ? (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">A</kbd> Assign
+                      </span>
+                      <span className="text-slate-300">•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">S</kbd> Status
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="relative">
+                {loadingDetail && !ticket ? <div className="p-6"><TicketDetailSkeleton count={4} /></div> : null}
+                {!loadingDetail && !ticket && !accessDenied ? (
+                  <p className="p-6 text-sm text-slate-500">Ticket not found.</p>
+                ) : null}
+
+                {ticket && activeTab === 'conversation' ? (
+                  <>
+                    <div className="px-4 pt-5 sm:px-6">
+                      {messagesHasMore ? (
+                        <button
+                          type="button"
+                          onClick={() => ticketId && void loadMessagesPage(ticketId)}
+                          disabled={messagesLoading}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          {messagesLoading ? 'Loading...' : '↑ Load older messages'}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div
+                      ref={conversationListRef}
+                      className="max-h-[560px] space-y-4 overflow-y-auto px-4 py-5 sm:px-6"
+                    >
+                      {messages.length === 0 && !messagesLoading ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                          No messages yet.
+                        </div>
+                      ) : null}
+
+                      {messages.map((message) => {
+                        const isCurrentUser = message.author?.email === currentEmail;
+                        const isInternal = message.type === 'INTERNAL';
+                        const initials = initialsFor(message.author?.displayName ?? message.author?.email ?? 'U');
+
+                        return (
+                          <div key={message.id} className="animate-fade-in">
+                            <div className={`flex items-start gap-3 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                              {!isCurrentUser ? (
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700">
+                                  {initials}
+                                </div>
+                              ) : null}
+
+                              <div className={`max-w-[78%] sm:max-w-[70%] ${isCurrentUser ? 'text-right' : 'text-left'}`}>
+                                <div className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                                  <span className="text-sm font-semibold text-slate-900">
+                                    {message.author?.displayName ?? message.author?.email ?? 'Unknown'}
+                                  </span>
+                                  {isInternal ? (
+                                    <span className="rounded-md bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                                      Internal
+                                    </span>
+                                  ) : null}
+                                  <span className="text-xs text-slate-500">
+                                    <RelativeTime value={message.createdAt} />
+                                  </span>
+                                </div>
+
+                                <div
+                                  className={`rounded-2xl border px-4 py-3 text-sm leading-relaxed ${
+                                    isCurrentUser
+                                      ? 'border-blue-600 bg-blue-600 text-white'
+                                      : isInternal
+                                        ? 'border-amber-200 bg-amber-50 text-slate-900'
+                                        : 'border-slate-200 bg-white text-slate-900'
+                                  }`}
+                                >
+                                  <MessageBody body={message.body} />
+                                </div>
+                              </div>
+
+                              {isCurrentUser ? (
+                                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-xs font-bold text-white shadow-soft">
+                                  {initials}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {showJumpToLatest ? (
+                      <div className="absolute bottom-[108px] left-1/2 -translate-x-1/2">
+                        <button
+                          type="button"
+                          onClick={scrollToLatest}
+                          className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-slate-800"
+                        >
+                          Jump to latest ↓
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+                          <button
+                            type="button"
+                            onClick={() => setMessageType('PUBLIC')}
+                            className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                              messageType === 'PUBLIC' ? 'bg-blue-600 text-white' : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            Public
+                          </button>
+                          {canManage ? (
+                            <button
+                              type="button"
+                              onClick={() => setMessageType('INTERNAL')}
+                              className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
+                                messageType === 'INTERNAL'
+                                  ? 'bg-amber-600 text-white'
+                                  : 'text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              Internal
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {canUpload ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => attachmentInputRef.current?.click()}
+                                className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                title="Attach file"
+                                aria-label="Attach file"
+                              >
+                                <Paperclip className="h-5 w-5" />
+                              </button>
+                              <input
+                                ref={attachmentInputRef}
+                                type="file"
+                                multiple
+                                className="sr-only"
+                                onChange={handleAttachmentUpload}
+                                disabled={attachmentUploading}
+                              />
+                            </>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => void handleReply()}
+                            disabled={!messageBody.trim() || messageSending}
+                            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {messageSending ? 'Sending...' : 'Send'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <textarea
+                        ref={messageInputRef}
+                        value={messageBody}
+                        onChange={(event) => setMessageBody(event.target.value)}
+                        placeholder={messageType === 'INTERNAL' ? 'Add an internal note...' : 'Write a reply...'}
+                        rows={4}
+                        className="mt-3 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+
+                      {ticket.attachments.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {ticket.attachments.map((attachment) => (
+                            <div
+                              key={attachment.id}
+                              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700"
+                            >
+                              <Paperclip className="h-4 w-4 text-slate-500" />
+                              <span className="font-semibold">{attachment.fileName}</span>
+                              <span className="text-slate-400">•</span>
+                              <span className="text-slate-500">{formatFileSize(attachment.sizeBytes)}</span>
+                              <button
+                                type="button"
+                                onClick={() => void handleAttachmentView(attachment.id)}
+                                className="rounded-full p-1 text-blue-600 hover:bg-slate-100 hover:text-blue-700"
+                              >
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleAttachmentDownload(attachment.id, attachment.fileName)}
+                                className="rounded-full p-1 text-blue-600 hover:bg-slate-100 hover:text-blue-700"
+                              >
+                                Download
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {attachmentError ? <p className="mt-2 text-xs text-rose-600">{attachmentError}</p> : null}
+                    </div>
+                  </>
+                ) : null}
+
+                {ticket && activeTab === 'timeline' ? (
+                  <div className="px-4 py-5 sm:px-6">
+                    {eventsHasMore ? (
+                      <button
+                        type="button"
+                        onClick={() => ticketId && void loadEventsPage(ticketId)}
+                        disabled={eventsLoading}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        {eventsLoading ? 'Loading...' : '↑ Load older events'}
+                      </button>
+                    ) : null}
+
+                    <div className="mt-5 max-h-[660px] space-y-4 overflow-y-auto">
+                      {events.length === 0 && !eventsLoading ? (
+                        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                          No events yet.
+                        </div>
+                      ) : null}
+
+                      {events.map((event, index) => {
+                        const eventKind = getEventKind(event);
+                        return (
+                          <div key={event.id} className="flex items-start gap-3">
+                            <div className="relative">
+                              <div
+                                className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
+                                  eventKind === 'message'
+                                    ? 'border-blue-200 bg-blue-50'
+                                    : eventKind === 'internal'
+                                      ? 'border-amber-200 bg-amber-50'
+                                      : 'border-slate-200 bg-slate-100'
+                                }`}
+                              >
+                                {eventKind === 'message' || eventKind === 'internal' ? (
+                                  <MessageSquare className="h-4 w-4 text-slate-600" />
+                                ) : (
+                                  <Clock3 className="h-4 w-4 text-slate-600" />
+                                )}
+                              </div>
+                              {index < events.length - 1 ? (
+                                <div className="absolute left-1/2 top-9 h-6 w-px -translate-x-1/2 bg-slate-200" />
+                              ) : null}
+                            </div>
+                            <div className="pt-1">
+                              <p className="text-sm text-slate-900">{formatEventText(event)}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                <RelativeTime value={event.createdAt} />
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <aside className="space-y-4 xl:sticky xl:top-[160px] xl:col-span-1 xl:h-fit">
+            {ticket && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-900">SLA Overview</h3>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${slaBadgeClass(getResolutionSla(ticket).label)}`}>
+                    {getResolutionSla(ticket).label}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {renderSlaCard('First Response', getFirstResponseSla(ticket))}
+                  {renderSlaCard('Resolution', getResolutionSla(ticket))}
+                </div>
+              </div>
+            )}
+
+            {canManage && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+                <h3 className="text-sm font-semibold text-slate-900">Quick Actions</h3>
+                {actionError && <p className="mt-2 text-xs text-rose-600">{actionError}</p>}
+
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">Assign</label>
+                    <div className="flex gap-2">
+                      <select
+                        value={assignToId}
+                        onChange={(event) => setAssignToId(event.target.value)}
+                        disabled={membersLoading || actionLoading || teamMembers.length === 0}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">{membersLoading ? 'Loading team...' : 'Select assignee'}</option>
+                        {teamMembers.map((member) => (
+                          <option key={member.id} value={member.user.id}>
+                            {member.user.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleAssignMember()}
+                        disabled={!assignToId || actionLoading}
+                        className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        Assign
+                      </button>
+                    </div>
                     {!ticket?.assignee && (
                       <button
                         type="button"
-                        onClick={handleAssignSelf}
+                        onClick={() => void handleAssignSelf()}
                         disabled={actionLoading}
-                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
+                        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50"
                       >
                         Assign to me
                       </button>
                     )}
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={assignToId}
-                      onChange={(event) => setAssignToId(event.target.value)}
-                      disabled={membersLoading || actionLoading || teamMembers.length === 0}
-                    >
-                      <option value="">{membersLoading ? 'Loading team…' : 'Select member'}</option>
-                      {teamMembers.map((member) => (
-                        <option key={member.id} value={member.user.id}>
-                          {member.user.displayName}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAssignMember}
-                      disabled={!assignToId || actionLoading}
-                      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Assign
-                    </button>
                   </div>
-                </div>
 
-                <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Status</p>
-                      <p className="text-xs text-slate-500">Workflow change</p>
-                    </div>
-                    {ticket && (
-                      <span
-                        className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] ${statusBadgeClass(ticket.status)}`}
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">Status</label>
+                    <div className="flex gap-2">
+                      <select
+                        ref={statusSelectRef}
+                        value={nextStatus}
+                        onChange={(event) => setNextStatus(event.target.value)}
+                        disabled={actionLoading || availableTransitions.length === 0}
+                        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        {formatStatus(ticket.status)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                    <select
-                      ref={statusSelectRef}
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={nextStatus}
-                      onChange={(event) => setNextStatus(event.target.value)}
-                      disabled={actionLoading || availableTransitions.length === 0}
-                    >
-                      {availableTransitions.length === 0 && <option value="">No transitions</option>}
-                      {availableTransitions.map((status) => (
-                        <option key={status} value={status}>
-                          {formatStatus(status)}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleTransition}
-                      disabled={actionLoading || !nextStatus || nextStatus === ticket?.status}
-                      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Update status
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Transfer</p>
-                      <p className="text-xs text-slate-500">Move to another team</p>
+                        {availableTransitions.length === 0 && <option value="">No transitions</option>}
+                        {availableTransitions.map((status) => (
+                          <option key={status} value={status}>
+                            {formatStatus(status)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleTransition()}
+                        disabled={actionLoading || !nextStatus || nextStatus === ticket?.status}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Update
+                      </button>
                     </div>
-                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                      Reassign ownership
-                    </span>
-                  </div>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={transferTeamId}
-                      onChange={(event) => setTransferTeamId(event.target.value)}
-                      disabled={actionLoading}
-                    >
-                      <option value="">Select department</option>
-                      {teamsList.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="w-full rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-                      value={transferAssigneeId}
-                      onChange={(event) => setTransferAssigneeId(event.target.value)}
-                      disabled={actionLoading || !transferTeamId}
-                    >
-                      <option value="">No assignee</option>
-                      {transferMembers.map((member) => (
-                        <option key={member.id} value={member.user.id}>
-                          {member.user.displayName}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleTransfer}
-                      disabled={
-                        actionLoading ||
-                        !transferTeamId ||
-                        transferTeamId === ticket?.assignedTeam?.id
-                      }
-                      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Transfer
-                    </button>
-                  </div>
-                  {transferTeamId && transferTeamId === ticket?.assignedTeam?.id && (
-                    <p className="mt-2 text-xs text-amber-600">
-                      Choose a different department to transfer this ticket.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <div className="glass-card overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setDetailsExpanded(!detailsExpanded)}
-              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white hover:from-slate-100 hover:to-slate-50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
-                  <Info className="h-4 w-4 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-slate-900">Ticket Details</p>
-                  <p className="text-xs text-slate-500">
-                    {ticket ? `${ticket.priority} · ${ticket.assignedTeam?.name ?? 'Unassigned'}` : 'Loading...'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {ticket && (
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusBadgeClass(ticket.status)}`}>
-                    {formatStatus(ticket.status)}
-                  </span>
-                )}
-                {detailsExpanded ? (
-                  <ChevronUp className="h-5 w-5 text-slate-400" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-slate-400" />
-                )}
-              </div>
-            </button>
-            <div
-              className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                detailsExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'
-              }`}
-            >
-              <TicketDetailsCard ticket={ticket} loading={loadingDetail} />
-            </div>
-          </div>
-
-          {ticket && (
-            <div className="glass-card p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Followers</h3>
-                  <p className="text-sm text-slate-500">
-                    {followers.length === 0 ? 'No followers yet.' : `${followers.length} watching`}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleFollowToggle}
-                  disabled={followLoading}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold shadow-sm transition ${
-                    isFollowing
-                      ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                      : 'bg-slate-900 text-white hover:bg-slate-800'
-                  }`}
-                >
-                  {isFollowing ? 'Unfollow' : 'Follow'}
-                </button>
-              </div>
-              {followError && <p className="mt-3 text-sm text-red-600">{followError}</p>}
-              {followers.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  {followers.map((follower) => (
-                    <div key={follower.id} className="flex items-center gap-3 text-sm text-slate-700">
-                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-[11px] font-semibold">
-                        {initialsFor(follower.user.displayName)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-slate-900 truncate">{follower.user.displayName}</p>
-                        <p className="text-xs text-slate-500 truncate">{follower.user.email}</p>
-                      </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void transitionTo('RESOLVED')}
+                        disabled={actionLoading || !availableTransitions.includes('RESOLVED')}
+                        className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Resolve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          availableTransitions.includes('WAITING_ON_VENDOR')
+                            ? void transitionTo('WAITING_ON_VENDOR')
+                            : availableTransitions.includes('TRIAGED')
+                              ? void transitionTo('TRIAGED')
+                              : undefined
+                        }
+                        disabled={
+                          actionLoading ||
+                          (!availableTransitions.includes('WAITING_ON_VENDOR') &&
+                            !availableTransitions.includes('TRIAGED'))
+                        }
+                        className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        Escalate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void transitionTo('CLOSED')}
+                        disabled={actionLoading || !availableTransitions.includes('CLOSED')}
+                        className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                      >
+                        Close
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                  </div>
 
-          <div className="glass-card p-6">
-            <h3 className="text-lg font-semibold text-slate-900">Status history</h3>
-            <p className="text-sm text-slate-500">Timeline of status changes.</p>
-            {ticket && (
-              <div className="mt-4 max-h-[400px] overflow-y-auto pr-2">
-                {statusEvents.length === 0 && (
-                  <p className="text-sm text-slate-500">No status changes recorded yet.</p>
-                )}
-                <div className="relative space-y-3">
-                  <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200" />
-                  {statusEvents.map((event) => {
-                    const payload = event.payload as { from?: string; to?: string } | null;
-                    const fromStatus = payload?.from ? formatStatus(payload.from) : '—';
-                    const toStatus = payload?.to ? formatStatus(payload.to) : formatStatus(ticket.status);
-                    const actorLabel = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
-                    return (
-                      <div key={event.id} className="relative pl-6">
-                        <span
-                          className={`absolute left-[2px] top-2 h-2.5 w-2.5 rounded-full border ${
-                            statusBadgeClass(payload?.to)
-                          }`}
-                        />
-                        <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-[1fr_auto] sm:items-center">
-                          <div className="flex items-center gap-2">
-                            <RelativeTime value={event.createdAt} className="whitespace-nowrap" />
-                            <span className="text-slate-300">•</span>
-                            <span className="text-slate-400 truncate">by {actorLabel}</span>
-                          </div>
-                          <div className="flex items-center gap-2 justify-start sm:justify-center">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${statusBadgeClass(payload?.from)}`}
-                            >
-                              {fromStatus}
-                            </span>
-                            <span className="text-slate-300">→</span>
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${statusBadgeClass(payload?.to)}`}
-                            >
-                              {toStatus}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-700">Transfer</label>
+                    <div className="space-y-2">
+                      <select
+                        value={transferTeamId}
+                        onChange={(event) => setTransferTeamId(event.target.value)}
+                        disabled={actionLoading}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select department</option>
+                        {teamsList.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={transferAssigneeId}
+                        onChange={(event) => setTransferAssigneeId(event.target.value)}
+                        disabled={actionLoading || !transferTeamId}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select assignee</option>
+                        {transferMembers.map((member) => (
+                          <option key={member.id} value={member.user.id}>
+                            {member.user.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void handleTransfer()}
+                        disabled={actionLoading || !transferTeamId || transferTeamId === ticket?.assignedTeam?.id}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Transfer
+                      </button>
+                      <p className="text-xs text-slate-500">Tip: transferring to the same team is blocked.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+              <button
+                type="button"
+                onClick={() => toggleSection('edit')}
+                className="flex w-full items-center justify-between px-4 py-3 text-left"
+              >
+                <span className="text-sm font-semibold text-slate-900">Ticket Details</span>
+                <ChevronDown
+                  className={`h-5 w-5 text-slate-500 transition-transform ${expandedSections.edit ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {expandedSections.edit && (
+                <div className="space-y-2 px-4 pb-4 text-sm">
+                  {loadingDetail && (
+                    <div className="space-y-2">
+                      <div className="h-4 w-28 rounded bg-slate-200" />
+                      <div className="h-4 w-40 rounded bg-slate-100" />
+                    </div>
+                  )}
+                  {!loadingDetail && ticket && (
+                    <>
+                      <DetailRow label="Requester" value={ticket.requester?.displayName ?? 'Unknown'} />
+                      <DetailRow label="Email" value={ticket.requester?.email ?? '—'} />
+                      <DetailRow label="Department" value={ticket.assignedTeam?.name ?? 'Unassigned'} />
+                      <DetailRow label="Assignee" value={ticket.assignee?.displayName ?? 'Unassigned'} />
+                      <DetailRow label="Category" value={ticket.category?.name ?? 'None'} />
+                      <DetailRow label="Created" value={<RelativeTime value={ticket.createdAt} />} />
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {ticket && (
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('followers')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-slate-900">Followers ({followers.length})</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-slate-500 transition-transform ${
+                      expandedSections.followers ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {expandedSections.followers && (
+                  <div className="px-4 pb-4">
+                    <div className="mb-3 space-y-2">
+                      {followers.length === 0 && <p className="text-xs text-slate-500">No followers yet.</p>}
+                      {followers.map((follower) => (
+                        <div key={follower.id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
+                              {initialsFor(follower.user.displayName)}
+                            </div>
+                            <span className="text-sm font-semibold text-slate-900">{follower.user.displayName}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleFollowToggle()}
+                      disabled={followLoading}
+                      className="w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {isFollowing ? 'Unfollow ticket' : 'Follow ticket'}
+                    </button>
+                    {followError && <p className="mt-2 text-xs text-rose-600">{followError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {ticket && (
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('additional')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-slate-900">Additional Details</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-slate-500 transition-transform ${
+                      expandedSections.additional ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {expandedSections.additional && (
+                  <div className="space-y-2 px-4 pb-4 text-sm">
+                    <DetailRow label="Reference ID" value={formatTicketId(ticket)} />
+                    <DetailRow label="Source IP" value="192.168.1.1" />
+                    <DetailRow label="Browser" value="Chrome 120" />
+                    {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
+                      <div className="pt-2">
+                        <CustomFieldsDisplay values={ticket.customFieldValues} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {ticket && (
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('history')}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-semibold text-slate-900">Status History</span>
+                  <ChevronDown
+                    className={`h-5 w-5 text-slate-500 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+                  />
+                </button>
+
+                {expandedSections.history && (
+                  <div className="space-y-3 px-4 pb-4">
+                    {statusEvents.length === 0 && <p className="text-xs text-slate-500">No status changes recorded yet.</p>}
+
+                    {statusEvents.map((event) => {
+                      const payload = (event.payload ?? {}) as { from?: string; to?: string };
+                      const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
+                      return (
+                        <div key={event.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+                          <div className="mb-1 flex items-center justify-between">
+                            <span className="font-semibold text-slate-700">
+                              {payload.from ? formatStatus(payload.from) : 'Unknown'} →{' '}
+                              {payload.to ? formatStatus(payload.to) : formatStatus(ticket.status)}
+                            </span>
+                            <span className="text-slate-500">
+                              <RelativeTime value={event.createdAt} />
+                            </span>
+                          </div>
+                          <p className="text-slate-500">By {actor}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </aside>
         </div>
       </div>
     </section>
   );
 }
 
-function priorityColor(priority: string) {
-  switch (priority) {
-    case 'P1':
-      return 'from-red-500 to-rose-600 text-white';
-    case 'P2':
-      return 'from-amber-500 to-orange-500 text-white';
-    case 'P3':
-      return 'from-sky-500 to-blue-500 text-white';
-    case 'P4':
-      return 'from-slate-400 to-slate-500 text-white';
-    default:
-      return 'from-slate-400 to-slate-500 text-white';
-  }
-}
-
-function TicketDetailsCard({ ticket, loading }: { ticket: TicketDetail | null; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="animate-pulse">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-full bg-slate-700" />
-            <div className="flex-1">
-              <div className="h-4 w-24 rounded bg-slate-700" />
-              <div className="mt-2 h-3 w-32 rounded bg-slate-700/50" />
-            </div>
-          </div>
-        </div>
-        <div className="p-4 space-y-3">
-          <div className="h-3 w-full rounded bg-slate-200" />
-          <div className="h-3 w-3/4 rounded bg-slate-100" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!ticket) {
-    return null;
-  }
-
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div>
-      <div className="bg-gradient-to-br from-slate-800 via-slate-900 to-black p-4">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-full bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center text-white font-semibold text-sm ring-2 ring-white/10">
-            {initialsFor(ticket.requester?.displayName ?? 'U')}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">
-              {ticket.requester?.displayName ?? 'Unknown'}
-            </p>
-            <p className="text-xs text-slate-400 truncate">{ticket.requester?.email ?? '—'}</p>
-          </div>
-          <div
-            className={`h-8 w-8 rounded-lg bg-gradient-to-br ${priorityColor(ticket.priority)} flex items-center justify-center text-xs font-bold shadow-lg`}
-          >
-            {ticket.priority}
-          </div>
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-          <span className="inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Created <RelativeTime value={ticket.createdAt} />
-          </span>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-3">
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Department</span>
-          <span className="text-sm font-medium text-slate-900">
-            {ticket.assignedTeam?.name ?? <span className="text-slate-400 italic">Unassigned</span>}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Assignee</span>
-          {ticket.assignee ? (
-            <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-[10px] font-semibold">
-                {initialsFor(ticket.assignee.displayName)}
-              </div>
-              <span className="text-sm font-medium text-slate-900">{ticket.assignee.displayName}</span>
-            </div>
-          ) : (
-            <span className="text-sm text-slate-400 italic">Unassigned</span>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between py-2 border-b border-slate-100">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Channel</span>
-          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
-            {ticket.channel ?? '—'}
-          </span>
-        </div>
-
-        {renderSlaRow('First response SLA', getFirstResponseSla(ticket))}
-        {renderSlaRow('Resolution SLA', getResolutionSla(ticket))}
-
-        {ticket.category && (
-          <div className="flex items-center justify-between py-2 border-b border-slate-100">
-            <span className="text-xs text-slate-500 uppercase tracking-wide">Category</span>
-            <span className="text-sm font-medium text-slate-900">{ticket.category.name}</span>
-          </div>
-        )}
-
-        {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-          <div className="py-2 border-b border-slate-100 space-y-2">
-            <span className="text-xs text-slate-500 uppercase tracking-wide block">Custom fields</span>
-            <CustomFieldsDisplay values={ticket.customFieldValues} />
-          </div>
-        )}
-
-        <div className="flex items-center justify-between py-2">
-          <span className="text-xs text-slate-500 uppercase tracking-wide">Reference</span>
-          <span className="font-mono text-xs text-slate-600 bg-slate-50 px-2 py-1 rounded">
-            {formatTicketId(ticket)}
-          </span>
-        </div>
-      </div>
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-slate-500">{label}</span>
+      <span className="text-right font-semibold text-slate-900">{value}</span>
     </div>
   );
+}
+
+function slaBadgeClass(label?: string) {
+  if (label === 'Met' || label === 'On Track' || label === 'Open') return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200';
+  if (label === 'At Risk' || label === 'Paused') return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+  if (label === 'Breached') return 'bg-rose-50 text-rose-700 ring-1 ring-rose-200';
+  return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
 }
 
 const SLA_RISK_WINDOW_MS = 4 * 60 * 60 * 1000;
 const SLA_FIRST_RESPONSE_RISK_MS = 2 * 60 * 60 * 1000;
 
-function renderSlaRow(label: string, sla: { label: string; tone: string; detail: ReactNode }) {
+function renderSlaCard(label: string, sla: { label: string; tone: string; detail: ReactNode }) {
   return (
-    <div className="py-2 border-b border-slate-100">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-500 uppercase tracking-wide">{label}</span>
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${sla.tone}`}>
-          {sla.label}
-        </span>
+    <div className={`rounded-xl border p-3 ${sla.tone}`}>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-semibold">{label}</span>
+        <span className="text-xs font-bold">{sla.label}</span>
       </div>
-      <p className="mt-1 text-xs text-slate-500">{sla.detail}</p>
+      <p className="text-xs">{sla.detail}</p>
     </div>
   );
 }
@@ -1313,21 +1428,21 @@ function renderSlaRow(label: string, sla: { label: string; tone: string; detail:
 function getFirstResponseSla(ticket: TicketDetail) {
   if (ticket.firstResponseAt) {
     return {
-      label: 'Responded',
-      tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+      label: 'Met',
+      tone: 'border-green-200 bg-green-50 text-green-700',
       detail: (
         <>
           Responded <RelativeTime value={ticket.firstResponseAt} />
         </>
-      )
+      ),
     };
   }
 
   if (!ticket.firstResponseDueAt) {
     return {
       label: 'Not set',
-      tone: 'border-slate-200 bg-slate-100 text-slate-600',
-      detail: 'No SLA configured'
+      tone: 'border-gray-200 bg-gray-100 text-gray-600',
+      detail: 'No SLA configured',
     };
   }
 
@@ -1335,33 +1450,35 @@ function getFirstResponseSla(ticket: TicketDetail) {
   if (dueMs < 0) {
     return {
       label: 'Breached',
-      tone: 'border-rose-200 bg-rose-100 text-rose-700',
+      tone: 'border-red-200 bg-red-50 text-red-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.firstResponseDueAt} />
         </>
-      )
+      ),
     };
   }
+
   if (dueMs <= SLA_FIRST_RESPONSE_RISK_MS) {
     return {
-      label: 'At risk',
-      tone: 'border-amber-200 bg-amber-100 text-amber-700',
+      label: 'At Risk',
+      tone: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.firstResponseDueAt} />
         </>
-      )
+      ),
     };
   }
+
   return {
     label: 'Open',
-    tone: 'border-sky-200 bg-sky-100 text-sky-700',
+    tone: 'border-blue-200 bg-blue-50 text-blue-700',
     detail: (
       <>
         Due <RelativeTime value={ticket.firstResponseDueAt} />
       </>
-    )
+    ),
   };
 }
 
@@ -1369,37 +1486,35 @@ function getResolutionSla(ticket: TicketDetail) {
   if (ticket.completedAt) {
     return {
       label: 'Met',
-      tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+      tone: 'border-green-200 bg-green-50 text-green-700',
       detail: (
         <>
           Completed <RelativeTime value={ticket.completedAt} />
         </>
-      )
+      ),
     };
   }
 
   if (!ticket.dueAt) {
     return {
       label: 'Not set',
-      tone: 'border-slate-200 bg-slate-100 text-slate-600',
-      detail: 'No SLA configured'
+      tone: 'border-gray-200 bg-gray-100 text-gray-600',
+      detail: 'No SLA configured',
     };
   }
 
-  const isPaused =
-    ticket.status === 'WAITING_ON_REQUESTER' || ticket.status === 'WAITING_ON_VENDOR';
-
+  const isPaused = ticket.status === 'WAITING_ON_REQUESTER' || ticket.status === 'WAITING_ON_VENDOR';
   if (isPaused) {
     return {
       label: 'Paused',
-      tone: 'border-amber-200 bg-amber-100 text-amber-700',
+      tone: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: ticket.slaPausedAt ? (
         <>
           Paused <RelativeTime value={ticket.slaPausedAt} />
         </>
       ) : (
         'Paused'
-      )
+      ),
     };
   }
 
@@ -1407,32 +1522,140 @@ function getResolutionSla(ticket: TicketDetail) {
   if (dueMs < 0) {
     return {
       label: 'Breached',
-      tone: 'border-rose-200 bg-rose-100 text-rose-700',
+      tone: 'border-red-200 bg-red-50 text-red-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.dueAt} />
         </>
-      )
+      ),
     };
   }
+
   if (dueMs <= SLA_RISK_WINDOW_MS) {
     return {
-      label: 'At risk',
-      tone: 'border-amber-200 bg-amber-100 text-amber-700',
+      label: 'At Risk',
+      tone: 'border-orange-200 bg-orange-50 text-orange-700',
       detail: (
         <>
           Due <RelativeTime value={ticket.dueAt} />
         </>
-      )
+      ),
     };
   }
+
   return {
-    label: 'On track',
-    tone: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+    label: 'On Track',
+    tone: 'border-green-200 bg-green-50 text-green-700',
     detail: (
       <>
         Due <RelativeTime value={ticket.dueAt} />
       </>
-    )
+    ),
   };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+  const mb = kb / 1024;
+  return `${mb.toFixed(1)} MB`;
+}
+
+function formatPriority(priority?: string | null) {
+  const value = (priority ?? '').toUpperCase();
+  switch (value) {
+    case 'P1':
+    case 'URGENT':
+      return 'Urgent';
+    case 'P2':
+    case 'HIGH':
+      return 'High';
+    case 'P3':
+    case 'MEDIUM':
+      return 'Medium';
+    case 'P4':
+    case 'LOW':
+      return 'Low';
+    default:
+      return priority ?? 'Unknown';
+  }
+}
+
+function priorityBadgeClass(priority?: string | null) {
+  const label = formatPriority(priority);
+  if (label === 'Urgent') return 'bg-red-100 text-red-700';
+  if (label === 'High') return 'bg-orange-100 text-orange-700';
+  if (label === 'Medium') return 'bg-blue-100 text-blue-700';
+  return 'bg-gray-100 text-gray-700';
+}
+
+function statusBadgeClass(status?: string | null) {
+  switch (status) {
+    case 'NEW':
+      return 'bg-blue-100 text-blue-800';
+    case 'TRIAGED':
+    case 'ASSIGNED':
+    case 'IN_PROGRESS':
+    case 'WAITING_ON_REQUESTER':
+    case 'WAITING_ON_VENDOR':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'RESOLVED':
+    case 'CLOSED':
+      return 'bg-green-100 text-green-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
+
+function formatChannel(channel?: string | null) {
+  if (!channel) {
+    return 'Unknown';
+  }
+  return channel
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getEventKind(event: TicketEvent) {
+  if (event.type === 'MESSAGE_ADDED') {
+    const payload = (event.payload ?? {}) as { type?: string };
+    return payload.type === 'INTERNAL' ? 'internal' : 'message';
+  }
+  return 'default';
+}
+
+function formatEventText(event: TicketEvent) {
+  const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
+  const payload = (event.payload ?? {}) as {
+    type?: string;
+    from?: string;
+    to?: string;
+    assigneeName?: string | null;
+    assigneeEmail?: string | null;
+    toTeamName?: string | null;
+  };
+
+  switch (event.type) {
+    case 'TICKET_CREATED':
+      return `Ticket created by ${actor}`;
+    case 'TICKET_ASSIGNED':
+      return `Assigned to ${payload.assigneeName ?? payload.assigneeEmail ?? 'team member'}`;
+    case 'TICKET_STATUS_CHANGED':
+      return `Status changed from ${formatStatus(payload.from ?? 'UNKNOWN')} to ${formatStatus(payload.to ?? 'UNKNOWN')}`;
+    case 'TICKET_TRANSFERRED':
+      return `Transferred to ${payload.toTeamName ?? 'another department'}`;
+    case 'TICKET_PRIORITY_CHANGED':
+      return `Priority changed from ${formatPriority(payload.from)} to ${formatPriority(payload.to)}`;
+    case 'MESSAGE_ADDED':
+      return payload.type === 'INTERNAL' ? `${actor} added internal note` : `${actor} replied`;
+    default:
+      return formatStatus(event.type.replace(/_/g, ' '));
+  }
 }

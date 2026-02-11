@@ -123,11 +123,19 @@ export type CustomFieldValueRecord = {
 };
 
 export type TicketDetail = TicketRecord & {
-  messages: TicketMessage[];
-  events: TicketEvent[];
   followers: TicketFollower[];
   attachments: Attachment[];
   customFieldValues?: CustomFieldValueRecord[];
+};
+
+export type TicketMessagePage = {
+  data: TicketMessage[];
+  nextCursor?: string | null;
+};
+
+export type TicketEventPage = {
+  data: TicketEvent[];
+  nextCursor?: string | null;
 };
 
 export type TeamMember = {
@@ -148,6 +156,17 @@ export type SlaPolicy = {
 export type TicketListResponse = {
   data: TicketRecord[];
   meta: { page: number; pageSize: number; total: number; totalPages: number };
+};
+
+export type TicketActivityPoint = {
+  date: string;
+  open: number;
+  resolved: number;
+};
+
+export type TicketStatusPoint = {
+  status: string;
+  count: number;
 };
 
 export type CreateTicketPayload = {
@@ -241,7 +260,43 @@ export function fetchTickets(params?: Record<string, string | number | undefined
 }
 
 export function fetchTicketCounts() {
-  return apiFetch<{ assignedToMe: number; triage: number; open: number }>('/tickets/counts');
+  return apiFetch<{ assignedToMe: number; triage: number; open: number; unassigned: number }>('/tickets/counts');
+}
+
+export type TicketMetricsResponse = {
+  total: number;
+  open: number;
+  resolved: number;
+  byPriority: { P1: number; P2: number; P3: number; P4: number };
+  byTeam: Array<{ teamId: string | null; total: number }>;
+};
+
+export function fetchTicketMetrics() {
+  return apiFetch<TicketMetricsResponse>('/tickets/metrics');
+}
+
+export function fetchTicketActivity(params?: { from?: string; to?: string; scope?: 'assigned' }) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set('from', params.from);
+  if (params?.to) query.set('to', params.to);
+  if (params?.scope) query.set('scope', params.scope);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{ data: TicketActivityPoint[] }>(`/tickets/activity${suffix}`);
+}
+
+export function fetchTicketStatusBreakdown(params?: {
+  from?: string;
+  to?: string;
+  scope?: 'assigned';
+  dateField?: 'createdAt' | 'updatedAt';
+}) {
+  const query = new URLSearchParams();
+  if (params?.from) query.set('from', params.from);
+  if (params?.to) query.set('to', params.to);
+  if (params?.scope) query.set('scope', params.scope);
+  if (params?.dateField) query.set('dateField', params.dateField);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{ data: TicketStatusPoint[] }>(`/tickets/status-breakdown${suffix}`);
 }
 
 export type SavedViewRecord = {
@@ -372,6 +427,22 @@ export function setTicketCustomValues(
 
 export function fetchTicketById(id: string) {
   return apiFetch<TicketDetail>(`/tickets/${id}`);
+}
+
+export function fetchTicketMessages(id: string, params?: { cursor?: string; take?: number }) {
+  const query = new URLSearchParams();
+  if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.take) query.set('take', String(params.take));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<TicketMessagePage>(`/tickets/${id}/messages${suffix}`);
+}
+
+export function fetchTicketEvents(id: string, params?: { cursor?: string; take?: number }) {
+  const query = new URLSearchParams();
+  if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.take) query.set('take', String(params.take));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<TicketEventPage>(`/tickets/${id}/events${suffix}`);
 }
 
 export function fetchTicketFollowers(id: string) {
@@ -585,6 +656,102 @@ export function deleteRoutingRule(id: string) {
   return apiFetch<{ id: string }>(`/routing-rules/${id}`, {
     method: 'DELETE'
   });
+}
+
+// Automation rules
+export type AutomationCondition = {
+  field?: string;
+  operator?: string;
+  value?: unknown;
+  and?: AutomationCondition[];
+  or?: AutomationCondition[];
+};
+
+export type AutomationAction = {
+  type: string;
+  teamId?: string;
+  userId?: string;
+  priority?: string;
+  status?: string;
+  body?: string;
+};
+
+export type AutomationRule = {
+  id: string;
+  name: string;
+  description?: string | null;
+  trigger: string;
+  conditions: AutomationCondition[];
+  actions: AutomationAction[];
+  isActive: boolean;
+  priority: number;
+  teamId?: string | null;
+  team?: TeamRef | null;
+  createdBy?: { id: string; displayName: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function fetchAutomationRules() {
+  return apiFetch<{ data: AutomationRule[] }>('/automation-rules');
+}
+
+export function createAutomationRule(payload: {
+  name: string;
+  description?: string;
+  trigger: string;
+  conditions: AutomationCondition[];
+  actions: AutomationAction[];
+  isActive?: boolean;
+  priority?: number;
+  teamId?: string;
+}) {
+  return apiFetch<AutomationRule>('/automation-rules', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateAutomationRule(
+  id: string,
+  payload: Partial<Omit<AutomationRule, 'id' | 'team' | 'createdBy' | 'createdAt' | 'updatedAt'>>
+) {
+  return apiFetch<AutomationRule>(`/automation-rules/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteAutomationRule(id: string) {
+  return apiFetch<{ id: string }>(`/automation-rules/${id}`, {
+    method: 'DELETE'
+  });
+}
+
+export function testAutomationRule(ruleId: string, ticketId: string) {
+  return apiFetch<{
+    matched: boolean;
+    actionsThatWouldRun: AutomationAction[];
+    message: string;
+  }>(`/automation-rules/${ruleId}/test`, {
+    method: 'POST',
+    body: JSON.stringify({ ticketId })
+  });
+}
+
+export function fetchAutomationRuleExecutions(ruleId: string, page = 1, pageSize = 20) {
+  return apiFetch<{
+    data: Array<{
+      id: string;
+      ruleId: string;
+      ticketId: string;
+      success: boolean;
+      error?: string | null;
+      executedAt: string;
+      ticket?: { id: string; number: number; displayId: string | null; subject: string };
+    }>;
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>(`/automation-rules/${ruleId}/executions?page=${page}&pageSize=${pageSize}`);
 }
 
 // Search types and function
@@ -828,6 +995,9 @@ export type ReportQuery = {
   priority?: string;
   categoryId?: string;
   groupBy?: 'team' | 'priority';
+  scope?: 'assigned';
+  dateField?: 'createdAt' | 'updatedAt';
+  statusGroup?: 'open' | 'resolved' | 'all';
 };
 
 export type TicketVolumeResponse = { data: { date: string; count: number }[] };
@@ -858,6 +1028,39 @@ export type AgentPerformanceResponse = {
     avgFirstResponseHours: number | null;
   }[];
 };
+export type AgentWorkloadResponse = {
+  data: {
+    userId: string;
+    name: string;
+    email: string;
+    assignedOpen: number;
+    inProgress: number;
+  }[];
+};
+export type TicketAgeBucketResponse = {
+  data: { bucket: string; count: number }[];
+};
+export type ReopenRateResponse = {
+  data: { date: string; count: number }[];
+};
+export type TicketsByCategoryResponse = {
+  data: { id: string; name: string; count: number }[];
+};
+export type TeamSummaryResponse = {
+  data: { id: string; name: string; open: number; resolved: number; total: number }[];
+};
+export type TransfersResponse = {
+  data: { total: number; series: { date: string; count: number }[] };
+};
+
+export type ReportSummaryResponse = {
+  ticketVolume: TicketVolumeResponse;
+  slaCompliance: SlaComplianceResponse;
+  resolutionTime: ResolutionTimeResponse;
+  ticketsByPriority: TicketsByPriorityResponse;
+  ticketsByStatus: TicketsByStatusResponse;
+  agentPerformance: AgentPerformanceResponse;
+};
 
 function reportQueryString(params: ReportQuery): string {
   const q = new URLSearchParams();
@@ -870,6 +1073,10 @@ function reportQueryString(params: ReportQuery): string {
 
 export function fetchReportTicketVolume(params: ReportQuery) {
   return apiFetch<TicketVolumeResponse>(`/reports/ticket-volume${reportQueryString(params)}`);
+}
+export function fetchReportSummary(params: ReportQuery) {
+  // Server defaults resolutionTime.groupBy to "team" for the summary response.
+  return apiFetch<ReportSummaryResponse>(`/reports/summary${reportQueryString(params)}`);
 }
 export function fetchReportSlaCompliance(params: ReportQuery) {
   return apiFetch<SlaComplianceResponse>(`/reports/sla-compliance${reportQueryString(params)}`);
@@ -885,4 +1092,86 @@ export function fetchReportTicketsByPriority(params: ReportQuery) {
 }
 export function fetchReportAgentPerformance(params: ReportQuery) {
   return apiFetch<AgentPerformanceResponse>(`/reports/agent-performance${reportQueryString(params)}`);
+}
+export function fetchReportAgentWorkload(params: ReportQuery) {
+  return apiFetch<AgentWorkloadResponse>(`/reports/agent-workload${reportQueryString(params)}`);
+}
+export function fetchReportTicketsByAge(params: ReportQuery) {
+  return apiFetch<TicketAgeBucketResponse>(`/reports/tickets-by-age${reportQueryString(params)}`);
+}
+export function fetchReportReopenRate(params: ReportQuery) {
+  return apiFetch<ReopenRateResponse>(`/reports/reopen-rate${reportQueryString(params)}`);
+}
+export function fetchReportTicketsByCategory(params: ReportQuery) {
+  return apiFetch<TicketsByCategoryResponse>(`/reports/tickets-by-category${reportQueryString(params)}`);
+}
+export function fetchReportTeamSummary(params: ReportQuery) {
+  return apiFetch<TeamSummaryResponse>(`/reports/team-summary${reportQueryString(params)}`);
+}
+export function fetchReportTransfers(params: ReportQuery) {
+  return apiFetch<TransfersResponse>(`/reports/transfers${reportQueryString(params)}`);
+}
+
+// ——— Audit Log ———
+export type AuditLogEntry = {
+  id: string;
+  ticketId: string;
+  ticketNumber: number;
+  ticketDisplayId: string | null;
+  type: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+  createdById: string | null;
+  createdBy: { id: string; displayName: string; email: string } | null;
+};
+
+export type AuditLogParams = {
+  dateFrom?: string;
+  dateTo?: string;
+  userId?: string;
+  type?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export function fetchAuditLog(params?: AuditLogParams) {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === '') return;
+      query.set(key, String(value));
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{
+    data: AuditLogEntry[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>(`/audit-log${suffix}`);
+}
+
+export async function fetchAuditLogExport(params?: Omit<AuditLogParams, 'page' | 'pageSize'>): Promise<string> {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === '') return;
+      query.set(key, String(value));
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const response = await fetch(`${API_BASE}/audit-log/export${suffix}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) {
+    const raw = await response.text();
+    let message = raw || 'Export failed';
+    try {
+      const body = JSON.parse(raw) as { message?: string };
+      if (typeof body?.message === 'string') message = body.message;
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(message, response.status);
+  }
+  return response.text();
 }

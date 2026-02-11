@@ -31,18 +31,18 @@ export function ResolutionTimeChart({ data }: { data: Point[] }) {
     );
   }
   return (
-    <div className="h-[240px] w-full">
+    <div className="h-[240px] w-full min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#64748b" />
           <YAxis tick={{ fontSize: 11 }} stroke="#64748b" unit="h" />
           <Tooltip
-            formatter={(value: number) => [value, 'Avg hours']}
+            formatter={(value: number | undefined) => [value ?? 0, 'Avg hours']}
             contentStyle={{ fontSize: 12 }}
           />
           <Bar dataKey="avgHours" name="Avg resolution (h)" radius={[4, 4, 0, 0]}>
-            {data.map((entry, index) => (
+            {data.map((_, index) => (
               <Cell key={index} fill={DEPARTMENT_COLORS[index % DEPARTMENT_COLORS.length]} />
             ))}
           </Bar>

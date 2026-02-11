@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports — Helpdesk</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+
+    .badge { font-size:.75rem;padding:.25rem .5rem;border-radius:.375rem;font-weight:500;white-space:nowrap; }
+    .card  { transition:all .2s ease; }
+    .card:hover { transform:translateY(-1px);box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06); }
+    .row-hover { transition:background .12s; }
+    .row-hover:hover { background-color:#f9fafb; }
+
+    .nav-item { transition:all .15s; }
+    .nav-item.active  { background:#eff6ff;color:#1d4ed8;border-right:2px solid #2563eb; }
+    .nav-item:hover:not(.active) { background:#f3f4f6; }
+
+    .tab { transition:all .15s; border-bottom:2px solid transparent; }
+    .tab.active { border-bottom-color:#2563eb;color:#2563eb; }
+
+    .dd { animation:fadeIn .15s ease-out; }
+    @keyframes fadeIn { from{opacity:0;transform:scale(.98)} to{opacity:1;transform:scale(1)} }
+
+    .modal-bg { animation:fadeIn .15s ease-out; }
+    .modal-box { animation:slideUp .2s ease-out; }
+    @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+    .tog { position:relative;display:inline-flex;width:40px;height:22px; }
+    .tog input { opacity:0;width:0;height:0; }
+    .tog-slider { position:absolute;inset:0;background:#d1d5db;border-radius:22px;transition:.25s;cursor:pointer; }
+    .tog-slider::before { content:"";position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s; }
+    .tog input:checked + .tog-slider { background:#2563eb; }
+    .tog input:checked + .tog-slider::before { transform:translateX(18px); }
+
+    code { font-family:ui-monospace,monospace;font-size:.8rem;background:#f1f5f9;padding:.1rem .35rem;border-radius:.25rem;color:#334155; }
+  </style>
+</head>
+<body class="bg-gray-50">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+const { useMemo, useRef, useState, useEffect } = React;
+
+/* ══════════════════════════════════════════════════════════════
+   SMALL UI PRIMITIVES
+══════════════════════════════════════════════════════════════ */
+const Toggle = ({ checked, onChange }) => (
+  <label className="tog">
+    <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+    <span className="tog-slider" />
+  </label>
+);
+
+const Toast = ({ msg, type, onClose }) => (
+  <div className={`fixed bottom-6 right-6 z-50 flex items-center space-x-3 px-4 py-3 rounded-lg shadow-xl text-sm font-medium
+    ${type==='success'?'bg-green-600 text-white':type==='error'?'bg-red-600 text-white':'bg-gray-800 text-white'}`}>
+    <span>{msg}</span>
+    <button onClick={onClose} className="ml-1 opacity-70 hover:opacity-100">
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+);
+
+const Modal = ({ title, subtitle, children, onClose }) => (
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 modal-bg">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col modal-box">
+      <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div>
+          <p className="text-base font-semibold text-gray-900">{title}</p>
+          {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+        </div>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div className="p-6 overflow-y-auto">{children}</div>
+    </div>
+  </div>
+);
+
+const StatCard = ({ label, value, sub, iconPath, tone='blue' }) => {
+  const toneMap = {
+    blue:   {bg:'bg-blue-50',   fg:'text-blue-700',   ico:'text-blue-600',   ring:'ring-blue-200'},
+    green:  {bg:'bg-green-50',  fg:'text-green-700',  ico:'text-green-600',  ring:'ring-green-200'},
+    amber:  {bg:'bg-amber-50',  fg:'text-amber-700',  ico:'text-amber-600',  ring:'ring-amber-200'},
+    red:    {bg:'bg-red-50',    fg:'text-red-700',    ico:'text-red-600',    ring:'ring-red-200'},
+    purple: {bg:'bg-purple-50', fg:'text-purple-700', ico:'text-purple-600', ring:'ring-purple-200'},
+    gray:   {bg:'bg-gray-50',   fg:'text-gray-700',   ico:'text-gray-600',   ring:'ring-gray-200'},
+  };
+  const t = toneMap[tone] || toneMap.blue;
+  return (
+    <div className={`bg-white border border-gray-200 rounded-xl p-4 card`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs text-gray-500 font-medium">{label}</p>
+          <p className={`text-2xl font-bold mt-1 ${t.ico}`}>{value}</p>
+          {sub && <p className="text-xs text-gray-500 mt-1">{sub}</p>}
+        </div>
+        <div className={`w-10 h-10 rounded-xl ${t.bg} ring-1 ${t.ring} flex items-center justify-center`}>
+          <svg className={`w-5 h-5 ${t.ico}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath} />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* Simple SVG charts (no libs) */
+const SparkArea = ({ points=[8,10,9,12,11,14,13,15,12,16], height=60 }) => {
+  const w = 200;
+  const max = Math.max(...points), min = Math.min(...points);
+  const norm = (v)=> (max===min?0.5:(v-min)/(max-min));
+  const xs = points.map((_,i)=> i*(w/(points.length-1)));
+  const ys = points.map(v=> (1-norm(v))*(height-8)+4);
+  const line = xs.map((x,i)=> `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+  const area = `0,${height} ${line} ${w},${height}`;
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${height}`} className="block">
+      <path d={`M ${area}`} fill="currentColor" opacity="0.12" />
+      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+};
+
+const MiniBars = ({ points=[3,4,6,5,7,8,6,9,7,10], height=60 }) => {
+  const w = 220;
+  const max = Math.max(...points);
+  const barW = w/points.length;
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${height}`} className="block">
+      {points.map((v,i)=>{
+        const h = (v/max)*(height-10);
+        return <rect key={i} x={i*barW+3} y={height-h} width={barW-6} height={h} rx="3" />;
+      })}
+    </svg>
+  );
+};
+
+const Donut = ({ value=72, label="On-time", sub="Last 30d" }) => {
+  const r=18, c=2*Math.PI*r;
+  const p = Math.max(0,Math.min(100,value));
+  const dash = (p/100)*c;
+  return (
+    <div className="flex items-center space-x-4">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <g transform="translate(28,28)">
+          <circle r={r} fill="none" stroke="currentColor" opacity="0.15" strokeWidth="8" />
+          <circle
+            r={r}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c-dash}`}
+            transform="rotate(-90)"
+          />
+        </g>
+      </svg>
+      <div>
+        <p className="text-xs text-gray-500">{label}</p>
+        <p className="text-xl font-bold text-gray-900">{p}%</p>
+        <p className="text-xs text-gray-400">{sub}</p>
+      </div>
+    </div>
+  );
+};
+
+/* ══════════════════════════════════════════════════════════════
+   FAKE DATA (replace with API later)
+══════════════════════════════════════════════════════════════ */
+const TEAMS = ['Technical Support','Customer Success','Billing','Sales'];
+const CHANNELS = ['email','web','chat','phone'];
+const STATUSES = ['new','open','pending','resolved','closed'];
+const PRIORITIES = ['critical','high','medium','low'];
+const TAGS = ['vip','bug','billing','feature','outage','refund','onboarding'];
+
+const rand = (a,b)=> Math.floor(Math.random()*(b-a+1))+a;
+const pct  = (v)=> `${Math.max(0,Math.min(100,Math.round(v)))}%`;
+
+const genSeries = (n, base=10, vol=6) => Array.from({length:n}, (_,i)=> base + Math.round(Math.sin(i/2)*vol) + rand(-2,2));
+
+const MOCK = {
+  kpis: {
+    tickets: 1248,
+    newTickets: 312,
+    resolved: 287,
+    backlog: 611,
+    frSla: 93.6,
+    resSla: 89.2,
+    csat: 4.42,
+    avgHandleMin: 18.7,
+  },
+  series: {
+    volume: genSeries(14, 80, 22),
+    solved: genSeries(14, 70, 18),
+    backlog: genSeries(14, 55, 15),
+    frSla: genSeries(14, 92, 2),
+    resSla: genSeries(14, 88, 3),
+    csat: genSeries(14, 4, 0.25).map(v=> Math.max(3.2, Math.min(4.9, v))),
+  },
+  topCategories: [
+    {name:'Billing & Invoices', count:142, trend:+8},
+    {name:'Login / MFA',        count:118, trend:+3},
+    {name:'API Errors',         count:103, trend:-4},
+    {name:'Integrations',       count:92,  trend:+6},
+    {name:'Bug Reports',        count:77,  trend:+2},
+  ],
+  worstSla: [
+    {ticket:'TKT-25401', team:'Technical Support', priority:'critical', stage:'Resolution', breachBy:'1h 12m', reason:'Awaiting vendor response'},
+    {ticket:'TKT-25377', team:'Billing',           priority:'high',     stage:'First response', breachBy:'38m',  reason:'Queue overload'},
+    {ticket:'TKT-25311', team:'Customer Success',  priority:'medium',   stage:'Resolution', breachBy:'5h',     reason:'Missing customer info'},
+    {ticket:'TKT-25298', team:'Sales',             priority:'high',     stage:'Resolution', breachBy:'2h',     reason:'Escalation gap'},
+  ],
+  agents: [
+    {name:'Emily R.', team:'Technical Support', solved:92, fr:96, res:91, csat:4.6},
+    {name:'Mike C.',  team:'Billing',           solved:61, fr:93, res:88, csat:4.3},
+    {name:'Lisa W.',  team:'Customer Success',  solved:74, fr:95, res:90, csat:4.5},
+    {name:'Robert K.',team:'Sales',             solved:48, fr:91, res:85, csat:4.2},
+  ],
+  aging: [
+    {bucket:'0–1 day', count:233},
+    {bucket:'1–3 days',count:171},
+    {bucket:'3–7 days',count:128},
+    {bucket:'7–14 days',count:54},
+    {bucket:'14+ days',count:25},
+  ],
+};
+
+const PRI_META = {
+  critical:{ badge:'bg-red-100 text-red-700' },
+  high:    { badge:'bg-orange-100 text-orange-700' },
+  medium:  { badge:'bg-yellow-100 text-yellow-700' },
+  low:     { badge:'bg-blue-100 text-blue-700' },
+};
+
+/* ══════════════════════════════════════════════════════════════
+   REPORTS PAGE
+══════════════════════════════════════════════════════════════ */
+const ReportsPage = () => {
+  const [toast, setToast] = useState(null);
+  const showToast = (msg, type='success') => {
+    setToast({msg,type});
+    setTimeout(()=>setToast(null), 2500);
+  };
+
+  const [role, setRole] = useState('team_admin'); // viewer | agent | lead | team_admin | owner
+  const canExport = role==='team_admin' || role==='owner' || role==='lead';
+  const canSaveViews = role==='team_admin' || role==='owner';
+
+  const [tab, setTab] = useState('overview'); // overview|sla|volume|agents|csat|backlog|export
+
+  // filters (UI only)
+  const [filters, setFilters] = useState({
+    range:'last_14',
+    team:'all',
+    channel:'all',
+    status:'all',
+    priority:'all',
+    assignee:'all',
+    tags:[],
+    compare:true,
+  });
+
+  const [savedViews, setSavedViews] = useState([
+    {id:'v1', name:'Exec Weekly', desc:'Last 7d • All teams • Compare'},
+    {id:'v2', name:'Billing SLA', desc:'Last 30d • Billing • High/Critical'},
+  ]);
+  const [activeView, setActiveView] = useState('v1');
+
+  const [showExport, setShowExport] = useState(false);
+
+  const applyView = (id) => {
+    setActiveView(id);
+    if(id==='v1') setFilters(f=>({...f, range:'last_7', team:'all', priority:'all', compare:true, tags:[]}));
+    if(id==='v2') setFilters(f=>({...f, range:'last_30', team:'Billing', priority:'high', compare:false, tags:['billing']}));
+    showToast('View applied');
+  };
+
+  const resetFilters = () => {
+    setFilters({range:'last_14',team:'all',channel:'all',status:'all',priority:'all',assignee:'all',tags:[],compare:true});
+    showToast('Filters reset');
+  };
+
+  const toggleTag = (t) => {
+    setFilters(f => ({...f, tags: f.tags.includes(t) ? f.tags.filter(x=>x!==t) : [...f.tags, t]}));
+  };
+
+  const title = useMemo(() => {
+    if(tab==='overview') return {h:'Reports', s:'Executive overview across tickets, SLA, workload, and customer satisfaction.'};
+    if(tab==='sla')      return {h:'SLA Performance', s:'First response & resolution compliance with breach drivers.'};
+    if(tab==='volume')   return {h:'Ticket Volume', s:'Inbound, solved, and backlog trends by channel and team.'};
+    if(tab==='agents')   return {h:'Agent Performance', s:'Productivity, SLA, and quality metrics per agent.'};
+    if(tab==='csat')     return {h:'CSAT & Quality', s:'Survey trends, tags, and drivers behind satisfaction.'};
+    if(tab==='backlog')  return {h:'Backlog & Aging', s:'Open tickets aging distribution and risk hotspots.'};
+    return {h:'Export & Sharing', s:'Export datasets, schedule reports, and share links (UI only).'};
+  }, [tab]);
+
+  /* Derived metrics display (mock) */
+  const k = MOCK.kpis;
+  const rangeLabel = filters.range==='last_7'?'Last 7 days':filters.range==='last_14'?'Last 14 days':filters.range==='last_30'?'Last 30 days':'Custom';
+  const scopeLabel = `${filters.team==='all'?'All teams':filters.team} • ${filters.channel==='all'?'All channels':filters.channel}`;
+
+  const Chip = ({ label, onRemove }) => (
+    <span className="inline-flex items-center space-x-2 badge bg-gray-100 text-gray-700">
+      <span>{label}</span>
+      {onRemove && (
+        <button onClick={onRemove} className="opacity-70 hover:opacity-100">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      )}
+    </span>
+  );
+
+  const CardShell = ({ title, sub, right, children }) => (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden card">
+      <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{title}</p>
+          {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+        </div>
+        {right}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
+
+  const metricTone = (v, good=90) => v>=good ? 'text-green-600' : v>=good-5 ? 'text-amber-600' : 'text-red-600';
+
+  const ExportModal = () => (
+    <Modal title="Export report" subtitle="Choose dataset and format (UI mock)" onClose={()=>setShowExport(false)}>
+      <div className="space-y-4">
+        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+          <p className="text-sm font-semibold text-gray-800">Current scope</p>
+          <p className="text-xs text-gray-500 mt-1">{rangeLabel} • {scopeLabel}</p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {filters.priority!=='all' && <Chip label={`Priority: ${filters.priority}`} onRemove={()=>setFilters(f=>({...f,priority:'all'}))} />}
+            {filters.status!=='all' && <Chip label={`Status: ${filters.status}`} onRemove={()=>setFilters(f=>({...f,status:'all'}))} />}
+            {filters.tags.map(t => <Chip key={t} label={`Tag: ${t}`} onRemove={()=>toggleTag(t)} />)}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            {k:'tickets', label:'Tickets', desc:'All ticket records in scope'},
+            {k:'sla', label:'SLA events', desc:'Timers, breaches, escalations'},
+            {k:'agent', label:'Agent metrics', desc:'Solved, SLA, CSAT per agent'},
+            {k:'csat', label:'CSAT responses', desc:'Survey answers and tags'},
+          ].map(x=>(
+            <button key={x.k} className="text-left p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all">
+              <p className="text-sm font-semibold text-gray-900">{x.label}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{x.desc}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4 border border-gray-200 rounded-xl">
+          <p className="text-sm font-semibold text-gray-900">Format</p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {['CSV','XLSX','PDF (summary)','JSON'].map(f=>(
+              <button key={f} className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">{f}</button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">Tip: PDF exports a snapshot of the dashboard cards & tables.</p>
+        </div>
+
+        <div className="flex items-center justify-end gap-3">
+          <button onClick={()=>setShowExport(false)} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium">Cancel</button>
+          <button onClick={()=>{setShowExport(false); showToast('Export started');}} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium">
+            Export
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+
+  return (
+    <div className="min-h-screen">
+      {/* Top bar */}
+      <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6a2 2 0 012-2h2a2 2 0 012 2v6m-10 0h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2h-3l-2-2H10L8 5H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Reports</p>
+              <p className="text-xs text-gray-500">Analytics & insights for your Helpdesk</p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <span className={`badge ${role==='owner'?'bg-purple-100 text-purple-700':role==='team_admin'?'bg-blue-100 text-blue-700':role==='lead'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'}`}>
+              {role==='owner'?'Owner':role==='team_admin'?'Team Admin':role==='lead'?'Team Lead':'Viewer'}
+            </span>
+
+            <select value={role} onChange={e=>setRole(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+              <option value="viewer">Viewer (read-only)</option>
+              <option value="lead">Team Lead</option>
+              <option value="team_admin">Team Admin</option>
+              <option value="owner">Owner</option>
+            </select>
+
+            <button
+              onClick={()=>setShowExport(true)}
+              disabled={!canExport}
+              className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 border
+                ${canExport?'bg-white text-gray-700 border-gray-300 hover:bg-gray-50':'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}`}
+              title={canExport?'Export datasets':'No permission to export'}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-8m0 8l-3-3m3 3l3-3M4 20h16"/></svg>
+              <span>Export</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-5 py-6 space-y-6">
+        {/* Title */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-lg font-bold text-gray-900">{title.h}</p>
+            <p className="text-sm text-gray-500 mt-1">{title.s}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <span className="badge bg-gray-100 text-gray-700">{rangeLabel}</span>
+              <span className="badge bg-gray-100 text-gray-700">{scopeLabel}</span>
+              {filters.compare && <span className="badge bg-blue-100 text-blue-700">Compare enabled</span>}
+            </div>
+          </div>
+
+          {/* Saved views */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 w-full sm:w-auto">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Saved views</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={activeView}
+                onChange={e=>applyView(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {savedViews.map(v=> <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+
+              {canSaveViews ? (
+                <button
+                  onClick={()=>{setSavedViews(x=>[...x,{id:'v'+Date.now(),name:'New View',desc:`${rangeLabel} • ${scopeLabel}`}]); showToast('View saved');}}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                >
+                  Save current
+                </button>
+              ) : (
+                <button className="px-3 py-2 border border-gray-300 text-gray-400 rounded-lg text-sm font-medium cursor-not-allowed" title="Team Admin+ required">
+                  Save current
+                </button>
+              )}
+
+              <button onClick={resetFilters} className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium">
+                Reset
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              {savedViews.find(v=>v.id===activeView)?.desc}
+            </p>
+          </div>
+        </div>
+
+        {/* Filters row */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Date range</label>
+              <select value={filters.range} onChange={e=>setFilters(f=>({...f,range:e.target.value}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="last_7">Last 7 days</option>
+                <option value="last_14">Last 14 days</option>
+                <option value="last_30">Last 30 days</option>
+                <option value="custom">Custom (mock)</option>
+              </select>
+            </div>
+
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Team</label>
+              <select value={filters.team} onChange={e=>setFilters(f=>({...f,team:e.target.value}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="all">All teams</option>
+                {TEAMS.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div className="min-w-[160px]">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Channel</label>
+              <select value={filters.channel} onChange={e=>setFilters(f=>({...f,channel:e.target.value}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="all">All channels</option>
+                {CHANNELS.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div className="min-w-[160px]">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+              <select value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="all">All status</option>
+                {STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div className="min-w-[160px]">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
+              <select value={filters.priority} onChange={e=>setFilters(f=>({...f,priority:e.target.value}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="all">All priority</option>
+                {PRIORITIES.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Assignee</label>
+              <select value={filters.assignee} onChange={e=>setFilters(f=>({...f,assignee:e.target.value}))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                <option value="all">All assignees</option>
+                {MOCK.agents.map(a=><option key={a.name} value={a.name}>{a.name} ({a.team})</option>)}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center space-x-2">
+                <Toggle checked={filters.compare} onChange={v=>setFilters(f=>({...f,compare:v}))}/>
+                <span className="text-sm text-gray-700">Compare</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="mt-4 flex flex-wrap gap-2 items-center">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mr-2">Tags</p>
+            {TAGS.map(t=>(
+              <button
+                key={t}
+                onClick={()=>toggleTag(t)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all
+                  ${filters.tags.includes(t)?'bg-blue-600 text-white border-blue-600':'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white border border-gray-200 rounded-xl px-4 pt-3">
+          <div className="flex flex-wrap gap-6 border-b border-gray-200">
+            {[
+              ['overview','Overview'],
+              ['sla','SLA'],
+              ['volume','Volume'],
+              ['agents','Agents'],
+              ['csat','CSAT'],
+              ['backlog','Backlog'],
+              ['export','Export & sharing'],
+            ].map(([id,label])=>(
+              <button key={id} onClick={()=>setTab(id)} className={`pb-3 text-sm font-medium tab ${tab===id?'active':'text-gray-500 hover:text-gray-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="py-5">
+            {/* OVERVIEW */}
+            {tab==='overview' && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <StatCard tone="blue"   label="Tickets in scope" value={k.tickets} sub="All tickets matching filters" iconPath="M9 17v-6a2 2 0 012-2h2a2 2 0 012 2v6m-10 0h10" />
+                  <StatCard tone="green"  label="Resolved" value={k.resolved} sub="+6% vs previous" iconPath="M5 13l4 4L19 7" />
+                  <StatCard tone="amber"  label="Backlog" value={k.backlog} sub="Open + pending" iconPath="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <StatCard tone="purple" label="CSAT" value={`${k.csat.toFixed(2)} / 5`} sub="Avg rating" iconPath="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.95a1 1 0 00.95.69h4.155c.969 0 1.371 1.24.588 1.81l-3.36 2.44a1 1 0 00-.364 1.118l1.286 3.95c.3.921-.755 1.688-1.538 1.118l-3.36-2.44a1 1 0 00-1.175 0l-3.36 2.44c-.783.57-1.838-.197-1.538-1.118l1.286-3.95a1 1 0 00-.364-1.118l-3.36-2.44c-.783-.57-.38-1.81.588-1.81h4.155a1 1 0 00.95-.69l1.286-3.95z" />
+                </div>
+
+                <div className="grid lg:grid-cols-12 gap-5">
+                  <div className="lg:col-span-7">
+                    <CardShell
+                      title="Volume vs solved"
+                      sub="Daily trend (mock). Compare shows previous period."
+                      right={<span className="badge bg-gray-100 text-gray-700">Daily</span>}
+                    >
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-gray-800">Inbound</p>
+                            <span className="text-xs text-gray-500">14 pts</span>
+                          </div>
+                          <div className="text-blue-600"><MiniBars points={MOCK.series.volume} /></div>
+                          <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className="text-gray-500">Avg/day</span>
+                            <span className="font-semibold text-gray-700">{Math.round(MOCK.series.volume.reduce((a,b)=>a+b,0)/MOCK.series.volume.length)}</span>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-semibold text-gray-800">Solved</p>
+                            <span className="text-xs text-gray-500">14 pts</span>
+                          </div>
+                          <div className="text-green-600"><MiniBars points={MOCK.series.solved} /></div>
+                          <div className="mt-3 flex items-center justify-between text-xs">
+                            <span className="text-gray-500">Avg/day</span>
+                            <span className="font-semibold text-gray-700">{Math.round(MOCK.series.solved.reduce((a,b)=>a+b,0)/MOCK.series.solved.length)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CardShell>
+                  </div>
+
+                  <div className="lg:col-span-5 space-y-5">
+                    <CardShell title="SLA health" sub="First response & resolution (mock)">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-blue-600">
+                          <Donut value={k.frSla} label="First response" sub="Compliance" />
+                        </div>
+                        <div className="text-indigo-600">
+                          <Donut value={k.resSla} label="Resolution" sub="Compliance" />
+                        </div>
+                      </div>
+                      <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                        <p className="text-xs text-gray-500">At-risk tickets (est.)</p>
+                        <p className="text-xl font-bold text-gray-900 mt-1">17</p>
+                        <p className="text-xs text-gray-400 mt-1">Based on escalation threshold & timers.</p>
+                      </div>
+                    </CardShell>
+
+                    <CardShell title="Top categories" sub="Highest volume categories">
+                      <div className="space-y-2">
+                        {MOCK.topCategories.map((c,i)=>(
+                          <div key={i} className="row-hover flex items-center justify-between px-3 py-2 rounded-lg">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 truncate">{c.name}</p>
+                              <p className="text-xs text-gray-400">Trend: {c.trend>0?`+${c.trend}%`:`${c.trend}%`}</p>
+                            </div>
+                            <span className="badge bg-gray-100 text-gray-700">{c.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardShell>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SLA */}
+            {tab==='sla' && (
+              <div className="space-y-5">
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <p className="text-xs text-gray-500">First response SLA</p>
+                    <p className={`text-3xl font-bold mt-1 ${metricTone(k.frSla,95)}`}>{k.frSla.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-400 mt-1">Target 95%</p>
+                    <div className="text-blue-600 mt-3"><SparkArea points={MOCK.series.frSla} /></div>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <p className="text-xs text-gray-500">Resolution SLA</p>
+                    <p className={`text-3xl font-bold mt-1 ${metricTone(k.resSla,92)}`}>{k.resSla.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-400 mt-1">Target 92%</p>
+                    <div className="text-indigo-600 mt-3"><SparkArea points={MOCK.series.resSla} /></div>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <p className="text-xs text-gray-500">Breaches</p>
+                    <p className="text-3xl font-bold text-red-600 mt-1">23</p>
+                    <p className="text-xs text-gray-400 mt-1">In current scope</p>
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-xs text-red-700 font-medium">Top driver</p>
+                      <p className="text-sm font-semibold text-red-800 mt-1">Queue overload</p>
+                      <p className="text-xs text-red-700 mt-1">Improve routing + staffing peaks</p>
+                    </div>
+                  </div>
+                </div>
+
+                <CardShell title="Worst SLA breaches" sub="Tickets that breached the most (mock)">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          {['Ticket','Team','Priority','Stage','Breach by','Reason'].map(h=>(
+                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {MOCK.worstSla.map((r,i)=>(
+                          <tr key={i} className="row-hover">
+                            <td className="px-4 py-3 font-semibold text-gray-900">{r.ticket}</td>
+                            <td className="px-4 py-3 text-gray-700">{r.team}</td>
+                            <td className="px-4 py-3"><span className={`badge ${PRI_META[r.priority].badge}`}>{r.priority}</span></td>
+                            <td className="px-4 py-3 text-gray-700">{r.stage}</td>
+                            <td className="px-4 py-3 font-semibold text-red-600">{r.breachBy}</td>
+                            <td className="px-4 py-3 text-gray-600">{r.reason}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardShell>
+              </div>
+            )}
+
+            {/* VOLUME */}
+            {tab==='volume' && (
+              <div className="space-y-5">
+                <div className="grid lg:grid-cols-12 gap-5">
+                  <div className="lg:col-span-8">
+                    <CardShell title="Inbound vs solved vs backlog" sub="Daily trend (mock)">
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <p className="text-sm font-semibold text-gray-800">Inbound</p>
+                          <p className="text-xs text-gray-400 mb-2">Tickets/day</p>
+                          <div className="text-blue-600"><MiniBars points={MOCK.series.volume} /></div>
+                        </div>
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <p className="text-sm font-semibold text-gray-800">Solved</p>
+                          <p className="text-xs text-gray-400 mb-2">Tickets/day</p>
+                          <div className="text-green-600"><MiniBars points={MOCK.series.solved} /></div>
+                        </div>
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                          <p className="text-sm font-semibold text-gray-800">Backlog</p>
+                          <p className="text-xs text-gray-400 mb-2">Open tickets</p>
+                          <div className="text-amber-600"><MiniBars points={MOCK.series.backlog} /></div>
+                        </div>
+                      </div>
+                    </CardShell>
+                  </div>
+
+                  <div className="lg:col-span-4 space-y-5">
+                    <CardShell title="By channel" sub="Share of inbound (mock)">
+                      <div className="space-y-2">
+                        {[
+                          {c:'email',v:46},
+                          {c:'web',v:28},
+                          {c:'chat',v:18},
+                          {c:'phone',v:8},
+                        ].map((x,i)=>(
+                          <div key={i} className="row-hover px-3 py-2 rounded-lg">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium text-gray-800">{x.c}</span>
+                              <span className="text-gray-600">{x.v}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
+                              <div className="h-2 rounded-full bg-blue-600" style={{width:`${x.v}%`}} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardShell>
+
+                    <CardShell title="Peak days" sub="Highest inbound volume (mock)">
+                      <div className="space-y-2">
+                        {[
+                          {d:'Mon',v:112},
+                          {d:'Tue',v:104},
+                          {d:'Wed',v:98},
+                          {d:'Thu',v:91},
+                          {d:'Fri',v:86},
+                        ].map((x,i)=>(
+                          <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+                            <span className="text-sm font-medium text-gray-700">{x.d}</span>
+                            <span className="badge bg-gray-100 text-gray-700">{x.v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </CardShell>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* AGENTS */}
+            {tab==='agents' && (
+              <div className="space-y-5">
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <p className="text-xs text-gray-500">Avg handle time</p>
+                    <p className="text-3xl font-bold text-gray-900 mt-1">{k.avgHandleMin.toFixed(1)}m</p>
+                    <p className="text-xs text-gray-400 mt-1">Lower is better</p>
+                    <div className="text-gray-700 mt-3"><SparkArea points={genSeries(12, 19, 2)} /></div>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <p className="text-xs text-gray-500">Quality score</p>
+                    <p className="text-3xl font-bold text-green-600 mt-1">86</p>
+                    <p className="text-xs text-gray-400 mt-1">Composite: CSAT + reopens</p>
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                      <p className="text-xs text-green-700">Biggest win</p>
+                      <p className="text-sm font-semibold text-green-800 mt-1">Faster triage</p>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <p className="text-xs text-gray-500">Reopen rate</p>
+                    <p className="text-3xl font-bold text-amber-600 mt-1">4.1%</p>
+                    <p className="text-xs text-gray-400 mt-1">Target ≤ 3%</p>
+                    <div className="text-amber-600 mt-3"><SparkArea points={genSeries(12, 4, 0.6)} /></div>
+                  </div>
+                </div>
+
+                <CardShell title="Agent leaderboard" sub="Sorted by solved tickets (mock)">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          {['Agent','Team','Solved','FR SLA','RES SLA','CSAT'].map(h=>(
+                            <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {MOCK.agents.map((a,i)=>(
+                          <tr key={i} className="row-hover">
+                            <td className="px-4 py-3 font-semibold text-gray-900">{a.name}</td>
+                            <td className="px-4 py-3 text-gray-700">{a.team}</td>
+                            <td className="px-4 py-3"><span className="badge bg-gray-100 text-gray-700">{a.solved}</span></td>
+                            <td className={`px-4 py-3 font-semibold ${a.fr>=95?'text-green-600':a.fr>=92?'text-amber-600':'text-red-600'}`}>{a.fr}%</td>
+                            <td className={`px-4 py-3 font-semibold ${a.res>=92?'text-green-600':a.res>=88?'text-amber-600':'text-red-600'}`}>{a.res}%</td>
+                            <td className="px-4 py-3 font-semibold text-gray-900">{a.csat.toFixed(1)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardShell>
+              </div>
+            )}
+
+            {/* CSAT */}
+            {tab==='csat' && (
+              <div className="space-y-5">
+                <div className="grid lg:grid-cols-12 gap-5">
+                  <div className="lg:col-span-7">
+                    <CardShell title="CSAT trend" sub="Avg rating per day (mock)">
+                      <div className="flex items-end justify-between mb-2">
+                        <div>
+                          <p className="text-xs text-gray-500">Average</p>
+                          <p className="text-3xl font-bold text-purple-600 mt-1">{k.csat.toFixed(2)}</p>
+                        </div>
+                        <span className="badge bg-purple-100 text-purple-700">Scale 1–5</span>
+                      </div>
+                      <div className="text-purple-600"><SparkArea points={MOCK.series.csat.map(x=>x*10)} /></div>
+                      <p className="text-xs text-gray-400 mt-3">Tip: correlate low CSAT with breach + reopens.</p>
+                    </CardShell>
+                  </div>
+
+                  <div className="lg:col-span-5 space-y-5">
+                    <CardShell title="Drivers" sub="What impacts CSAT (mock)">
+                      <div className="space-y-3">
+                        {[
+                          {l:'Slow response',v:31},
+                          {l:'Unclear resolution',v:24},
+                          {l:'Multiple handoffs',v:18},
+                          {l:'Bug persists',v:15},
+                          {l:'Other',v:12},
+                        ].map((x,i)=>(
+                          <div key={i}>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-700">{x.l}</span>
+                              <span className="text-gray-600">{x.v}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
+                              <div className="h-2 rounded-full bg-purple-600" style={{width:`${x.v}%`}} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardShell>
+
+                    <CardShell title="Low CSAT tags" sub="Common tags on low-rated tickets">
+                      <div className="flex flex-wrap gap-2">
+                        {['outage','bug','refund','vip','billing'].map(t=>(
+                          <span key={t} className="badge bg-gray-100 text-gray-700">#{t}</span>
+                        ))}
+                      </div>
+                    </CardShell>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* BACKLOG */}
+            {tab==='backlog' && (
+              <div className="space-y-5">
+                <div className="grid lg:grid-cols-12 gap-5">
+                  <div className="lg:col-span-5">
+                    <CardShell title="Aging distribution" sub="Open tickets by age bucket (mock)">
+                      <div className="space-y-3">
+                        {MOCK.aging.map((b,i)=>(
+                          <div key={i} className="row-hover px-3 py-2 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-gray-800">{b.bucket}</span>
+                              <span className="badge bg-gray-100 text-gray-700">{b.count}</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
+                              <div className="h-2 rounded-full bg-amber-600" style={{width:`${Math.min(100,(b.count/233)*100)}%`}} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardShell>
+                  </div>
+
+                  <div className="lg:col-span-7 space-y-5">
+                    <CardShell title="Backlog risk" sub="Where backlog is most likely to breach (mock)">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                          <p className="text-xs text-red-700 font-medium">Highest risk queue</p>
+                          <p className="text-lg font-bold text-red-800 mt-1">Technical Support • Critical</p>
+                          <p className="text-xs text-red-700 mt-2">12 tickets within 80–100% SLA window</p>
+                          <button className="mt-3 text-xs font-semibold text-red-700 hover:text-red-800 underline">
+                            View tickets
+                          </button>
+                        </div>
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                          <p className="text-xs text-amber-700 font-medium">Second risk queue</p>
+                          <p className="text-lg font-bold text-amber-800 mt-1">Billing • High</p>
+                          <p className="text-xs text-amber-700 mt-2">9 tickets stuck pending customer</p>
+                          <button className="mt-3 text-xs font-semibold text-amber-700 hover:text-amber-800 underline">
+                            View tickets
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                        <p className="text-sm font-semibold text-gray-900">Suggested actions</p>
+                        <ul className="mt-2 space-y-2 text-sm text-gray-600 list-disc list-inside">
+                          <li>Enable escalation automation at 75% for Critical tickets.</li>
+                          <li>Add routing rule: tag <code>outage</code> → priority Critical → TS queue.</li>
+                          <li>Staff peak inbound windows (Mon–Tue) for email channel.</li>
+                        </ul>
+                      </div>
+                    </CardShell>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* EXPORT */}
+            {tab==='export' && (
+              <div className="space-y-5">
+                <div className="grid md:grid-cols-2 gap-5">
+                  <CardShell title="Export datasets" sub="CSV/XLSX/JSON/PDF snapshot">
+                    <div className="space-y-3">
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                        <p className="text-sm font-semibold text-gray-900">One-time export</p>
+                        <p className="text-xs text-gray-500 mt-1">Use current scope and filters.</p>
+                        <button
+                          onClick={()=> setShowExport(true)}
+                          className={`mt-3 px-4 py-2 rounded-lg text-sm font-medium ${canExport?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          disabled={!canExport}
+                        >
+                          Open export
+                        </button>
+                      </div>
+
+                      <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                        <p className="text-sm font-semibold text-gray-900">Share link</p>
+                        <p className="text-xs text-gray-500 mt-1">Share a read-only snapshot URL (mock)</p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <input readOnly value="https://app.helpdesk.local/reports/snapshots/abc123" className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-600" />
+                          <button onClick={()=>showToast('Link copied')} className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                            Copy
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">Snapshots expire in 7 days (recommended).</p>
+                      </div>
+                    </div>
+                  </CardShell>
+
+                  <CardShell title="Schedules" sub="Email summaries (UI mock)">
+                    <div className="space-y-3">
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">Weekly exec summary</p>
+                            <p className="text-xs text-gray-500 mt-1">Every Monday at 9:00 AM</p>
+                          </div>
+                          <Toggle checked={true} onChange={()=>showToast('Schedule toggled')} />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="badge bg-gray-100 text-gray-700">PDF snapshot</span>
+                          <span className="badge bg-gray-100 text-gray-700">Include SLA + CSAT</span>
+                          <span className="badge bg-gray-100 text-gray-700">Recipients: 5</span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-white border border-gray-200 rounded-xl">
+                        <p className="text-sm font-semibold text-gray-900">Create schedule</p>
+                        <p className="text-xs text-gray-500 mt-1">Requires Team Admin+</p>
+                        <button
+                          className={`mt-3 px-4 py-2 rounded-lg text-sm font-medium ${canSaveViews?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                          onClick={()=> canSaveViews ? showToast('Schedule created (mock)') : null}
+                        >
+                          New schedule
+                        </button>
+                      </div>
+                    </div>
+                  </CardShell>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showExport && <ExportModal />}
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<ReportsPage />);
+</script>
+</body>
+</html>

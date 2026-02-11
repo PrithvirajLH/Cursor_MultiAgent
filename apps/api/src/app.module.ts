@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import path from 'path';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { AuditModule } from './audit/audit.module';
+import { AutomationModule } from './automation/automation.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
@@ -26,6 +28,8 @@ const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
       envFilePath: path.resolve(process.cwd(), envFile),
     }),
     AuthModule,
+    AuditModule,
+    AutomationModule,
     CannedResponsesModule,
     CategoriesModule,
     CustomFieldsModule,

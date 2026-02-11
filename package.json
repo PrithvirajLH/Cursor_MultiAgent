@@ -9,7 +9,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "concurrently -n api,web \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "dev:web": "npm run dev -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "deploy:zip": "powershell -ExecutionPolicy Bypass -File ./create-deploy-zip.ps1",
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "format": "npm run format -w apps/api && npm run format -w apps/web",
     "test:db:reset": "npm run test:db:reset -w apps/api",

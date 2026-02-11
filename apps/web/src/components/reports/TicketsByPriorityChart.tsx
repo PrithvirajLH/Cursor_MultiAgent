@@ -31,7 +31,7 @@ export function TicketsByPriorityChart({ data }: { data: Point[] }) {
     );
   }
   return (
-    <div className="h-[200px] w-full">
+    <div className="h-[200px] w-full min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />

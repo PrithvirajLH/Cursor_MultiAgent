@@ -49,7 +49,8 @@ const PAGES: PageResult[] = [
   { key: 'admin', label: 'Admin Settings', path: '/admin', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] },
   { key: 'routing', label: 'Routing Rules', path: '/routing', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] },
   { key: 'categories', label: 'Categories', path: '/categories', icon: FolderKanban, roles: ['OWNER'] },
-  { key: 'custom-fields', label: 'Custom Fields', path: '/custom-fields', icon: ListChecks, roles: ['TEAM_ADMIN', 'OWNER'] }
+  { key: 'custom-fields', label: 'Custom Fields', path: '/custom-fields', icon: ListChecks, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'audit-log', label: 'Audit Log', path: '/audit-log', icon: History, roles: ['TEAM_ADMIN', 'OWNER'] }
 ];
 
 const ACTIONS = [
@@ -181,7 +182,7 @@ export function CommandPalette({
           setLoading(false);
         }
       }
-    }, 300);
+    }, 200);
 
     return () => {
       clearTimeout(timer);

@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { AutomationModule } from '../automation/automation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SlaBreachService } from './sla-breach.service';
@@ -7,7 +8,7 @@ import { SlasController } from './slas.controller';
 import { SlasService } from './slas.service';
 
 @Module({
-  imports: [PrismaModule, NotificationsModule],
+  imports: [forwardRef(() => AutomationModule), PrismaModule, NotificationsModule],
   controllers: [SlasController],
   providers: [SlasService, SlaEngineService, SlaBreachService],
   exports: [SlaEngineService],

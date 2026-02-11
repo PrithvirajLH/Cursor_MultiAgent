@@ -33,16 +33,16 @@ function statusAxisLabel(status: string): string {
   return status;
 }
 
-export function TicketsByStatusChart({ data }: { data: Point[] }) {
+export function TicketsByStatusChart({ data, height = 200 }: { data: Point[]; height?: number }) {
   if (data.length === 0) {
     return (
-      <div className="h-[200px] flex items-center justify-center text-sm text-slate-500">
+      <div className="flex items-center justify-center text-sm text-slate-500" style={{ height }}>
         No tickets in range
       </div>
     );
   }
   return (
-    <div className="h-[200px] w-full">
+    <div className="w-full min-h-0 overflow-visible" style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
