@@ -15,6 +15,7 @@ export type UserRef = {
   id: string;
   email: string;
   displayName: string;
+  role?: string;
 };
 
 export type TeamRef = {
@@ -155,7 +156,14 @@ export type SlaPolicy = {
 
 export type TicketListResponse = {
   data: TicketRecord[];
-  meta: { page: number; pageSize: number; total: number; totalPages: number };
+  meta: PaginationMeta;
+};
+
+export type PaginationMeta = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 export type TicketActivityPoint = {
@@ -536,9 +544,41 @@ export function fetchTeams() {
   return apiFetch<{ data: TeamRef[] }>('/teams');
 }
 
-export function fetchUsers(role?: string) {
-  const suffix = role ? `?role=${role}` : '';
-  return apiFetch<{ data: UserRef[] }>(`/users${suffix}`);
+type FetchUsersParams = {
+  role?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export function fetchUsers(params?: FetchUsersParams) {
+  const query = new URLSearchParams();
+  if (params?.role) query.set('role', params.role);
+  if (params?.q) query.set('q', params.q);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return apiFetch<{ data: UserRef[]; meta: PaginationMeta }>(`/users${suffix}`);
+}
+
+export async function fetchAllUsers(params?: Omit<FetchUsersParams, 'page'>) {
+  const pageSize = Math.min(Math.max(params?.pageSize ?? 100, 1), 100);
+  let page = 1;
+  let totalPages = 1;
+  const users: UserRef[] = [];
+
+  while (page <= totalPages) {
+    const response = await fetchUsers({
+      ...params,
+      page,
+      pageSize
+    });
+    users.push(...response.data);
+    totalPages = response.meta.totalPages;
+    page += 1;
+  }
+
+  return { data: users };
 }
 
 export function fetchCategories(params?: { includeInactive?: boolean; q?: string; parentId?: string }) {

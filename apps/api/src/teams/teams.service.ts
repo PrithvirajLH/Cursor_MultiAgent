@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TeamRole, UserRole } from '@prisma/client';
+import { Prisma, TeamRole, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
@@ -30,10 +30,14 @@ export class TeamsService {
       }
       baseWhere.id = user.primaryTeamId;
     }
-    if (user?.role === UserRole.LEAD && user.primaryTeamId) {
-      baseWhere.id = user.primaryTeamId;
+    if (user?.role === UserRole.LEAD) {
+      const leadTeamId = user.teamId ?? user.primaryTeamId;
+      if (!leadTeamId) {
+        throw new ForbiddenException('Lead must belong to a team');
+      }
+      baseWhere.id = leadTeamId;
     }
-    // OWNER and non-admins: no team filter (full list or caller restricts elsewhere)
+    // OWNER and non-privileged roles: no team filter (full list or caller restricts elsewhere)
     const where = {
       ...baseWhere,
       ...(query.q
@@ -116,24 +120,35 @@ export class TeamsService {
     this.ensureTeamAdminOrOwner(user, teamId);
 
     await this.ensureTeam(teamId);
-    await this.ensureUser(payload.userId);
+    const targetUser = await this.ensureUser(payload.userId);
+    this.ensureEligibleTeamMemberRole(targetUser.role);
+    const teamRole = this.resolveTeamRole(targetUser.role, payload.role);
 
-    return this.prisma.teamMember.upsert({
-      where: {
-        teamId_userId: {
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.teamMember.upsert({
+        where: {
+          teamId_userId: {
+            teamId,
+            userId: payload.userId,
+          },
+        },
+        update: {
+          role: teamRole,
+        },
+        create: {
           teamId,
           userId: payload.userId,
+          role: teamRole,
         },
-      },
-      update: {
-        role: payload.role ?? TeamRole.AGENT,
-      },
-      create: {
-        teamId,
-        userId: payload.userId,
-        role: payload.role ?? TeamRole.AGENT,
-      },
-      include: { user: true, team: true },
+        include: { user: true, team: true },
+      });
+
+      await this.syncOperationalUserRole(tx, payload.userId);
+
+      return tx.teamMember.findUniqueOrThrow({
+        where: { id: member.id },
+        include: { user: true, team: true },
+      });
     });
   }
 
@@ -147,16 +162,29 @@ export class TeamsService {
 
     const member = await this.prisma.teamMember.findUnique({
       where: { id: memberId },
+      include: { user: true },
     });
 
     if (!member || member.teamId !== teamId) {
       throw new NotFoundException('Team member not found');
     }
 
-    return this.prisma.teamMember.update({
-      where: { id: memberId },
-      data: { role: payload.role },
-      include: { user: true, team: true },
+    this.ensureEligibleTeamMemberRole(member.user.role);
+    const teamRole = this.resolveTeamRole(member.user.role, payload.role);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.teamMember.update({
+        where: { id: memberId },
+        data: { role: teamRole },
+        include: { user: true, team: true },
+      });
+
+      await this.syncOperationalUserRole(tx, member.user.id);
+
+      return tx.teamMember.findUniqueOrThrow({
+        where: { id: updated.id },
+        include: { user: true, team: true },
+      });
     });
   }
 
@@ -171,7 +199,10 @@ export class TeamsService {
       throw new NotFoundException('Team member not found');
     }
 
-    await this.prisma.teamMember.delete({ where: { id: memberId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.teamMember.delete({ where: { id: memberId } });
+      await this.syncOperationalUserRole(tx, member.userId);
+    });
 
     return { id: memberId };
   }
@@ -213,6 +244,107 @@ export class TeamsService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
+    return user;
+  }
+
+  private ensureEligibleTeamMemberRole(userRole: UserRole) {
+    if (
+      userRole === UserRole.EMPLOYEE ||
+      userRole === UserRole.AGENT ||
+      userRole === UserRole.LEAD ||
+      userRole === UserRole.TEAM_ADMIN ||
+      userRole === UserRole.ADMIN
+    ) {
+      return;
+    }
+    throw new ForbiddenException(
+      'Only employee, agent, lead, or team admin users can be added as team members',
+    );
+  }
+
+  private resolveTeamRole(userRole: UserRole, requestedRole?: TeamRole) {
+    const defaultTeamRole =
+      userRole === UserRole.TEAM_ADMIN || userRole === UserRole.ADMIN
+        ? TeamRole.ADMIN
+        : TeamRole.AGENT;
+    const teamRole = requestedRole ?? defaultTeamRole;
+
+    if (
+      (userRole === UserRole.TEAM_ADMIN || userRole === UserRole.ADMIN) &&
+      teamRole !== TeamRole.ADMIN
+    ) {
+      throw new ForbiddenException('Team admin users must use ADMIN team role');
+    }
+
+    if (
+      userRole !== UserRole.TEAM_ADMIN &&
+      userRole !== UserRole.ADMIN &&
+      teamRole === TeamRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'ADMIN team role is only allowed for team admin users',
+      );
+    }
+
+    if (userRole === UserRole.EMPLOYEE && teamRole !== TeamRole.AGENT) {
+      throw new ForbiddenException(
+        'Employees can only be promoted to AGENT when added to a team',
+      );
+    }
+
+    return teamRole;
+  }
+
+  private async syncOperationalUserRole(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ) {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (
+      user.role === UserRole.OWNER ||
+      user.role === UserRole.TEAM_ADMIN ||
+      user.role === UserRole.ADMIN
+    ) {
+      return;
+    }
+
+    const memberships = await tx.teamMember.findMany({
+      where: { userId },
+      select: { role: true },
+    });
+
+    const hasLeadMembership = memberships.some(
+      (membership) => membership.role === TeamRole.LEAD,
+    );
+    const hasOperationalMembership = memberships.some(
+      (membership) =>
+        membership.role === TeamRole.LEAD ||
+        membership.role === TeamRole.AGENT ||
+        membership.role === TeamRole.ADMIN,
+    );
+
+    const desiredRole = hasLeadMembership
+      ? UserRole.LEAD
+      : hasOperationalMembership
+        ? UserRole.AGENT
+        : UserRole.EMPLOYEE;
+
+    if (desiredRole === user.role) {
+      return;
+    }
+
+    await tx.user.update({
+      where: { id: userId },
+      data: { role: desiredRole },
+    });
   }
 
   private slugify(value: string) {

@@ -244,12 +244,20 @@ export class TicketsService {
     }
 
     if (query.q) {
-      filters.push({
-        OR: [
-          { subject: { contains: query.q, mode: 'insensitive' } },
-          { description: { contains: query.q, mode: 'insensitive' } },
-        ],
-      });
+      const term = query.q.trim();
+      const searchFilters: Prisma.TicketWhereInput[] = [
+        { subject: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
+        { displayId: { contains: term, mode: 'insensitive' } },
+      ];
+      const numberMatch = term.match(/\d+/);
+      if (numberMatch) {
+        const parsed = Number(numberMatch[0]);
+        if (Number.isSafeInteger(parsed)) {
+          searchFilters.push({ number: parsed });
+        }
+      }
+      filters.push({ OR: searchFilters });
     }
 
     filters.push(this.buildAccessFilter(user));
@@ -274,6 +282,7 @@ export class TicketsService {
           number: true,
           displayId: true,
           subject: true,
+          description: true,
           status: true,
           priority: true,
           channel: true,
@@ -572,8 +581,21 @@ export class TicketsService {
     }
 
     const limit = Math.max(1, Math.min(100, take));
+    const where: Prisma.TicketEventWhereInput = {
+      ticketId,
+      ...(user.role === UserRole.EMPLOYEE
+        ? {
+            NOT: {
+              AND: [
+                { type: 'MESSAGE_ADDED' },
+                { payload: { path: ['type'], equals: MessageType.INTERNAL } },
+              ],
+            },
+          }
+        : {}),
+    };
     const events = await this.prisma.ticketEvent.findMany({
-      where: { ticketId },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -829,7 +851,7 @@ export class TicketsService {
           messageId: message.id,
           type: message.type,
         },
-        createdById: payload.authorId,
+        createdById: user.id,
       },
     });
 

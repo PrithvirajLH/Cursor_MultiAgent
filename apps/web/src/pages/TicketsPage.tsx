@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Search, SlidersHorizontal, X } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   bulkAssignTickets,
   bulkPriorityTickets,
@@ -23,9 +23,11 @@ import { useFilters } from '../hooks/useFilters';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useTicketSelection } from '../hooks/useTicketSelection';
 import { useToast } from '../hooks/useToast';
-import type { Role, StatusFilter, TicketScope } from '../types';
+import type { Role, StatusFilter, TicketFilters, TicketScope } from '../types';
 
 type SortPreset = 'updated_desc' | 'updated_asc' | 'created_desc' | 'created_asc' | 'completed_desc';
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_KEYS: Array<keyof TicketFilters> = ['page', 'pageSize'];
 
 function sortPresetFromFilters(sort: string, order: string): SortPreset {
   if (sort === 'createdAt' && order === 'asc') return 'created_asc';
@@ -46,6 +48,42 @@ function countActiveFilterGroups(filters: ReturnType<typeof useFilters>['filters
   if (filters.createdFrom || filters.createdTo || filters.updatedFrom || filters.updatedTo || filters.dueFrom || filters.dueTo) count += 1;
   if (filters.q.trim()) count += 1;
   return count;
+}
+
+function cloneTicketFilters(filters: TicketFilters): TicketFilters {
+  return {
+    ...filters,
+    statuses: [...filters.statuses],
+    priorities: [...filters.priorities],
+    teamIds: [...filters.teamIds],
+    assigneeIds: [...filters.assigneeIds],
+    requesterIds: [...filters.requesterIds],
+    slaStatus: [...filters.slaStatus],
+  };
+}
+
+function clearedTicketFilters(presetScope: TicketScope, presetStatus: StatusFilter): TicketFilters {
+  return {
+    statusGroup: presetStatus,
+    statuses: [],
+    priorities: [],
+    teamIds: [],
+    assigneeIds: [],
+    requesterIds: [],
+    slaStatus: [],
+    createdFrom: '',
+    createdTo: '',
+    updatedFrom: '',
+    updatedTo: '',
+    dueFrom: '',
+    dueTo: '',
+    q: '',
+    scope: presetScope,
+    sort: 'updatedAt',
+    order: 'desc',
+    page: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+  };
 }
 
 type TicketsHeaderProps = {
@@ -87,6 +125,7 @@ export function TicketsPage({
   headerProps?: TicketsHeaderProps;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } = useFilters(
     presetScope,
@@ -101,6 +140,7 @@ export function TicketsPage({
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advancedDraft, setAdvancedDraft] = useState<TicketFilters | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.q);
   const ticketsRequestSeqRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -119,17 +159,66 @@ export function TicketsPage({
     return () => window.clearTimeout(timer);
   }, [filters.q, searchDraft, setFilters]);
 
+  const openAdvancedFilters = useCallback(() => {
+    setAdvancedDraft(cloneTicketFilters(filters));
+    setShowAdvancedFilters(true);
+  }, [filters]);
+
+  const closeAdvancedFilters = useCallback(() => {
+    setShowAdvancedFilters(false);
+    setAdvancedDraft(null);
+  }, []);
+
+  const setAdvancedDraftFilters = useCallback(
+    (updates: Partial<TicketFilters>) => {
+      setAdvancedDraft((prev) => {
+        const base = prev ?? cloneTicketFilters(filters);
+        const hasNonPageUpdates = Object.keys(updates).some(
+          (key) => !PAGE_KEYS.includes(key as keyof TicketFilters),
+        );
+        const next = { ...base, ...updates };
+        if (hasNonPageUpdates) {
+          next.page = 1;
+        }
+        return next;
+      });
+    },
+    [filters],
+  );
+
+  const clearAdvancedDraft = useCallback(() => {
+    setAdvancedDraft(clearedTicketFilters(presetScope, presetStatus));
+  }, [presetScope, presetStatus]);
+
+  const applyAdvancedDraft = useCallback(() => {
+    if (advancedDraft) {
+      setFilters(advancedDraft);
+    }
+    closeAdvancedFilters();
+  }, [advancedDraft, closeAdvancedFilters, setFilters]);
+
+  const hasOnlyResolvedStatuses = useMemo(
+    () =>
+      filters.statuses.length > 0 &&
+      filters.statuses.every((status) => status === 'RESOLVED' || status === 'CLOSED'),
+    [filters.statuses],
+  );
+
+  const effectiveSort = useMemo(
+    () =>
+      filters.sort === 'completedAt' &&
+      filters.statusGroup !== 'resolved' &&
+      !hasOnlyResolvedStatuses
+        ? 'createdAt'
+        : filters.sort,
+    [filters.sort, filters.statusGroup, hasOnlyResolvedStatuses],
+  );
+
   const loadTickets = useCallback(async () => {
     const requestSeq = ++ticketsRequestSeqRef.current;
     setLoadingTickets(true);
     setTicketError(null);
     try {
-      const effectiveSort =
-        filters.statusGroup === 'resolved'
-          ? filters.sort
-          : filters.sort === 'completedAt'
-            ? 'createdAt'
-            : filters.sort;
       const response = await fetchTickets({
         ...apiParams,
         sort: effectiveSort,
@@ -146,7 +235,7 @@ export function TicketsPage({
         setLoadingTickets(false);
       }
     }
-  }, [apiParams, filters.sort, filters.statusGroup]);
+  }, [apiParams, effectiveSort]);
 
   const searchParamsString = searchParams.toString();
   useEffect(() => {
@@ -197,12 +286,15 @@ export function TicketsPage({
 
   const quickAssigneeValue = filters.assigneeIds.length === 1 ? filters.assigneeIds[0] : '';
   const quickPriorityValue = filters.priorities.length === 1 ? filters.priorities[0] : '';
-  const sortPreset = sortPresetFromFilters(filters.sort, filters.order);
+  const sortPreset = sortPresetFromFilters(effectiveSort, filters.order);
   const activeFilterCount = countActiveFilterGroups(filters);
+  const drawerFilters = advancedDraft ?? filters;
 
   const totalCount = listMeta?.total ?? tickets.length;
   const countLabel =
-    filters.statusGroup === 'open'
+    filters.statuses.length > 0
+      ? `${totalCount} tickets`
+      : filters.statusGroup === 'open'
       ? `${totalCount} open tickets`
       : filters.statusGroup === 'resolved'
         ? `${totalCount} resolved tickets`
@@ -259,7 +351,7 @@ export function TicketsPage({
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setFilters({ statusGroup: value })}
+                  onClick={() => setFilters({ statusGroup: value, statuses: [] })}
                   className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                     (filters.statusGroup ?? 'all') === value
                       ? 'bg-blue-600 text-white'
@@ -278,7 +370,7 @@ export function TicketsPage({
                 type="text"
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
-                placeholder="Search tickets by ID or subject..."
+                placeholder="Search by ticket ID, subject, or description..."
                 className="h-10 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
@@ -332,7 +424,7 @@ export function TicketsPage({
             {role !== 'EMPLOYEE' ? (
               <button
                 type="button"
-                onClick={() => setShowAdvancedFilters(true)}
+                onClick={openAdvancedFilters}
                 className="inline-flex h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
               >
                 <SlidersHorizontal className="h-4 w-4" />
@@ -426,7 +518,11 @@ export function TicketsPage({
                 toggleAll: selection.toggleAll,
                 isAllSelected: selection.isAllSelected,
               }}
-              onRowClick={(ticket) => navigate(`/tickets/${ticket.id}`)}
+              onRowClick={(ticket) =>
+                navigate(`/tickets/${ticket.id}`, {
+                  state: { fromTicketsPath: `${location.pathname}${location.search}` },
+                })
+              }
             />
           </div>
         ) : null}
@@ -491,7 +587,7 @@ export function TicketsPage({
       {showAdvancedFilters && role !== 'EMPLOYEE' ? (
         <div
           className="fixed inset-0 z-50 flex justify-end bg-black/50"
-          onClick={() => setShowAdvancedFilters(false)}
+          onClick={closeAdvancedFilters}
         >
           <div
             className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-fade-in"
@@ -501,7 +597,7 @@ export function TicketsPage({
               <h2 className="text-lg font-semibold text-gray-900">Advanced Filters</h2>
               <button
                 type="button"
-                onClick={() => setShowAdvancedFilters(false)}
+                onClick={closeAdvancedFilters}
                 className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
                 aria-label="Close advanced filters"
               >
@@ -511,10 +607,10 @@ export function TicketsPage({
 
             <div className="p-6">
               <FilterPanel
-                filters={filters}
-                setFilters={setFilters}
-                clearFilters={clearFilters}
-                hasActiveFilters={hasActiveFilters}
+                filters={drawerFilters}
+                setFilters={setAdvancedDraftFilters}
+                clearFilters={clearAdvancedDraft}
+                hasActiveFilters={countActiveFilterGroups(drawerFilters) > 0}
                 showTeamFilter={role === 'OWNER'}
                 teamsList={teamsList}
                 assignableUsers={assignableUsers}
@@ -522,17 +618,16 @@ export function TicketsPage({
                 drawerMode
                 onSaveSuccess={() => {
                   toast.success('View saved');
-                  loadTickets();
                 }}
                 onError={(message) => toast.error(message)}
-                onClose={() => setShowAdvancedFilters(false)}
+                onClose={closeAdvancedFilters}
               />
             </div>
 
             <div className="sticky bottom-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-4">
               <button
                 type="button"
-                onClick={clearFilters}
+                onClick={clearAdvancedDraft}
                 className="text-sm text-gray-600 transition-colors hover:text-gray-900"
               >
                 Clear all
@@ -540,14 +635,14 @@ export function TicketsPage({
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowAdvancedFilters(false)}
+                  onClick={closeAdvancedFilters}
                   className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAdvancedFilters(false)}
+                  onClick={applyAdvancedDraft}
                   className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
                 >
                   Apply Filters

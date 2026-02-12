@@ -809,7 +809,16 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-900">Recent Activity</h2>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-slate-600">Updated in: {rangeLabel}</span>
+                  <select
+                    value={range}
+                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                    aria-label="Activity range"
+                  >
+                    <option value="3">Last 3 days</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                  </select>
                   <select
                     value={sort}
                     onChange={(event) => setSort(event.target.value as 'recent' | 'oldest')}
@@ -874,7 +883,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
                   <div className="mt-4 text-center">
                     <button
                       type="button"
-                      onClick={() => navigate('/tickets')}
+                      onClick={() => navigate('/tickets?scope=created')}
                       className="text-sm font-medium text-blue-600 transition hover:text-blue-700"
                     >
                       View my tickets →

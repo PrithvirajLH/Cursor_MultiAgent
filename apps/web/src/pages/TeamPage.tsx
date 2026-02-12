@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, ChevronDown, ShieldAlert, Users } from 'lucide-react';
 import {
   addTeamMember,
+  fetchAllUsers,
   fetchTeamMembers,
-  fetchUsers,
   removeTeamMember,
   updateTeamMember,
   type NotificationRecord,
@@ -14,7 +14,17 @@ import {
 import { TopBar } from '../components/TopBar';
 import type { Role } from '../types';
 
-const TEAM_ROLES = ['AGENT', 'LEAD', 'ADMIN'] as const;
+const ELIGIBLE_MEMBER_USER_ROLES = new Set(['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'ADMIN']);
+
+function getAllowedTeamRolesForUser(userRole?: string | null): string[] {
+  if (userRole === 'TEAM_ADMIN' || userRole === 'ADMIN') {
+    return ['ADMIN'];
+  }
+  if (userRole === 'EMPLOYEE') {
+    return ['AGENT'];
+  }
+  return ['AGENT', 'LEAD'];
+}
 
 type TeamHeaderProps = {
   title: string;
@@ -55,6 +65,10 @@ function MemberRoleDropdown({
   onChange: (member: TeamMember, role: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const roleOptions = useMemo(
+    () => getAllowedTeamRolesForUser(member.user.role ?? null),
+    [member.user.role]
+  );
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
@@ -84,7 +98,7 @@ function MemberRoleDropdown({
       </button>
       {open && !disabled ? (
         <div className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-slate-200 bg-white shadow-lg">
-          {TEAM_ROLES.map((roleValue) => (
+          {roleOptions.map((roleValue) => (
             <button
               key={`${member.id}-${roleValue}`}
               type="button"
@@ -148,6 +162,8 @@ export function TeamPage({
   const [showTeamDropdown, setShowTeamDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const usersRequestSeqRef = useRef(0);
+  const membersRequestSeqRef = useRef(0);
 
   const isAdmin = role === 'OWNER' || role === 'TEAM_ADMIN';
   const isOwner = role === 'OWNER';
@@ -171,7 +187,7 @@ export function TeamPage({
       return;
     }
     void loadUsers();
-  }, [isAdmin]);
+  }, [headerProps?.currentEmail, isAdmin]);
 
   // Auto-select department for Lead and Team Admin (API returns only their team)
   useEffect(() => {
@@ -197,37 +213,60 @@ export function TeamPage({
     }
   }, [selectedTeamId, teamsList]);
 
+  useEffect(() => {
+    setSelectedUserId('');
+    setSelectedRole('AGENT');
+    setShowUserDropdown(false);
+    setShowRoleDropdown(false);
+    setActionError(null);
+  }, [selectedTeamId]);
+
   const showDepartmentDropdown = isOwner;
 
   async function loadUsers() {
+    const requestSeq = ++usersRequestSeqRef.current;
     setLoadingUsers(true);
     setActionError(null);
     try {
-      const response = await fetchUsers();
+      const response = await fetchAllUsers();
+      if (usersRequestSeqRef.current !== requestSeq) return;
       setAllUsers(response.data);
     } catch {
+      if (usersRequestSeqRef.current !== requestSeq) return;
       setActionError('Unable to load users.');
     } finally {
+      if (usersRequestSeqRef.current !== requestSeq) return;
       setLoadingUsers(false);
     }
   }
 
   async function loadMembers(teamId: string) {
+    const requestSeq = ++membersRequestSeqRef.current;
     setLoadingMembers(true);
     setMemberError(null);
     try {
       const response = await fetchTeamMembers(teamId);
+      if (membersRequestSeqRef.current !== requestSeq) return;
       setMembers(response.data);
     } catch {
+      if (membersRequestSeqRef.current !== requestSeq) return;
       setMemberError('Unable to load team members.');
       setMembers([]);
     } finally {
+      if (membersRequestSeqRef.current !== requestSeq) return;
       setLoadingMembers(false);
     }
   }
 
   async function handleAddMember() {
-    if (!selectedTeamId || !selectedUserId || actionLoading) return;
+    if (
+      !selectedTeamId ||
+      !selectedUserId ||
+      actionLoading ||
+      !availableUsers.some((user) => user.id === selectedUserId)
+    ) {
+      return;
+    }
     setActionLoading(true);
     setActionError(null);
     try {
@@ -277,14 +316,45 @@ export function TeamPage({
     }
   }
 
+  const eligibleUsers = useMemo(() => {
+    if (!isAdmin) return [];
+    return allUsers.filter((user) => !user.role || ELIGIBLE_MEMBER_USER_ROLES.has(user.role));
+  }, [allUsers, isAdmin]);
+
   const availableUsers = useMemo(() => {
     if (!isAdmin) return [];
     const memberUserIds = new Set(members.map((member) => member.user.id));
-    return allUsers.filter((user) => !memberUserIds.has(user.id));
-  }, [allUsers, isAdmin, members]);
+    return eligibleUsers.filter((user) => !memberUserIds.has(user.id));
+  }, [eligibleUsers, isAdmin, members]);
+
+  useEffect(() => {
+    if (selectedUserId && !availableUsers.some((user) => user.id === selectedUserId)) {
+      setSelectedUserId('');
+    }
+  }, [availableUsers, selectedUserId]);
 
   const selectedTeam = teamsList.find((team) => team.id === selectedTeamId) ?? null;
-  const selectedUser = allUsers.find((user) => user.id === selectedUserId) ?? null;
+  const selectedUser = availableUsers.find((user) => user.id === selectedUserId) ?? null;
+  const addRoleOptions = useMemo(
+    () => getAllowedTeamRolesForUser(selectedUser?.role ?? null),
+    [selectedUser?.role]
+  );
+  const canAddSelectedUser = selectedUserId.length > 0 && availableUsers.some((user) => user.id === selectedUserId);
+  const userSelectionLabel = selectedUser
+    ? selectedUser.displayName
+    : loadingUsers
+      ? 'Loading users...'
+      : availableUsers.length > 0
+        ? 'Select user'
+        : eligibleUsers.length === 0
+          ? 'No eligible users available'
+          : 'All eligible users are already members';
+
+  useEffect(() => {
+    if (!addRoleOptions.includes(selectedRole)) {
+      setSelectedRole(addRoleOptions[0] ?? 'AGENT');
+    }
+  }, [addRoleOptions, selectedRole]);
 
   return (
     <section className="min-h-full bg-slate-50 animate-fade-in">
@@ -497,15 +567,7 @@ export function TeamPage({
                             onClick={() => setShowUserDropdown((prev) => !prev)}
                             className="flex w-full items-center justify-between rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
                           >
-                            <span className="text-slate-700">
-                              {selectedUser
-                                ? selectedUser.displayName
-                                : availableUsers.length > 0
-                                  ? loadingUsers
-                                    ? 'Loading users...'
-                                    : 'Select user'
-                                  : 'All users are already members'}
-                            </span>
+                            <span className="text-slate-700">{userSelectionLabel}</span>
                             <ChevronDown className="h-4 w-4 text-slate-500" />
                           </button>
 
@@ -544,7 +606,7 @@ export function TeamPage({
                           </button>
                           {showRoleDropdown ? (
                             <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg">
-                              {TEAM_ROLES.map((roleValue) => (
+                              {addRoleOptions.map((roleValue) => (
                                 <button
                                   key={`new-member-${roleValue}`}
                                   type="button"
@@ -565,7 +627,7 @@ export function TeamPage({
                       <button
                         type="button"
                         onClick={() => void handleAddMember()}
-                        disabled={!selectedUserId || actionLoading || loadingUsers}
+                        disabled={!canAddSelectedUser || actionLoading || loadingUsers}
                         className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
                         {actionLoading ? 'Adding...' : 'Add member'}

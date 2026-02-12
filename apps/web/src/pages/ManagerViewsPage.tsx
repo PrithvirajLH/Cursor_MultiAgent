@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -34,41 +34,37 @@ import { TopBar } from '../components/TopBar';
 import { formatStatus, formatTicketId } from '../utils/format';
 
 type TabKey = 'overview' | 'agents' | 'performance' | 'workload';
-type SortKey = 'performance' | 'workload' | 'sla' | 'response';
+type SortKey = 'workload' | 'resolved' | 'response' | 'resolution';
 
 type AgentStats = {
   id: string;
   name: string;
   email: string;
   avatar: string;
-  role: string;
-  status: 'online' | 'away' | 'offline';
   openTickets: number;
-  resolvedToday: number;
+  inProgress: number;
   resolvedPeriod: number;
-  avgResponseHours: number;
-  avgResolutionHours: number;
-  slaCompliance: number;
-  csatScore: number;
-  utilization: number;
-  performance: number;
-  activeTime: string;
-  badges: string[];
+  firstResponses: number;
+  avgResponseHours: number | null;
+  avgResolutionHours: number | null;
 };
 
 type MetricSummary = {
-  totalTickets: number;
-  openTickets: number;
-  resolvedTickets: number;
-  avgResponseTime: string;
+  createdInRange: number;
+  resolvedInRange: number;
+  currentOpenTickets: number;
+  avgFirstResponseTime: string;
   avgResolutionTime: string;
   slaCompliance: string;
-  csatScore: string;
+  slaMet: number;
+  slaBreached: number;
+  firstResponseMet: number;
+  firstResponseBreached: number;
+  resolutionMet: number;
+  resolutionBreached: number;
   firstResponseSla: string;
   resolutionSla: string;
 };
-
-type AlertRow = { type: 'warning' | 'info' | 'success'; text: string; key: string };
 type ManagerHeaderProps = {
   title: string;
   subtitle: string;
@@ -90,16 +86,12 @@ type ManagerHeaderProps = {
 
 const DATE_OPTIONS = [7, 14, 30] as const;
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: 'performance', label: 'Performance' },
   { key: 'workload', label: 'Workload' },
-  { key: 'sla', label: 'SLA Compliance' },
-  { key: 'response', label: 'Response Time' }
+  { key: 'resolved', label: 'Resolved Tickets' },
+  { key: 'response', label: 'First Response Time' },
+  { key: 'resolution', label: 'Resolution Time' }
 ];
 const CHART_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#64748b'];
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
 
 function ymd(date: Date) {
   const y = date.getFullYear();
@@ -115,18 +107,49 @@ function initials(name: string) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
-function hfmt(hours: number) {
-  if (!Number.isFinite(hours) || hours <= 0) return '—';
+function hfmt(hours: number | null) {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return '—';
   return `${hours.toFixed(1)}h`;
 }
 
-function ProgressBar({ value }: { value: number }) {
-  const tone = value >= 90 ? 'bg-green-500' : value >= 80 ? 'bg-amber-500' : 'bg-red-500';
-  return (
-    <div className="h-2 w-full rounded-full bg-gray-200">
-      <div className={`h-2 rounded-full ${tone}`} style={{ width: `${clamp(value, 0, 100)}%` }} />
-    </div>
-  );
+function formatUtcShortDate(isoDate: string) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    return isoDate;
+  }
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function formatUtcTooltipDate(isoDate: string) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) {
+    return isoDate;
+  }
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function csvCell(value: string | number | boolean | null | undefined) {
+  const raw = value == null ? '' : String(value);
+  if (/[",\n]/.test(raw)) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function downloadCsv(filename: string, rows: Array<Array<string | number | boolean | null | undefined>>) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = window.document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  window.document.body.appendChild(link);
+  link.click();
+  window.document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -135,8 +158,26 @@ function PriorityBadge({ priority }: { priority: string }) {
   return <span className={`rounded-md px-2 py-1 text-xs font-medium ${tone}`}>{label}</span>;
 }
 
-function statusDot(status: AgentStats['status']) {
-  return status === 'online' ? 'bg-green-500' : status === 'away' ? 'bg-yellow-500' : 'bg-slate-400';
+async function fetchAllOpenTickets() {
+  const pageSize = 100;
+  const allTickets: TicketRecord[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const response = await fetchTickets({
+      statusGroup: 'open',
+      sort: 'updatedAt',
+      order: 'desc',
+      pageSize,
+      page
+    });
+    allTickets.push(...response.data);
+    totalPages = response.meta.totalPages || 1;
+    page += 1;
+  } while (page <= totalPages);
+
+  return allTickets;
 }
 
 function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void }) {
@@ -148,7 +189,7 @@ function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">{agent.avatar}</div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">{agent.name}</h2>
-              <p className="text-sm text-gray-500">{agent.role}</p>
+              <p className="text-sm text-gray-500">{agent.email}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700" aria-label="Close">
@@ -157,10 +198,12 @@ function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void
         </div>
         <div className="space-y-6 p-6">
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Performance</div><div className="text-2xl font-bold text-gray-900">{agent.performance}%</div><ProgressBar value={agent.performance} /></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">SLA Compliance</div><div className="text-2xl font-bold text-gray-900">{agent.slaCompliance}%</div><ProgressBar value={agent.slaCompliance} /></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Utilization</div><div className="text-2xl font-bold text-gray-900">{agent.utilization}%</div><ProgressBar value={agent.utilization} /></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">CSAT</div><div className="text-2xl font-bold text-gray-900">{agent.csatScore.toFixed(1)}</div><div className="text-xs text-gray-500">out of 5.0</div></div>
+            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Open Tickets</div><div className="text-2xl font-bold text-gray-900">{agent.openTickets}</div></div>
+            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">In Progress</div><div className="text-2xl font-bold text-gray-900">{agent.inProgress}</div></div>
+            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Resolved (Range)</div><div className="text-2xl font-bold text-gray-900">{agent.resolvedPeriod}</div></div>
+            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">First Responses (Range)</div><div className="text-2xl font-bold text-gray-900">{agent.firstResponses}</div></div>
+            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Avg First Response</div><div className="text-2xl font-bold text-gray-900">{hfmt(agent.avgResponseHours)}</div></div>
+            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Avg Resolution</div><div className="text-2xl font-bold text-gray-900">{hfmt(agent.avgResolutionHours)}</div></div>
           </div>
         </div>
       </div>
@@ -180,21 +223,22 @@ export function ManagerViewsPage({
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [dateRange, setDateRange] = useState<number>(30);
   const [showDateDropdown, setShowDateDropdown] = useState(false);
-  const [sortBy, setSortBy] = useState<SortKey>('performance');
+  const [sortBy, setSortBy] = useState<SortKey>('workload');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<MetricSummary | null>(null);
   const [agents, setAgents] = useState<AgentStats[]>([]);
-  const [alerts, setAlerts] = useState<AlertRow[]>([]);
   const [escalations, setEscalations] = useState<TicketRecord[]>([]);
-  const [trendData, setTrendData] = useState<Array<{ label: string; newTickets: number; resolved: number }>>([]);
+  const [trendData, setTrendData] = useState<Array<{ date: string; newTickets: number; resolved: number }>>([]);
   const [responseData, setResponseData] = useState<Array<{ name: string; hours: number }>>([]);
   const [slaData, setSlaData] = useState<Array<{ name: string; value: number; color: string }>>([]);
   const [workloadData, setWorkloadData] = useState<Array<{ name: string; openTickets: number }>>([]);
   const [categoryData, setCategoryData] = useState<Array<{ name: string; count: number; color: string }>>([]);
-  const [satisfactionData, setSatisfactionData] = useState<Array<{ label: string; score: number }>>([]);
+  const [reopenData, setReopenData] = useState<Array<{ date: string; count: number }>>([]);
+  const loadRequestIdRef = useRef(0);
+  const userScopeKey = headerProps?.currentEmail ?? '';
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -207,14 +251,11 @@ export function ManagerViewsPage({
   }, []);
 
   useEffect(() => {
-    let active = true;
-    void loadData(active);
-    return () => {
-      active = false;
-    };
-  }, [refreshKey, dateRange, teamsList]);
+    void loadData();
+  }, [refreshKey, dateRange, userScopeKey]);
 
-  async function loadData(active: boolean) {
+  async function loadData() {
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
     setError(null);
     const now = new Date();
@@ -222,7 +263,7 @@ export function ManagerViewsPage({
     from.setDate(now.getDate() - (dateRange - 1));
 
     try {
-      const [metricsRes, perfRes, workloadRes, slaRes, volumeRes, categoryRes, reopenRes, activityRes, openTicketsRes] = await Promise.all([
+      const [metricsRes, perfRes, workloadRes, slaRes, volumeRes, categoryRes, reopenRes, activityRes, openTickets] = await Promise.all([
         fetchTicketMetrics(),
         fetchReportAgentPerformance({ from: ymd(from), to: ymd(now) }),
         fetchReportAgentWorkload({ from: ymd(from), to: ymd(now) }),
@@ -231,88 +272,92 @@ export function ManagerViewsPage({
         fetchReportTicketsByCategory({ from: ymd(from), to: ymd(now) }),
         fetchReportReopenRate({ from: ymd(from), to: ymd(now) }),
         fetchTicketActivity({ from: ymd(from), to: ymd(now) }),
-        fetchTickets({ statusGroup: 'open', sort: 'updatedAt', order: 'desc', pageSize: 100 })
+        fetchAllOpenTickets()
       ]);
-      if (!active) return;
+      if (loadRequestIdRef.current !== requestId) return;
 
       const perfMap = new Map(perfRes.data.map((item) => [item.userId, item]));
       const loadMap = new Map(workloadRes.data.map((item) => [item.userId, item]));
       const ids = new Set<string>([...perfRes.data.map((item) => item.userId), ...workloadRes.data.map((item) => item.userId)]);
-      const builtAgents: AgentStats[] = Array.from(ids).map((id, index) => {
+      const builtAgents: AgentStats[] = Array.from(ids).map((id) => {
         const perf = perfMap.get(id);
         const load = loadMap.get(id);
         const name = perf?.name ?? load?.name ?? 'Unknown Agent';
         const openTickets = load?.assignedOpen ?? 0;
         const inProgress = load?.inProgress ?? 0;
         const resolvedPeriod = perf?.ticketsResolved ?? 0;
-        const resolvedToday = Math.max(0, Math.round(resolvedPeriod / Math.max(dateRange / 2, 1)));
-        const avgResponseHours = perf?.avgFirstResponseHours ?? 0;
-        const avgResolutionHours = perf?.avgResolutionHours ?? 0;
-        const responseScore = avgResponseHours > 0 ? clamp(100 - avgResponseHours * 18, 45, 100) : 75;
-        const resolutionScore = avgResolutionHours > 0 ? clamp(100 - avgResolutionHours * 6, 40, 100) : 75;
-        const throughputScore = clamp(resolvedPeriod * 4, 40, 100);
-        const loadScore = clamp(100 - openTickets * 5, 35, 100);
-        const performance = Math.round(responseScore * 0.35 + resolutionScore * 0.25 + throughputScore * 0.2 + loadScore * 0.2);
-        const slaCompliance = clamp(Math.round(performance * 0.88 + 10), 75, 99);
-        const utilization = clamp(55 + openTickets * 5 + inProgress * 3, 50, 99);
-        const csatScore = Number((3.8 + performance / 100 * 1.2).toFixed(1));
-        const status: AgentStats['status'] = utilization >= 90 ? 'online' : utilization >= 80 ? 'away' : index % 2 === 0 ? 'online' : 'offline';
-        const role = performance >= 93 ? 'Senior Agent' : performance >= 85 ? 'Agent' : 'Junior Agent';
-        const badges: string[] = [];
-        if (performance >= 95) badges.push('Top Performer');
-        if (avgResponseHours > 0 && avgResponseHours <= 1.5) badges.push('Fast Responder');
-        if (resolvedPeriod >= 20) badges.push('High Throughput');
+        const firstResponses = perf?.firstResponses ?? 0;
+        const avgResponseHours = perf?.avgFirstResponseHours ?? null;
+        const avgResolutionHours = perf?.avgResolutionHours ?? null;
         return {
           id,
           name,
           email: perf?.email ?? load?.email ?? '',
           avatar: initials(name),
-          role,
-          status,
           openTickets,
-          resolvedToday,
+          inProgress,
           resolvedPeriod,
+          firstResponses,
           avgResponseHours,
           avgResolutionHours,
-          slaCompliance,
-          csatScore,
-          utilization,
-          performance,
-          activeTime: `${Math.floor((utilization / 100) * 8)}h ${String(Math.round(((utilization / 100) * 8 * 60) % 60)).padStart(2, '0')}m`,
-          badges
         };
       });
       setAgents(builtAgents);
 
-      const avgResponse = builtAgents.length ? builtAgents.reduce((sum, item) => sum + item.avgResponseHours, 0) / builtAgents.length : 0;
-      const avgResolution = builtAgents.length ? builtAgents.reduce((sum, item) => sum + item.avgResolutionHours, 0) / builtAgents.length : 0;
-      const avgCsat = builtAgents.length ? builtAgents.reduce((sum, item) => sum + item.csatScore, 0) / builtAgents.length : 0;
+      const totalFirstResponses = builtAgents.reduce((sum, item) => sum + item.firstResponses, 0);
+      const totalResolved = builtAgents.reduce((sum, item) => sum + item.resolvedPeriod, 0);
+      const avgFirstResponseHours =
+        totalFirstResponses > 0
+          ? builtAgents.reduce((sum, item) => {
+              const response = item.avgResponseHours ?? 0;
+              return sum + response * item.firstResponses;
+            }, 0) / totalFirstResponses
+          : null;
+      const avgResolutionHours =
+        totalResolved > 0
+          ? builtAgents.reduce((sum, item) => {
+              const resolution = item.avgResolutionHours ?? 0;
+              return sum + resolution * item.resolvedPeriod;
+            }, 0) / totalResolved
+          : null;
+
       const firstResponseTotal = slaRes.data.firstResponseMet + slaRes.data.firstResponseBreached;
       const resolutionTotal = slaRes.data.resolutionMet + slaRes.data.resolutionBreached;
       const slaPct = slaRes.data.total > 0 ? Math.round((slaRes.data.met / slaRes.data.total) * 100) : 0;
+      const createdInRange = volumeRes.data.reduce((sum, item) => sum + item.count, 0);
+      const resolvedInRange = activityRes.data.reduce((sum, item) => sum + item.resolved, 0);
       setMetrics({
-        totalTickets: metricsRes.total,
-        openTickets: metricsRes.open,
-        resolvedTickets: metricsRes.resolved,
-        avgResponseTime: hfmt(avgResponse),
-        avgResolutionTime: hfmt(avgResolution),
+        createdInRange,
+        resolvedInRange,
+        currentOpenTickets: metricsRes.open,
+        avgFirstResponseTime: hfmt(avgFirstResponseHours),
+        avgResolutionTime: hfmt(avgResolutionHours),
         slaCompliance: `${slaPct}%`,
-        csatScore: avgCsat.toFixed(1),
-        firstResponseSla: firstResponseTotal > 0 ? `${Math.round((slaRes.data.firstResponseMet / firstResponseTotal) * 100)}%` : '0%',
-        resolutionSla: resolutionTotal > 0 ? `${Math.round((slaRes.data.resolutionMet / resolutionTotal) * 100)}%` : '0%'
+        slaMet: slaRes.data.met,
+        slaBreached: slaRes.data.breached,
+        firstResponseMet: slaRes.data.firstResponseMet,
+        firstResponseBreached: slaRes.data.firstResponseBreached,
+        resolutionMet: slaRes.data.resolutionMet,
+        resolutionBreached: slaRes.data.resolutionBreached,
+        firstResponseSla: firstResponseTotal > 0 ? `${Math.round((slaRes.data.firstResponseMet / firstResponseTotal) * 100)}%` : `${slaPct}%`,
+        resolutionSla: resolutionTotal > 0 ? `${Math.round((slaRes.data.resolutionMet / resolutionTotal) * 100)}%` : `${slaPct}%`
       });
 
       setTrendData(
         activityRes.data.map((item) => ({
-          label: new Date(`${item.date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: dateRange > 14 ? 'short' : 'short', timeZone: 'UTC' }),
+          date: item.date,
           newTickets: item.open,
           resolved: item.resolved
         }))
       );
       setResponseData(
-        [...builtAgents].sort((a, b) => a.avgResponseHours - b.avgResponseHours).slice(0, 8).map((item) => ({
+        [...builtAgents]
+          .filter((item) => item.avgResponseHours != null)
+          .sort((a, b) => (a.avgResponseHours ?? Number.MAX_VALUE) - (b.avgResponseHours ?? Number.MAX_VALUE))
+          .slice(0, 8)
+          .map((item) => ({
           name: item.name.split(' ')[0],
-          hours: Number(item.avgResponseHours.toFixed(2))
+          hours: Number((item.avgResponseHours ?? 0).toFixed(2))
         }))
       );
       setWorkloadData(
@@ -325,75 +370,107 @@ export function ManagerViewsPage({
         categoryRes.data.slice(0, 7).map((item, index) => ({ name: item.name, count: item.count, color: CHART_COLORS[index % CHART_COLORS.length] }))
       );
 
-      const dueNow = Date.now();
-      let atRisk = 0;
-      let breached = 0;
-      for (const ticket of openTicketsRes.data) {
-        if (!ticket.dueAt) continue;
-        const diff = new Date(ticket.dueAt).getTime() - dueNow;
-        if (diff < 0) breached += 1;
-        if (diff >= 0 && diff <= 4 * 60 * 60 * 1000) atRisk += 1;
-      }
-      const pie = [
+      const slaBars = [
         { name: 'Met', value: slaRes.data.met, color: '#22c55e' },
-        { name: 'At Risk', value: atRisk, color: '#f59e0b' },
-        { name: 'Breached', value: Math.max(slaRes.data.breached, breached), color: '#ef4444' }
+        { name: 'Breached', value: slaRes.data.breached, color: '#ef4444' },
       ].filter((item) => item.value > 0);
-      setSlaData(pie.length ? pie : [{ name: 'No Data', value: 1, color: '#cbd5e1' }]);
+      setSlaData(slaBars.length ? slaBars : [{ name: 'No Data', value: 1, color: '#cbd5e1' }]);
 
-      const volumeByDate = new Map(volumeRes.data.map((item) => [item.date, item.count]));
-      setSatisfactionData(
-        reopenRes.data.map((item) => {
-          const volume = Math.max(volumeByDate.get(item.date) ?? 1, 1);
-          const rate = item.count / volume;
-          return {
-            label: new Date(`${item.date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }),
-            score: Number(clamp(4.9 - rate * 2.5, 3.5, 5).toFixed(2))
-          };
-        })
+      setReopenData(
+        reopenRes.data.map((item) => ({
+          date: item.date,
+          count: item.count
+        }))
       );
-
-      const alertRows: AlertRow[] = [];
-      for (const agent of builtAgents) {
-        if (agent.openTickets >= 10) alertRows.push({ type: 'warning', text: `${agent.name} has high workload (${agent.openTickets} open tickets).`, key: `${agent.id}-load` });
-        if (agent.performance >= 95) alertRows.push({ type: 'success', text: `${agent.name} is top performer (${agent.performance}%).`, key: `${agent.id}-perf` });
-        if (agent.avgResponseHours >= 2.5) alertRows.push({ type: 'info', text: `${agent.name} response time is above target (${hfmt(agent.avgResponseHours)}).`, key: `${agent.id}-rt` });
-      }
-      setAlerts(alertRows.slice(0, 3).length ? alertRows.slice(0, 3) : [{ type: 'info', text: 'No critical alerts in this period.', key: 'none' }]);
 
       const priorityRank: Record<string, number> = { P1: 4, P2: 3, P3: 2, P4: 1 };
       setEscalations(
-        [...openTicketsRes.data]
+        [...openTickets]
           .sort((a, b) => (priorityRank[b.priority] ?? 0) - (priorityRank[a.priority] ?? 0))
           .slice(0, 3)
       );
     } catch {
-      if (!active) return;
+      if (loadRequestIdRef.current !== requestId) return;
       setError('Unable to load manager insights.');
       setMetrics(null);
       setAgents([]);
-      setAlerts([]);
       setEscalations([]);
       setTrendData([]);
       setResponseData([]);
       setSlaData([]);
       setWorkloadData([]);
       setCategoryData([]);
-      setSatisfactionData([]);
+      setReopenData([]);
     } finally {
-      if (active) setLoading(false);
+      if (loadRequestIdRef.current === requestId) setLoading(false);
     }
   }
 
   const sortedAgents = useMemo(() => {
     const list = [...agents];
     if (sortBy === 'workload') return list.sort((a, b) => b.openTickets - a.openTickets);
-    if (sortBy === 'sla') return list.sort((a, b) => b.slaCompliance - a.slaCompliance);
-    if (sortBy === 'response') return list.sort((a, b) => a.avgResponseHours - b.avgResponseHours);
-    return list.sort((a, b) => b.performance - a.performance);
+    if (sortBy === 'resolved') return list.sort((a, b) => b.resolvedPeriod - a.resolvedPeriod);
+    if (sortBy === 'response') {
+      return list.sort(
+        (a, b) => (a.avgResponseHours ?? Number.MAX_VALUE) - (b.avgResponseHours ?? Number.MAX_VALUE)
+      );
+    }
+    return list.sort(
+      (a, b) => (a.avgResolutionHours ?? Number.MAX_VALUE) - (b.avgResolutionHours ?? Number.MAX_VALUE)
+    );
   }, [agents, sortBy]);
 
-  const hasData = Boolean(metrics && (metrics.totalTickets > 0 || agents.length > 0));
+  const hasData = Boolean(metrics && (metrics.createdInRange > 0 || agents.length > 0));
+
+  function handleExportReport() {
+    const rows: Array<Array<string | number | boolean | null | undefined>> = [
+      ['Generated At', new Date().toISOString()],
+      ['Date Range (days)', dateRange],
+      ['Tickets Created (range)', metrics?.createdInRange ?? 0],
+      ['Tickets Resolved (range)', metrics?.resolvedInRange ?? 0],
+      ['Current Open Tickets', metrics?.currentOpenTickets ?? 0],
+      ['Avg First Response Time', metrics?.avgFirstResponseTime ?? '—'],
+      ['Avg Resolution Time', metrics?.avgResolutionTime ?? '—'],
+      ['SLA Compliance', metrics?.slaCompliance ?? '0%'],
+      ['SLA Met', metrics?.slaMet ?? 0],
+      ['SLA Breached', metrics?.slaBreached ?? 0],
+      ['First Response Met', metrics?.firstResponseMet ?? 0],
+      ['First Response Breached', metrics?.firstResponseBreached ?? 0],
+      ['Resolution Met', metrics?.resolutionMet ?? 0],
+      ['Resolution Breached', metrics?.resolutionBreached ?? 0],
+      [],
+      ['Agent Name', 'Email', 'Open Tickets', 'In Progress', 'First Responses', 'Resolved (Period)', 'Avg First Response Hours', 'Avg Resolution Hours']
+    ];
+
+    for (const agent of sortedAgents) {
+      rows.push([
+        agent.name,
+        agent.email,
+        agent.openTickets,
+        agent.inProgress,
+        agent.firstResponses,
+        agent.resolvedPeriod,
+        agent.avgResponseHours != null ? Number(agent.avgResponseHours.toFixed(2)) : '—',
+        agent.avgResolutionHours != null ? Number(agent.avgResolutionHours.toFixed(2)) : '—'
+      ]);
+    }
+
+    if (escalations.length > 0) {
+      rows.push([]);
+      rows.push(['Critical Escalations']);
+      rows.push(['Ticket', 'Subject', 'Priority', 'Status']);
+      for (const ticket of escalations) {
+        rows.push([
+          formatTicketId(ticket),
+          ticket.subject,
+          ticket.priority,
+          formatStatus(ticket.status)
+        ]);
+      }
+    }
+
+    downloadCsv(`manager-view-${ymd(new Date())}.csv`, rows);
+  }
 
   return (
     <section className="min-h-full bg-gray-50 animate-fade-in">
@@ -476,7 +553,7 @@ export function ManagerViewsPage({
                 </div>
               ) : null}
             </div>
-            <button type="button" className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">
+            <button type="button" onClick={handleExportReport} className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700">
               <Download className="h-4 w-4" />
               Export Report
             </button>
@@ -500,28 +577,28 @@ export function ManagerViewsPage({
         ) : null}
 
         {!loading && error ? (
-          <EmptyState
-            title="Unable to load manager insights"
-            description={error}
-            secondaryAction={{ label: 'Retry', onClick: () => void loadData(true) }}
-          />
-        ) : null}
+            <EmptyState
+              title="Unable to load manager insights"
+              description={error}
+              secondaryAction={{ label: 'Retry', onClick: () => void loadData() }}
+            />
+          ) : null}
 
         {!loading && !error && !hasData ? (
           <EmptyState
             title="No manager data yet"
             description={teamsList.length === 0 ? 'Add teams first to start collecting insights.' : 'Data will appear once tickets are active.'}
-            secondaryAction={{ label: 'Refresh', onClick: () => void loadData(true) }}
+            secondaryAction={{ label: 'Refresh', onClick: () => void loadData() }}
           />
         ) : null}
 
         {!loading && !error && hasData && activeTab === 'overview' ? (
           <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Total Tickets</div><div className="text-3xl font-bold text-gray-900">{metrics?.totalTickets ?? 0}</div><div className="mt-1 text-xs text-gray-500">Last {dateRange} days</div></div>
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Avg Response Time</div><div className="text-3xl font-bold text-gray-900">{metrics?.avgResponseTime}</div><div className="mt-1 text-xs text-gray-500">Team average</div></div>
+              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Tickets Created</div><div className="text-3xl font-bold text-gray-900">{metrics?.createdInRange ?? 0}</div><div className="mt-1 text-xs text-gray-500">Last {dateRange} days</div></div>
+              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Tickets Resolved</div><div className="text-3xl font-bold text-gray-900">{metrics?.resolvedInRange ?? 0}</div><div className="mt-1 text-xs text-gray-500">Last {dateRange} days</div></div>
+              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Current Open Tickets</div><div className="text-3xl font-bold text-gray-900">{metrics?.currentOpenTickets ?? 0}</div><div className="mt-1 text-xs text-gray-500">Current snapshot</div></div>
               <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">SLA Compliance</div><div className="text-3xl font-bold text-gray-900">{metrics?.slaCompliance}</div><div className="mt-1 text-xs text-gray-500">First {metrics?.firstResponseSla} • Resolution {metrics?.resolutionSla}</div></div>
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">CSAT Score</div><div className="text-3xl font-bold text-gray-900">{metrics?.csatScore}</div><div className="mt-1 text-xs text-gray-500">out of 5.0 (proxy)</div></div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
@@ -531,9 +608,14 @@ export function ManagerViewsPage({
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={trendData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(value) => formatUtcShortDate(String(value))}
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        minTickGap={24}
+                      />
                       <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                      <Tooltip />
+                      <Tooltip labelFormatter={(value) => formatUtcTooltipDate(String(value))} />
                       <Line type="monotone" dataKey="newTickets" stroke="#3b82f6" strokeWidth={2.5} dot={false} name="New Tickets" />
                       <Line type="monotone" dataKey="resolved" stroke="#22c55e" strokeWidth={2.5} dot={false} name="Resolved" />
                     </LineChart>
@@ -544,12 +626,17 @@ export function ManagerViewsPage({
                 <h3 className="mb-4 text-sm font-semibold text-gray-900">SLA Compliance</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={slaData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95}>
-                        {slaData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
-                      </Pie>
+                    <BarChart data={slaData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
                       <Tooltip />
-                    </PieChart>
+                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                        {slaData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -557,21 +644,23 @@ export function ManagerViewsPage({
 
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Recent Alerts</h3>
-                <div className="space-y-3">
-                  {alerts.map((row) => (
-                    <div key={row.key} className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                      <span className={`mt-1.5 inline-block h-2 w-2 rounded-full ${row.type === 'warning' ? 'bg-yellow-500' : row.type === 'success' ? 'bg-green-500' : 'bg-blue-500'}`} />
-                      <p className="text-sm text-gray-900">{row.text}</p>
-                    </div>
-                  ))}
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">SLA Breakdown</h3>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <div className="flex items-center justify-between"><span>Overall Met</span><span className="font-medium text-gray-900">{metrics?.slaMet ?? 0}</span></div>
+                  <div className="flex items-center justify-between"><span>Overall Breached</span><span className="font-medium text-gray-900">{metrics?.slaBreached ?? 0}</span></div>
+                  <div className="mt-3 border-t border-gray-100 pt-3 flex items-center justify-between"><span>First Response Met</span><span className="font-medium text-gray-900">{metrics?.firstResponseMet ?? 0}</span></div>
+                  <div className="flex items-center justify-between"><span>First Response Breached</span><span className="font-medium text-gray-900">{metrics?.firstResponseBreached ?? 0}</span></div>
+                  <div className="mt-3 border-t border-gray-100 pt-3 flex items-center justify-between"><span>Resolution Met</span><span className="font-medium text-gray-900">{metrics?.resolutionMet ?? 0}</span></div>
+                  <div className="flex items-center justify-between"><span>Resolution Breached</span><span className="font-medium text-gray-900">{metrics?.resolutionBreached ?? 0}</span></div>
+                  <div className="mt-3 border-t border-gray-100 pt-3 flex items-center justify-between"><span>Avg First Response</span><span className="font-medium text-gray-900">{metrics?.avgFirstResponseTime ?? '—'}</span></div>
+                  <div className="flex items-center justify-between"><span>Avg Resolution</span><span className="font-medium text-gray-900">{metrics?.avgResolutionTime ?? '—'}</span></div>
                 </div>
               </div>
               <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Critical Escalations</h3>
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">Highest Priority Open Tickets</h3>
                 <div className="space-y-3">
                   {escalations.length === 0 ? (
-                    <p className="text-sm text-gray-500">No escalations in this range.</p>
+                    <p className="text-sm text-gray-500">No open tickets in this range.</p>
                   ) : (
                     escalations.map((ticket) => (
                       <div key={ticket.id} className="rounded-lg border border-red-200 bg-red-50 p-3">
@@ -638,21 +727,18 @@ export function ManagerViewsPage({
                     <div className="flex items-center gap-3">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">{agent.avatar}</div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold text-gray-900">{agent.name}</h3>
-                          <span className={`h-2.5 w-2.5 rounded-full ${statusDot(agent.status)}`} />
-                        </div>
-                        <p className="text-xs text-gray-500">{agent.role}</p>
+                        <h3 className="text-sm font-semibold text-gray-900">{agent.name}</h3>
+                        <p className="text-xs text-gray-500">{agent.email}</p>
                       </div>
                     </div>
                   </div>
-                  <div className="mb-3 grid grid-cols-3 gap-3">
+                  <div className="mb-3 grid grid-cols-4 gap-3">
                     <div className="text-center"><div className="text-lg font-bold text-blue-600">{agent.openTickets}</div><div className="text-xs text-gray-500">Open</div></div>
-                    <div className="text-center"><div className="text-lg font-bold text-green-600">{agent.resolvedToday}</div><div className="text-xs text-gray-500">Today</div></div>
+                    <div className="text-center"><div className="text-lg font-bold text-amber-600">{agent.inProgress}</div><div className="text-xs text-gray-500">In Progress</div></div>
                     <div className="text-center"><div className="text-lg font-bold text-purple-600">{agent.resolvedPeriod}</div><div className="text-xs text-gray-500">Period</div></div>
+                    <div className="text-center"><div className="text-lg font-bold text-emerald-600">{agent.firstResponses}</div><div className="text-xs text-gray-500">1st Resp.</div></div>
                   </div>
-                  <div className="mb-3 space-y-1.5"><div className="flex items-center justify-between text-xs"><span className="text-gray-600">Performance</span><span className="font-semibold text-gray-900">{agent.performance}%</span></div><ProgressBar value={agent.performance} /></div>
-                  <div className="flex items-center justify-between text-xs text-gray-600"><span>SLA: {agent.slaCompliance}%</span><span>CSAT: {agent.csatScore.toFixed(1)}</span><span>Util: {agent.utilization}%</span></div>
+                  <div className="flex items-center justify-between text-xs text-gray-600"><span>Avg First Response: {hfmt(agent.avgResponseHours)}</span><span>Avg Resolution: {hfmt(agent.avgResolutionHours)}</span></div>
                 </button>
               ))}
             </div>
@@ -663,7 +749,7 @@ export function ManagerViewsPage({
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Response Time Trend</h3>
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">Avg First Response Hours by Agent</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={responseData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} /><Tooltip /><Bar dataKey="hours" fill="#6366f1" radius={[6, 6, 0, 0]} /></BarChart>
@@ -671,10 +757,21 @@ export function ManagerViewsPage({
                 </div>
               </div>
               <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Customer Satisfaction (Proxy)</h3>
+                <h3 className="mb-4 text-sm font-semibold text-gray-900">Reopened Tickets Trend</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={satisfactionData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis domain={[3.5, 5]} tick={{ fontSize: 11, fill: '#64748b' }} /><Tooltip /><Line type="monotone" dataKey="score" stroke="#a855f7" strokeWidth={2.5} dot={false} /></LineChart>
+                    <LineChart data={reopenData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={(value) => formatUtcShortDate(String(value))}
+                        tick={{ fontSize: 11, fill: '#64748b' }}
+                        minTickGap={24}
+                      />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+                      <Tooltip labelFormatter={(value) => formatUtcTooltipDate(String(value))} />
+                      <Line type="monotone" dataKey="count" stroke="#a855f7" strokeWidth={2.5} dot={false} />
+                    </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -699,12 +796,11 @@ export function ManagerViewsPage({
               </div>
             </div>
             <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h3 className="mb-4 text-sm font-semibold text-gray-900">Workload & Utilization</h3>
+              <h3 className="mb-4 text-sm font-semibold text-gray-900">Workload Snapshot</h3>
               <div className="space-y-4">
                 {[...agents]
                   .sort((a, b) => b.openTickets - a.openTickets)
                   .map((agent) => {
-                    const freeCapacity = clamp(100 - agent.utilization, 0, 100);
                     return (
                       <div key={`workload-${agent.id}`} className="rounded-lg border border-gray-200 p-4">
                         <div className="mb-3 flex items-center justify-between">
@@ -713,40 +809,20 @@ export function ManagerViewsPage({
                               {agent.avatar}
                             </div>
                             <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="text-sm font-semibold text-gray-900">{agent.name}</h4>
-                                <span className={`h-2.5 w-2.5 rounded-full ${statusDot(agent.status)}`} />
-                              </div>
-                              <p className="text-xs text-gray-500">{agent.role}</p>
+                              <h4 className="text-sm font-semibold text-gray-900">{agent.name}</h4>
+                              <p className="text-xs text-gray-500">{agent.email}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-gray-900">{agent.openTickets} open tickets</div>
-                            <div className="text-xs text-gray-500">Active: {agent.activeTime}</div>
+                            <div className="text-xs text-gray-500">{agent.inProgress} in progress</div>
                           </div>
                         </div>
 
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div>
-                            <div className="mb-1 flex items-center justify-between text-xs">
-                              <span className="text-gray-600">Utilization</span>
-                              <span className="font-semibold text-gray-900">{agent.utilization}%</span>
-                            </div>
-                            <ProgressBar value={agent.utilization} />
-                          </div>
-
-                          <div>
-                            <div className="mb-1 flex items-center justify-between text-xs">
-                              <span className="text-gray-600">Capacity</span>
-                              <span className="font-semibold text-gray-900">{freeCapacity}% free</span>
-                            </div>
-                            <div className="h-2 w-full rounded-full bg-gray-200">
-                              <div
-                                className="h-2 rounded-full bg-gray-400"
-                                style={{ width: `${freeCapacity}%` }}
-                              />
-                            </div>
-                          </div>
+                        <div className="grid gap-2 text-xs text-gray-600 md:grid-cols-3">
+                          <div className="rounded-md bg-gray-50 px-3 py-2">Open: <span className="font-medium text-gray-900">{agent.openTickets}</span></div>
+                          <div className="rounded-md bg-gray-50 px-3 py-2">In Progress: <span className="font-medium text-gray-900">{agent.inProgress}</span></div>
+                          <div className="rounded-md bg-gray-50 px-3 py-2">Resolved: <span className="font-medium text-gray-900">{agent.resolvedPeriod}</span></div>
                         </div>
                       </div>
                     );

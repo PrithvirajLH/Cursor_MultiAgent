@@ -4,6 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { TeamRole, UserRole } from '@prisma/client';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
@@ -47,16 +48,48 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Unknown user');
     }
 
-    const membership = await this.prisma.teamMember.findFirst({
-      where: { userId: user.id },
-      include: { team: true },
-    });
+    let membership =
+      user.primaryTeamId != null
+        ? await this.prisma.teamMember.findFirst({
+            where: { userId: user.id, teamId: user.primaryTeamId },
+            include: { team: true },
+          })
+        : null;
+
+    if (!membership) {
+      const preferredRole =
+        user.role === UserRole.LEAD
+          ? TeamRole.LEAD
+          : user.role === UserRole.AGENT
+            ? TeamRole.AGENT
+            : user.role === UserRole.TEAM_ADMIN
+              ? TeamRole.ADMIN
+              : null;
+
+      if (preferredRole) {
+        membership = await this.prisma.teamMember.findFirst({
+          where: { userId: user.id, role: preferredRole },
+          include: { team: true },
+          orderBy: { createdAt: 'asc' },
+        });
+      }
+    }
+
+    if (!membership) {
+      membership = await this.prisma.teamMember.findFirst({
+        where: { userId: user.id },
+        include: { team: true },
+        orderBy: { createdAt: 'asc' },
+      });
+    }
+
+    const resolvedTeamId = membership?.teamId ?? user.primaryTeamId ?? null;
 
     request.user = {
       id: user.id,
       email: user.email,
       role: user.role,
-      teamId: membership?.teamId ?? null,
+      teamId: resolvedTeamId,
       teamRole: membership?.role ?? null,
       primaryTeamId: user.primaryTeamId ?? null,
     };

@@ -59,11 +59,6 @@ type PolicyModel = {
   teamId?: string;
 };
 
-type LivePolicyMeta = Pick<
-  PolicyModel,
-  'name' | 'description' | 'isDefault' | 'enabled' | 'businessHours' | 'escalation' | 'escalationAfter' | 'breachNotify'
->;
-
 const PRIORITIES: PriorityKey[] = ['critical', 'high', 'medium', 'low'];
 const PRIORITY_META: Record<
   PriorityKey,
@@ -110,60 +105,13 @@ const DEFAULT_TARGETS: PolicyTargets = {
   low: { firstResponse: 24, resolution: 72 }
 };
 
-const DEFAULT_DEMO_POLICIES: PolicyModel[] = [
-  {
-    id: 'demo-enterprise',
-    name: 'Enterprise SLA',
-    description: 'Strict SLA for enterprise/VIP clients',
-    isDefault: false,
-    enabled: true,
-    appliedTo: ['Billing', 'Sales'],
-    targets: {
-      critical: { firstResponse: 0.5, resolution: 2 },
-      high: { firstResponse: 2, resolution: 4 },
-      medium: { firstResponse: 4, resolution: 12 },
-      low: { firstResponse: 8, resolution: 24 }
-    },
-    businessHours: false,
-    escalation: true,
-    escalationAfter: 70,
-    breachNotify: ['agent', 'lead', 'manager'],
-    createdAt: 'Demo',
-    compliance: 97,
-    source: 'demo'
-  },
-  {
-    id: 'demo-internal',
-    name: 'Internal IT SLA',
-    description: 'Relaxed targets for internal IT requests',
-    isDefault: false,
-    enabled: false,
-    appliedTo: [],
-    targets: {
-      critical: { firstResponse: 2, resolution: 8 },
-      high: { firstResponse: 8, resolution: 24 },
-      medium: { firstResponse: 24, resolution: 72 },
-      low: { firstResponse: 48, resolution: 120 }
-    },
-    businessHours: true,
-    escalation: false,
-    escalationAfter: 90,
-    breachNotify: ['agent'],
-    createdAt: 'Demo',
-    compliance: 88,
-    source: 'demo'
-  }
-];
+const DEFAULT_DEMO_POLICIES: PolicyModel[] = [];
 
 function ymd(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function shortDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function fmtHours(hours: number): string {
@@ -330,6 +278,7 @@ function PolicyModal({
   onClose: () => void;
 }) {
   const isNew = !policy?.id;
+  const isLivePolicy = policy?.source === 'live';
   const [activeSection, setActiveSection] = useState<ModalSection>('targets');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -343,11 +292,19 @@ function PolicyModal({
     };
   });
 
-  const sections: Array<{ id: ModalSection; label: string }> = [
-    { id: 'targets', label: 'SLA Targets' },
-    { id: 'teams', label: 'Teams & Scope' },
-    { id: 'escalation', label: 'Escalation' }
-  ];
+  const sections: Array<{ id: ModalSection; label: string }> = isLivePolicy
+    ? [{ id: 'targets', label: 'SLA Targets' }]
+    : [
+        { id: 'targets', label: 'SLA Targets' },
+        { id: 'teams', label: 'Teams & Scope' },
+        { id: 'escalation', label: 'Escalation' }
+      ];
+
+  useEffect(() => {
+    if (isLivePolicy && activeSection !== 'targets') {
+      setActiveSection('targets');
+    }
+  }, [activeSection, isLivePolicy]);
 
   function updateTarget(priority: PriorityKey, field: 'firstResponse' | 'resolution', value: string) {
     const numeric = Number(value) || 0;
@@ -433,12 +390,12 @@ function PolicyModal({
               <label className="mb-1 block text-sm font-medium text-slate-700">Policy Name *</label>
               <input
                 value={form.name}
-                disabled={!canEdit}
+                disabled={!canEdit || isLivePolicy}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                 placeholder="e.g. Enterprise SLA"
                 className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
                   errors.name ? 'border-red-400' : 'border-slate-300'
-                } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                } ${!canEdit || isLivePolicy ? 'cursor-not-allowed bg-slate-100' : ''}`}
               />
               {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
             </div>
@@ -446,11 +403,11 @@ function PolicyModal({
               <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
               <input
                 value={form.description}
-                disabled={!canEdit}
+                disabled={!canEdit || isLivePolicy}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 placeholder="Brief description..."
                 className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                  !canEdit ? 'cursor-not-allowed bg-slate-100' : ''
+                  !canEdit || isLivePolicy ? 'cursor-not-allowed bg-slate-100' : ''
                 }`}
               />
             </div>
@@ -484,7 +441,7 @@ function PolicyModal({
                 <div className="flex items-center space-x-2">
                   <ToggleSwitch
                     checked={form.businessHours}
-                    disabled={!canEdit}
+                    disabled={!canEdit || isLivePolicy}
                     onChange={(next) => setForm((prev) => ({ ...prev, businessHours: next }))}
                   />
                   <span className="text-sm text-slate-700">Business hours only</span>
@@ -686,7 +643,7 @@ function PolicyModal({
         <div className="sticky bottom-0 flex items-center justify-between rounded-b-lg border-t border-slate-200 bg-slate-50 px-6 py-4">
           <p className="text-xs text-slate-400">
             * Required fields
-            {form.source === 'live' ? ' • Live policy: targets save to backend, other settings are demo for now.' : ''}
+            {form.source === 'live' ? ' • Live policy: only SLA targets persist to backend.' : ''}
           </p>
           <div className="flex space-x-3">
             <button
@@ -905,7 +862,6 @@ export function SlaSettingsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [livePolicies, setLivePolicies] = useState<PolicyModel[]>([]);
   const [demoPolicies, setDemoPolicies] = useState<PolicyModel[]>(DEFAULT_DEMO_POLICIES);
-  const [liveMetaByTeamId, setLiveMetaByTeamId] = useState<Record<string, LivePolicyMeta>>({});
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [loadingLive, setLoadingLive] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -930,15 +886,7 @@ export function SlaSettingsPage({
     void loadOverview();
   }, [teamsList]);
 
-  const policies = useMemo(() => {
-    const mergedLive = livePolicies.map((policy) => {
-      if (!policy.teamId) return policy;
-      const meta = liveMetaByTeamId[policy.teamId];
-      if (!meta) return policy;
-      return { ...policy, ...meta };
-    });
-    return [...mergedLive, ...demoPolicies];
-  }, [demoPolicies, liveMetaByTeamId, livePolicies]);
+  const policies = useMemo(() => [...livePolicies, ...demoPolicies], [demoPolicies, livePolicies]);
 
   const filteredPolicies = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -997,63 +945,51 @@ export function SlaSettingsPage({
     setLiveError(null);
     const from = ymd(fromDate);
     const to = ymd(today);
-    try {
-      const loaded = await Promise.all(
-        teamsList.map(async (team) => {
-          try {
-            const [slaResponse, complianceResponse] = await Promise.all([
-              fetchSlaPolicies(team.id),
-              fetchReportSlaCompliance({ teamId: team.id, from, to }).catch(() => null)
-            ]);
-            const compliance =
-              complianceResponse?.data.total && complianceResponse.data.total > 0
-                ? Math.round((complianceResponse.data.met / complianceResponse.data.total) * 100)
-                : 0;
-            return {
-              id: `live-${team.id}`,
-              teamId: team.id,
-              name: `${team.name} SLA`,
-              description: 'Live policy synced from backend team SLA.',
-              isDefault: false,
-              enabled: true,
-              appliedTo: [team.name],
-              targets: targetsFromApi(slaResponse.data),
-              businessHours: true,
-              escalation: true,
-              escalationAfter: 80,
-              breachNotify: ['agent', 'lead'] as NotifyValue[],
-              createdAt: 'Live',
-              compliance,
-              source: 'live' as const
-            };
-          } catch {
-            return {
-              id: `live-fallback-${team.id}`,
-              teamId: team.id,
-              name: `${team.name} SLA (Demo fallback)`,
-              description: 'Backend SLA data unavailable for this team.',
-              isDefault: false,
-              enabled: true,
-              appliedTo: [team.name],
-              targets: cloneTargets(DEFAULT_TARGETS),
-              businessHours: true,
-              escalation: true,
-              escalationAfter: 80,
-              breachNotify: ['agent', 'lead'] as NotifyValue[],
-              createdAt: 'Demo',
-              compliance: 0,
-              source: 'demo' as const
-            };
-          }
-        })
-      );
-      setLivePolicies(loaded);
-    } catch {
-      setLivePolicies([]);
-      setLiveError('Unable to load live SLA policies from backend.');
-    } finally {
-      setLoadingLive(false);
+    const results = await Promise.allSettled(
+      teamsList.map(async (team) => {
+        const [slaResponse, complianceResponse] = await Promise.all([
+          fetchSlaPolicies(team.id),
+          fetchReportSlaCompliance({ teamId: team.id, from, to }).catch(() => null)
+        ]);
+        const compliance =
+          complianceResponse?.data.total && complianceResponse.data.total > 0
+            ? Math.round((complianceResponse.data.met / complianceResponse.data.total) * 100)
+            : 0;
+        return {
+          id: `live-${team.id}`,
+          teamId: team.id,
+          name: `${team.name} SLA`,
+          description: 'Live policy synced from backend team SLA.',
+          isDefault: false,
+          enabled: true,
+          appliedTo: [team.name],
+          targets: targetsFromApi(slaResponse.data),
+          businessHours: true,
+          escalation: true,
+          escalationAfter: 80,
+          breachNotify: ['agent', 'lead'] as NotifyValue[],
+          createdAt: 'Live',
+          compliance,
+          source: 'live' as const
+        };
+      })
+    );
+
+    const loaded: PolicyModel[] = [];
+    const failedTeams: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        loaded.push(result.value);
+      } else {
+        failedTeams.push(teamsList[index]?.name ?? 'Unknown team');
+      }
+    });
+
+    setLivePolicies(loaded);
+    if (failedTeams.length > 0) {
+      setLiveError(`Unable to load SLA policies for: ${failedTeams.join(', ')}.`);
     }
+    setLoadingLive(false);
   }
 
   async function loadOverview() {
@@ -1067,7 +1003,7 @@ export function SlaSettingsPage({
       setOverviewData(response.data);
     } catch {
       setOverviewData(null);
-      setOverviewError('Overview is using demo values until report data is available.');
+      setOverviewError('Unable to load SLA compliance overview from backend.');
     } finally {
       setOverviewLoading(false);
     }
@@ -1095,8 +1031,7 @@ export function SlaSettingsPage({
 
   function handleCreate() {
     if (!canEdit) return;
-    setEditingPolicy(null);
-    setShowEditor(true);
+    toast.info('Creating named SLA policies is not supported by backend yet.');
   }
 
   function handleEdit(policy: PolicyModel) {
@@ -1108,17 +1043,6 @@ export function SlaSettingsPage({
   async function handleSave(next: PolicyModel) {
     if (!canEdit) return;
     if (next.source === 'live' && next.teamId) {
-      const meta: LivePolicyMeta = {
-        name: next.name,
-        description: next.description,
-        isDefault: next.isDefault,
-        enabled: next.enabled,
-        businessHours: next.businessHours,
-        escalation: next.escalation,
-        escalationAfter: next.escalationAfter,
-        breachNotify: [...next.breachNotify]
-      };
-      setLiveMetaByTeamId((prev) => ({ ...prev, [next.teamId!]: meta }));
       try {
         const response = await updateSlaPolicies(next.teamId, toApiPolicies(next.targets));
         setLivePolicies((prev) =>
@@ -1131,29 +1055,14 @@ export function SlaSettingsPage({
               : item
           )
         );
-        toast.success('Live SLA targets saved. Advanced policy fields remain demo for now.');
+        toast.success('Live SLA targets saved.');
       } catch {
         toast.error('Unable to save live SLA targets.');
         throw new Error('save_failed');
       }
     } else {
-      if (next.id) {
-        setDemoPolicies((prev) =>
-          prev.map((item) => (item.id === next.id ? { ...next, source: 'demo' } : item))
-        );
-        toast.success(`"${next.name}" updated.`);
-      } else {
-        const created: PolicyModel = {
-          ...next,
-          id: `demo-${Date.now()}`,
-          source: 'demo',
-          createdAt: shortDate(new Date()),
-          compliance: next.compliance || 0
-        };
-        setDemoPolicies((prev) => [...prev, created]);
-        setSelectedPolicyId(created.id);
-        toast.success(`"${created.name || 'New policy'}" created.`);
-      }
+      toast.error('Only live backend SLA targets are supported on this page.');
+      throw new Error('save_failed');
     }
     setShowEditor(false);
     setEditingPolicy(null);
@@ -1172,56 +1081,6 @@ export function SlaSettingsPage({
     }
     toast.success(`"${deleteTarget.name}" deleted.`);
     setDeleteTarget(null);
-  }
-
-  function applyLiveMeta(policy: PolicyModel, patch: Partial<LivePolicyMeta>) {
-    if (!policy.teamId) return;
-    const defaults: LivePolicyMeta = {
-      name: policy.name,
-      description: policy.description,
-      isDefault: policy.isDefault,
-      enabled: policy.enabled,
-      businessHours: policy.businessHours,
-      escalation: policy.escalation,
-      escalationAfter: policy.escalationAfter,
-      breachNotify: [...policy.breachNotify]
-    };
-    setLiveMetaByTeamId((prev) => ({
-      ...prev,
-      [policy.teamId!]: {
-        ...defaults,
-        ...(prev[policy.teamId!] ?? {}),
-        ...patch
-      }
-    }));
-  }
-
-  function toggleEnabled(policy: PolicyModel) {
-    if (!canEdit) return;
-    if (policy.source === 'live') {
-      applyLiveMeta(policy, { enabled: !policy.enabled });
-      toast.info('Live policy enabled/disabled is marked as demo until backend supports it.');
-      return;
-    }
-    setDemoPolicies((prev) =>
-      prev.map((item) =>
-        item.id === policy.id ? { ...item, enabled: !item.enabled } : item
-      )
-    );
-  }
-
-  function setDefault(policy: PolicyModel) {
-    if (!canEdit) return;
-    setDemoPolicies((prev) => prev.map((item) => ({ ...item, isDefault: item.id === policy.id })));
-    livePolicies.forEach((livePolicy) => {
-      if (!livePolicy.teamId) return;
-      applyLiveMeta(livePolicy, { isDefault: livePolicy.id === policy.id });
-    });
-    if (policy.source === 'live') {
-      toast.info('Default selection is tracked in UI only until backend support is added.');
-    } else {
-      toast.success(`"${policy.name}" set as default.`);
-    }
   }
 
   return (
@@ -1300,10 +1159,10 @@ export function SlaSettingsPage({
                 <button
                   type="button"
                   onClick={handleCreate}
-                  className="flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+                  className="flex items-center space-x-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>New Policy</span>
+                  <span>New Policy (Coming soon)</span>
                 </button>
               )}
             </div>
@@ -1321,7 +1180,7 @@ export function SlaSettingsPage({
         {activeTab === 'policies' && (
           <div>
             <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Live data: SLA targets + compliance are pulled from backend where available. Demo labels mark frontend-only placeholders.
+              SLA targets and compliance are sourced from backend APIs.
             </div>
 
             <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -1442,16 +1301,6 @@ export function SlaSettingsPage({
                         <div className="ml-2 flex flex-shrink-0 items-center space-x-1" onClick={(event) => event.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => toggleEnabled(policy)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            title={policy.enabled ? 'Disable' : 'Enable'}
-                          >
-                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={policy.enabled ? 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636' : 'M5 13l4 4L19 7'} />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => handleEdit(policy)}
                             className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
                           >
@@ -1486,16 +1335,6 @@ export function SlaSettingsPage({
                   </div>
                 ))}
 
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={handleCreate}
-                    className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-400 transition-colors hover:border-blue-400 hover:text-blue-500"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Add New Policy</span>
-                  </button>
-                )}
               </div>
 
               <div className="lg:col-span-7">
@@ -1534,13 +1373,6 @@ export function SlaSettingsPage({
                               className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
                             >
                               Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDefault(selectedPolicy)}
-                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                            >
-                              Set Default
                             </button>
                           </>
                         )}
@@ -1700,44 +1532,54 @@ export function SlaSettingsPage({
         {activeTab === 'overview' && (
           <div className="space-y-5">
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Compliance totals are live from backend reports when available. Per-priority chart values are currently demo.
+              Overview metrics are sourced from the backend SLA compliance report.
             </div>
 
             <div className="grid gap-5 md:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-white p-5 md:col-span-2">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">SLA Compliance by Priority - Last 30 days</h3>
-                <div className="mb-3 inline-flex rounded-lg bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
-                  Demo data
-                </div>
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">SLA Outcome Breakdown - Last 30 Days</h3>
                 <div className="space-y-4">
                   {[
-                    { priority: 'critical' as PriorityKey, achieved: 91, target: 95 },
-                    { priority: 'high' as PriorityKey, achieved: 94, target: 95 },
-                    { priority: 'medium' as PriorityKey, achieved: 97, target: 90 },
-                    { priority: 'low' as PriorityKey, achieved: 99, target: 85 }
-                  ].map((row) => (
-                    <div key={row.priority}>
+                    {
+                      key: 'first-response',
+                      label: 'First Response SLA',
+                      met: overviewData?.firstResponseMet ?? 0,
+                      breached: overviewData?.firstResponseBreached ?? 0,
+                      color: 'bg-blue-500'
+                    },
+                    {
+                      key: 'resolution',
+                      label: 'Resolution SLA',
+                      met: overviewData?.resolutionMet ?? 0,
+                      breached: overviewData?.resolutionBreached ?? 0,
+                      color: 'bg-green-500'
+                    }
+                  ].map((row) => {
+                    const total = row.met + row.breached;
+                    const metPercent = total > 0 ? Math.round((row.met / total) * 100) : 0;
+                    return (
+                    <div key={row.key}>
                       <div className="mb-1 flex items-center justify-between text-xs">
-                        <div className="flex items-center space-x-2">
-                          <span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_META[row.priority].dot}`} />
-                          <span className="font-medium text-slate-700">{PRIORITY_META[row.priority].label}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${row.color}`} />
+                          <span className="font-medium text-slate-700">{row.label}</span>
                         </div>
-                        <div className="flex items-center space-x-3">
-                          <span className="text-slate-400">Target: {row.target}%</span>
-                          <span className={`font-semibold ${row.achieved >= row.target ? 'text-green-600' : 'text-red-600'}`}>
-                            {row.achieved}% {row.achieved >= row.target ? '✓' : '✗'}
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500">Met: {row.met}</span>
+                          <span className="text-slate-500">Breached: {row.breached}</span>
+                          <span className={`font-semibold ${metPercent >= 90 ? 'text-green-600' : metPercent >= 75 ? 'text-yellow-600' : 'text-red-600'}`}>
+                            {metPercent}% met
                           </span>
                         </div>
                       </div>
-                      <div className="relative h-3 w-full rounded-full bg-slate-100">
+                      <div className="h-3 w-full rounded-full bg-slate-100">
                         <div
-                          className={`h-3 rounded-full ${row.achieved >= row.target ? 'bg-green-500' : 'bg-red-500'}`}
-                          style={{ width: `${row.achieved}%` }}
+                          className={`h-3 rounded-full ${row.color}`}
+                          style={{ width: `${metPercent}%` }}
                         />
-                        <div className="absolute top-0 h-3 w-0.5 rounded bg-slate-500/50" style={{ left: `${row.target}%` }} />
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
 
@@ -1760,13 +1602,13 @@ export function SlaSettingsPage({
                         bg: 'bg-red-50'
                       },
                       {
-                        label: 'At Risk (>80%)',
-                        value: Math.max(0, Math.round((overviewData?.total ?? 0) * 0.05)),
-                        color: 'text-yellow-600',
-                        bg: 'bg-yellow-50'
+                        label: 'Breached (Total)',
+                        value: overviewData?.breached ?? 0,
+                        color: 'text-red-600',
+                        bg: 'bg-red-50'
                       },
                       {
-                        label: 'Compliant',
+                        label: 'Compliant (Total)',
                         value: overviewData?.met ?? 0,
                         color: 'text-green-600',
                         bg: 'bg-green-50'

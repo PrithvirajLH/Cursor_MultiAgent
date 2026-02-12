@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronDown, Clock3, Copy, MessageSquare, Paperclip } from 'lucide-react';
 import {
   addTicketMessage,
@@ -74,6 +74,7 @@ export function TicketDetailPage({
   };
 }) {
   const { ticketId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
@@ -132,7 +133,27 @@ export function TicketDetailPage({
   const followers = ticket?.followers ?? [];
   const statusEvents = events.filter((event) => event.type === 'TICKET_STATUS_CHANGED');
   const isFollowing = followers.some((follower) => follower.user.email === currentEmail);
-  const canManage = role !== 'EMPLOYEE';
+  const isCurrentUserOnAssignedTeam = useMemo(
+    () => teamMembers.some((member) => member.user.email === currentEmail),
+    [teamMembers, currentEmail],
+  );
+  const canManage = useMemo(() => {
+    if (!ticket) {
+      return false;
+    }
+    if (role === 'OWNER') {
+      return true;
+    }
+    if (role === 'EMPLOYEE') {
+      return false;
+    }
+    if (role === 'LEAD' || role === 'TEAM_ADMIN') {
+      return isCurrentUserOnAssignedTeam;
+    }
+    const isAssignee = ticket.assignee?.email === currentEmail;
+    const isUnassigned = !ticket.assignee;
+    return isCurrentUserOnAssignedTeam && (isAssignee || isUnassigned);
+  }, [currentEmail, isCurrentUserOnAssignedTeam, role, ticket]);
   const canUpload = ticket ? role !== 'EMPLOYEE' || ticket.requester?.email === currentEmail : false;
   const availableTransitions = useMemo(() => {
     if (!ticket) {
@@ -140,7 +161,30 @@ export function TicketDetailPage({
     }
     return STATUS_TRANSITIONS[ticket.status] ?? [];
   }, [ticket]);
+  const quickEscalationTarget = useMemo(() => {
+    if (availableTransitions.includes('WAITING_ON_VENDOR')) {
+      return 'WAITING_ON_VENDOR';
+    }
+    if (availableTransitions.includes('TRIAGED')) {
+      return 'TRIAGED';
+    }
+    return null;
+  }, [availableTransitions]);
   const headerTitle = headerProps?.title ?? 'Ticket details';
+
+  const navigateBack = useCallback(() => {
+    const fromTicketsPath = (location.state as { fromTicketsPath?: string } | null)?.fromTicketsPath;
+    if (fromTicketsPath) {
+      navigate(fromTicketsPath);
+      return;
+    }
+    const historyState = window.history.state as { idx?: number } | null;
+    if (typeof historyState?.idx === 'number' && historyState.idx > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate('/tickets');
+  }, [location.state, navigate]);
 
   useEffect(() => {
     if (!ticketId) {
@@ -154,6 +198,7 @@ export function TicketDetailPage({
       setTeamMembers([]);
       return;
     }
+    setTeamMembers([]);
     setMembersLoading(true);
     fetchTeamMembers(ticket.assignedTeam.id)
       .then((response) => setTeamMembers(response.data))
@@ -269,7 +314,7 @@ export function TicketDetailPage({
           break;
         case 'Escape':
           event.preventDefault();
-          navigate(-1);
+          navigateBack();
           break;
         default:
           break;
@@ -278,7 +323,7 @@ export function TicketDetailPage({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canManage, navigate, ticket?.assignee]);
+  }, [canManage, navigateBack, ticket?.assignee]);
 
   async function loadMessagesPage(id: string, reset = false) {
     const requestSeq = ++messageRequestSeqRef.current;
@@ -654,12 +699,12 @@ export function TicketDetailPage({
             onOpenSearch={headerProps?.onOpenSearch}
             notificationProps={headerProps?.notificationProps}
             leftAction={
-              <button
-                type="button"
-                onClick={() => navigate('/tickets')}
-                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-              >
-                <ArrowLeft className="h-4 w-4" />
+                <button
+                  type="button"
+                  onClick={navigateBack}
+                  className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <ArrowLeft className="h-4 w-4" />
                 Back
               </button>
             }
@@ -1168,24 +1213,16 @@ export function TicketDetailPage({
                       >
                         Resolve
                       </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          availableTransitions.includes('WAITING_ON_VENDOR')
-                            ? void transitionTo('WAITING_ON_VENDOR')
-                            : availableTransitions.includes('TRIAGED')
-                              ? void transitionTo('TRIAGED')
-                              : undefined
-                        }
-                        disabled={
-                          actionLoading ||
-                          (!availableTransitions.includes('WAITING_ON_VENDOR') &&
-                            !availableTransitions.includes('TRIAGED'))
-                        }
-                        className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
-                      >
-                        Escalate
-                      </button>
+                      {quickEscalationTarget ? (
+                        <button
+                          type="button"
+                          onClick={() => void transitionTo(quickEscalationTarget)}
+                          disabled={actionLoading}
+                          className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                        >
+                          {formatStatus(quickEscalationTarget)}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => void transitionTo('CLOSED')}
@@ -1336,8 +1373,14 @@ export function TicketDetailPage({
                 {expandedSections.additional && (
                   <div className="space-y-2 px-4 pb-4 text-sm">
                     <DetailRow label="Reference ID" value={formatTicketId(ticket)} />
-                    <DetailRow label="Source IP" value="192.168.1.1" />
-                    <DetailRow label="Browser" value="Chrome 120" />
+                    <DetailRow
+                      label="First response due"
+                      value={ticket.firstResponseDueAt ? <RelativeTime value={ticket.firstResponseDueAt} /> : 'Not set'}
+                    />
+                    <DetailRow
+                      label="Resolution due"
+                      value={ticket.dueAt ? <RelativeTime value={ticket.dueAt} /> : 'Not set'}
+                    />
                     {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
                       <div className="pt-2">
                         <CustomFieldsDisplay values={ticket.customFieldValues} />

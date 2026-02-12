@@ -753,6 +753,7 @@ function App() {
                   <TriageBoardPage
                     refreshKey={refreshKey}
                     teamsList={teamsList}
+                    role={currentPersona.role}
                     headerProps={{
                       title: viewTitle,
                       subtitle: viewSubtitle,

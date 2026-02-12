@@ -195,10 +195,19 @@ export class ReportsService {
     // Count distinct tickets: a ticket is "breached" if it breached first response OR resolution (or both).
     // "met" = had SLA in range and did not breach either. No double-counting.
     const row = await this.prisma.$queryRaw<
-      { met: bigint; breached: bigint }[]
+      {
+        met: bigint;
+        breached: bigint;
+        first_response_met: bigint;
+        first_response_breached: bigint;
+        resolution_met: bigint;
+        resolution_breached: bigint;
+      }[]
     >`
       WITH base AS (
         SELECT id,
+          ("firstResponseDueAt" IS NOT NULL) AS has_fr,
+          ("dueAt" IS NOT NULL) AS has_res,
           ("firstResponseDueAt" IS NOT NULL AND (
             ("firstResponseAt" IS NULL AND now() > "firstResponseDueAt") OR
             ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt")
@@ -212,22 +221,30 @@ export class ReportsService {
       )
       SELECT
         count(*) FILTER (WHERE NOT fr_breached AND NOT res_breached)::bigint AS met,
-        count(*) FILTER (WHERE fr_breached OR res_breached)::bigint AS breached
+        count(*) FILTER (WHERE fr_breached OR res_breached)::bigint AS breached,
+        count(*) FILTER (WHERE has_fr AND NOT fr_breached)::bigint AS first_response_met,
+        count(*) FILTER (WHERE has_fr AND fr_breached)::bigint AS first_response_breached,
+        count(*) FILTER (WHERE has_res AND NOT res_breached)::bigint AS resolution_met,
+        count(*) FILTER (WHERE has_res AND res_breached)::bigint AS resolution_breached
       FROM base
     `;
     const r = row[0];
     const met = Number(r?.met ?? 0);
     const breached = Number(r?.breached ?? 0);
     const total = met + breached;
+    const firstResponseMet = Number(r?.first_response_met ?? 0);
+    const firstResponseBreached = Number(r?.first_response_breached ?? 0);
+    const resolutionMet = Number(r?.resolution_met ?? 0);
+    const resolutionBreached = Number(r?.resolution_breached ?? 0);
     return {
       data: {
         met,
         breached,
         total,
-        firstResponseMet: 0,
-        firstResponseBreached: 0,
-        resolutionMet: 0,
-        resolutionBreached: 0,
+        firstResponseMet,
+        firstResponseBreached,
+        resolutionMet,
+        resolutionBreached,
       },
     };
   }
