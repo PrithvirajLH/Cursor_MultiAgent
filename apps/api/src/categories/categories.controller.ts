@@ -20,8 +20,8 @@ export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Get()
-  async list(@Query() query: ListCategoriesDto) {
-    return this.categoriesService.list(query);
+  async list(@Query() query: ListCategoriesDto, @CurrentUser() user: AuthUser) {
+    return this.categoriesService.list(query, user);
   }
 
   @Post()

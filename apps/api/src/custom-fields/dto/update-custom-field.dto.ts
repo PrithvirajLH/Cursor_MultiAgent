@@ -1,4 +1,24 @@
-import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+} from 'class-validator';
+
+const CUSTOM_FIELD_TYPES = [
+  'TEXT',
+  'TEXTAREA',
+  'NUMBER',
+  'DROPDOWN',
+  'MULTISELECT',
+  'DATE',
+  'CHECKBOX',
+  'USER',
+] as const;
 
 export class UpdateCustomFieldDto {
   @IsOptional()
@@ -9,6 +29,7 @@ export class UpdateCustomFieldDto {
   @IsOptional()
   @IsString()
   @MaxLength(32)
+  @IsIn(CUSTOM_FIELD_TYPES)
   fieldType?: string;
 
   @IsOptional()
@@ -27,5 +48,7 @@ export class UpdateCustomFieldDto {
   categoryId?: string | null;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
   sortOrder?: number;
 }

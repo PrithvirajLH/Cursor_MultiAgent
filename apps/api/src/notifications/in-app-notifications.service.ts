@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -13,6 +13,8 @@ export type CreateNotificationInput = {
 
 @Injectable()
 export class InAppNotificationsService {
+  private readonly logger = new Logger(InAppNotificationsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -58,7 +60,10 @@ export class InAppNotificationsService {
     const uniqueUserIds = [...new Set(userIds)];
     const tasks = uniqueUserIds.map((userId) =>
       this.create({ ...notification, userId }).catch((error) => {
-        console.error(`Failed to create notification for user ${userId}`, error);
+        this.logger.error(
+          `Failed to create notification for user ${userId}`,
+          (error as Error).stack,
+        );
         return null;
       }),
     );

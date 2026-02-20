@@ -17,7 +17,9 @@ export class AdminGuard implements CanActivate {
       user?.role === UserRole.TEAM_ADMIN ||
       user?.role === UserRole.LEAD;
     if (!user || !isAdmin) {
-      throw new ForbiddenException('This action is restricted to owners, team administrators, and leads');
+      throw new ForbiddenException(
+        'This action is restricted to owners, team administrators, and leads',
+      );
     }
     return true;
   }

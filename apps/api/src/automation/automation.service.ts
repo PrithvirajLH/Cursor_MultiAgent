@@ -6,11 +6,15 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketsService } from '../tickets/tickets.service';
-import { CreateAutomationRuleDto, isValidConditionNode } from './dto/create-automation-rule.dto';
+import {
+  CreateAutomationRuleDto,
+  isValidConditionNode,
+} from './dto/create-automation-rule.dto';
 import { UpdateAutomationRuleDto } from './dto/update-automation-rule.dto';
 import type { AutomationTrigger } from './rule-engine.service';
 import { RuleEngineService } from './rule-engine.service';
@@ -23,6 +27,7 @@ export class AutomationService {
     private readonly ticketsService: TicketsService,
     private readonly ruleEngine: RuleEngineService,
   ) {}
+  private adminAuditEventTableExists: boolean | null = null;
 
   async list(user: AuthUser) {
     if (user.role === UserRole.TEAM_ADMIN && !user.primaryTeamId) {
@@ -32,12 +37,13 @@ export class AutomationService {
     }
     // OWNER sees all rules; TEAM_ADMIN sees only rules scoped to their primary team (no global).
     const where =
-      user.role === UserRole.TEAM_ADMIN
-        ? { teamId: user.primaryTeamId! }
-        : {};
+      user.role === UserRole.TEAM_ADMIN ? { teamId: user.primaryTeamId! } : {};
     const data = await this.prisma.automationRule.findMany({
       where,
-      include: { team: true, createdBy: { select: { id: true, displayName: true, email: true } } },
+      include: {
+        team: true,
+        createdBy: { select: { id: true, displayName: true, email: true } },
+      },
       orderBy: [{ priority: 'asc' }, { name: 'asc' }],
     });
     return { data };
@@ -46,7 +52,10 @@ export class AutomationService {
   async getOne(id: string, user: AuthUser) {
     const rule = await this.prisma.automationRule.findUnique({
       where: { id },
-      include: { team: true, createdBy: { select: { id: true, displayName: true, email: true } } },
+      include: {
+        team: true,
+        createdBy: { select: { id: true, displayName: true, email: true } },
+      },
     });
     if (!rule) {
       throw new NotFoundException('Automation rule not found');
@@ -72,7 +81,9 @@ export class AutomationService {
         take: pageSize,
         orderBy: { executedAt: 'desc' },
         include: {
-          ticket: { select: { id: true, number: true, displayId: true, subject: true } },
+          ticket: {
+            select: { id: true, number: true, displayId: true, subject: true },
+          },
         },
       }),
       this.prisma.automationExecution.count({ where: { ruleId } }),
@@ -103,7 +114,7 @@ export class AutomationService {
     }
     this.validateActionParams(payload.actions);
 
-    return this.prisma.automationRule.create({
+    const created = await this.prisma.automationRule.create({
       data: {
         name: payload.name,
         description: payload.description,
@@ -115,8 +126,25 @@ export class AutomationService {
         teamId: payload.teamId,
         createdById: user.id,
       },
-      include: { team: true, createdBy: { select: { id: true, displayName: true, email: true } } },
+      include: {
+        team: true,
+        createdBy: { select: { id: true, displayName: true, email: true } },
+      },
     });
+    await this.recordAdminAuditEvent(
+      'AUTOMATION_RULE_CREATED',
+      {
+        ruleId: created.id,
+        name: created.name,
+        trigger: created.trigger,
+        teamId: created.teamId,
+        isActive: created.isActive,
+        priority: created.priority,
+      },
+      user,
+      created.teamId ?? null,
+    );
+    return created;
   }
 
   async update(id: string, payload: UpdateAutomationRuleDto, user: AuthUser) {
@@ -144,7 +172,10 @@ export class AutomationService {
       }
     }
     if (payload.conditions !== undefined) {
-      if (!Array.isArray(payload.conditions) || payload.conditions.length === 0) {
+      if (
+        !Array.isArray(payload.conditions) ||
+        payload.conditions.length === 0
+      ) {
         throw new BadRequestException('conditions must be a non-empty array');
       }
       if (!payload.conditions.every(isValidConditionNode)) {
@@ -162,19 +193,38 @@ export class AutomationService {
 
     const data: Record<string, unknown> = {};
     if (payload.name !== undefined) data.name = payload.name;
-    if (payload.description !== undefined) data.description = payload.description;
+    if (payload.description !== undefined)
+      data.description = payload.description;
     if (payload.trigger !== undefined) data.trigger = payload.trigger;
-    if (payload.conditions !== undefined) data.conditions = payload.conditions as object;
+    if (payload.conditions !== undefined)
+      data.conditions = payload.conditions as object;
     if (payload.actions !== undefined) data.actions = payload.actions as object;
     if (payload.isActive !== undefined) data.isActive = payload.isActive;
     if (payload.priority !== undefined) data.priority = payload.priority;
     if (payload.teamId !== undefined) data.teamId = payload.teamId;
 
-    return this.prisma.automationRule.update({
+    const updated = await this.prisma.automationRule.update({
       where: { id },
       data,
-      include: { team: true, createdBy: { select: { id: true, displayName: true, email: true } } },
+      include: {
+        team: true,
+        createdBy: { select: { id: true, displayName: true, email: true } },
+      },
     });
+    await this.recordAdminAuditEvent(
+      'AUTOMATION_RULE_UPDATED',
+      {
+        ruleId: updated.id,
+        name: updated.name,
+        trigger: updated.trigger,
+        teamId: updated.teamId,
+        isActive: updated.isActive,
+        priority: updated.priority,
+      },
+      user,
+      updated.teamId ?? null,
+    );
+    return updated;
   }
 
   async remove(id: string, user: AuthUser) {
@@ -186,6 +236,19 @@ export class AutomationService {
     }
     this.ensureCanManage(user, rule.teamId);
     await this.prisma.automationRule.delete({ where: { id } });
+    await this.recordAdminAuditEvent(
+      'AUTOMATION_RULE_DELETED',
+      {
+        ruleId: rule.id,
+        name: rule.name,
+        trigger: rule.trigger,
+        teamId: rule.teamId,
+        isActive: rule.isActive,
+        priority: rule.priority,
+      },
+      user,
+      rule.teamId ?? null,
+    );
     return { id };
   }
 
@@ -197,47 +260,72 @@ export class AutomationService {
     ruleId: string,
     ticketId: string,
     user: AuthUser,
-  ): Promise<{ matched: boolean; actionsThatWouldRun: unknown[]; message?: string }> {
+  ): Promise<{
+    matched: boolean;
+    actionsThatWouldRun: unknown[];
+    message?: string;
+  }> {
     await this.getOne(ruleId, user);
     await this.ticketsService.getById(ticketId, user);
     return this.ruleEngine.evaluateRuleForTicket(ruleId, ticketId);
   }
 
   /** Require action-type-specific params so rules are not no-ops. */
-  private validateActionParams(actions: Array<{ type?: string; teamId?: string; userId?: string; priority?: string; status?: string; body?: string }>) {
+  private validateActionParams(
+    actions: Array<{
+      type?: string;
+      teamId?: string;
+      userId?: string;
+      priority?: string;
+      status?: string;
+      body?: string;
+    }>,
+  ) {
     for (let i = 0; i < actions.length; i++) {
       const a = actions[i];
       const type = a?.type;
       switch (type) {
         case 'assign_team':
           if (!a.teamId?.trim()) {
-            throw new BadRequestException(`Action ${i + 1} (assign_team): teamId is required.`);
+            throw new BadRequestException(
+              `Action ${i + 1} (assign_team): teamId is required.`,
+            );
           }
           break;
         case 'assign_user':
           if (!a.userId?.trim()) {
-            throw new BadRequestException(`Action ${i + 1} (assign_user): userId is required.`);
+            throw new BadRequestException(
+              `Action ${i + 1} (assign_user): userId is required.`,
+            );
           }
           break;
         case 'set_priority':
           if (!a.priority || !['P1', 'P2', 'P3', 'P4'].includes(a.priority)) {
-            throw new BadRequestException(`Action ${i + 1} (set_priority): priority must be P1, P2, P3, or P4.`);
+            throw new BadRequestException(
+              `Action ${i + 1} (set_priority): priority must be P1, P2, P3, or P4.`,
+            );
           }
           break;
         case 'set_status':
           if (!a.status?.trim()) {
-            throw new BadRequestException(`Action ${i + 1} (set_status): status is required.`);
+            throw new BadRequestException(
+              `Action ${i + 1} (set_status): status is required.`,
+            );
           }
           break;
         case 'add_internal_note':
           if (!a.body?.trim()) {
-            throw new BadRequestException(`Action ${i + 1} (add_internal_note): body is required.`);
+            throw new BadRequestException(
+              `Action ${i + 1} (add_internal_note): body is required.`,
+            );
           }
           break;
         case 'notify_team_lead':
           break;
         default:
-          throw new BadRequestException(`Action ${i + 1}: unknown type '${type ?? ''}'.`);
+          throw new BadRequestException(
+            `Action ${i + 1}: unknown type '${type ?? ''}'.`,
+          );
       }
     }
   }
@@ -245,12 +333,78 @@ export class AutomationService {
   /** Global rules (teamId = null) are OWNER-only. TEAM_ADMIN can only manage rules for their primary team. */
   private ensureCanManage(user: AuthUser, teamId?: string | null) {
     if (user.role === UserRole.OWNER) return;
-    if (user.role === UserRole.TEAM_ADMIN && teamId && user.primaryTeamId === teamId) return;
+    if (
+      user.role === UserRole.TEAM_ADMIN &&
+      teamId &&
+      user.primaryTeamId === teamId
+    )
+      return;
     if (!teamId) {
-      throw new ForbiddenException('Only owners can create or manage global (unscoped) automation rules');
+      throw new ForbiddenException(
+        'Only owners can create or manage global (unscoped) automation rules',
+      );
     }
     throw new ForbiddenException(
       'Only owners and team admins (for their team) can manage automation rules',
     );
+  }
+
+  private async recordAdminAuditEvent(
+    type: string,
+    payload: Record<string, unknown>,
+    user: AuthUser,
+    teamId: string | null,
+  ) {
+    const hasTable = await this.hasAdminAuditEventTable();
+    if (!hasTable) return;
+    // Resolve snapshot fields (8.1 fix) so audit data survives user/team deletion
+    let actorName: string = user.email;
+    let teamName: string | null = null;
+    try {
+      const [actor, team] = await Promise.all([
+        this.prisma.user
+          .findUnique({ where: { id: user.id }, select: { displayName: true } })
+          .catch(() => null),
+        teamId
+          ? this.prisma.team
+              .findUnique({ where: { id: teamId }, select: { name: true } })
+              .catch(() => null)
+          : null,
+      ]);
+      actorName = actor?.displayName ?? user.email;
+      teamName = team?.name ?? null;
+    } catch {
+      /* best-effort */
+    }
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO "AdminAuditEvent" ("id", "type", "payload", "createdById", "teamId", "actorEmail", "actorName", "teamName", "createdAt")
+        VALUES (${randomUUID()}, ${type}, ${JSON.stringify(payload)}::jsonb, ${user.id}, ${teamId}, ${user.email}, ${actorName}, ${teamName}, now())
+      `;
+    } catch {
+      // Non-blocking audit log write
+    }
+  }
+
+  private async hasAdminAuditEventTable() {
+    if (this.adminAuditEventTableExists !== null) {
+      return this.adminAuditEventTableExists;
+    }
+
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.tables
+          WHERE table_schema = current_schema()
+            AND table_name = 'AdminAuditEvent'
+        ) AS "exists"
+      `;
+      this.adminAuditEventTableExists = Boolean(rows[0]?.exists);
+    } catch {
+      this.adminAuditEventTableExists = false;
+    }
+
+    return this.adminAuditEventTableExists;
   }
 }

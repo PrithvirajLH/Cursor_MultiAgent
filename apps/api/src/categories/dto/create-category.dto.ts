@@ -9,7 +9,7 @@ import {
 export class CreateCategoryDto {
   @IsString()
   @MaxLength(80)
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()

@@ -4,20 +4,20 @@ import { Type } from 'class-transformer';
 
 export class UpdateSlaPolicyItemDto {
   @IsEnum(TicketPriority)
-  priority: TicketPriority;
+  priority!: TicketPriority;
 
   @IsInt()
   @Min(1)
-  firstResponseHours: number;
+  firstResponseHours!: number;
 
   @IsInt()
   @Min(1)
-  resolutionHours: number;
+  resolutionHours!: number;
 }
 
 export class UpdateSlaPolicyDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => UpdateSlaPolicyItemDto)
-  policies: UpdateSlaPolicyItemDto[];
+  policies!: UpdateSlaPolicyItemDto[];
 }

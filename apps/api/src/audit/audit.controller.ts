@@ -12,8 +12,13 @@ export class AuditController {
 
   @Get()
   async list(@Query() query: ListAuditLogDto, @CurrentUser() user: AuthUser) {
-    const page = query.page ? parseInt(query.page, 10) : 1;
-    const pageSize = query.pageSize ? parseInt(query.pageSize, 10) : 20;
+    const parsedPage = Number.parseInt(query.page ?? '', 10);
+    const parsedPageSize = Number.parseInt(query.pageSize ?? '', 10);
+    const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const pageSize =
+      Number.isFinite(parsedPageSize) && parsedPageSize > 0
+        ? parsedPageSize
+        : 20;
     return this.auditService.list(
       {
         dateFrom: query.dateFrom,
@@ -31,7 +36,11 @@ export class AuditController {
   @Get('export')
   @Header('Content-Type', 'text/csv; charset=utf-8')
   @Header('Content-Disposition', 'attachment; filename="audit-log.csv"')
-  async exportCsv(@Query() query: ListAuditLogDto, @CurrentUser() user: AuthUser, @Res() res: Response) {
+  async exportCsv(
+    @Query() query: ListAuditLogDto,
+    @CurrentUser() user: AuthUser,
+    @Res() res: Response,
+  ) {
     const csv = await this.auditService.exportCsv(
       {
         dateFrom: query.dateFrom,

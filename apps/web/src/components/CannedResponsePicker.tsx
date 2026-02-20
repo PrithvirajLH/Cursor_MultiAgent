@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FileText, X } from 'lucide-react';
 import { fetchCannedResponses, type CannedResponseRecord } from '../api/client';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export type CannedResponsePickerProps = {
   open: boolean;
@@ -33,6 +34,9 @@ export function CannedResponsePicker({
   const [list, setList] = useState<CannedResponseRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useModalFocusTrap({ open, containerRef: dialogRef, onClose });
 
   useEffect(() => {
     if (!open) return;
@@ -57,10 +61,12 @@ export function CannedResponsePicker({
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         className={`fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white shadow-xl ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label="Insert canned response"
+        tabIndex={-1}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-900">Insert template</h3>

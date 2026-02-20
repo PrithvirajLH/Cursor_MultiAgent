@@ -29,6 +29,15 @@ import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { TicketsService } from './tickets.service';
 
+const ATTACHMENTS_MAX_MB = Number.parseInt(
+  process.env.ATTACHMENTS_MAX_MB ?? '10',
+  10,
+);
+const ATTACHMENTS_MAX_BYTES =
+  Math.max(1, Number.isFinite(ATTACHMENTS_MAX_MB) ? ATTACHMENTS_MAX_MB : 10) *
+  1024 *
+  1024;
+
 @Controller('tickets')
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
@@ -44,12 +53,18 @@ export class TicketsController {
   }
 
   @Get('activity')
-  async getActivity(@Query() query: TicketActivityDto, @CurrentUser() user: AuthUser) {
+  async getActivity(
+    @Query() query: TicketActivityDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.ticketsService.getActivity(query, user);
   }
 
   @Get('status-breakdown')
-  async getStatusBreakdown(@Query() query: TicketStatusDto, @CurrentUser() user: AuthUser) {
+  async getStatusBreakdown(
+    @Query() query: TicketStatusDto,
+    @CurrentUser() user: AuthUser,
+  ) {
     return this.ticketsService.getStatusBreakdown(query, user);
   }
 
@@ -124,7 +139,7 @@ export class TicketsController {
   @Post(':id/attachments')
   @UseInterceptors(
     FileInterceptor('file', {
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: ATTACHMENTS_MAX_BYTES },
     }),
   )
   async addAttachment(

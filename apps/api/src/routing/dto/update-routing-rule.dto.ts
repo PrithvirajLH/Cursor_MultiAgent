@@ -19,6 +19,10 @@ export class UpdateRoutingRuleDto {
   teamId?: string;
 
   @IsOptional()
+  @IsUUID()
+  assigneeId?: string;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   keywords?: string[];

@@ -26,6 +26,8 @@ jest-e2e.json
 
 # Scripts (dev utilities)
 scripts/
+!scripts/
+!scripts/flush-db.cjs
 
 # Logs
 *.log

@@ -1,45 +1,44 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
+  createSlaPolicyConfig,
+  deleteSlaPolicyConfig,
+  fetchReportSlaComplianceByPriority,
   fetchReportSlaCompliance,
-  fetchSlaPolicies,
-  resetSlaPolicies,
-  updateSlaPolicies,
-  type NotificationRecord,
+  fetchSlaBusinessHoursSettings,
+  fetchSlaPolicyConfigs,
+  updateSlaBusinessHoursSettings,
+  updateSlaPolicyConfig,
+  type SlaBusinessDayRecord,
+  type SlaBusinessHoursSettings,
   type SlaComplianceResponse,
-  type SlaPolicy,
+  type SlaComplianceByPriorityResponse,
+  type SlaPolicyConfigRecord,
+  type SlaPolicyNotifyRole,
   type TeamRef
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
+import { useHeaderContext } from '../contexts/HeaderContext';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useToast } from '../hooks/useToast';
 import type { Role } from '../types';
 
-type SlaHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
-
 type TabKey = 'policies' | 'overview' | 'business-hours';
 type ModalSection = 'targets' | 'teams' | 'escalation';
-type PolicySource = 'live' | 'demo';
+type PolicySource = 'live';
 type NotifyValue = 'agent' | 'lead' | 'manager' | 'owner';
 type PriorityKey = 'critical' | 'high' | 'medium' | 'low';
+type DayName =
+  | 'Monday'
+  | 'Tuesday'
+  | 'Wednesday'
+  | 'Thursday'
+  | 'Friday'
+  | 'Saturday'
+  | 'Sunday';
 
 type PolicyTargets = Record<PriorityKey, { firstResponse: number; resolution: number }>;
+type BusinessHoursModel = Record<DayName, { enabled: boolean; start: string; end: string }>;
 
 type PolicyModel = {
   id: string;
@@ -47,6 +46,7 @@ type PolicyModel = {
   description: string;
   isDefault: boolean;
   enabled: boolean;
+  appliedTeamIds: string[];
   appliedTo: string[];
   targets: PolicyTargets;
   businessHours: boolean;
@@ -56,7 +56,6 @@ type PolicyModel = {
   createdAt: string;
   compliance: number;
   source: PolicySource;
-  teamId?: string;
 };
 
 const PRIORITIES: PriorityKey[] = ['critical', 'high', 'medium', 'low'];
@@ -91,21 +90,46 @@ const NOTIFY_OPTIONS: { value: NotifyValue; label: string }[] = [
   { value: 'owner', label: 'Platform Owner' }
 ];
 
-const BACKEND_TODO_ITEMS = [
-  'Add backend API for named SLA policy CRUD (create/update/delete/default/enabled).',
-  'Persist business hours and holiday calendars in backend settings APIs.',
-  'Persist escalation + breach notification settings per policy.',
-  'Add per-priority SLA compliance reporting endpoint for real Overview charts.'
-];
-
 const DEFAULT_TARGETS: PolicyTargets = {
   critical: { firstResponse: 1, resolution: 4 },
-  high: { firstResponse: 4, resolution: 8 },
-  medium: { firstResponse: 8, resolution: 24 },
-  low: { firstResponse: 24, resolution: 72 }
+  high: { firstResponse: 4, resolution: 24 },
+  medium: { firstResponse: 8, resolution: 72 },
+  low: { firstResponse: 24, resolution: 168 }
 };
 
-const DEFAULT_DEMO_POLICIES: PolicyModel[] = [];
+const DAY_ORDER: DayName[] = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+const DEFAULT_BUSINESS_HOURS: BusinessHoursModel = {
+  Monday: { enabled: true, start: '09:00', end: '18:00' },
+  Tuesday: { enabled: true, start: '09:00', end: '18:00' },
+  Wednesday: { enabled: true, start: '09:00', end: '18:00' },
+  Thursday: { enabled: true, start: '09:00', end: '18:00' },
+  Friday: { enabled: true, start: '09:00', end: '17:00' },
+  Saturday: { enabled: false, start: '10:00', end: '14:00' },
+  Sunday: { enabled: false, start: '10:00', end: '14:00' },
+};
+
+const API_TO_NOTIFY: Record<SlaPolicyNotifyRole, NotifyValue> = {
+  AGENT: 'agent',
+  LEAD: 'lead',
+  MANAGER: 'manager',
+  OWNER: 'owner',
+};
+
+const NOTIFY_TO_API: Record<NotifyValue, SlaPolicyNotifyRole> = {
+  agent: 'AGENT',
+  lead: 'LEAD',
+  manager: 'MANAGER',
+  owner: 'OWNER',
+};
 
 function ymd(date: Date): string {
   const year = date.getFullYear();
@@ -152,37 +176,86 @@ function createEmptyPolicy(): PolicyModel {
     description: '',
     isDefault: false,
     enabled: true,
+    appliedTeamIds: [],
     appliedTo: [],
     targets: cloneTargets(DEFAULT_TARGETS),
     businessHours: true,
     escalation: true,
     escalationAfter: 80,
     breachNotify: ['agent', 'lead'],
-    createdAt: 'Demo',
+    createdAt: 'Now',
     compliance: 0,
-    source: 'demo'
+    source: 'live'
   };
 }
 
-function targetsFromApi(policies: SlaPolicy[]): PolicyTargets {
+function targetsFromApi(
+  targets: Array<{ priority: string; firstResponseHours: number; resolutionHours: number }>,
+): PolicyTargets {
   const next = cloneTargets(DEFAULT_TARGETS);
-  policies.forEach((policy) => {
-    const key = API_TO_UI_PRIORITY[policy.priority];
+  targets.forEach((target) => {
+    const key = API_TO_UI_PRIORITY[target.priority];
     if (!key) return;
     next[key] = {
-      firstResponse: Number(policy.firstResponseHours) || 0,
-      resolution: Number(policy.resolutionHours) || 0
+      firstResponse: Number(target.firstResponseHours) || 0,
+      resolution: Number(target.resolutionHours) || 0
     };
   });
   return next;
 }
 
-function toApiPolicies(targets: PolicyTargets): Array<Omit<SlaPolicy, 'source'>> {
+function toApiPolicies(
+  targets: PolicyTargets,
+): Array<{ priority: string; firstResponseHours: number; resolutionHours: number }> {
   return PRIORITIES.map((priority) => ({
     priority: UI_TO_API_PRIORITY[priority],
     firstResponseHours: Number(targets[priority].firstResponse),
     resolutionHours: Number(targets[priority].resolution)
   }));
+}
+
+function businessHoursFromApi(schedule: SlaBusinessHoursSettings['schedule']): BusinessHoursModel {
+  const next: BusinessHoursModel = { ...DEFAULT_BUSINESS_HOURS };
+  schedule.forEach((item) => {
+    if (!(item.day in next)) return;
+    next[item.day] = {
+      enabled: Boolean(item.enabled),
+      start: item.start,
+      end: item.end,
+    };
+  });
+  return next;
+}
+
+function businessHoursToApi(hours: BusinessHoursModel): SlaBusinessDayRecord[] {
+  return DAY_ORDER.map((day) => ({
+    day,
+    enabled: Boolean(hours[day]?.enabled),
+    start: hours[day]?.start ?? DEFAULT_BUSINESS_HOURS[day].start,
+    end: hours[day]?.end ?? DEFAULT_BUSINESS_HOURS[day].end,
+  }));
+}
+
+function policyFromRecord(record: SlaPolicyConfigRecord, compliance: number): PolicyModel {
+  return {
+    id: record.id,
+    name: record.name,
+    description: record.description ?? '',
+    isDefault: record.isDefault,
+    enabled: record.enabled,
+    appliedTeamIds: record.appliedTeamIds,
+    appliedTo: record.appliedTeams.map((team) => team.name),
+    targets: targetsFromApi(record.targets),
+    businessHours: record.businessHoursOnly,
+    escalation: record.escalationEnabled,
+    escalationAfter: record.escalationAfterPercent,
+    breachNotify: (record.breachNotifyRoles ?? [])
+      .map((role) => API_TO_NOTIFY[role])
+      .filter((value): value is NotifyValue => Boolean(value)),
+    createdAt: record.createdAt,
+    compliance,
+    source: 'live',
+  };
 }
 
 function ToggleSwitch({
@@ -226,9 +299,19 @@ function DeleteModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap({ open: true, containerRef: dialogRef, onClose: onCancel });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Delete SLA policy"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+      >
         <div className="mb-4 flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
             <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,17 +351,18 @@ function PolicyModal({
   policy,
   teams,
   canEdit,
+  canSetDefault,
   onSave,
   onClose
 }: {
   policy: PolicyModel | null;
   teams: TeamRef[];
   canEdit: boolean;
+  canSetDefault: boolean;
   onSave: (next: PolicyModel) => Promise<void> | void;
   onClose: () => void;
 }) {
   const isNew = !policy?.id;
-  const isLivePolicy = policy?.source === 'live';
   const [activeSection, setActiveSection] = useState<ModalSection>('targets');
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -286,25 +370,36 @@ function PolicyModal({
     const base = policy ? { ...policy } : createEmptyPolicy();
     return {
       ...base,
+      appliedTeamIds: [...base.appliedTeamIds],
       appliedTo: [...base.appliedTo],
       breachNotify: [...base.breachNotify],
       targets: cloneTargets(base.targets)
     };
   });
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const teamScopeLocked = !canSetDefault;
 
-  const sections: Array<{ id: ModalSection; label: string }> = isLivePolicy
-    ? [{ id: 'targets', label: 'SLA Targets' }]
-    : [
-        { id: 'targets', label: 'SLA Targets' },
-        { id: 'teams', label: 'Teams & Scope' },
-        { id: 'escalation', label: 'Escalation' }
-      ];
+  useModalFocusTrap({
+    open: true,
+    containerRef: dialogRef,
+    onClose,
+  });
 
   useEffect(() => {
-    if (isLivePolicy && activeSection !== 'targets') {
-      setActiveSection('targets');
-    }
-  }, [activeSection, isLivePolicy]);
+    if (!teamScopeLocked || teams.length === 0) return;
+    const scopedTeam = teams[0];
+    setForm((prev) => ({
+      ...prev,
+      appliedTeamIds: [scopedTeam.id],
+      appliedTo: [scopedTeam.name]
+    }));
+  }, [teamScopeLocked, teams]);
+
+  const sections: Array<{ id: ModalSection; label: string }> = [
+    { id: 'targets', label: 'SLA Targets' },
+    { id: 'teams', label: 'Teams & Scope' },
+    { id: 'escalation', label: 'Escalation' }
+  ];
 
   function updateTarget(priority: PriorityKey, field: 'firstResponse' | 'resolution', value: string) {
     const numeric = Number(value) || 0;
@@ -320,13 +415,28 @@ function PolicyModal({
     }));
   }
 
-  function toggleTeam(teamName: string) {
-    setForm((prev) => ({
-      ...prev,
-      appliedTo: prev.appliedTo.includes(teamName)
+  function toggleTeam(teamId: string, teamName: string) {
+    setForm((prev) => {
+      if (teamScopeLocked) {
+        return {
+          ...prev,
+          appliedTeamIds: [teamId],
+          appliedTo: [teamName]
+        };
+      }
+      const hasTeam = prev.appliedTeamIds.includes(teamId);
+      const nextTeamIds = hasTeam
+        ? prev.appliedTeamIds.filter((item) => item !== teamId)
+        : [...prev.appliedTeamIds, teamId];
+      const nextNames = hasTeam
         ? prev.appliedTo.filter((item) => item !== teamName)
-        : [...prev.appliedTo, teamName]
-    }));
+        : [...prev.appliedTo, teamName];
+      return {
+        ...prev,
+        appliedTeamIds: nextTeamIds,
+        appliedTo: nextNames
+      };
+    });
   }
 
   function toggleNotify(value: NotifyValue) {
@@ -367,7 +477,14 @@ function PolicyModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isNew ? 'Create SLA policy' : 'Edit SLA policy'}
+        tabIndex={-1}
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl"
+      >
         <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-slate-200 bg-white px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-slate-900">
@@ -390,12 +507,12 @@ function PolicyModal({
               <label className="mb-1 block text-sm font-medium text-slate-700">Policy Name *</label>
               <input
                 value={form.name}
-                disabled={!canEdit || isLivePolicy}
+                disabled={!canEdit}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                 placeholder="e.g. Enterprise SLA"
                 className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
                   errors.name ? 'border-red-400' : 'border-slate-300'
-                } ${!canEdit || isLivePolicy ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
               />
               {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
             </div>
@@ -403,11 +520,11 @@ function PolicyModal({
               <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
               <input
                 value={form.description}
-                disabled={!canEdit || isLivePolicy}
+                disabled={!canEdit}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 placeholder="Brief description..."
                 className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                  !canEdit || isLivePolicy ? 'cursor-not-allowed bg-slate-100' : ''
+                  !canEdit ? 'cursor-not-allowed bg-slate-100' : ''
                 }`}
               />
             </div>
@@ -441,7 +558,7 @@ function PolicyModal({
                 <div className="flex items-center space-x-2">
                   <ToggleSwitch
                     checked={form.businessHours}
-                    disabled={!canEdit || isLivePolicy}
+                    disabled={!canEdit}
                     onChange={(next) => setForm((prev) => ({ ...prev, businessHours: next }))}
                   />
                   <span className="text-sm text-slate-700">Business hours only</span>
@@ -508,7 +625,7 @@ function PolicyModal({
                   <svg className="h-3.5 w-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span>Times are counted within business hours (Mon-Fri, 9am-6pm).</span>
+                  <span>Times are counted within configured business hours from the Business Hours tab.</span>
                 </p>
               )}
             </div>
@@ -521,21 +638,26 @@ function PolicyModal({
                 <p className="mb-3 text-xs text-slate-500">
                   Select which teams this SLA policy governs. A team can only have one active policy.
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                {teamScopeLocked && (
+                  <p className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                    Your role is scoped to one team. Team assignment is locked to your primary team.
+                  </p>
+                )}
+                <div className={`grid gap-3 ${teamScopeLocked ? 'grid-cols-1' : 'grid-cols-2'}`}>
                   {teams.map((team) => (
                     <label
                       key={team.id}
                       className={`flex cursor-pointer items-center space-x-3 rounded-lg border p-3 transition-all ${
-                        form.appliedTo.includes(team.name)
+                        form.appliedTeamIds.includes(team.id)
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-slate-200 bg-white hover:border-slate-300'
-                      } ${!canEdit ? 'cursor-not-allowed opacity-60' : ''}`}
+                      } ${!canEdit || teamScopeLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                       <input
                         type="checkbox"
-                        disabled={!canEdit}
-                        checked={form.appliedTo.includes(team.name)}
-                        onChange={() => toggleTeam(team.name)}
+                        disabled={!canEdit || teamScopeLocked}
+                        checked={form.appliedTeamIds.includes(team.id)}
+                        onChange={() => toggleTeam(team.id, team.name)}
                         className="h-4 w-4 rounded text-blue-600"
                       />
                       <span className="text-sm font-medium text-slate-700">{team.name}</span>
@@ -550,7 +672,7 @@ function PolicyModal({
                 </div>
                 <ToggleSwitch
                   checked={form.isDefault}
-                  disabled={!canEdit}
+                  disabled={!canSetDefault}
                   onChange={(next) => setForm((prev) => ({ ...prev, isDefault: next }))}
                 />
               </div>
@@ -643,7 +765,6 @@ function PolicyModal({
         <div className="sticky bottom-0 flex items-center justify-between rounded-b-lg border-t border-slate-200 bg-slate-50 px-6 py-4">
           <p className="text-xs text-slate-400">
             * Required fields
-            {form.source === 'live' ? ' • Live policy: only SLA targets persist to backend.' : ''}
           </p>
           <div className="flex space-x-3">
             <button
@@ -672,40 +793,19 @@ function PolicyModal({
 }
 
 function BusinessHoursEditor({
-  disabled
+  disabled,
+  hours,
+  onToggleDay,
+  onUpdateTime
 }: {
   disabled: boolean;
+  hours: BusinessHoursModel;
+  onToggleDay: (day: DayName) => void;
+  onUpdateTime: (day: DayName, key: 'start' | 'end', value: string) => void;
 }) {
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
-  const [hours, setHours] = useState<
-    Record<(typeof days)[number], { enabled: boolean; start: string; end: string }>
-  >({
-    Monday: { enabled: true, start: '09:00', end: '18:00' },
-    Tuesday: { enabled: true, start: '09:00', end: '18:00' },
-    Wednesday: { enabled: true, start: '09:00', end: '18:00' },
-    Thursday: { enabled: true, start: '09:00', end: '18:00' },
-    Friday: { enabled: true, start: '09:00', end: '17:00' },
-    Saturday: { enabled: false, start: '10:00', end: '14:00' },
-    Sunday: { enabled: false, start: '10:00', end: '14:00' }
-  });
-
-  function toggleDay(day: (typeof days)[number]) {
-    setHours((prev) => ({
-      ...prev,
-      [day]: { ...prev[day], enabled: !prev[day].enabled }
-    }));
-  }
-
-  function updateTime(day: (typeof days)[number], key: 'start' | 'end', value: string) {
-    setHours((prev) => ({
-      ...prev,
-      [day]: { ...prev[day], [key]: value }
-    }));
-  }
-
   return (
     <div className="space-y-2">
-      {days.map((day) => {
+      {DAY_ORDER.map((day) => {
         const value = hours[day];
         const [startH, startM] = value.start.split(':').map(Number);
         const [endH, endM] = value.end.split(':').map(Number);
@@ -719,7 +819,7 @@ function BusinessHoursEditor({
               value.enabled ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-60'
             }`}
           >
-            <ToggleSwitch checked={value.enabled} disabled={disabled} onChange={() => toggleDay(day)} />
+            <ToggleSwitch checked={value.enabled} disabled={disabled} onChange={() => onToggleDay(day)} />
             <span className="w-24 flex-shrink-0 text-sm font-medium text-slate-700">{day}</span>
             {value.enabled ? (
               <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-2">
@@ -727,7 +827,7 @@ function BusinessHoursEditor({
                   type="time"
                   disabled={disabled}
                   value={value.start}
-                  onChange={(event) => updateTime(day, 'start', event.target.value)}
+                  onChange={(event) => onUpdateTime(day, 'start', event.target.value)}
                   className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
                     disabled ? 'cursor-not-allowed bg-slate-100' : ''
                   }`}
@@ -737,7 +837,7 @@ function BusinessHoursEditor({
                   type="time"
                   disabled={disabled}
                   value={value.end}
-                  onChange={(event) => updateTime(day, 'end', event.target.value)}
+                  onChange={(event) => onUpdateTime(day, 'end', event.target.value)}
                   className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
                     disabled ? 'cursor-not-allowed bg-slate-100' : ''
                   }`}
@@ -755,30 +855,29 @@ function BusinessHoursEditor({
 }
 
 function HolidayManager({
-  disabled
+  disabled,
+  holidays,
+  onAddHoliday,
+  onRemoveHoliday
 }: {
   disabled: boolean;
+  holidays: Array<{ name: string; date: string }>;
+  onAddHoliday: (holiday: { name: string; date: string }) => void;
+  onRemoveHoliday: (holiday: { name: string; date: string }) => void;
 }) {
-  const [holidays, setHolidays] = useState<Array<{ id: number; name: string; date: string }>>([
-    { id: 1, name: "New Year's Day", date: '2026-01-01' },
-    { id: 2, name: 'Memorial Day', date: '2026-05-25' },
-    { id: 3, name: 'Independence Day', date: '2026-07-04' },
-    { id: 4, name: 'Thanksgiving Day', date: '2026-11-26' },
-    { id: 5, name: 'Christmas Day', date: '2026-12-25' }
-  ]);
   const [newName, setNewName] = useState('');
   const [newDate, setNewDate] = useState('');
 
   function addHoliday() {
     if (!newName.trim() || !newDate || disabled) return;
-    setHolidays((prev) => [...prev, { id: Date.now(), name: newName.trim(), date: newDate }]);
+    onAddHoliday({ name: newName.trim(), date: newDate });
     setNewName('');
     setNewDate('');
   }
 
-  function removeHoliday(id: number) {
+  function removeHoliday(holiday: { name: string; date: string }) {
     if (disabled) return;
-    setHolidays((prev) => prev.filter((item) => item.id !== id));
+    onRemoveHoliday(holiday);
   }
 
   return (
@@ -786,9 +885,12 @@ function HolidayManager({
       <p className="text-xs text-slate-500">On holidays, SLA timers are paused (treated as non-business time).</p>
       <div className="space-y-2">
         {holidays.map((holiday) => (
-          <div key={holiday.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 transition hover:bg-slate-100">
+          <div
+            key={`${holiday.date}-${holiday.name}`}
+            className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 transition hover:bg-slate-100"
+          >
             <div className="flex items-center space-x-3">
-              <span className="text-lg">🗓️</span>
+              <span className="text-lg">H</span>
               <div>
                 <p className="text-sm font-medium text-slate-800">{holiday.name}</p>
                 <p className="text-xs text-slate-500">
@@ -803,7 +905,7 @@ function HolidayManager({
             <button
               type="button"
               disabled={disabled}
-              onClick={() => removeHoliday(holiday.id)}
+              onClick={() => removeHoliday(holiday)}
               className="rounded p-1 text-slate-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -847,13 +949,12 @@ function HolidayManager({
 
 export function SlaSettingsPage({
   teamsList,
-  role,
-  headerProps
+  role
 }: {
   teamsList: TeamRef[];
   role: Role;
-  headerProps?: SlaHeaderProps;
 }) {
+  const headerCtx = useHeaderContext();
   const toast = useToast();
   const canEdit = role === 'TEAM_ADMIN' || role === 'OWNER';
   const isReadOnly = role === 'LEAD';
@@ -861,14 +962,22 @@ export function SlaSettingsPage({
   const [activeTab, setActiveTab] = useState<TabKey>('policies');
   const [searchQuery, setSearchQuery] = useState('');
   const [livePolicies, setLivePolicies] = useState<PolicyModel[]>([]);
-  const [demoPolicies, setDemoPolicies] = useState<PolicyModel[]>(DEFAULT_DEMO_POLICIES);
   const [selectedPolicyId, setSelectedPolicyId] = useState<string | null>(null);
   const [loadingLive, setLoadingLive] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
 
   const [overviewData, setOverviewData] = useState<SlaComplianceResponse['data'] | null>(null);
+  const [priorityOverviewData, setPriorityOverviewData] =
+    useState<SlaComplianceByPriorityResponse['data']>([]);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+
+  const [businessTimezone, setBusinessTimezone] = useState('UTC');
+  const [businessHours, setBusinessHours] = useState<BusinessHoursModel>(DEFAULT_BUSINESS_HOURS);
+  const [holidays, setHolidays] = useState<Array<{ name: string; date: string }>>([]);
+  const [businessLoading, setBusinessLoading] = useState(false);
+  const [businessSaving, setBusinessSaving] = useState(false);
+  const [businessError, setBusinessError] = useState<string | null>(null);
 
   const [showEditor, setShowEditor] = useState(false);
   const [editingPolicy, setEditingPolicy] = useState<PolicyModel | null>(null);
@@ -884,9 +993,10 @@ export function SlaSettingsPage({
   useEffect(() => {
     void loadLivePolicies();
     void loadOverview();
+    void loadBusinessSettings();
   }, [teamsList]);
 
-  const policies = useMemo(() => [...livePolicies, ...demoPolicies], [demoPolicies, livePolicies]);
+  const policies = useMemo(() => livePolicies, [livePolicies]);
 
   const filteredPolicies = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -928,110 +1038,120 @@ export function SlaSettingsPage({
   }, [policies]);
 
   const teamAssignment = useMemo(() => {
+    const defaultPolicy = policies.find((policy) => policy.isDefault && policy.enabled) ?? null;
     return teamsList.map((team) => {
       const assigned = policies.find(
-        (policy) => policy.enabled && policy.appliedTo.includes(team.name)
+        (policy) => policy.enabled && policy.appliedTeamIds.includes(team.id)
       );
-      return { team, policy: assigned ?? null };
+      return { team, policy: assigned ?? defaultPolicy };
     });
   }, [policies, teamsList]);
 
+  const policyEditorTeams = useMemo(() => {
+    if (role === 'OWNER') return teamsList;
+    const preferredTeamId = editingPolicy?.appliedTeamIds[0] ?? teamsList[0]?.id;
+    if (!preferredTeamId) return [];
+    const scopedTeam = teamsList.find((team) => team.id === preferredTeamId);
+    return scopedTeam ? [scopedTeam] : [];
+  }, [editingPolicy, role, teamsList]);
+
   async function loadLivePolicies() {
-    if (teamsList.length === 0) {
-      setLivePolicies([]);
-      return;
-    }
     setLoadingLive(true);
     setLiveError(null);
-    const from = ymd(fromDate);
-    const to = ymd(today);
-    const results = await Promise.allSettled(
-      teamsList.map(async (team) => {
-        const [slaResponse, complianceResponse] = await Promise.all([
-          fetchSlaPolicies(team.id),
-          fetchReportSlaCompliance({ teamId: team.id, from, to }).catch(() => null)
-        ]);
+    try {
+      const response = await fetchSlaPolicyConfigs();
+      const records = response.data ?? [];
+      const teamIds = [...new Set(records.flatMap((record) => record.appliedTeamIds))];
+      const from = ymd(fromDate);
+      const to = ymd(today);
+
+      const complianceEntries = await Promise.all(
+        teamIds.map(async (teamId) => {
+          try {
+            const res = await fetchReportSlaCompliance({ teamId, from, to });
+            return [teamId, { met: res.data.met, total: res.data.total }] as const;
+          } catch {
+            return [teamId, { met: 0, total: 0 }] as const;
+          }
+        }),
+      );
+      const teamCompliance = new Map(complianceEntries);
+
+      const loaded = records.map((record) => {
+        const totals = record.appliedTeamIds.reduce(
+          (acc, teamId) => {
+            const team = teamCompliance.get(teamId);
+            if (!team) return acc;
+            return {
+              met: acc.met + team.met,
+              total: acc.total + team.total,
+            };
+          },
+          { met: 0, total: 0 },
+        );
         const compliance =
-          complianceResponse?.data.total && complianceResponse.data.total > 0
-            ? Math.round((complianceResponse.data.met / complianceResponse.data.total) * 100)
-            : 0;
-        return {
-          id: `live-${team.id}`,
-          teamId: team.id,
-          name: `${team.name} SLA`,
-          description: 'Live policy synced from backend team SLA.',
-          isDefault: false,
-          enabled: true,
-          appliedTo: [team.name],
-          targets: targetsFromApi(slaResponse.data),
-          businessHours: true,
-          escalation: true,
-          escalationAfter: 80,
-          breachNotify: ['agent', 'lead'] as NotifyValue[],
-          createdAt: 'Live',
-          compliance,
-          source: 'live' as const
-        };
-      })
-    );
+          totals.total > 0 ? Math.round((totals.met / totals.total) * 100) : 0;
+        return policyFromRecord(record, compliance);
+      });
 
-    const loaded: PolicyModel[] = [];
-    const failedTeams: string[] = [];
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        loaded.push(result.value);
-      } else {
-        failedTeams.push(teamsList[index]?.name ?? 'Unknown team');
-      }
-    });
-
-    setLivePolicies(loaded);
-    if (failedTeams.length > 0) {
-      setLiveError(`Unable to load SLA policies for: ${failedTeams.join(', ')}.`);
+      setLivePolicies(loaded);
+    } catch {
+      setLivePolicies([]);
+      setLiveError('Unable to load SLA policies from backend.');
+    } finally {
+      setLoadingLive(false);
     }
-    setLoadingLive(false);
   }
 
   async function loadOverview() {
     setOverviewLoading(true);
     setOverviewError(null);
     try {
-      const response = await fetchReportSlaCompliance({
-        from: ymd(fromDate),
-        to: ymd(today)
-      });
+      const [response, priorityResponse] = await Promise.all([
+        fetchReportSlaCompliance({
+          from: ymd(fromDate),
+          to: ymd(today)
+        }),
+        fetchReportSlaComplianceByPriority({
+          from: ymd(fromDate),
+          to: ymd(today)
+        }),
+      ]);
       setOverviewData(response.data);
+      setPriorityOverviewData(priorityResponse.data);
     } catch {
       setOverviewData(null);
+      setPriorityOverviewData([]);
       setOverviewError('Unable to load SLA compliance overview from backend.');
     } finally {
       setOverviewLoading(false);
     }
   }
 
-  async function handleResetLivePolicy(policy: PolicyModel) {
-    if (!policy.teamId || !canEdit) return;
+  async function loadBusinessSettings() {
+    setBusinessLoading(true);
+    setBusinessError(null);
     try {
-      const response = await resetSlaPolicies(policy.teamId);
-      setLivePolicies((prev) =>
-        prev.map((item) =>
-          item.teamId === policy.teamId
-            ? {
-                ...item,
-                targets: targetsFromApi(response.data)
-              }
-            : item
-        )
-      );
-      toast.success('Live policy reset to backend defaults.');
+      const response = await fetchSlaBusinessHoursSettings();
+      setBusinessTimezone(response.data.timezone);
+      setBusinessHours(businessHoursFromApi(response.data.schedule));
+      setHolidays(response.data.holidays);
     } catch {
-      toast.error('Unable to reset live policy.');
+      setBusinessError('Unable to load business hours settings from backend.');
+    } finally {
+      setBusinessLoading(false);
     }
   }
 
   function handleCreate() {
     if (!canEdit) return;
-    toast.info('Creating named SLA policies is not supported by backend yet.');
+    const next = createEmptyPolicy();
+    if (role !== 'OWNER' && teamsList.length > 0) {
+      next.appliedTeamIds = [teamsList[0].id];
+      next.appliedTo = [teamsList[0].name];
+    }
+    setEditingPolicy(next);
+    setShowEditor(true);
   }
 
   function handleEdit(policy: PolicyModel) {
@@ -1042,26 +1162,40 @@ export function SlaSettingsPage({
 
   async function handleSave(next: PolicyModel) {
     if (!canEdit) return;
-    if (next.source === 'live' && next.teamId) {
-      try {
-        const response = await updateSlaPolicies(next.teamId, toApiPolicies(next.targets));
-        setLivePolicies((prev) =>
-          prev.map((item) =>
-            item.teamId === next.teamId
-              ? {
-                  ...item,
-                  targets: targetsFromApi(response.data)
-                }
-              : item
-          )
-        );
-        toast.success('Live SLA targets saved.');
-      } catch {
-        toast.error('Unable to save live SLA targets.');
-        throw new Error('save_failed');
+    const scopedTeamId =
+      role === 'OWNER'
+        ? null
+        : next.appliedTeamIds[0] ?? policyEditorTeams[0]?.id ?? teamsList[0]?.id ?? null;
+    if (role !== 'OWNER' && !scopedTeamId) {
+      toast.error('Unable to determine scoped team for this policy.');
+      return;
+    }
+
+    try {
+      const breachNotifyRoles = next.breachNotify.length
+        ? next.breachNotify.map((value) => NOTIFY_TO_API[value])
+        : [NOTIFY_TO_API.agent];
+      const payload = {
+        name: next.name.trim(),
+        description: next.description.trim() || undefined,
+        isDefault: role === 'OWNER' ? next.isDefault : false,
+        enabled: next.enabled,
+        businessHoursOnly: next.businessHours,
+        escalationEnabled: next.escalation,
+        escalationAfterPercent: next.escalationAfter,
+        breachNotifyRoles,
+        appliedTeamIds: role === 'OWNER' ? next.appliedTeamIds : [scopedTeamId as string],
+        targets: toApiPolicies(next.targets),
+      };
+      if (next.id) {
+        await updateSlaPolicyConfig(next.id, payload);
+      } else {
+        await createSlaPolicyConfig(payload);
       }
-    } else {
-      toast.error('Only live backend SLA targets are supported on this page.');
+      await loadLivePolicies();
+      toast.success('SLA policy saved.');
+    } catch {
+      toast.error('Unable to save SLA policy.');
       throw new Error('save_failed');
     }
     setShowEditor(false);
@@ -1069,33 +1203,60 @@ export function SlaSettingsPage({
   }
 
   function handleDelete(policy: PolicyModel) {
-    if (!canEdit || policy.source === 'live') return;
+    if (!canEdit) return;
     setDeleteTarget(policy);
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return;
-    setDemoPolicies((prev) => prev.filter((policy) => policy.id !== deleteTarget.id));
-    if (selectedPolicyId === deleteTarget.id) {
-      setSelectedPolicyId(null);
+    try {
+      await deleteSlaPolicyConfig(deleteTarget.id);
+      await loadLivePolicies();
+      if (selectedPolicyId === deleteTarget.id) {
+        setSelectedPolicyId(null);
+      }
+      toast.success(`"${deleteTarget.name}" deleted.`);
+    } catch {
+      toast.error('Unable to delete SLA policy.');
     }
-    toast.success(`"${deleteTarget.name}" deleted.`);
     setDeleteTarget(null);
+  }
+
+  async function handleSaveBusinessHours() {
+    if (!canEdit) return;
+    setBusinessSaving(true);
+    setBusinessError(null);
+    try {
+      const response = await updateSlaBusinessHoursSettings({
+        timezone: businessTimezone,
+        schedule: businessHoursToApi(businessHours),
+        holidays,
+      });
+      setBusinessTimezone(response.data.timezone);
+      setBusinessHours(businessHoursFromApi(response.data.schedule));
+      setHolidays(response.data.holidays);
+      toast.success('Business hours settings saved.');
+    } catch {
+      setBusinessError('Unable to save business hours settings.');
+      toast.error('Unable to save business hours settings.');
+    } finally {
+      setBusinessSaving(false);
+    }
   }
 
   return (
     <section className="min-h-full bg-slate-50 animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
-          {headerProps ? (
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
@@ -1162,7 +1323,7 @@ export function SlaSettingsPage({
                   className="flex items-center space-x-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>New Policy (Coming soon)</span>
+                  <span>New Policy</span>
                 </button>
               )}
             </div>
@@ -1179,10 +1340,6 @@ export function SlaSettingsPage({
 
         {activeTab === 'policies' && (
           <div>
-            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              SLA targets and compliance are sourced from backend APIs.
-            </div>
-
             <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
               {[
                 {
@@ -1247,8 +1404,18 @@ export function SlaSettingsPage({
             <div className="grid gap-5 lg:grid-cols-12">
               <div className="space-y-3 lg:col-span-5">
                 {loadingLive && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-                    Loading live team SLA policies...
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={`policy-skel-${i}`} className="rounded-xl border border-slate-200 bg-white p-5">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-2">
+                            <div className="h-5 w-40 skeleton-shimmer rounded" />
+                            <div className="h-3.5 w-56 skeleton-shimmer rounded" />
+                          </div>
+                          <div className="h-8 w-20 skeleton-shimmer rounded-lg" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -1272,9 +1439,7 @@ export function SlaSettingsPage({
                           <span className="truncate text-sm font-semibold text-slate-900">{policy.name}</span>
                           {policy.isDefault && <span className="rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">Default</span>}
                           {!policy.enabled && <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">Disabled</span>}
-                          <span className={`rounded-lg px-2 py-1 text-xs font-medium ${policy.source === 'live' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                            {policy.source === 'live' ? 'Live' : 'Demo'}
-                          </span>
+                          <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Live</span>
                         </div>
                         <p className="mt-0.5 truncate text-xs text-slate-500">{policy.description}</p>
                         <div className="mt-2 flex items-center space-x-3">
@@ -1308,17 +1473,16 @@ export function SlaSettingsPage({
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
-                          {policy.source !== 'live' && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(policy)}
-                              className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={role !== 'OWNER' && policy.isDefault}
+                            onClick={() => handleDelete(policy)}
+                            className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1353,20 +1517,9 @@ export function SlaSettingsPage({
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <span className={`rounded-lg px-2 py-1 text-xs font-medium ${selectedPolicy.source === 'live' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                          {selectedPolicy.source === 'live' ? 'Live' : 'Demo'}
-                        </span>
+                        <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Live</span>
                         {canEdit && (
                           <>
-                            {selectedPolicy.source === 'live' && (
-                              <button
-                                type="button"
-                                onClick={() => handleResetLivePolicy(selectedPolicy)}
-                                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                              >
-                                Reset Targets
-                              </button>
-                            )}
                             <button
                               type="button"
                               onClick={() => handleEdit(selectedPolicy)}
@@ -1501,11 +1654,6 @@ export function SlaSettingsPage({
                               {policy.compliance}% compliant
                             </span>
                           )}
-                          {policy.source === 'demo' && (
-                            <span className="rounded-lg bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
-                              Demo
-                            </span>
-                          )}
                         </>
                       ) : (
                         <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
@@ -1517,24 +1665,11 @@ export function SlaSettingsPage({
                 ))}
               </div>
             </div>
-
-            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <h3 className="text-sm font-semibold text-amber-900">Backend TODO (tracked)</h3>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
-                {BACKEND_TODO_ITEMS.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
           </div>
         )}
 
         {activeTab === 'overview' && (
           <div className="space-y-5">
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Overview metrics are sourced from the backend SLA compliance report.
-            </div>
-
             <div className="grid gap-5 md:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-white p-5 md:col-span-2">
                 <h3 className="mb-4 text-sm font-semibold text-slate-900">SLA Outcome Breakdown - Last 30 Days</h3>
@@ -1635,6 +1770,42 @@ export function SlaSettingsPage({
               </div>
             </div>
 
+            <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <h3 className="mb-4 text-sm font-semibold text-slate-900">Compliance by Priority (Last 30 Days)</h3>
+              {priorityOverviewData.length === 0 ? (
+                <p className="text-sm text-slate-500">No priority SLA data available.</p>
+              ) : (
+                <div className="space-y-3">
+                  {priorityOverviewData.map((item) => {
+                    const key = API_TO_UI_PRIORITY[item.priority] ?? 'medium';
+                    const label = PRIORITY_META[key].label;
+                    const metPercent = item.total > 0 ? Math.round((item.met / item.total) * 100) : 0;
+                    return (
+                      <div key={item.priority}>
+                        <div className="mb-1 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${PRIORITY_META[key].dot}`} />
+                            <span className="font-medium text-slate-700">{label}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-slate-500">Met: {item.met}</span>
+                            <span className="text-slate-500">Breached: {item.breached}</span>
+                            <span className={`font-semibold ${complianceColor(metPercent)}`}>{metPercent}% met</span>
+                          </div>
+                        </div>
+                        <div className="h-2.5 w-full rounded-full bg-slate-100">
+                          <div
+                            className={`h-2.5 rounded-full ${complianceBg(metPercent)}`}
+                            style={{ width: `${metPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="border-b border-slate-200 px-5 py-4">
                 <h3 className="text-sm font-semibold text-slate-900">Policy Performance</h3>
@@ -1643,7 +1814,7 @@ export function SlaSettingsPage({
                 <table className="w-full text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50">
                     <tr>
-                      {['Policy', 'Status', 'Teams', 'Compliance', 'Breaches (30d)', 'Avg Response', 'Avg Resolution'].map((heading) => (
+                      {['Policy', 'Status', 'Teams', 'Compliance'].map((heading) => (
                         <th key={heading} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
                           {heading}
                         </th>
@@ -1657,9 +1828,7 @@ export function SlaSettingsPage({
                           <div className="flex items-center space-x-2">
                             <span className="text-sm font-medium text-slate-900">{policy.name}</span>
                             {policy.isDefault && <span className="rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">Default</span>}
-                            <span className={`rounded-lg px-2 py-1 text-xs font-medium ${policy.source === 'live' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
-                              {policy.source === 'live' ? 'Live' : 'Demo'}
-                            </span>
+                            <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Live</span>
                           </div>
                           <p className="mt-0.5 text-xs text-slate-400">{policy.description}</p>
                         </td>
@@ -1683,15 +1852,6 @@ export function SlaSettingsPage({
                             <span className="text-xs text-slate-400">-</span>
                           )}
                         </td>
-                        <td className="px-5 py-3 text-sm font-medium text-slate-700">
-                          {policy.enabled && policy.compliance > 0 ? `${Math.max(0, Math.round((100 - policy.compliance) / 5))}` : '-'}
-                        </td>
-                        <td className="px-5 py-3 text-sm text-slate-700">
-                          {policy.enabled ? fmtHours(policy.targets.medium.firstResponse) : '-'}
-                        </td>
-                        <td className="px-5 py-3 text-sm text-slate-700">
-                          {policy.enabled ? fmtHours(policy.targets.medium.resolution) : '-'}
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1703,9 +1863,26 @@ export function SlaSettingsPage({
 
         {activeTab === 'business-hours' && (
           <div className="w-full min-w-0 space-y-5">
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-              Business hours and holidays are demo UI for now. Backend persistence is listed in the TODO card.
-            </div>
+            {businessError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {businessError}
+              </div>
+            )}
+            {businessLoading && (
+              <div className="rounded-xl border border-slate-200 bg-white p-5">
+                <div className="space-y-4">
+                  <div className="h-5 w-48 skeleton-shimmer rounded" />
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={`bh-skel-${i}`} className="flex items-center gap-4">
+                      <div className="h-4 w-24 skeleton-shimmer rounded" />
+                      <div className="h-8 w-20 skeleton-shimmer rounded-lg" />
+                      <div className="h-4 w-4 skeleton-shimmer rounded" />
+                      <div className="h-8 w-20 skeleton-shimmer rounded-lg" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-5 sm:gap-6 md:gap-8 lg:gap-10 md:grid-cols-2">
               <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-4 py-3 sm:px-5 sm:py-4">
@@ -1714,14 +1891,57 @@ export function SlaSettingsPage({
                     SLA timers only tick during active hours on enabled days.
                   </p>
                 </div>
+                <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
+                  <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Timezone</label>
+                  <input
+                    value={businessTimezone}
+                    disabled={!canEdit}
+                    onChange={(event) => setBusinessTimezone(event.target.value)}
+                    className={`mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
+                      !canEdit ? 'cursor-not-allowed bg-slate-100' : ''
+                    }`}
+                    placeholder="e.g. UTC"
+                  />
+                </div>
                 <div className="min-w-0 p-4 sm:p-5">
-                  <BusinessHoursEditor disabled={!canEdit} />
+                  <BusinessHoursEditor
+                    disabled={!canEdit}
+                    hours={businessHours}
+                    onToggleDay={(day) =>
+                      setBusinessHours((prev) => ({
+                        ...prev,
+                        [day]: { ...prev[day], enabled: !prev[day].enabled },
+                      }))
+                    }
+                    onUpdateTime={(day, key, value) =>
+                      setBusinessHours((prev) => ({
+                        ...prev,
+                        [day]: { ...prev[day], [key]: value },
+                      }))
+                    }
+                  />
                 </div>
               </div>
 
               <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                 <h3 className="mb-4 text-sm font-semibold text-slate-900">Holidays</h3>
-                <HolidayManager disabled={!canEdit} />
+                <HolidayManager
+                  disabled={!canEdit}
+                  holidays={holidays}
+                  onAddHoliday={(holiday) =>
+                    setHolidays((prev) =>
+                      [...prev, holiday].sort((a, b) => a.date.localeCompare(b.date)),
+                    )
+                  }
+                  onRemoveHoliday={(holiday) =>
+                    setHolidays((prev) =>
+                      prev.filter(
+                        (item) =>
+                          !(item.date === holiday.date && item.name === holiday.name),
+                      ),
+                    )
+                  }
+                />
               </div>
             </div>
 
@@ -1729,10 +1949,11 @@ export function SlaSettingsPage({
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => toast.success('Business hours changes saved locally (demo).')}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  disabled={businessSaving}
+                  onClick={handleSaveBusinessHours}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  Save Business Hours
+                  {businessSaving ? 'Saving...' : 'Save Business Hours'}
                 </button>
               </div>
             )}
@@ -1743,8 +1964,9 @@ export function SlaSettingsPage({
       {showEditor && (
         <PolicyModal
           policy={editingPolicy}
-          teams={teamsList}
+          teams={policyEditorTeams}
           canEdit={canEdit}
+          canSetDefault={role === 'OWNER'}
           onSave={handleSave}
           onClose={() => {
             setShowEditor(false);
@@ -1763,4 +1985,3 @@ export function SlaSettingsPage({
     </section>
   );
 }
-

@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { CreateCannedResponseDto } from './dto/create-canned-response.dto';
 import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
@@ -6,7 +14,9 @@ import { CannedResponsesService } from './canned-responses.service';
 
 @Controller('canned-responses')
 export class CannedResponsesController {
-  constructor(private readonly cannedResponsesService: CannedResponsesService) {}
+  constructor(
+    private readonly cannedResponsesService: CannedResponsesService,
+  ) {}
 
   @Get()
   list(@CurrentUser() user: AuthUser) {

@@ -21,7 +21,11 @@ const SLA_STATUSES = ['on_track', 'at_risk', 'breached'] as const;
 function splitStrings(value: unknown): string[] | undefined {
   if (value == null) return undefined;
   if (Array.isArray(value)) return value.filter((v) => typeof v === 'string');
-  if (typeof value === 'string') return value.split(',').map((s) => s.trim()).filter(Boolean);
+  if (typeof value === 'string')
+    return value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
   return undefined;
 }
 

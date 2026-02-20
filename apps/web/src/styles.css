@@ -126,6 +126,45 @@
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
     animation: shimmer 1.6s infinite;
   }
+
+  /* ——— Typography tokens (7.3 fix) ———
+   * Use these classes for consistent heading/body/caption styles.
+   * Scale: heading-1 > heading-2 > heading-3 > body-text > body-sm > caption
+   */
+  .heading-1 {
+    @apply text-2xl font-bold text-slate-900;
+  }
+  .heading-2 {
+    @apply text-xl font-semibold text-slate-800;
+  }
+  .heading-3 {
+    @apply text-lg font-semibold text-slate-800;
+  }
+  .body-text {
+    @apply text-sm text-slate-700;
+  }
+  .body-sm {
+    @apply text-sm text-slate-600;
+  }
+  .caption {
+    @apply text-xs text-slate-500;
+  }
+  .label-text {
+    @apply text-xs font-semibold text-slate-700;
+  }
+
+  /* ——— Spacing conventions (7.2 fix) ———
+   * Stick to Tailwind's 4px (1 unit) scale:
+   *   gap-1 (4px)  – tight grouping (icons next to text)
+   *   gap-2 (8px)  – default inline spacing (chips, badges)
+   *   gap-3 (12px) – compact sections
+   *   gap-4 (16px) – standard section spacing
+   *   gap-6 (24px) – major section breaks
+   *   gap-8 (32px) – page-level spacing
+   *
+   * Vertical margins between sections: mt-4 (16px) or mt-6 (24px)
+   * Card padding: p-4 (16px) standard, p-6 (24px) for larger cards
+   */
 }
 
 @keyframes fade-in {

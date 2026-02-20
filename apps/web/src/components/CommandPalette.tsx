@@ -17,8 +17,10 @@ import {
   History
 } from 'lucide-react';
 import { searchAll, type SearchResults } from '../api/client';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import type { RecentSearch } from '../hooks/useCommandPalette';
 import { formatTicketId } from '../utils/format';
+import { priorityBadgeClass } from '../utils/statusColors';
 
 type CommandPaletteProps = {
   isOpen: boolean;
@@ -69,11 +71,14 @@ export function CommandPalette({
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  useModalFocusTrap({ open: isOpen, containerRef: dialogRef, onClose });
 
   // Filter pages by role
   const availablePages = useMemo(
@@ -282,10 +287,12 @@ export function CommandPalette({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-slate-900/50 backdrop-blur-sm">
       <div
+        ref={dialogRef}
         className="glass-card-strong w-full max-w-2xl overflow-hidden shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
+        tabIndex={-1}
       >
         {/* Search Header */}
         <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
@@ -450,12 +457,9 @@ export function CommandPalette({
                         {formatTicketId(ticket)} · {ticket.status} · {ticket.assignedTeam?.name ?? 'Unassigned'}
                       </p>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      ticket.priority === 'P1' ? 'bg-red-100 text-red-700' :
-                      ticket.priority === 'P2' ? 'bg-amber-100 text-amber-700' :
-                      ticket.priority === 'P3' ? 'bg-blue-100 text-blue-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}
+                    >
                       {ticket.priority}
                     </span>
                   </button>

@@ -1,25 +1,17 @@
 import type { TicketRecord } from '../api/client';
 import { RelativeTime } from './RelativeTime';
-import { formatStatus, formatTicketId, getSlaTone, statusBadgeClass } from '../utils/format';
-
-function priorityBadgeClass(priority?: string | null) {
-  switch (priority) {
-    case 'P1':
-      return 'border-amber-200 bg-amber-50 text-amber-800';
-    case 'P2':
-      return 'border-blue-200 bg-blue-50 text-blue-800';
-    case 'P3':
-      return 'border-indigo-200 bg-indigo-50 text-indigo-800';
-    case 'P4':
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-    default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
-  }
-}
+import {
+  formatStatus,
+  formatTicketId,
+  getSlaTone,
+  priorityBadgeClass,
+  statusBadgeClass,
+} from '../utils/format';
 
 type TicketTableViewProps = {
   tickets: TicketRecord[];
   role: string;
+  focusedTicketId?: string | null;
   selection: {
     isSelected: (id: string) => boolean;
     toggle: (id: string) => void;
@@ -32,6 +24,7 @@ type TicketTableViewProps = {
 export function TicketTableView({
   tickets,
   role,
+  focusedTicketId,
   selection,
   onRowClick,
 }: TicketTableViewProps) {
@@ -75,12 +68,22 @@ export function TicketTableView({
             const assigneeName = ticket.assignee?.displayName ?? ticket.assignee?.email ?? 'Unassigned';
             const snippet = ticket.description?.trim() || ticket.category?.name || 'No additional details';
             const selected = selection.isSelected(ticket.id);
+            const focused = focusedTicketId === ticket.id;
             return (
               <tr
                 key={ticket.id}
                 onClick={() => onRowClick(ticket)}
-                className={`cursor-pointer text-sm transition-colors hover:bg-gray-50 ${
-                  selected ? 'bg-blue-50' : 'bg-white'
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onRowClick(ticket);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-selected={selected || focused}
+                className={`cursor-pointer text-sm transition-colors hover:bg-gray-50 focus-visible:bg-gray-100 ${
+                  selected ? 'bg-blue-50' : focused ? 'bg-slate-50' : 'bg-white'
                 }`}
               >
                 {showCheckbox ? (

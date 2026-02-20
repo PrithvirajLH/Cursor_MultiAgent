@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle,
   ClipboardList,
@@ -6,50 +6,89 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
+  LogIn,
   Menu,
   Settings,
   Ticket,
   Users
 } from 'lucide-react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import {
-  createTicket,
-  fetchCategories,
-  fetchCustomFields,
-  fetchTeams,
-  fetchTicketCounts,
-  getDemoUserEmail,
-  setDemoUserEmail,
-  type CategoryRef,
-  type CustomFieldRecord,
-  type TeamRef
-} from './api/client';
+import { ErrorBoundary, RouteErrorFallback } from './components/ErrorBoundary';
+import { fetchTeams, type CurrentUserSession, type TeamRef } from './api/client';
 import { CommandPalette } from './components/CommandPalette';
-import { CreateTicketModal, type CreateTicketForm } from './components/CreateTicketModal';
+import { CreateTicketModal } from './components/CreateTicketModal';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 import { AdminSidebar } from './components/AdminSidebar';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { TopBar } from './components/TopBar';
+import { HeaderProvider, type HeaderContextValue } from './contexts/HeaderContext';
 import { useCommandPalette } from './hooks/useCommandPalette';
+import { useCreateTicketForm } from './hooks/useCreateTicketForm';
+import { useAuthSession } from './hooks/useAuthSession';
 import { getShortcutContext, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotifications } from './hooks/useNotifications';
+import { useSidebarState } from './hooks/useSidebarState';
 import { useToast } from './hooks/useToast';
-import { DashboardPage } from './pages/DashboardPage';
-import { ManagerViewsPage } from './pages/ManagerViewsPage';
-import { SlaSettingsPage } from './pages/SlaSettingsPage';
-import { ReportsPage } from './pages/ReportsPage';
-import { AuditLogPage } from './pages/AuditLogPage';
-import { AutomationRulesPage } from './pages/AutomationRulesPage';
-import { NotFoundPage } from './pages/NotFoundPage';
-import { RoutingRulesPage } from './pages/RoutingRulesPage';
-import { CategoriesPage } from './pages/CategoriesPage';
-import { CustomFieldsAdminPage } from './pages/CustomFieldsAdminPage';
-import { TeamPage } from './pages/TeamPage';
-import { TicketDetailPage } from './pages/TicketDetailPage';
-import { TicketsPage } from './pages/TicketsPage';
-import { TriageBoardPage } from './pages/TriageBoardPage';
+import { useTicketCountsQuery } from './hooks/useTicketCountsQuery';
+import { useTicketDataInvalidation } from './contexts/TicketDataInvalidationContext';
 import type { Role, StatusFilter, TicketScope } from './types';
+
+// Lazy-loaded page components for code splitting – each page is a separate chunk
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const ManagerViewsPage = lazy(() => import('./pages/ManagerViewsPage').then((m) => ({ default: m.ManagerViewsPage })));
+const SlaSettingsPage = lazy(() => import('./pages/SlaSettingsPage').then((m) => ({ default: m.SlaSettingsPage })));
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage').then((m) => ({ default: m.AuditLogPage })));
+const AutomationRulesPage = lazy(() => import('./pages/AutomationRulesPage').then((m) => ({ default: m.AutomationRulesPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const RoutingRulesPage = lazy(() => import('./pages/RoutingRulesPage').then((m) => ({ default: m.RoutingRulesPage })));
+const CategoriesPage = lazy(() => import('./pages/CategoriesPage').then((m) => ({ default: m.CategoriesPage })));
+const CustomFieldsAdminPage = lazy(() => import('./pages/CustomFieldsAdminPage').then((m) => ({ default: m.CustomFieldsAdminPage })));
+const TeamPage = lazy(() => import('./pages/TeamPage').then((m) => ({ default: m.TeamPage })));
+const TicketDetailPage = lazy(() => import('./pages/TicketDetailPage').then((m) => ({ default: m.TicketDetailPage })));
+const TicketsPage = lazy(() => import('./pages/TicketsPage').then((m) => ({ default: m.TicketsPage })));
+const TriageBoardPage = lazy(() => import('./pages/TriageBoardPage').then((m) => ({ default: m.TriageBoardPage })));
+
+function PageFallback() {
+  return (
+    <div className="flex h-64 items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+    </div>
+  );
+}
+
+function AuthRequiredScreen({
+  onSignIn,
+  error,
+}: {
+  onSignIn: () => void;
+  error: string | null;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-slate-900">Sign in required</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Sign in with your Microsoft account to access the ticketing system.
+        </p>
+        {error && (
+          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onSignIn}
+          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          <LogIn className="h-4 w-4" />
+          <span>Sign in with Microsoft</span>
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type NavKey =
   | 'dashboard'
@@ -63,24 +102,6 @@ type NavKey =
   | 'team'
   | 'sla-settings'
   | 'admin';
-
-const defaultPersonas: { label: string; email: string; role: Role }[] = [
-  { label: 'Employee (Jane)', email: 'jane.doe@company.com', role: 'EMPLOYEE' },
-  { label: 'Agent (Alex)', email: 'alex.park@company.com', role: 'AGENT' },
-  { label: 'Lead (Maria)', email: 'maria.chen@company.com', role: 'LEAD' },
-  { label: 'Team Admin (Sam)', email: 'sam.rivera@company.com', role: 'TEAM_ADMIN' },
-  { label: 'Owner', email: 'owner@company.com', role: 'OWNER' }
-];
-
-const e2ePersonas: { label: string; email: string; role: Role }[] = [
-  { label: 'Requester (Test)', email: 'requester@company.com', role: 'EMPLOYEE' },
-  { label: 'Agent (Test)', email: 'agent@company.com', role: 'AGENT' },
-  { label: 'Lead (Test)', email: 'lead@company.com', role: 'LEAD' },
-  { label: 'Team Admin (Test)', email: 'admin@company.com', role: 'TEAM_ADMIN' },
-  { label: 'Owner (Test)', email: 'owner@company.com', role: 'OWNER' }
-];
-
-const personas = import.meta.env.VITE_E2E_MODE === 'true' ? e2ePersonas : defaultPersonas;
 
 const navItems: (SidebarItem & { roles: Role[] })[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
@@ -121,9 +142,7 @@ function isAdminRoutePath(pathname: string): boolean {
 }
 
 function isShellLayoutPath(pathname: string): boolean {
-  if (pathname === '/tickets' || pathname.startsWith('/tickets/')) {
-    return true;
-  }
+  if (pathname === '/tickets' || pathname.startsWith('/tickets/')) return true;
   return (
     pathname === '/dashboard' ||
     pathname === '/triage' ||
@@ -145,18 +164,10 @@ function deriveNavKey(
   ticketPresetStatus: StatusFilter,
   ticketPresetScope: TicketScope
 ): NavKey {
-  if (pathname.startsWith('/triage')) {
-    return 'triage';
-  }
-  if (pathname.startsWith('/manager')) {
-    return 'manager';
-  }
-  if (pathname.startsWith('/team')) {
-    return 'team';
-  }
-  if (pathname.startsWith('/sla-settings')) {
-    return canUseAdminMenu(role) ? 'admin' : 'sla-settings';
-  }
+  if (pathname.startsWith('/triage')) return 'triage';
+  if (pathname.startsWith('/manager')) return 'manager';
+  if (pathname.startsWith('/team')) return 'team';
+  if (pathname.startsWith('/sla-settings')) return canUseAdminMenu(role) ? 'admin' : 'sla-settings';
   if (
     pathname.startsWith('/routing') ||
     pathname.startsWith('/automation') ||
@@ -164,180 +175,139 @@ function deriveNavKey(
     pathname.startsWith('/categories') ||
     pathname.startsWith('/custom-fields') ||
     pathname.startsWith('/reports')
-  ) {
-    return 'admin';
-  }
-  if (pathname.startsWith('/admin')) {
-    return 'admin';
-  }
+  ) return 'admin';
+  if (pathname.startsWith('/admin')) return 'admin';
   if (pathname.startsWith('/tickets')) {
-    if (ticketPresetScope === 'assigned') {
-      return 'assigned';
-    }
-    if (ticketPresetScope === 'unassigned') {
-      return 'unassigned';
-    }
-    if (ticketPresetScope === 'created') {
-      return 'created';
-    }
-    if (ticketPresetStatus === 'resolved') {
-      return 'completed';
-    }
+    if (ticketPresetScope === 'assigned') return 'assigned';
+    if (ticketPresetScope === 'unassigned') return 'unassigned';
+    if (ticketPresetScope === 'created') return 'created';
+    if (ticketPresetStatus === 'resolved') return 'completed';
     return role === 'EMPLOYEE' ? 'created' : 'tickets';
   }
   return 'dashboard';
 }
 
-function App() {
+/* ——— View title / subtitle resolution ——— */
+
+const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
+  dashboard: { title: 'Dashboard', subtitle: 'Quick view of your ticket activity and updates.' },
+  tickets: { title: 'All Tickets', subtitle: 'Track, filter, and manage your support requests.' },
+  assigned: { title: 'Assigned to Me', subtitle: 'Tickets waiting for your action.' },
+  unassigned: { title: 'Unassigned', subtitle: 'Tickets waiting to be picked up.' },
+  created: { title: 'My Tickets', subtitle: 'Requests you have opened or own.' },
+  completed: { title: 'Completed', subtitle: 'Closed and resolved tickets.' },
+  triage: { title: 'Triage Board', subtitle: 'Monitor open tickets by status.' },
+  manager: { title: 'Manager Views', subtitle: 'High-level ticket volume and workload insights.' },
+  team: { title: 'Team', subtitle: 'Manage members and roles.' },
+  'sla-settings': { title: 'SLA Settings', subtitle: 'Configure SLA targets per department.' },
+  admin: { title: 'Admin', subtitle: 'Configuration and settings.' },
+};
+
+const routeTitleOverrides: { prefix: string; title: string; subtitle?: string }[] = [
+  { prefix: '/routing', title: 'Routing Rules', subtitle: 'Manage keyword-based routing logic.' },
+  { prefix: '/automation', title: 'Automation Rules', subtitle: 'Run actions when tickets are created, status changes, or SLA is at risk.' },
+  { prefix: '/audit-log', title: 'Audit Log', subtitle: 'Ticket changes and actions for compliance and troubleshooting.' },
+  { prefix: '/categories', title: 'Categories', subtitle: 'Organize ticket categories and subcategories.' },
+  { prefix: '/custom-fields', title: 'Custom Fields', subtitle: 'Define custom fields per team for tickets.' },
+  { prefix: '/reports', title: 'Reports', subtitle: 'Analytics and insights for helpdesk operations.' },
+];
+
+function resolveViewTitle(pathname: string, navKey: NavKey, role: Role): { title: string; subtitle: string } {
+  const override = routeTitleOverrides.find((r) => pathname.startsWith(r.prefix));
+  if (override) {
+    return {
+      title: override.title,
+      subtitle: override.subtitle ?? viewMeta[navKey]?.subtitle ?? '',
+    };
+  }
+  const meta = viewMeta[navKey];
+  const title = meta?.title ?? 'Dashboard';
+  let subtitle = meta?.subtitle ?? 'Quick view of your ticket activity and updates.';
+  if (navKey === 'created' && role !== 'EMPLOYEE') {
+    subtitle = 'Requests you have opened or own.';
+  }
+  return { title, subtitle };
+}
+
+/* ——— Authenticated shell ——— */
+
+function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onSignOut: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [currentEmail, setCurrentEmail] = useState(() => getDemoUserEmail() || personas[0].email);
+  // Extracted hooks (6.1)
+  const currentEmail = user.email;
   const currentPersona = useMemo(
-    () => personas.find((persona) => persona.email === currentEmail) ?? personas[0],
-    [currentEmail]
+    () => ({ role: user.role as Role }),
+    [user.role],
   );
+  const personas = useMemo(
+    () => [
+      {
+        label: `${user.displayName} (${user.email})`,
+        email: user.email,
+        role: user.role,
+      },
+    ],
+    [user.displayName, user.email, user.role],
+  );
+  const setCurrentEmail = useCallback(() => {}, []);
+  const sidebar = useSidebarState();
+  const {
+    refreshKey,
+    notifyTicketAggregatesChanged,
+    notifyTicketReportsChanged,
+  } = useTicketDataInvalidation();
 
-  useEffect(() => {
-    const isValid = personas.some((persona) => persona.email === currentEmail);
-    if (!isValid) {
-      setCurrentEmail(personas[0].email);
-    }
-  }, [currentEmail, personas]);
+  const createTicketForm = useCreateTicketForm({
+    onSuccess: () => {
+      notifyTicketAggregatesChanged();
+      notifyTicketReportsChanged();
+    },
+    toastSuccess: toast.success,
+    toastError: toast.error,
+  });
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return window.localStorage.getItem('sidebar-collapsed') === 'true';
-  });
-  const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return window.matchMedia('(max-width: 1023px)').matches;
-  });
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [mobileAdminSidebarOpen, setMobileAdminSidebarOpen] = useState(false);
-  const [adminSidebarDismissed, setAdminSidebarDismissed] = useState(false);
+  const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
+  const { data: ticketCounts } = useTicketCountsQuery(currentEmail);
 
   const [navKey, setNavKey] = useState<NavKey>('dashboard');
   const [ticketPresetStatus, setTicketPresetStatus] = useState<StatusFilter>('open');
   const [ticketPresetScope, setTicketPresetScope] = useState<TicketScope>('all');
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
-  const [ticketCounts, setTicketCounts] = useState<{
-    assignedToMe: number;
-    triage: number;
-    open: number;
-    unassigned: number;
-  } | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [ticketError, setTicketError] = useState<string | null>(null);
-
-  // Command Palette state with Cmd+N shortcut for new ticket
+  // Command Palette
   const commandPalette = useCommandPalette({
-    onCreateTicket: () => setShowCreateModal(true)
+    onCreateTicket: createTicketForm.openModal,
   });
 
-  // Notifications state with polling
-  // Pass currentEmail as userKey to reset notifications on persona switch
+  // Notifications
   const notifications = useNotifications({
-    pollingInterval: 30000, // 30 seconds
+    pollingInterval: 30000,
     enablePolling: true,
-    userKey: currentEmail
+    userKey: currentEmail,
   });
 
-  // Keyboard shortcuts: ? (help), Cmd+/ (focus search)
+  // Keyboard shortcuts
   const keyboardShortcuts = useKeyboardShortcuts();
   const shortcutContext = getShortcutContext(location.pathname);
 
-  const [createForm, setCreateForm] = useState<CreateTicketForm>({
-    subject: '',
-    description: '',
-    priority: 'P3',
-    channel: 'PORTAL',
-    assignedTeamId: '',
-    categoryId: ''
-  });
-  const [createCategories, setCreateCategories] = useState<CategoryRef[]>([]);
-  const [createCustomFieldsRaw, setCreateCustomFieldsRaw] = useState<CustomFieldRecord[]>([]);
-  const [createCustomFieldValues, setCreateCustomFieldValues] = useState<Record<string, string>>({});
   const adminMenuEnabled = canUseAdminMenu(currentPersona.role);
   const isAdminRoute = isAdminRoutePath(location.pathname);
-  const showAdminSidebar = adminMenuEnabled && isAdminRoute && !adminSidebarDismissed;
+  const showAdminSidebar = adminMenuEnabled && isAdminRoute && !sidebar.adminSidebarDismissed;
   const shellLayoutPath = isShellLayoutPath(location.pathname);
-  const desktopMainOffset = showAdminSidebar ? 'lg:ml-64' : isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64';
-  const showMobileBackdrop = isMobileViewport && (mobileSidebarOpen || mobileAdminSidebarOpen);
+  const desktopMainOffset = showAdminSidebar ? 'lg:ml-64' : sidebar.isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64';
+  const showMobileBackdrop = sidebar.isMobileViewport && (sidebar.mobileSidebarOpen || sidebar.mobileAdminSidebarOpen);
 
-  const createCustomFields = useMemo(() => {
-    if (!createForm.categoryId) return createCustomFieldsRaw;
-    return createCustomFieldsRaw.filter(
-      (f) => !f.categoryId || f.categoryId === createForm.categoryId
-    );
-  }, [createCustomFieldsRaw, createForm.categoryId]);
-
-  useEffect(() => {
-    setDemoUserEmail(currentEmail);
-  }, [currentEmail]);
-
-  useEffect(() => {
-    fetchCategories({ includeInactive: false })
-      .then((res) => setCreateCategories(res.data))
-      .catch(() => setCreateCategories([]));
-  }, []);
-
-  useEffect(() => {
-    if (!createForm.assignedTeamId) {
-      setCreateCustomFieldsRaw([]);
-      setCreateCustomFieldValues({});
-      return;
-    }
-    fetchCustomFields({ teamId: createForm.assignedTeamId })
-      .then((res) => setCreateCustomFieldsRaw(res.data))
-      .catch(() => setCreateCustomFieldsRaw([]));
-    setCreateCustomFieldValues({});
-  }, [createForm.assignedTeamId]);
+  /* ——— Derived state ——— */
 
   useEffect(() => {
     setNavKey(deriveNavKey(location.pathname, currentPersona.role, ticketPresetStatus, ticketPresetScope));
   }, [location.pathname, currentPersona.role, ticketPresetStatus, ticketPresetScope]);
 
   useEffect(() => {
-    if (!isAdminRoute) {
-      setAdminSidebarDismissed(false);
-    }
+    if (!isAdminRoute) sidebar.setAdminSidebarDismissed(false);
   }, [isAdminRoute]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const media = window.matchMedia('(max-width: 1023px)');
-    const syncViewport = () => setIsMobileViewport(media.matches);
-    syncViewport();
-    media.addEventListener('change', syncViewport);
-    return () => media.removeEventListener('change', syncViewport);
-  }, []);
-
-  useEffect(() => {
-    if (!isMobileViewport) {
-      setMobileSidebarOpen(false);
-      setMobileAdminSidebarOpen(false);
-    }
-  }, [isMobileViewport]);
-
-  useEffect(() => {
-    setMobileSidebarOpen(false);
-    setMobileAdminSidebarOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-    window.localStorage.setItem('sidebar-collapsed', String(isSidebarCollapsed));
-  }, [isSidebarCollapsed]);
 
   useEffect(() => {
     fetchTeams()
@@ -345,139 +315,57 @@ function App() {
       .catch(() => setTeamsList([]));
   }, [currentEmail]);
 
-  useEffect(() => {
-    fetchTicketCounts()
-      .then(setTicketCounts)
-      .catch(() => setTicketCounts(null));
-  }, [currentEmail, refreshKey]);
+  /* ——— Navigation handler (memoized, 6.3) ——— */
 
-  function handleNavSelect(key: NavKey) {
-    setMobileSidebarOpen(false);
-    setMobileAdminSidebarOpen(false);
+  const handleNavSelect = useCallback(
+    (key: NavKey) => {
+      sidebar.setMobileSidebarOpen(false);
+      sidebar.setMobileAdminSidebarOpen(false);
 
-    if (key === 'dashboard') {
-      navigate('/dashboard');
-      return;
-    }
-
-    if (key === 'triage') {
-      navigate('/triage');
-      return;
-    }
-
-    if (key === 'manager') {
-      navigate('/manager');
-      return;
-    }
-
-    if (key === 'team') {
-      navigate('/team');
-      return;
-    }
-    if (key === 'sla-settings') {
-      navigate('/sla-settings');
-      return;
-    }
-    if (key === 'admin') {
-      setAdminSidebarDismissed(false);
-      navigate('/sla-settings');
-      if (isMobileViewport) {
-        setMobileAdminSidebarOpen(true);
+      switch (key) {
+        case 'dashboard': navigate('/dashboard'); return;
+        case 'triage': navigate('/triage'); return;
+        case 'manager': navigate('/manager'); return;
+        case 'team': navigate('/team'); return;
+        case 'sla-settings': navigate('/sla-settings'); return;
+        case 'admin':
+          sidebar.setAdminSidebarDismissed(false);
+          navigate('/sla-settings');
+          if (sidebar.isMobileViewport) sidebar.setMobileAdminSidebarOpen(true);
+          return;
+        case 'completed':
+          setTicketPresetStatus('resolved');
+          setTicketPresetScope('all');
+          navigate('/tickets');
+          return;
+        case 'assigned':
+          setTicketPresetStatus('open');
+          setTicketPresetScope('assigned');
+          navigate('/tickets');
+          return;
+        case 'unassigned':
+          setTicketPresetStatus('open');
+          setTicketPresetScope('unassigned');
+          navigate('/tickets');
+          return;
+        case 'created':
+          setTicketPresetStatus('open');
+          setTicketPresetScope('created');
+          navigate('/tickets');
+          return;
+        case 'tickets':
+          setTicketPresetStatus('open');
+          setTicketPresetScope('all');
+          navigate('/tickets');
+          return;
+        default:
+          navigate('/dashboard');
       }
-      return;
-    }
+    },
+    [navigate, sidebar],
+  );
 
-    if (key === 'completed') {
-      setTicketPresetStatus('resolved');
-      setTicketPresetScope('all');
-      navigate('/tickets');
-      return;
-    }
-
-    if (key === 'assigned') {
-      setTicketPresetStatus('open');
-      setTicketPresetScope('assigned');
-      navigate('/tickets');
-      return;
-    }
-
-    if (key === 'unassigned') {
-      setTicketPresetStatus('open');
-      setTicketPresetScope('unassigned');
-      navigate('/tickets');
-      return;
-    }
-
-    if (key === 'created') {
-      setTicketPresetStatus('open');
-      setTicketPresetScope('created');
-      navigate('/tickets');
-      return;
-    }
-
-    if (key === 'tickets') {
-      setTicketPresetStatus('open');
-      setTicketPresetScope('all');
-      navigate('/tickets');
-      return;
-    }
-
-    navigate('/dashboard');
-  }
-
-  async function handleCreateTicket(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setTicketError(null);
-    const missingRequired = createCustomFields.filter(
-      (f) => f.isRequired && !(createCustomFieldValues[f.id]?.trim?.() ?? '')
-    );
-    if (missingRequired.length > 0) {
-      const names = missingRequired.map((f) => f.name).join(', ');
-      const msg = `Required field(s) must be filled: ${names}`;
-      setTicketError(msg);
-      toast.error(msg);
-      return;
-    }
-    try {
-      const customFieldValuesPayload =
-        createCustomFields.length > 0
-          ? createCustomFields.map((f) => ({
-              customFieldId: f.id,
-              value: (createCustomFieldValues[f.id]?.trim?.() ?? '') || null
-            }))
-          : [];
-      await createTicket({
-        subject: createForm.subject,
-        description: createForm.description,
-        priority: createForm.priority,
-        channel: createForm.channel,
-        ...(createForm.assignedTeamId && { assignedTeamId: createForm.assignedTeamId }),
-        ...(createForm.categoryId && { categoryId: createForm.categoryId }),
-        ...(customFieldValuesPayload.length > 0 && { customFieldValues: customFieldValuesPayload })
-      });
-      setCreateForm({ subject: '', description: '', priority: 'P3', channel: 'PORTAL', assignedTeamId: '', categoryId: '' });
-      setCreateCustomFieldValues({});
-      setShowCreateModal(false);
-      setRefreshKey((prev) => prev + 1);
-      toast.success('Ticket created successfully.');
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === 'object' && error != null && 'message' in error
-            ? String((error as { message: unknown }).message)
-            : 'Unable to create ticket.';
-      const hint =
-        message === 'Missing user header' || message === 'Unknown user'
-          ? ' Ensure you have selected a user (persona) in the top bar and the API is running (e.g. npm run dev in the api app).'
-          : /fetch|network|failed/i.test(message)
-            ? ' Ensure the API is running at the URL in VITE_API_BASE_URL (default http://localhost:3000/api).'
-            : '';
-      const display = message + hint;
-      setTicketError(display);
-      toast.error(display);
-    }
-  }
+  /* ——— Sidebar nav items (memoized, 6.3) ——— */
 
   const visibleNav = useMemo(() => {
     const filtered = navItems
@@ -487,12 +375,12 @@ function App() {
       key: item.key,
       label: item.label,
       icon: item.icon,
-        badge:
-          item.key === 'triage'
-            ? ticketCounts?.triage
-            : item.key === 'tickets'
-              ? ticketCounts?.open
-              : undefined,
+      badge:
+        item.key === 'triage'
+          ? ticketCounts?.triage
+          : item.key === 'tickets'
+            ? ticketCounts?.open
+            : undefined,
       children: item.children?.map((child) => ({
         key: child.key,
         label: child.label,
@@ -507,185 +395,133 @@ function App() {
     }));
   }, [adminMenuEnabled, currentPersona.role, ticketCounts]);
 
-  const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
-    dashboard: {
-      title: 'Dashboard',
-      subtitle: 'Quick view of your ticket activity and updates.'
-    },
-    tickets: {
-      title: 'All Tickets',
-      subtitle: 'Track, filter, and manage your support requests.'
-    },
-    assigned: {
-      title: 'Assigned to Me',
-      subtitle: 'Tickets waiting for your action.'
-    },
-    unassigned: {
-      title: 'Unassigned',
-      subtitle: 'Tickets waiting to be picked up.'
-    },
-    created: {
-      title: currentPersona.role === 'EMPLOYEE' ? 'My Tickets' : 'Created by Me',
-      subtitle: 'Requests you have opened or own.'
-    },
-    completed: {
-      title: 'Completed',
-      subtitle: 'Closed and resolved tickets.'
-    },
-    triage: {
-      title: 'Triage Board',
-      subtitle: 'Monitor open tickets by status.'
-    },
-    manager: {
-      title: 'Manager Views',
-      subtitle: 'High-level ticket volume and workload insights.'
-    },
-    team: {
-      title: 'Team',
-      subtitle: 'Manage members and roles.'
-    },
-    'sla-settings': {
-      title: 'SLA Settings',
-      subtitle: 'Configure SLA targets per department.'
-    },
-    admin: {
-      title: 'Admin',
-      subtitle: 'Configuration and settings.'
-    }
-  };
+  /* ——— Header context value (6.2 – eliminates prop drilling) ——— */
 
-  const viewTitleOverride = location.pathname.startsWith('/routing')
-    ? 'Routing Rules'
-    : location.pathname.startsWith('/automation')
-    ? 'Automation Rules'
-    : location.pathname.startsWith('/audit-log')
-    ? 'Audit Log'
-    : location.pathname.startsWith('/categories')
-    ? 'Categories'
-    : location.pathname.startsWith('/custom-fields')
-    ? 'Custom Fields'
-    : undefined;
-  const viewSubtitleOverride = location.pathname.startsWith('/routing')
-    ? 'Manage keyword-based routing logic.'
-    : location.pathname.startsWith('/automation')
-    ? 'Run actions when tickets are created, status changes, or SLA is at risk.'
-    : location.pathname.startsWith('/reports')
-    ? 'Analytics and insights for helpdesk operations.'
-    : location.pathname.startsWith('/audit-log')
-    ? 'Ticket changes and actions for compliance and troubleshooting.'
-    : location.pathname.startsWith('/categories')
-    ? 'Organize ticket categories and subcategories.'
-    : location.pathname.startsWith('/custom-fields')
-    ? 'Define custom fields per team for tickets.'
-    : undefined;
+  const { title: viewTitle, subtitle: viewSubtitle } = resolveViewTitle(
+    location.pathname,
+    navKey,
+    currentPersona.role,
+  );
 
-  const viewTitle = viewTitleOverride ?? viewMeta[navKey]?.title ?? 'Dashboard';
-  const viewSubtitle =
-    viewSubtitleOverride ?? viewMeta[navKey]?.subtitle ?? 'Quick view of your ticket activity and updates.';
+  const headerValue: HeaderContextValue = useMemo(
+    () => ({
+      title: viewTitle,
+      subtitle: viewSubtitle,
+      currentEmail,
+      personas,
+      onEmailChange: setCurrentEmail,
+      onOpenSearch: commandPalette.open,
+      currentUser: user,
+      onSignOut,
+      notificationProps: {
+        notifications: notifications.notifications,
+        unreadCount: notifications.unreadCount,
+        loading: notifications.loading,
+        hasMore: notifications.hasMore,
+        onLoadMore: notifications.loadMore,
+        onMarkAsRead: notifications.markAsRead,
+        onMarkAllAsRead: notifications.markAllAsRead,
+        onRefresh: notifications.refresh,
+      },
+    }),
+    [
+      viewTitle, viewSubtitle, currentEmail, personas, setCurrentEmail,
+      commandPalette.open, user, onSignOut, notifications,
+    ],
+  );
 
-  function openMobileNavigation() {
-    if (adminMenuEnabled && isAdminRoute && !adminSidebarDismissed) {
-      setMobileAdminSidebarOpen(true);
-      setMobileSidebarOpen(false);
+  const openMobileNavigation = useCallback(() => {
+    if (adminMenuEnabled && isAdminRoute && !sidebar.adminSidebarDismissed) {
+      sidebar.setMobileAdminSidebarOpen(true);
+      sidebar.setMobileSidebarOpen(false);
       return;
     }
-    setMobileSidebarOpen(true);
-    setMobileAdminSidebarOpen(false);
-  }
+    sidebar.setMobileSidebarOpen(true);
+    sidebar.setMobileAdminSidebarOpen(false);
+  }, [adminMenuEnabled, isAdminRoute, sidebar]);
+
+  const isLeadOrAbove =
+    currentPersona.role === 'LEAD' ||
+    currentPersona.role === 'TEAM_ADMIN' ||
+    currentPersona.role === 'OWNER';
+  const isAdminOrOwner =
+    currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER';
 
   return (
     <div className="min-h-screen overflow-hidden">
       <ToastContainer />
       <div className="flex">
+        {/* Desktop sidebar */}
         <Sidebar
-          collapsed={isSidebarCollapsed}
-          onToggle={() => setIsSidebarCollapsed((prev) => !prev)}
+          collapsed={sidebar.isSidebarCollapsed}
+          onToggle={() => sidebar.setIsSidebarCollapsed((prev) => !prev)}
           items={visibleNav}
           activeKey={navKey}
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
-          onCreateTicket={() => setShowCreateModal(true)}
+          onCreateTicket={createTicketForm.openModal}
           className="z-40 hidden lg:flex"
           showAdminSidebarTrigger={adminMenuEnabled && !showAdminSidebar}
           onOpenAdminSidebar={() => {
-            setAdminSidebarDismissed(false);
-            if (!isAdminRoutePath(location.pathname)) {
-              navigate('/sla-settings');
-            }
+            sidebar.setAdminSidebarDismissed(false);
+            if (!isAdminRoutePath(location.pathname)) navigate('/sla-settings');
           }}
         />
+
         {adminMenuEnabled && (
           <AdminSidebar
             visible={showAdminSidebar}
             role={currentPersona.role}
             pathname={location.pathname}
-            onBack={() => setAdminSidebarDismissed(true)}
-            onNavigate={(route) => {
-              setAdminSidebarDismissed(false);
-              navigate(route);
-            }}
+            onBack={() => sidebar.setAdminSidebarDismissed(true)}
+            onNavigate={(route) => { sidebar.setAdminSidebarDismissed(false); navigate(route); }}
             className="hidden lg:block"
           />
         )}
 
+        {/* Mobile backdrop */}
         {showMobileBackdrop && (
           <button
             type="button"
-            onClick={() => {
-              setMobileSidebarOpen(false);
-              setMobileAdminSidebarOpen(false);
-            }}
+            onClick={() => { sidebar.setMobileSidebarOpen(false); sidebar.setMobileAdminSidebarOpen(false); }}
             className="fixed inset-0 z-40 bg-slate-900/35 lg:hidden"
             aria-label="Close navigation"
           />
         )}
 
+        {/* Mobile sidebar */}
         <Sidebar
           collapsed={false}
-          onToggle={() => setMobileSidebarOpen(false)}
+          onToggle={() => sidebar.setMobileSidebarOpen(false)}
           hideCollapseToggle
           items={visibleNav}
           activeKey={navKey}
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
-          onCreateTicket={() => setShowCreateModal(true)}
-          className={`z-50 lg:hidden ${
-            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
-          }`}
-          showAdminSidebarTrigger={adminMenuEnabled && !mobileAdminSidebarOpen}
+          onCreateTicket={createTicketForm.openModal}
+          className={`z-50 lg:hidden ${sidebar.mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}`}
+          showAdminSidebarTrigger={adminMenuEnabled && !sidebar.mobileAdminSidebarOpen}
           onOpenAdminSidebar={() => {
-            setAdminSidebarDismissed(false);
-            setMobileSidebarOpen(false);
-            setMobileAdminSidebarOpen(true);
-            if (!isAdminRoutePath(location.pathname)) {
-              navigate('/sla-settings');
-            }
+            sidebar.setAdminSidebarDismissed(false);
+            sidebar.setMobileSidebarOpen(false);
+            sidebar.setMobileAdminSidebarOpen(true);
+            if (!isAdminRoutePath(location.pathname)) navigate('/sla-settings');
           }}
         />
 
         {adminMenuEnabled && (
           <AdminSidebar
-            visible={mobileAdminSidebarOpen}
+            visible={sidebar.mobileAdminSidebarOpen}
             role={currentPersona.role}
             pathname={location.pathname}
-            onBack={() => {
-              setMobileAdminSidebarOpen(false);
-              setMobileSidebarOpen(true);
-            }}
-            onNavigate={(route) => {
-              setAdminSidebarDismissed(false);
-              setMobileAdminSidebarOpen(false);
-              setMobileSidebarOpen(false);
-              navigate(route);
-            }}
+            onBack={() => { sidebar.setMobileAdminSidebarOpen(false); sidebar.setMobileSidebarOpen(true); }}
+            onNavigate={(route) => { sidebar.setAdminSidebarDismissed(false); sidebar.setMobileAdminSidebarOpen(false); sidebar.setMobileSidebarOpen(false); navigate(route); }}
             className="z-[60] lg:hidden"
           />
         )}
 
         <main
-          className={`flex-1 min-w-0 w-full transition-all duration-300 h-screen overflow-y-auto ${
-            shellLayoutPath ? 'py-0' : 'py-8'
-          } ${desktopMainOffset}`}
+          className={`flex-1 min-w-0 w-full transition-all duration-300 h-screen overflow-y-auto ${shellLayoutPath ? 'py-0' : 'py-8'} ${desktopMainOffset}`}
         >
           <button
             type="button"
@@ -704,426 +540,42 @@ function App() {
               personas={personas}
               onEmailChange={setCurrentEmail}
               onOpenSearch={commandPalette.open}
-              notificationProps={{
-                notifications: notifications.notifications,
-                unreadCount: notifications.unreadCount,
-                loading: notifications.loading,
-                hasMore: notifications.hasMore,
-                onLoadMore: notifications.loadMore,
-                onMarkAsRead: notifications.markAsRead,
-                onMarkAllAsRead: notifications.markAllAsRead,
-                onRefresh: notifications.refresh
-              }}
+              notificationProps={headerValue.notificationProps}
+              user={user}
+              onSignOut={onSignOut}
             />
           )}
 
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route
-              path="/dashboard"
-              element={
-                <DashboardPage
-                  refreshKey={refreshKey}
-                  role={currentPersona.role}
-                  headerProps={{
-                    title: viewMeta.dashboard.title,
-                    subtitle: viewMeta.dashboard.subtitle,
-                    currentEmail,
-                    personas,
-                    onEmailChange: setCurrentEmail,
-                    onOpenSearch: commandPalette.open,
-                    notificationProps: {
-                      notifications: notifications.notifications,
-                      unreadCount: notifications.unreadCount,
-                      loading: notifications.loading,
-                      hasMore: notifications.hasMore,
-                      onLoadMore: notifications.loadMore,
-                      onMarkAsRead: notifications.markAsRead,
-                      onMarkAllAsRead: notifications.markAllAsRead,
-                      onRefresh: notifications.refresh
-                    }
-                  }}
-                />
-              }
-            />
-            <Route
-              path="/triage"
-              element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <TriageBoardPage
-                    refreshKey={refreshKey}
-                    teamsList={teamsList}
-                    role={currentPersona.role}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/manager"
-              element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <ManagerViewsPage
-                    refreshKey={refreshKey}
-                    teamsList={teamsList}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/team"
-              element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <TeamPage
-                    refreshKey={refreshKey}
-                    teamsList={teamsList}
-                    role={currentPersona.role}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/sla-settings"
-              element={
-                currentPersona.role === 'LEAD' || currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <SlaSettingsPage
-                    teamsList={teamsList}
-                    role={currentPersona.role}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <ReportsPage
-                    role={currentPersona.role}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <Navigate to="/sla-settings" replace />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/routing"
-              element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <RoutingRulesPage
-                    teamsList={teamsList}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/automation"
-              element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <AutomationRulesPage
-                    role={currentPersona.role}
-                    teamsList={teamsList}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/audit-log"
-              element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <AuditLogPage
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/categories"
-              element={
-                currentPersona.role === 'OWNER' ? (
-                  <CategoriesPage
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/custom-fields"
-              element={
-                currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER' ? (
-                  <CustomFieldsAdminPage
-                    role={currentPersona.role}
-                    headerProps={{
-                      title: viewTitle,
-                      subtitle: viewSubtitle,
-                      currentEmail,
-                      personas,
-                      onEmailChange: setCurrentEmail,
-                      onOpenSearch: commandPalette.open,
-                      notificationProps: {
-                        notifications: notifications.notifications,
-                        unreadCount: notifications.unreadCount,
-                        loading: notifications.loading,
-                        hasMore: notifications.hasMore,
-                        onLoadMore: notifications.loadMore,
-                        onMarkAsRead: notifications.markAsRead,
-                        onMarkAllAsRead: notifications.markAllAsRead,
-                        onRefresh: notifications.refresh
-                      }
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/dashboard" replace />
-                )
-              }
-            />
-            <Route
-              path="/tickets"
-              element={
-                <TicketsPage
-                  role={currentPersona.role}
-                  currentEmail={currentEmail}
-                  presetStatus={ticketPresetStatus}
-                  presetScope={ticketPresetScope}
-                  refreshKey={refreshKey}
-                  teamsList={teamsList}
-                  onCreateTicket={() => setShowCreateModal(true)}
-                  headerProps={{
-                    title: viewTitle,
-                    subtitle: viewSubtitle,
-                    currentEmail,
-                    personas,
-                    onEmailChange: setCurrentEmail,
-                    onOpenSearch: commandPalette.open,
-                    notificationProps: {
-                      notifications: notifications.notifications,
-                      unreadCount: notifications.unreadCount,
-                      loading: notifications.loading,
-                      hasMore: notifications.hasMore,
-                      onLoadMore: notifications.loadMore,
-                      onMarkAsRead: notifications.markAsRead,
-                      onMarkAllAsRead: notifications.markAllAsRead,
-                      onRefresh: notifications.refresh
-                    }
-                  }}
-                />
-              }
-            />
-            <Route
-              path="/tickets/:ticketId"
-              element={
-                <TicketDetailPage
-                  refreshKey={refreshKey}
-                  currentEmail={currentEmail}
-                  role={currentPersona.role}
-                  teamsList={teamsList}
-                  headerProps={{
-                    title: 'Ticket details',
-                    subtitle: 'Review context, collaborate, and update workflow in one workspace.',
-                    currentEmail,
-                    personas,
-                    onEmailChange: setCurrentEmail,
-                    onOpenSearch: commandPalette.open,
-                    notificationProps: {
-                      notifications: notifications.notifications,
-                      unreadCount: notifications.unreadCount,
-                      loading: notifications.loading,
-                      hasMore: notifications.hasMore,
-                      onLoadMore: notifications.loadMore,
-                      onMarkAsRead: notifications.markAsRead,
-                      onMarkAllAsRead: notifications.markAllAsRead,
-                      onRefresh: notifications.refresh
-                    }
-                  }}
-                />
-              }
-            />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+          {/* HeaderProvider eliminates headerProps prop drilling (6.2) */}
+          <HeaderProvider value={headerValue}>
+            {/* Route-level error boundary (2.2 fix) – resets automatically on navigation
+                because the key changes with the pathname. */}
+            <ErrorBoundary
+              key={location.pathname}
+              fallback={(props) => <RouteErrorFallback {...props} />}
+            >
+              <Suspense fallback={<PageFallback />}>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage refreshKey={refreshKey} role={currentPersona.role} />} />
+                  <Route path="/triage" element={isLeadOrAbove ? <TriageBoardPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/manager" element={isLeadOrAbove ? <ManagerViewsPage refreshKey={refreshKey} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/team" element={isLeadOrAbove ? <TeamPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/sla-settings" element={isLeadOrAbove ? <SlaSettingsPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/reports" element={isAdminOrOwner ? <ReportsPage refreshKey={refreshKey} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/admin" element={isAdminOrOwner ? <Navigate to="/sla-settings" replace /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/routing" element={isAdminOrOwner ? <RoutingRulesPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/automation" element={isAdminOrOwner ? <AutomationRulesPage role={currentPersona.role} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/audit-log" element={isAdminOrOwner ? <AuditLogPage /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/categories" element={currentPersona.role === 'OWNER' ? <CategoriesPage /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/custom-fields" element={isAdminOrOwner ? <CustomFieldsAdminPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} refreshKey={refreshKey} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
+                  <Route path="/tickets/:ticketId" element={<TicketDetailPage refreshKey={refreshKey} currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
+          </HeaderProvider>
         </main>
       </div>
 
@@ -1133,7 +585,7 @@ function App() {
         recentSearches={commandPalette.recentSearches}
         onSearch={commandPalette.addRecentSearch}
         onClearRecent={commandPalette.clearRecentSearches}
-        onCreateTicket={() => setShowCreateModal(true)}
+        onCreateTicket={createTicketForm.openModal}
         currentRole={currentPersona.role}
       />
 
@@ -1144,22 +596,47 @@ function App() {
       />
 
       <CreateTicketModal
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSubmit={handleCreateTicket}
-        error={ticketError}
+        open={createTicketForm.showModal}
+        onClose={createTicketForm.closeModal}
+        onSubmit={createTicketForm.handleSubmit}
+        error={createTicketForm.error}
         teams={teamsList}
-        categories={createCategories}
-        form={createForm}
-        onChange={(field, value) => setCreateForm((prev) => ({ ...prev, [field]: value }))}
-        customFields={createCustomFields}
-        customFieldValues={createCustomFieldValues}
-        onCustomFieldChange={(fieldId, value) =>
-          setCreateCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }))
-        }
+        categories={createTicketForm.categories}
+        customFields={createTicketForm.customFields}
+        customFieldValues={createTicketForm.customFieldValues}
+        onCustomFieldChange={createTicketForm.onCustomFieldChange}
+        onTeamChange={createTicketForm.setSelectedTeamId}
+        onCategoryChange={createTicketForm.setSelectedCategoryId}
       />
     </div>
   );
+}
+
+/* ——— Main App component ——— */
+
+function App() {
+  const auth = useAuthSession();
+
+  if (auth.loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+      </div>
+    );
+  }
+
+  if (!auth.user) {
+    return (
+      <AuthRequiredScreen
+        onSignIn={() => {
+          void auth.signIn();
+        }}
+        error={auth.error}
+      />
+    );
+  }
+
+  return <AuthenticatedShell user={auth.user} onSignOut={auth.signOut} />;
 }
 
 export default App;

@@ -4,7 +4,7 @@ import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 export class CreateTeamDto {
   @IsString()
   @MaxLength(80)
-  name: string;
+  name!: string;
 
   @IsOptional()
   @IsString()

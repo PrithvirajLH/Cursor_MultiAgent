@@ -49,6 +49,8 @@ test-results/
 
 # Scripts (dev/test utilities)
 **/scripts/
+!apps/api/scripts/
+!apps/api/scripts/**
 
 # Prisma
 prisma/migrations/*.sql.bak

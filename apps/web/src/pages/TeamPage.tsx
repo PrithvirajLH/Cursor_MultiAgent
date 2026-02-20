@@ -6,12 +6,12 @@ import {
   fetchTeamMembers,
   removeTeamMember,
   updateTeamMember,
-  type NotificationRecord,
   type TeamMember,
   type TeamRef,
   type UserRef
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
+import { useHeaderContext } from '../contexts/HeaderContext';
 import type { Role } from '../types';
 
 const ELIGIBLE_MEMBER_USER_ROLES = new Set(['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'ADMIN']);
@@ -25,25 +25,6 @@ function getAllowedTeamRolesForUser(userRole?: string | null): string[] {
   }
   return ['AGENT', 'LEAD'];
 }
-
-type TeamHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
 
 function RoleBadge({ role }: { role: string }) {
   const tone =
@@ -139,14 +120,13 @@ function MemberSkeleton() {
 export function TeamPage({
   refreshKey,
   teamsList,
-  role,
-  headerProps
+  role
 }: {
   refreshKey: number;
   teamsList: TeamRef[];
   role: Role;
-  headerProps?: TeamHeaderProps;
 }) {
+  const headerCtx = useHeaderContext();
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -187,7 +167,7 @@ export function TeamPage({
       return;
     }
     void loadUsers();
-  }, [headerProps?.currentEmail, isAdmin]);
+  }, [headerCtx?.currentEmail, isAdmin]);
 
   // Auto-select department for Lead and Team Admin (API returns only their team)
   useEffect(() => {
@@ -359,16 +339,16 @@ export function TeamPage({
   return (
     <section className="min-h-full bg-slate-50 animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
-          {headerProps ? (
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
                   <h1 className="text-xl font-semibold text-slate-900">Team Directory</h1>

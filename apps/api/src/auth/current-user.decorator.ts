@@ -5,6 +5,7 @@ import { Request } from 'express';
 export type AuthUser = {
   id: string;
   email: string;
+  displayName: string;
   role: UserRole;
   teamId?: string | null;
   teamRole?: string | null;

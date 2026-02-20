@@ -1,13 +1,20 @@
-import { IsArray, IsOptional, IsUUID, ArrayMinSize } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsUUID,
+  ArrayMinSize,
+  ArrayMaxSize,
+} from 'class-validator';
 
 export class BulkTransferDto {
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @IsUUID('4', { each: true })
-  ticketIds: string[];
+  ticketIds!: string[];
 
   @IsUUID()
-  newTeamId: string;
+  newTeamId!: string;
 
   @IsOptional()
   @IsUUID()

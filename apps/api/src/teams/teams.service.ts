@@ -26,7 +26,9 @@ export class TeamsService {
     };
     if (user?.role === UserRole.TEAM_ADMIN) {
       if (!user.primaryTeamId) {
-        throw new ForbiddenException('Team administrator must have a primary team set');
+        throw new ForbiddenException(
+          'Team administrator must have a primary team set',
+        );
       }
       baseWhere.id = user.primaryTeamId;
     }
@@ -44,7 +46,12 @@ export class TeamsService {
         ? {
             OR: [
               { name: { contains: query.q, mode: 'insensitive' as const } },
-              { description: { contains: query.q, mode: 'insensitive' as const } },
+              {
+                description: {
+                  contains: query.q,
+                  mode: 'insensitive' as const,
+                },
+              },
             ],
           }
         : {}),
@@ -215,13 +222,15 @@ export class TeamsService {
 
   private ensureTeamAdminOrOwner(user: AuthUser, teamId: string) {
     if (user.role === UserRole.OWNER) return;
-    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId)
+      return;
     throw new ForbiddenException('Team admin or owner access required');
   }
 
   private ensureMemberAccess(user: AuthUser, teamId: string) {
     if (user.role === UserRole.OWNER) return;
-    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId)
+      return;
 
     const isTeamMember =
       user.teamId === teamId &&

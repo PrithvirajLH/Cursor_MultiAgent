@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
@@ -12,15 +13,22 @@ import {
 export class CreateRoutingRuleDto {
   @IsString()
   @MaxLength(80)
-  name: string;
+  name!: string;
 
+  @IsOptional()
   @IsUUID()
-  teamId: string;
+  teamId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assigneeId?: string;
 
   @IsArray()
   @ArrayNotEmpty()
+  @ArrayMaxSize(50)
   @IsString({ each: true })
-  keywords: string[];
+  @MaxLength(80, { each: true })
+  keywords!: string[];
 
   @IsOptional()
   @IsInt()

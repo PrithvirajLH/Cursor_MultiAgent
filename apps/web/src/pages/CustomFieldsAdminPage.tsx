@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignLeft,
   Calendar,
@@ -8,65 +8,38 @@ import {
   Pencil,
   Plus,
   Trash2,
-  Type
+  Type,
+  Users
 } from 'lucide-react';
 import {
-  ApiError,
+  fetchCategories,
   createCustomField,
   deleteCustomField,
   fetchCustomFields,
   fetchTeams,
   updateCustomField,
+  type CategoryRef,
   type CustomFieldRecord,
-  type NotificationRecord,
   type TeamRef
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
+import { useHeaderContext } from '../contexts/HeaderContext';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import type { Role } from '../types';
+import { handleApiError } from '../utils/handleApiError';
 
-type CustomFieldsHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
-
-type UiFieldType = 'text' | 'textarea' | 'number' | 'dropdown' | 'checkbox' | 'date';
+type UiFieldType = 'text' | 'textarea' | 'number' | 'dropdown' | 'multiselect' | 'checkbox' | 'date' | 'user';
 
 type FieldFormState = {
   id: string | null;
   label: string;
   type: UiFieldType;
   required: boolean;
-  showList: boolean;
-  showDetail: boolean;
-  teamIds: string[];
-  placeholder: string;
+  teamId: string;
   options: string[];
   sortOrder: number;
   categoryId: string;
 };
-
-type FieldUiMeta = {
-  showList: boolean;
-  showDetail: boolean;
-  placeholder: string;
-  teamIds: string[];
-};
-
-const UI_META_STORAGE_KEY = 'web:custom-field-ui-meta';
 
 const FIELD_TYPES: Array<{
   value: UiFieldType;
@@ -78,8 +51,10 @@ const FIELD_TYPES: Array<{
   { value: 'textarea', label: 'Long Text', apiType: 'TEXTAREA', icon: AlignLeft },
   { value: 'number', label: 'Number', apiType: 'NUMBER', icon: Hash },
   { value: 'dropdown', label: 'Dropdown', apiType: 'DROPDOWN', icon: ChevronDown },
+  { value: 'multiselect', label: 'Multi Select', apiType: 'MULTISELECT', icon: CheckSquare },
   { value: 'checkbox', label: 'Checkbox', apiType: 'CHECKBOX', icon: CheckSquare },
-  { value: 'date', label: 'Date', apiType: 'DATE', icon: Calendar }
+  { value: 'date', label: 'Date', apiType: 'DATE', icon: Calendar },
+  { value: 'user', label: 'User', apiType: 'USER', icon: Users }
 ];
 
 const API_TO_UI_TYPE: Record<string, UiFieldType> = {
@@ -87,32 +62,16 @@ const API_TO_UI_TYPE: Record<string, UiFieldType> = {
   TEXTAREA: 'textarea',
   NUMBER: 'number',
   DROPDOWN: 'dropdown',
-  MULTISELECT: 'dropdown',
+  MULTISELECT: 'multiselect',
   CHECKBOX: 'checkbox',
   DATE: 'date',
-  USER: 'text'
+  USER: 'user'
 };
 
 const UI_TO_API_TYPE: Record<UiFieldType, string> = FIELD_TYPES.reduce((acc, type) => {
   acc[type.value] = type.apiType;
   return acc;
 }, {} as Record<UiFieldType, string>);
-
-function apiErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    try {
-      const parsed = JSON.parse(error.message) as { message?: string };
-      if (typeof parsed.message === 'string' && parsed.message.trim()) {
-        return parsed.message;
-      }
-    } catch {
-      // keep fallback
-    }
-    return error.message || 'Request failed';
-  }
-  if (error instanceof Error) return error.message;
-  return 'Request failed';
-}
 
 function parseOptionLabels(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -141,72 +100,43 @@ function fieldTypeIcon(fieldType: string) {
   return FIELD_TYPES.find((type) => type.value === uiType)?.icon ?? Type;
 }
 
-function defaultMetaFromField(field: CustomFieldRecord): FieldUiMeta {
-  return {
-    showList: false,
-    showDetail: true,
-    placeholder: '',
-    teamIds: field.teamId ? [field.teamId] : []
-  };
-}
-
-function buildFormFromField(field: CustomFieldRecord, meta?: FieldUiMeta): FieldFormState {
-  const mergedMeta = meta ?? defaultMetaFromField(field);
+function buildFormFromField(field: CustomFieldRecord): FieldFormState {
   return {
     id: field.id,
     label: field.name,
     type: API_TO_UI_TYPE[field.fieldType] ?? 'text',
     required: field.isRequired,
-    showList: mergedMeta.showList,
-    showDetail: mergedMeta.showDetail,
-    teamIds: mergedMeta.teamIds,
-    placeholder: mergedMeta.placeholder,
+    teamId: field.teamId ?? '',
     options: parseOptionLabels(field.options),
     sortOrder: field.sortOrder,
     categoryId: field.categoryId ?? ''
   };
 }
 
-function createEmptyForm(teamIds: string[] = []): FieldFormState {
+function createEmptyForm(teamId = ''): FieldFormState {
   return {
     id: null,
     label: '',
     type: 'text',
     required: false,
-    showList: false,
-    showDetail: true,
-    teamIds,
-    placeholder: '',
+    teamId,
     options: [],
     sortOrder: 0,
     categoryId: ''
   };
 }
 
-function loadStoredUiMeta(): Record<string, FieldUiMeta> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(UI_META_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, FieldUiMeta>;
-  } catch {
-    return {};
-  }
-}
-
 export function CustomFieldsAdminPage({
-  role,
-  headerProps
+  role
 }: {
   role?: Role;
-  headerProps?: CustomFieldsHeaderProps;
 }) {
+  const headerCtx = useHeaderContext();
   const canEdit = role ? role === 'TEAM_ADMIN' || role === 'OWNER' : true;
+  const isTeamAdmin = role === 'TEAM_ADMIN';
   const [fields, setFields] = useState<CustomFieldRecord[]>([]);
   const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
-  const [uiMetaById, setUiMetaById] = useState<Record<string, FieldUiMeta>>(() =>
-    loadStoredUiMeta()
-  );
+  const [categories, setCategories] = useState<CategoryRef[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -216,11 +146,13 @@ export function CustomFieldsAdminPage({
   const [showEditor, setShowEditor] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CustomFieldRecord | null>(null);
   const [form, setForm] = useState<FieldFormState>(createEmptyForm());
+  const editorDialogRef = useRef<HTMLDivElement>(null);
+  const deleteDialogRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(UI_META_STORAGE_KEY, JSON.stringify(uiMetaById));
-  }, [uiMetaById]);
+  const resolvedTeamAdminTeamId = useMemo(() => {
+    if (!isTeamAdmin) return '';
+    return teamsList.length === 1 ? teamsList[0].id : '';
+  }, [isTeamAdmin, teamsList]);
 
   useEffect(() => {
     void loadData();
@@ -230,9 +162,10 @@ export function CustomFieldsAdminPage({
     setLoading(true);
     setError(null);
     try {
-      const [teamsResponse, fieldsResponse] = await Promise.all([
+      const [teamsResponse, fieldsResponse, categoriesResponse] = await Promise.all([
         fetchTeams(),
-        fetchCustomFields()
+        fetchCustomFields(),
+        fetchCategories({ includeInactive: false })
       ]);
 
       const sortedFields = [...fieldsResponse.data].sort(
@@ -240,18 +173,9 @@ export function CustomFieldsAdminPage({
       );
       setTeamsList(teamsResponse.data);
       setFields(sortedFields);
-
-      setUiMetaById((prev) => {
-        const next = { ...prev };
-        sortedFields.forEach((field) => {
-          if (!next[field.id]) {
-            next[field.id] = defaultMetaFromField(field);
-          }
-        });
-        return next;
-      });
+      setCategories(categoriesResponse.data);
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(handleApiError(err));
     } finally {
       setLoading(false);
     }
@@ -261,33 +185,50 @@ export function CustomFieldsAdminPage({
     return teamsList.find((team) => team.id === teamId)?.name ?? teamId;
   }
 
+  function categoryLabel(categoryId: string | null): string {
+    if (!categoryId) return 'All categories';
+    return categories.find((category) => category.id === categoryId)?.name ?? categoryId;
+  }
+
+  function canManageField(field: CustomFieldRecord): boolean {
+    if (!canEdit) return false;
+    if (!role || role === 'OWNER') return true;
+    if (role === 'TEAM_ADMIN') {
+      return !!resolvedTeamAdminTeamId && field.teamId === resolvedTeamAdminTeamId;
+    }
+    return false;
+  }
+
   function openCreate() {
     setError(null);
     setNotice(null);
-    setForm(createEmptyForm());
+    setForm(createEmptyForm(resolvedTeamAdminTeamId));
     setShowEditor(true);
   }
 
   function openEdit(field: CustomFieldRecord) {
     setError(null);
     setNotice(null);
-    setForm(buildFormFromField(field, uiMetaById[field.id]));
+    setForm(buildFormFromField(field));
     setShowEditor(true);
   }
 
   function closeEditor() {
     setShowEditor(false);
-    setForm(createEmptyForm());
+    setForm(createEmptyForm(resolvedTeamAdminTeamId));
   }
 
-  function toggleTeam(teamId: string) {
-    setForm((prev) => ({
-      ...prev,
-      teamIds: prev.teamIds.includes(teamId)
-        ? prev.teamIds.filter((id) => id !== teamId)
-        : [...prev.teamIds, teamId]
-    }));
-  }
+  useModalFocusTrap({
+    open: showEditor,
+    containerRef: editorDialogRef,
+    onClose: closeEditor,
+  });
+
+  useModalFocusTrap({
+    open: Boolean(deleteTarget),
+    containerRef: deleteDialogRef,
+    onClose: () => setDeleteTarget(null),
+  });
 
   function addOption() {
     setForm((prev) => ({ ...prev, options: [...prev.options, ''] }));
@@ -309,6 +250,22 @@ export function CustomFieldsAdminPage({
       setError('Field label is required.');
       return;
     }
+    if (isTeamAdmin && !resolvedTeamAdminTeamId) {
+      setError('Team admin requires a primary team to manage custom fields.');
+      return;
+    }
+
+    const trimmedOptions = form.options.map((option) => option.trim()).filter(Boolean);
+    if ((form.type === 'dropdown' || form.type === 'multiselect') && trimmedOptions.length === 0) {
+      setError('Dropdown and multi-select fields require at least one option.');
+      return;
+    }
+
+    const scopedTeamId = isTeamAdmin ? resolvedTeamAdminTeamId : form.teamId || undefined;
+    const optionsPayload =
+      form.type === 'dropdown' || form.type === 'multiselect'
+        ? trimmedOptions.map((option) => ({ value: option, label: option }))
+        : undefined;
 
     setSaving(true);
     setError(null);
@@ -318,16 +275,10 @@ export function CustomFieldsAdminPage({
         name: form.label.trim(),
         fieldType: UI_TO_API_TYPE[form.type],
         isRequired: form.required,
-        sortOrder: form.sortOrder,
-        teamId: form.teamIds[0] || undefined,
+        sortOrder: Math.max(0, Number(form.sortOrder) || 0),
+        teamId: scopedTeamId,
         categoryId: form.categoryId || undefined,
-        options:
-          form.type === 'dropdown'
-            ? form.options
-                .map((option) => option.trim())
-                .filter(Boolean)
-                .map((option) => ({ value: option, label: option }))
-            : undefined
+        options: optionsPayload
       };
 
       if (form.id) {
@@ -338,43 +289,26 @@ export function CustomFieldsAdminPage({
           sortOrder: payload.sortOrder,
           teamId: payload.teamId ?? null,
           categoryId: payload.categoryId ?? null,
-          options: payload.options
+          // Clear stale options when switching away from dropdown.
+          options: payload.options ?? null
         });
         setFields((prev) =>
           prev
             .map((field) => (field.id === updated.id ? updated : field))
             .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
         );
-        setUiMetaById((prev) => ({
-          ...prev,
-          [updated.id]: {
-            showList: form.showList,
-            showDetail: form.showDetail,
-            placeholder: form.placeholder,
-            teamIds: [...form.teamIds]
-          }
-        }));
         setNotice('Custom field updated.');
       } else {
         const created = await createCustomField(payload);
         setFields((prev) =>
           [...prev, created].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
         );
-        setUiMetaById((prev) => ({
-          ...prev,
-          [created.id]: {
-            showList: form.showList,
-            showDetail: form.showDetail,
-            placeholder: form.placeholder,
-            teamIds: [...form.teamIds]
-          }
-        }));
         setNotice('Custom field created.');
       }
 
       closeEditor();
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(handleApiError(err));
     } finally {
       setSaving(false);
     }
@@ -386,64 +320,43 @@ export function CustomFieldsAdminPage({
     try {
       await deleteCustomField(field.id);
       setFields((prev) => prev.filter((item) => item.id !== field.id));
-      setUiMetaById((prev) => {
-        const next = { ...prev };
-        delete next[field.id];
-        return next;
-      });
       setDeleteTarget(null);
       setNotice('Custom field deleted.');
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(handleApiError(err));
     }
   }
 
-  const rows = useMemo(() => {
-    return fields.map((field) => {
-      const meta = uiMetaById[field.id] ?? defaultMetaFromField(field);
-      const scopedTeamIds = meta.teamIds.length > 0 ? meta.teamIds : field.teamId ? [field.teamId] : [];
-      return {
-        field,
-        meta,
-        scopedTeamIds
-      };
-    });
-  }, [fields, uiMetaById]);
-
   return (
-    <section className="min-h-full bg-gray-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-[1600px] py-4 pl-6 pr-2">
-          {headerProps ? (
+    <section className="min-h-full bg-slate-50 animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-[1600px] py-4 px-6">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-gray-900">Custom Fields</h1>
-                  <p className="mt-0.5 text-sm text-gray-500">Form fields and visibility.</p>
+                  <h1 className="text-xl font-semibold text-slate-900">Custom Fields</h1>
+                  <p className="mt-0.5 text-sm text-slate-500">Form fields and visibility.</p>
                 </div>
               }
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-gray-900">Custom Fields</h1>
-              <p className="mt-0.5 text-sm text-gray-500">Form fields and visibility.</p>
+              <h1 className="text-xl font-semibold text-slate-900">Custom Fields</h1>
+              <p className="mt-0.5 text-sm text-slate-500">Form fields and visibility.</p>
             </div>
           )}
         </div>
       </div>
 
       <div className="mx-auto max-w-[1600px] p-6">
-        <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          Core field data is live from backend. "In List", "In Detail", placeholder, and multi-team UI are tracked as demo metadata until backend support is added.
-        </div>
-
         {error && (
           <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -456,14 +369,15 @@ export function CustomFieldsAdminPage({
         )}
 
         <div className="mb-5 flex items-center justify-between">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-600">
             Custom fields appear on ticket forms and detail views.
           </p>
           {canEdit && (
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+              disabled={isTeamAdmin && !resolvedTeamAdminTeamId}
+              className="inline-flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             >
               <Plus className="h-4 w-4" />
               <span>New Field</span>
@@ -471,16 +385,16 @@ export function CustomFieldsAdminPage({
           )}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-gray-200 bg-gray-50">
+              <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
-                  {['Field Label', 'Type', 'Required', 'In List', 'In Detail', 'Teams', 'Actions'].map(
+                  {['Field Label', 'Type', 'Required', 'Category', 'Team Scope', 'Sort', 'Actions'].map(
                     (heading) => (
                       <th
                         key={heading}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
                       >
                         {heading}
                       </th>
@@ -488,46 +402,49 @@ export function CustomFieldsAdminPage({
                   )}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">
-                      Loading custom fields...
-                    </td>
-                  </tr>
-                ) : rows.length === 0 ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`skel-${i}`} className="border-b border-slate-100 last:border-0">
+                      <td className="px-4 py-3"><div className="h-4 w-32 skeleton-shimmer rounded" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-20 skeleton-shimmer rounded" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-24 skeleton-shimmer rounded" /></td>
+                      <td className="px-4 py-3"><div className="h-5 w-14 skeleton-shimmer rounded-full" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-20 skeleton-shimmer rounded" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-16 skeleton-shimmer rounded" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-12 skeleton-shimmer rounded" /></td>
+                    </tr>
+                  ))
+                ) : fields.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center">
-                      <p className="text-sm font-semibold text-gray-700">No custom fields</p>
-                      <p className="mt-1 text-xs text-gray-400">
+                      <p className="text-sm font-semibold text-slate-700">No custom fields</p>
+                      <p className="mt-1 text-xs text-slate-400">
                         Create your first custom field to extend ticket forms.
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  rows.map(({ field, meta, scopedTeamIds }) => {
+                  fields.map((field) => {
                     const TypeIcon = fieldTypeIcon(field.fieldType);
                     return (
-                      <tr key={field.id} className="transition-colors hover:bg-gray-50">
+                      <tr key={field.id} className="transition-colors hover:bg-slate-50">
                         <td className="px-4 py-3">
                           <div className="flex items-center space-x-2">
                             <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-purple-100">
                               <TypeIcon className="h-3.5 w-3.5 text-purple-600" />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-gray-900">{field.name}</p>
-                              {meta.placeholder && (
-                                <p className="text-xs text-gray-400">{meta.placeholder}</p>
-                              )}
+                              <p className="text-sm font-semibold text-slate-900">{field.name}</p>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                          <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
                             {fieldTypeLabel(field.fieldType)}
                           </span>
                           {(field.fieldType === 'DROPDOWN' || field.fieldType === 'MULTISELECT') && (
-                            <p className="mt-0.5 text-xs text-gray-400">
+                            <p className="mt-0.5 text-xs text-slate-400">
                               {parseOptionLabels(field.options).length} options
                             </p>
                           )}
@@ -538,50 +455,43 @@ export function CustomFieldsAdminPage({
                               Required
                             </span>
                           ) : (
-                            <span className="text-xs text-gray-400">Optional</span>
+                            <span className="text-xs text-slate-400">Optional</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">{meta.showList ? '✓' : <span className="text-gray-300">—</span>}</td>
-                        <td className="px-4 py-3">{meta.showDetail ? '✓' : <span className="text-gray-300">—</span>}</td>
                         <td className="px-4 py-3">
-                          {scopedTeamIds.length === 0 ? (
-                            <span className="text-xs text-gray-400">All teams</span>
+                          <span className="text-xs text-slate-600">{categoryLabel(field.categoryId)}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {field.teamId ? (
+                            <span className="rounded-md bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-700">
+                              {teamLabel(field.teamId)}
+                            </span>
                           ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {scopedTeamIds.slice(0, 2).map((teamId) => (
-                                <span
-                                  key={`${field.id}-${teamId}`}
-                                  className="rounded-md bg-indigo-100 px-2 py-1 text-xs font-medium text-indigo-700"
-                                >
-                                  {teamLabel(teamId).split(' ')[0]}
-                                </span>
-                              ))}
-                              {scopedTeamIds.length > 2 && (
-                                <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
-                                  +{scopedTeamIds.length - 2}
-                                </span>
-                              )}
-                            </div>
+                            <span className="text-xs text-slate-400">All teams</span>
                           )}
                         </td>
+                        <td className="px-4 py-3 text-xs text-slate-600">{field.sortOrder}</td>
                         <td className="px-4 py-3">
-                          {canEdit && (
+                          {canManageField(field) && (
                             <div className="flex items-center space-x-1">
                               <button
                                 type="button"
                                 onClick={() => openEdit(field)}
-                                className="rounded p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600"
+                                className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
                               >
                                 <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeleteTarget(field)}
-                                className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
+                          )}
+                          {!canManageField(field) && canEdit && (
+                            <span className="text-xs text-slate-400">Read-only</span>
                           )}
                         </td>
                       </tr>
@@ -593,11 +503,12 @@ export function CustomFieldsAdminPage({
           </div>
 
           {canEdit && (
-            <div className="border-t border-gray-100 px-4 py-3">
+            <div className="border-t border-slate-100 px-4 py-3">
               <button
                 type="button"
                 onClick={openCreate}
-                className="inline-flex items-center space-x-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+                disabled={isTeamAdmin && !resolvedTeamAdminTeamId}
+                className="inline-flex items-center space-x-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-blue-300"
               >
                 <Plus className="h-4 w-4" />
                 <span>Add Custom Field</span>
@@ -609,12 +520,19 @@ export function CustomFieldsAdminPage({
 
       {showEditor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-              <p className="text-base font-semibold text-gray-900">
+          <div
+            ref={editorDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={form.id ? 'Edit custom field' : 'Create custom field'}
+            tabIndex={-1}
+            className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <p className="text-base font-semibold text-slate-900">
                 {form.id ? 'Edit Custom Field' : 'Create Custom Field'}
               </p>
-              <button type="button" onClick={closeEditor} className="text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={closeEditor} className="text-slate-400 hover:text-slate-600">
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -623,19 +541,19 @@ export function CustomFieldsAdminPage({
 
             <div className="flex-1 space-y-4 overflow-y-auto p-6">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Field Label *</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">Field Label *</label>
                 <input
                   value={form.label}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, label: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g. Account ID"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-medium text-gray-700">Field Type</label>
+                <label className="mb-2 block text-xs font-medium text-slate-700">Field Type</label>
                 <div className="grid grid-cols-3 gap-2">
                   {FIELD_TYPES.map((type) => {
                     const TypeIcon = type.icon;
@@ -648,13 +566,13 @@ export function CustomFieldsAdminPage({
                           setForm((prev) => ({
                             ...prev,
                             type: type.value,
-                            options: type.value === 'dropdown' ? prev.options : []
+                            options: type.value === 'dropdown' || type.value === 'multiselect' ? prev.options : []
                           }))
                         }
                         className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${
                           selected
                             ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            : 'border-slate-200 text-slate-600 hover:border-slate-300'
                         }`}
                       >
                         <TypeIcon className="mb-1 h-5 w-5" />
@@ -665,34 +583,22 @@ export function CustomFieldsAdminPage({
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-700">Placeholder</label>
-                <input
-                  value={form.placeholder}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, placeholder: event.target.value }))
-                  }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                  placeholder="Hint text shown in empty field"
-                />
-              </div>
-
-              {form.type === 'dropdown' && (
+              {(form.type === 'dropdown' || form.type === 'multiselect') && (
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-gray-700">Options</label>
+                  <label className="mb-2 block text-xs font-medium text-slate-700">Options</label>
                   <div className="space-y-1.5">
                     {form.options.map((option, index) => (
-                      <div key={`option-${index}`} className="flex items-center space-x-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5">
+                      <div key={`option-${index}`} className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
                         <input
                           value={option}
                           onChange={(event) => updateOption(index, event.target.value)}
-                          className="flex-1 bg-transparent text-sm text-gray-700 outline-none"
+                          className="flex-1 bg-transparent text-sm text-slate-700 outline-none"
                           placeholder="Option value"
                         />
                         <button
                           type="button"
                           onClick={() => removeOption(index)}
-                          className="text-gray-400 hover:text-red-500"
+                          className="text-slate-400 hover:text-red-500"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -709,86 +615,86 @@ export function CustomFieldsAdminPage({
                 </div>
               )}
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Required</p>
-                    <p className="text-xs text-gray-500">Must be filled before submitting</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={form.required}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Category Scope</label>
+                  <select
+                    value={form.categoryId}
                     onChange={(event) =>
-                      setForm((prev) => ({ ...prev, required: event.target.checked }))
+                      setForm((prev) => ({ ...prev, categoryId: event.target.value }))
                     }
-                    className="h-4 w-4 rounded text-blue-600"
-                  />
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All categories</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Show in Ticket List</p>
-                    <p className="text-xs text-gray-500">Visible as a column in the tickets table</p>
-                  </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">Sort Order</label>
                   <input
-                    type="checkbox"
-                    checked={form.showList}
+                    type="number"
+                    min={0}
+                    value={form.sortOrder}
                     onChange={(event) =>
-                      setForm((prev) => ({ ...prev, showList: event.target.checked }))
+                      setForm((prev) => ({ ...prev, sortOrder: Number(event.target.value) || 0 }))
                     }
-                    className="h-4 w-4 rounded text-blue-600"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Show in Ticket Detail</p>
-                    <p className="text-xs text-gray-500">Visible in the ticket detail sidebar</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={form.showDetail}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, showDetail: event.target.checked }))
-                    }
-                    className="h-4 w-4 rounded text-blue-600"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium text-gray-700">
-                  Available for Teams <span className="font-normal text-gray-400">(empty = all teams)</span>
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {teamsList.map((team) => (
-                    <label
-                      key={team.id}
-                      className={`flex cursor-pointer items-center space-x-2 rounded-lg border p-2 text-xs ${
-                        form.teamIds.includes(team.id)
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.teamIds.includes(team.id)}
-                        onChange={() => toggleTeam(team.id)}
-                        className="h-3.5 w-3.5 rounded text-blue-600"
-                      />
-                      <span className="font-medium text-gray-700">{team.name}</span>
-                    </label>
-                  ))}
+                <label className="mb-1 block text-xs font-medium text-slate-700">Team Scope</label>
+                {isTeamAdmin ? (
+                  <input
+                    value={resolvedTeamAdminTeamId ? teamLabel(resolvedTeamAdminTeamId) : 'Primary team unavailable'}
+                    disabled
+                    className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                  />
+                ) : (
+                  <select
+                    value={form.teamId}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, teamId: event.target.value }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All teams (global)</option>
+                    {teamsList.map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Required</p>
+                  <p className="text-xs text-slate-500">Must be filled before submitting</p>
                 </div>
+                <input
+                  type="checkbox"
+                  checked={form.required}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, required: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded text-blue-600"
+                />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 rounded-b-xl border-t border-gray-200 bg-gray-50 px-6 py-4">
+            <div className="flex justify-end space-x-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-4">
               <button
                 type="button"
                 onClick={closeEditor}
                 disabled={saving}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -807,21 +713,28 @@ export function CustomFieldsAdminPage({
 
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+          <div
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete custom field"
+            tabIndex={-1}
+            className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+          >
             <div className="mb-3 flex items-center space-x-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <Trash2 className="h-5 w-5 text-red-600" />
               </div>
-              <h3 className="text-base font-semibold text-gray-900">Delete Custom Field</h3>
+              <h3 className="text-base font-semibold text-slate-900">Delete Custom Field</h3>
             </div>
-            <p className="mb-5 text-sm leading-relaxed text-gray-600">
+            <p className="mb-5 text-sm leading-relaxed text-slate-600">
               Delete "{deleteTarget.name}"? This will remove it from all tickets.
             </p>
             <div className="flex justify-end space-x-3">
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Cancel
               </button>

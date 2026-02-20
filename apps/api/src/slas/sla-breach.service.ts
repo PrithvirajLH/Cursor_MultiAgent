@@ -1,7 +1,18 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, TicketPriority, TicketStatus, TeamRole, User } from '@prisma/client';
-import { RuleEngineService } from '../automation/rule-engine.service';
+import {
+  Prisma,
+  TicketPriority,
+  TicketStatus,
+  TeamRole,
+  User,
+} from '@prisma/client';
+import { AutomationQueueService } from '../common/automation-queue.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +39,7 @@ type NotificationIntent = {
 
 @Injectable()
 export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(SlaBreachService.name);
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private enabled = true;
@@ -38,7 +50,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     private readonly inAppNotifications: InAppNotificationsService,
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
-    private readonly ruleEngine: RuleEngineService,
+    private readonly automationQueue: AutomationQueueService,
   ) {}
 
   onModuleInit() {
@@ -54,16 +66,16 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
 
     this.timer = setInterval(() => {
       this.checkBreaches().catch((error) => {
-        console.error('SLA breach worker failed', error);
+        this.logger.error('SLA breach worker failed', (error as Error).stack);
       });
     }, intervalMs);
 
     this.checkBreaches().catch((error) => {
-      console.error('SLA breach worker failed', error);
+      this.logger.error('SLA breach worker failed', (error as Error).stack);
     });
   }
 
-  async onModuleDestroy() {
+  onModuleDestroy() {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -82,13 +94,18 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.runBackfillWithLock();
       } catch (backfillError) {
-        console.error('SLA backfill failed', backfillError);
+        this.logger.error(
+          'SLA backfill failed',
+          (backfillError as Error).stack,
+        );
       }
 
       const now = new Date();
       const atRiskThresholdMs = this.atRiskThresholdMs();
       const windowEnd =
-        atRiskThresholdMs > 0 ? new Date(now.getTime() + atRiskThresholdMs) : now;
+        atRiskThresholdMs > 0
+          ? new Date(now.getTime() + atRiskThresholdMs)
+          : now;
       const batchSize = Number(
         this.config.get<string>('SLA_BREACH_BATCH_SIZE') ?? '100',
       );
@@ -130,12 +147,11 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       for (const intent of notificationIntents) {
         await this.dispatchNotification(intent);
       }
-      // Run automation rules for SLA breach / at-risk
+      // Queue automation rules for SLA breach / at-risk via BullMQ with retry
       for (const intent of notificationIntents) {
-        const trigger = intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_APPROACHING';
-        this.ruleEngine.runForTicket(intent.ticketId, trigger).catch((err) =>
-          console.error(`Automation ${trigger} failed for ticket ${intent.ticketId}`, err),
-        );
+        const trigger =
+          intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_APPROACHING';
+        void this.automationQueue.enqueue(intent.ticketId, trigger);
       }
     } finally {
       this.running = false;
@@ -188,7 +204,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     instance: {
       id: string;
       ticketId: string;
-      policyId: string | null;
+      policyConfigId: string | null;
       priority: TicketPriority;
       firstResponseDueAt: Date | null;
       resolutionDueAt: Date | null;
@@ -228,7 +244,14 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       instance.firstResponseDueAt <= now;
 
     if (shouldBreachFirstResponse) {
-      await this.handleBreach(tx, instance, ticket, 'FIRST_RESPONSE', now, notificationIntents);
+      await this.handleBreach(
+        tx,
+        instance,
+        ticket,
+        'FIRST_RESPONSE',
+        now,
+        notificationIntents,
+      );
       return;
     }
 
@@ -239,7 +262,14 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       instance.resolutionDueAt <= now;
 
     if (shouldBreachResolution) {
-      await this.handleBreach(tx, instance, ticket, 'RESOLUTION', now, notificationIntents);
+      await this.handleBreach(
+        tx,
+        instance,
+        ticket,
+        'RESOLUTION',
+        now,
+        notificationIntents,
+      );
       return;
     }
 
@@ -251,7 +281,8 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         !instance.firstResponseAtRiskNotifiedAt &&
         !!instance.firstResponseDueAt &&
         instance.firstResponseDueAt > now &&
-        instance.firstResponseDueAt.getTime() - now.getTime() <= atRiskThresholdMs;
+        instance.firstResponseDueAt.getTime() - now.getTime() <=
+          atRiskThresholdMs;
 
       if (shouldNotifyFirstResponseAtRisk) {
         await this.handleAtRisk(
@@ -350,7 +381,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     instance: {
       id: string;
       ticketId: string;
-      policyId: string | null;
+      policyConfigId: string | null;
       firstResponseDueAt: Date | null;
       resolutionDueAt: Date | null;
       firstResponseBreachedAt: Date | null;
@@ -373,7 +404,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
   ) {
     const nextDueAt =
       breachType === 'FIRST_RESPONSE' && !instance.resolutionBreachedAt
-        ? instance.resolutionDueAt ?? null
+        ? (instance.resolutionDueAt ?? null)
         : null;
 
     const updateResult = await tx.slaInstance.updateMany({
@@ -403,7 +434,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         payload: {
           breachType,
           dueAt: dueAt?.toISOString() ?? null,
-          policyId: instance.policyId,
+          policyConfigId: instance.policyConfigId,
         },
         createdById: null,
       },
@@ -445,7 +476,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       breachType,
       dueAt: dueAt?.toISOString() ?? null,
       priority,
-      policyId: instance.policyId,
+      policyConfigId: instance.policyConfigId,
     };
 
     // Queue notification intent to be dispatched after transaction commits
@@ -466,7 +497,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     instance: {
       id: string;
       ticketId: string;
-      policyId: string | null;
+      policyConfigId: string | null;
       firstResponseDueAt: Date | null;
       resolutionDueAt: Date | null;
       firstResponseAtRiskNotifiedAt: Date | null;
@@ -517,7 +548,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         payload: {
           breachType,
           dueAt: dueAt.toISOString(),
-          policyId: instance.policyId,
+          policyConfigId: instance.policyConfigId,
         },
         createdById: null,
       },
@@ -532,7 +563,9 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
 
     const breachLabel =
       breachType === 'FIRST_RESPONSE' ? 'First response' : 'Resolution';
-    const timeRemaining = this.formatTimeRemaining(dueAt.getTime() - now.getTime());
+    const timeRemaining = this.formatTimeRemaining(
+      dueAt.getTime() - now.getTime(),
+    );
 
     const subject = `[Ticket ${this.ticketLabel(ticket)}] SLA at risk: ${breachLabel}`;
     const body = [
@@ -551,7 +584,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       breachType,
       dueAt: dueAt.toISOString(),
       priority: ticket.priority,
-      policyId: instance.policyId,
+      policyConfigId: instance.policyConfigId,
     };
 
     notificationIntents.push({
@@ -573,7 +606,8 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
    */
   private async dispatchNotification(intent: NotificationIntent) {
     try {
-      const eventType = intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_AT_RISK';
+      const eventType =
+        intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_AT_RISK';
 
       if (intent.leadUsers.length > 0) {
         await this.notifications.notifyUsers(intent.leadUsers, {
@@ -611,11 +645,17 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         });
       }
     } catch (error) {
-      console.error('Failed to dispatch SLA notification', error);
+      this.logger.error(
+        'Failed to dispatch SLA notification',
+        (error as Error).stack,
+      );
     }
   }
 
-  private async loadLeadUsers(tx: Prisma.TransactionClient, teamId: string | null): Promise<User[]> {
+  private async loadLeadUsers(
+    tx: Prisma.TransactionClient,
+    teamId: string | null,
+  ): Promise<User[]> {
     if (!teamId) {
       return [];
     }

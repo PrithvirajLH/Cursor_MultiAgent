@@ -43,7 +43,9 @@ export class UpdateAutomationRuleDto {
 
   @IsOptional()
   @IsArray()
-  @ArrayMinSize(1, { message: 'At least one condition is required when provided.' })
+  @ArrayMinSize(1, {
+    message: 'At least one condition is required when provided.',
+  })
   @ValidateBy({
     name: 'validConditionNodes',
     validator: {

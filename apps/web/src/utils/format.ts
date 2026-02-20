@@ -133,28 +133,8 @@ export function initialsFor(name: string) {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
-export function statusBadgeClass(status?: string | null) {
-  const neutral = 'bg-slate-100 text-slate-700 border-slate-200';
-  const newTone = 'bg-sky-100 text-sky-700 border-sky-200';
-  const progressTone = 'bg-amber-100 text-amber-700 border-amber-200';
-  const resolvedTone = 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  switch (status) {
-    case 'NEW':
-      return newTone;
-    case 'TRIAGED':
-    case 'ASSIGNED':
-    case 'IN_PROGRESS':
-    case 'WAITING_ON_REQUESTER':
-    case 'WAITING_ON_VENDOR':
-      return progressTone;
-    case 'RESOLVED':
-    case 'CLOSED':
-      return resolvedTone;
-    case 'REOPENED':
-    default:
-      return neutral;
-  }
-}
+// Re-export from centralized color mapping (7.4 fix)
+export { statusBadgeClass, priorityBadgeClass, slaBadgeClass } from './statusColors';
 
 export function getSlaTone(args: {
   dueAt?: string | null;

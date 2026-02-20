@@ -3,5 +3,5 @@ import { IsEnum } from 'class-validator';
 
 export class TransitionTicketDto {
   @IsEnum(TicketStatus)
-  status: TicketStatus;
+  status!: TicketStatus;
 }

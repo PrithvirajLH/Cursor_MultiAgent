@@ -1,36 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
-  ApiError,
   createRoutingRule,
   deleteRoutingRule,
+  fetchTeamMembers,
   fetchRoutingRules,
   updateRoutingRule,
-  type NotificationRecord,
   type RoutingRule,
+  type TeamMember,
   type TeamRef
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
+import { useHeaderContext } from '../contexts/HeaderContext';
 import { useToast } from '../hooks/useToast';
-
-type RoutingHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import type { Role } from '../types';
+import { handleApiError } from '../utils/handleApiError';
 
 type RoutingCondition = {
   field: string;
@@ -57,35 +42,21 @@ type RuleUiMeta = {
   actions: RoutingAction[];
 };
 
-const FIELDS = ['subject', 'requester_tag', 'ticket_type', 'channel', 'priority', 'team'];
-const OPS = ['contains', 'is', 'is_not', 'starts_with', 'ends_with'];
+type AssignmentMode = 'team' | 'member';
+
+type MemberOption = {
+  id: string;
+  label: string;
+  email: string;
+};
+
 const ACTION_LABELS: Record<string, string> = {
   assign_team: 'Assign Team',
-  assign_agent: 'Assign Agent',
-  set_priority: 'Set Priority',
-  add_tag: 'Add Tag',
-  round_robin: 'Round Robin',
-  notify_role: 'Notify Role'
+  assign_member: 'Assign Member',
 };
 
 const DEFAULT_CONDITION: RoutingCondition = { field: 'subject', op: 'contains', val: '' };
 const DEFAULT_ACTION: RoutingAction = { type: 'assign_team', val: '' };
-
-function apiErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    try {
-      const parsed = JSON.parse(err.message) as { message?: string };
-      if (typeof parsed.message === 'string' && parsed.message.trim()) {
-        return parsed.message;
-      }
-    } catch {
-      // fall through
-    }
-    return err.message || 'Request failed';
-  }
-  if (err instanceof Error) return err.message;
-  return 'Request failed';
-}
 
 function normalizeKeyword(value: string): string {
   return value.trim().toLowerCase();
@@ -117,7 +88,23 @@ function resolveTeamName(teamId: string, teamsList: TeamRef[]): string {
   return teamsList.find((team) => team.id === teamId)?.name ?? teamId;
 }
 
-function deriveMetaFromRule(rule: RoutingRule, teamsList: TeamRef[]): RuleUiMeta {
+function resolveMemberId(actionValue: string, members: MemberOption[]): string | null {
+  const trimmed = actionValue.trim();
+  if (!trimmed) return null;
+  const byId = members.find((member) => member.id === trimmed);
+  if (byId) return byId.id;
+  const lowered = trimmed.toLowerCase();
+  const byEmail = members.find((member) => member.email.toLowerCase() === lowered);
+  if (byEmail) return byEmail.id;
+  const byLabel = members.find((member) => member.label.toLowerCase() === lowered);
+  return byLabel?.id ?? null;
+}
+
+function resolveMemberName(memberId: string, members: MemberOption[]): string {
+  return members.find((member) => member.id === memberId)?.label ?? memberId;
+}
+
+function deriveMetaFromRule(rule: RoutingRule, mode: AssignmentMode): RuleUiMeta {
   const conditions =
     rule.keywords.length > 0
       ? rule.keywords.map((keyword) => ({
@@ -129,12 +116,16 @@ function deriveMetaFromRule(rule: RoutingRule, teamsList: TeamRef[]): RuleUiMeta
 
   const actions: RoutingAction[] = [
     {
-      type: 'assign_team',
-      val: resolveTeamName(rule.teamId, teamsList)
+      type: mode === 'member' ? 'assign_member' : 'assign_team',
+      val: mode === 'member' ? rule.assigneeId ?? '' : rule.teamId
     }
   ];
 
   return { conditions, actions };
+}
+
+function getActionType(mode: AssignmentMode): RoutingAction['type'] {
+  return mode === 'member' ? 'assign_member' : 'assign_team';
 }
 
 function Toggle({
@@ -170,9 +161,19 @@ function ConfirmDeleteModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap({ open: true, containerRef: dialogRef, onClose: onCancel });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Delete routing rule"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+      >
         <div className="mb-3 flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
             <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -214,38 +215,56 @@ function RuleEditorModal({
   form,
   isNew,
   loading,
+  teamsList,
+  assignmentMode,
+  memberOptions,
   onClose,
   onSubmit,
   onChange,
   onAddCondition,
   onRemoveCondition,
   onUpdateCondition,
-  onAddAction,
-  onRemoveAction,
   onUpdateAction
 }: {
   form: RoutingForm;
   isNew: boolean;
   loading: boolean;
+  teamsList: TeamRef[];
+  assignmentMode: AssignmentMode;
+  memberOptions: MemberOption[];
   onClose: () => void;
   onSubmit: () => void;
   onChange: (next: Partial<RoutingForm>) => void;
   onAddCondition: () => void;
   onRemoveCondition: (index: number) => void;
   onUpdateCondition: (index: number, key: keyof RoutingCondition, value: string) => void;
-  onAddAction: () => void;
-  onRemoveAction: (index: number) => void;
   onUpdateAction: (index: number, key: keyof RoutingAction, value: string) => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap({
+    open: true,
+    containerRef: dialogRef,
+    onClose,
+  });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isNew ? 'Create routing rule' : 'Edit routing rule'}
+        tabIndex={-1}
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl"
+      >
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <p className="text-base font-semibold text-slate-900">
               {isNew ? 'Create Routing Rule' : 'Edit Routing Rule'}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">Define conditions and actions</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Define subject keywords and target {assignmentMode === 'member' ? 'team member' : 'team'}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -275,40 +294,23 @@ function RuleEditorModal({
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">Conditions</p>
-              <span className="text-xs text-slate-400">ALL conditions must match</span>
+              <p className="text-sm font-semibold text-slate-800">Subject Keywords</p>
+              <span className="text-xs text-slate-400">All keywords are matched against the ticket subject</span>
             </div>
             <div className="space-y-2">
               {form.conditions.map((condition, index) => (
                 <div key={`condition-${index}`} className="flex items-center space-x-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-                  <select
-                    value={condition.field}
-                    onChange={(event) => onUpdateCondition(index, 'field', event.target.value)}
-                    className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Field...</option>
-                    {FIELDS.map((field) => (
-                      <option key={field} value={field}>
-                        {field.replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={condition.op}
-                    onChange={(event) => onUpdateCondition(index, 'op', event.target.value)}
-                    className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                  >
-                    {OPS.map((op) => (
-                      <option key={op} value={op}>
-                        {op.replace('_', ' ')}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
+                    subject
+                  </span>
+                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
+                    contains
+                  </span>
                   <input
                     value={condition.val}
                     onChange={(event) => onUpdateCondition(index, 'val', event.target.value)}
                     className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                    placeholder="value..."
+                    placeholder="keyword..."
                   />
                   <button
                     type="button"
@@ -336,8 +338,8 @@ function RuleEditorModal({
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">Actions</p>
-              <span className="text-xs text-slate-400">Applied in order</span>
+              <p className="text-sm font-semibold text-slate-800">Assignment</p>
+              <span className="text-xs text-slate-400">Persisted backend field</span>
             </div>
             <div className="space-y-2">
               {form.actions.map((action, index) => (
@@ -345,45 +347,37 @@ function RuleEditorModal({
                   <svg className="h-4 w-4 flex-shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
+                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-blue-700">
+                    {assignmentMode === 'member' ? 'Assign Member' : 'Assign Team'}
+                  </span>
                   <select
-                    value={action.type}
-                    onChange={(event) => onUpdateAction(index, 'type', event.target.value)}
-                    className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                  >
-                    {Object.entries(ACTION_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
                     value={action.val}
                     onChange={(event) => onUpdateAction(index, 'val', event.target.value)}
                     className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                    placeholder="value..."
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onRemoveAction(index)}
-                    className="flex-shrink-0 text-slate-400 hover:text-red-500"
                   >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                    <option value="">
+                      {assignmentMode === 'member' ? 'Select member...' : 'Select team...'}
+                    </option>
+                    {assignmentMode === 'member'
+                      ? memberOptions.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.label}
+                          </option>
+                        ))
+                      : teamsList.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                  </select>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={onAddAction}
-                className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span>Add Action</span>
-              </button>
             </div>
+            {assignmentMode === 'member' && memberOptions.length === 0 && (
+              <p className="mt-2 text-xs text-amber-700">
+                No team members found for assignment. Add team members first.
+              </p>
+            )}
           </div>
         </div>
 
@@ -412,18 +406,22 @@ function RuleEditorModal({
 
 export function RoutingRulesPage({
   teamsList,
-  headerProps
+  role
 }: {
   teamsList: TeamRef[];
-  headerProps?: RoutingHeaderProps;
+  role: Role;
 }) {
+  const headerCtx = useHeaderContext();
   const toast = useToast();
   const [rules, setRules] = useState<RoutingRule[]>([]);
   const [uiMetaById, setUiMetaById] = useState<Record<string, RuleUiMeta>>({});
+  const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingRuleId, setUpdatingRuleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const assignmentMode: AssignmentMode = role === 'TEAM_ADMIN' ? 'member' : 'team';
+  const actionType = getActionType(assignmentMode);
 
   const [showEditor, setShowEditor] = useState(false);
   const [form, setForm] = useState<RoutingForm>({
@@ -439,13 +437,51 @@ export function RoutingRulesPage({
 
   useEffect(() => {
     void loadRules();
-  }, []);
+  }, [assignmentMode]);
+
+  useEffect(() => {
+    if (assignmentMode !== 'member') {
+      setMemberOptions([]);
+      return;
+    }
+
+    const teamId = teamsList[0]?.id;
+    if (!teamId) {
+      setMemberOptions([]);
+      return;
+    }
+
+    let active = true;
+    fetchTeamMembers(teamId)
+      .then((response) => {
+        if (!active) return;
+        const options = response.data
+          .map((member: TeamMember) => ({
+            id: member.user.id,
+            label: member.user.displayName || member.user.email,
+            email: member.user.email,
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+        setMemberOptions(options);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setMemberOptions([]);
+        const message = handleApiError(err);
+        setError(message);
+        toast.error(message);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [assignmentMode, teamsList, toast]);
 
   function updateMetaFromRules(nextRules: RoutingRule[]) {
-    setUiMetaById((prev) => {
+    setUiMetaById(() => {
       const next: Record<string, RuleUiMeta> = {};
       nextRules.forEach((rule) => {
-        next[rule.id] = prev[rule.id] ?? deriveMetaFromRule(rule, teamsList);
+        next[rule.id] = deriveMetaFromRule(rule, assignmentMode);
       });
       return next;
     });
@@ -459,7 +495,7 @@ export function RoutingRulesPage({
       setRules(response.data);
       updateMetaFromRules(response.data);
     } catch (err) {
-      const message = apiErrorMessage(err);
+      const message = handleApiError(err);
       setError(message);
       toast.error(message);
     } finally {
@@ -476,19 +512,23 @@ export function RoutingRulesPage({
       sortedRules.length > 0
         ? Math.max(...sortedRules.map((rule) => rule.priority)) + 1
         : 1;
+    const defaultActionValue =
+      assignmentMode === 'member'
+        ? memberOptions[0]?.id ?? ''
+        : teamsList[0]?.id ?? '';
     setForm({
       id: null,
       name: '',
       enabled: true,
       priority: nextPriority,
       conditions: [{ ...DEFAULT_CONDITION }],
-      actions: [{ ...DEFAULT_ACTION }]
+      actions: [{ type: actionType, val: defaultActionValue }]
     });
     setShowEditor(true);
   }
 
   function openEditModal(rule: RoutingRule) {
-    const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, teamsList);
+    const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, assignmentMode);
     setForm({
       id: rule.id,
       name: rule.name,
@@ -500,8 +540,8 @@ export function RoutingRulesPage({
           : [{ ...DEFAULT_CONDITION }],
       actions:
         meta.actions.length > 0
-          ? meta.actions.map((item) => ({ ...item }))
-          : [{ ...DEFAULT_ACTION }]
+          ? meta.actions.map((item) => ({ ...item, type: actionType }))
+          : [{ type: actionType, val: '' }]
     });
     setShowEditor(true);
   }
@@ -510,7 +550,8 @@ export function RoutingRulesPage({
     payload?: {
       name: string;
       keywords: string[];
-      teamId: string;
+      teamId?: string;
+      assigneeId?: string;
       priority: number;
       isActive: boolean;
     };
@@ -525,21 +566,47 @@ export function RoutingRulesPage({
       return { error: 'Add at least one condition value.' };
     }
 
-    const teamAction = nextForm.actions.find(
-      (action) => action.type === 'assign_team' || action.type === 'round_robin'
-    );
-    const teamId = teamAction ? resolveTeamId(teamAction.val, teamsList) : null;
+    const assignmentAction = nextForm.actions[0];
+    const basePayload = {
+      name: nextForm.name.trim(),
+      keywords,
+      priority: Math.max(1, Number(nextForm.priority) || 1),
+      isActive: nextForm.enabled
+    };
+
+    if (assignmentMode === 'member') {
+      if (memberOptions.length === 0) {
+        return { error: 'No team members available for assignment.' };
+      }
+      const assigneeId = assignmentAction
+        ? resolveMemberId(assignmentAction.val, memberOptions)
+        : null;
+      if (!assigneeId) {
+        return { error: 'Select a valid member assignment.' };
+      }
+      const scopedTeamId = teamsList[0]?.id;
+      if (!scopedTeamId) {
+        return { error: 'No team found for team admin routing rules.' };
+      }
+
+      return {
+        payload: {
+          ...basePayload,
+          teamId: scopedTeamId,
+          assigneeId
+        }
+      };
+    }
+
+    const teamId = assignmentAction ? resolveTeamId(assignmentAction.val, teamsList) : null;
     if (!teamId) {
-      return { error: 'Add an action to assign or round-robin to a valid team.' };
+      return { error: 'Select a valid team assignment.' };
     }
 
     return {
       payload: {
-        name: nextForm.name.trim(),
-        keywords,
+        ...basePayload,
         teamId,
-        priority: Math.max(1, Number(nextForm.priority) || 1),
-        isActive: nextForm.enabled
       }
     };
   }
@@ -561,10 +628,7 @@ export function RoutingRulesPage({
         setRules((prev) => prev.map((rule) => (rule.id === form.id ? updated : rule)));
         setUiMetaById((prev) => ({
           ...prev,
-          [form.id!]: {
-            conditions: form.conditions.map((condition) => ({ ...condition })),
-            actions: form.actions.map((action) => ({ ...action }))
-          }
+          [form.id!]: deriveMetaFromRule(updated, assignmentMode)
         }));
         toast.success('Routing rule updated.');
       } else {
@@ -572,17 +636,14 @@ export function RoutingRulesPage({
         setRules((prev) => [...prev, created]);
         setUiMetaById((prev) => ({
           ...prev,
-          [created.id]: {
-            conditions: form.conditions.map((condition) => ({ ...condition })),
-            actions: form.actions.map((action) => ({ ...action }))
-          }
+          [created.id]: deriveMetaFromRule(created, assignmentMode)
         }));
         toast.success('Routing rule created.');
       }
 
       setShowEditor(false);
     } catch (err) {
-      const message = apiErrorMessage(err);
+      const message = handleApiError(err);
       setError(message);
       toast.error(message);
     } finally {
@@ -598,7 +659,7 @@ export function RoutingRulesPage({
       setRules((prev) => prev.map((item) => (item.id === rule.id ? updated : item)));
       toast.success(nextEnabled ? 'Rule enabled.' : 'Rule disabled.');
     } catch (err) {
-      const message = apiErrorMessage(err);
+      const message = handleApiError(err);
       setError(message);
       toast.error(message);
     } finally {
@@ -619,7 +680,7 @@ export function RoutingRulesPage({
       setDeleteTarget(null);
       toast.success('Routing rule deleted.');
     } catch (err) {
-      const message = apiErrorMessage(err);
+      const message = handleApiError(err);
       setError(message);
       toast.error(message);
     }
@@ -646,21 +707,21 @@ export function RoutingRulesPage({
   return (
     <section className="min-h-full bg-slate-50 animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1600px] py-4 pl-6 pr-2">
-          {headerProps ? (
+        <div className="mx-auto max-w-[1600px] py-4 px-6">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
                   <h1 className="text-xl font-semibold text-slate-900">Routing Rules</h1>
                   <p className="mt-0.5 text-sm text-slate-500">
-                    Auto-assign teams and priorities using ticket conditions.
+                    Auto-assign {assignmentMode === 'member' ? 'team members' : 'teams'} and priorities using ticket conditions.
                   </p>
                 </div>
               }
@@ -669,7 +730,7 @@ export function RoutingRulesPage({
             <div className="min-w-0">
               <h1 className="text-xl font-semibold text-slate-900">Routing Rules</h1>
               <p className="mt-0.5 text-sm text-slate-500">
-                Auto-assign teams and priorities using ticket conditions.
+                Auto-assign {assignmentMode === 'member' ? 'team members' : 'teams'} and priorities using ticket conditions.
               </p>
             </div>
           )}
@@ -677,10 +738,6 @@ export function RoutingRulesPage({
       </div>
 
       <div className="mx-auto max-w-[1600px] p-6">
-        <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          Live backend fields: name, status, keywords, team, priority. IF/THEN structured builder is UI-mapped for now (demo) until dedicated backend fields are added.
-        </div>
-
         {error && (
           <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -704,13 +761,27 @@ export function RoutingRulesPage({
         </div>
 
         {loading ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-            Loading routing rules...
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={`rule-skel-${i}`} className="rounded-xl border border-slate-200 bg-white p-5">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <div className="h-5 w-40 skeleton-shimmer rounded" />
+                    <div className="h-3.5 w-56 skeleton-shimmer rounded" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 w-14 skeleton-shimmer rounded-full" />
+                    <div className="h-5 w-14 skeleton-shimmer rounded-full" />
+                    <div className="h-8 w-20 skeleton-shimmer rounded-lg" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div className="space-y-3">
             {sortedRules.map((rule, index) => {
-              const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, teamsList);
+              const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, assignmentMode);
               return (
                 <div
                   key={rule.id}
@@ -754,7 +825,11 @@ export function RoutingRulesPage({
                           {meta.actions.map((action, actionIndex) => (
                             <span key={`${rule.id}-action-${actionIndex}`} className="inline-flex items-center rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
                               {ACTION_LABELS[action.type] ?? action.type}
-                              {action.val ? `: ${action.val}` : ''}
+                              {action.val
+                                ? action.type === 'assign_member'
+                                  ? `: ${resolveMemberName(resolveMemberId(action.val, memberOptions) ?? action.val, memberOptions)}`
+                                  : `: ${resolveTeamName(resolveTeamId(action.val, teamsList) ?? action.val, teamsList)}`
+                                : ''}
                             </span>
                           ))}
                         </div>
@@ -819,6 +894,9 @@ export function RoutingRulesPage({
           form={form}
           isNew={!form.id}
           loading={saving}
+          teamsList={teamsList}
+          assignmentMode={assignmentMode}
+          memberOptions={memberOptions}
           onClose={() => setShowEditor(false)}
           onSubmit={() => void handleSaveRule()}
           onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
@@ -838,21 +916,6 @@ export function RoutingRulesPage({
             }))
           }
           onUpdateCondition={updateCondition}
-          onAddAction={() =>
-            setForm((prev) => ({
-              ...prev,
-              actions: [...prev.actions, { ...DEFAULT_ACTION }]
-            }))
-          }
-          onRemoveAction={(index) =>
-            setForm((prev) => ({
-              ...prev,
-              actions:
-                prev.actions.length > 1
-                  ? prev.actions.filter((_, itemIndex) => itemIndex !== index)
-                  : prev.actions
-            }))
-          }
           onUpdateAction={updateAction}
         />
       )}
@@ -867,4 +930,3 @@ export function RoutingRulesPage({
     </section>
   );
 }
-

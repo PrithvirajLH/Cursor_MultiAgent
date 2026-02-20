@@ -1,15 +1,33 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
-import { Prisma, TicketPriority, TicketStatus, UserRole } from '@prisma/client';
+import {
+  Prisma,
+  TicketChannel,
+  TicketPriority,
+  TicketStatus,
+  UserRole,
+} from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  ReportQueryDto,
-  ResolutionTimeQueryDto,
-} from './dto/report-query.dto';
+import { ReportQueryDto, ResolutionTimeQueryDto } from './dto/report-query.dto';
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private readonly priorities: TicketPriority[] = [
+    TicketPriority.P1,
+    TicketPriority.P2,
+    TicketPriority.P3,
+    TicketPriority.P4,
+  ];
+
+  private readonly csatEventTypes = [
+    'CSAT_SUBMITTED',
+    'TICKET_CSAT_SUBMITTED',
+    'CSAT_RESPONSE_RECEIVED',
+    'TICKET_RATED',
+    'CSAT_RATED',
+  ];
 
   /**
    * Scope report query by role:
@@ -17,10 +35,15 @@ export class ReportsService {
    * - TEAM_ADMIN: scope to the admin's primary team (user.primaryTeamId).
    * - OWNER: platform-wide; ignore any teamId so SLA/reports are across all teams.
    */
-  private scopeReportQuery(query: ReportQueryDto, user: AuthUser): ReportQueryDto {
+  private scopeReportQuery(
+    query: ReportQueryDto,
+    user: AuthUser,
+  ): ReportQueryDto {
     if (user.role === UserRole.TEAM_ADMIN) {
       if (!user.primaryTeamId) {
-        throw new ForbiddenException('Team administrator must have a primary team set');
+        throw new ForbiddenException(
+          'Team administrator must have a primary team set',
+        );
       }
       return { ...query, teamId: user.primaryTeamId };
     }
@@ -31,8 +54,9 @@ export class ReportsService {
       return { ...query, teamId: user.teamId };
     }
     if (user.role === UserRole.OWNER) {
-      const { teamId: _omit, ...rest } = query;
-      return { ...rest } as ReportQueryDto;
+      const rest = { ...query };
+      delete rest.teamId;
+      return rest;
     }
     return query;
   }
@@ -55,23 +79,42 @@ export class ReportsService {
     toEndExclusive: Date,
     user?: AuthUser,
   ): Prisma.TicketWhereInput {
-    const dateField = query.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
-    const where: Prisma.TicketWhereInput = {
-      [dateField]: { gte: fromDate, lt: toEndExclusive },
-    };
-    if (query.teamId) where.assignedTeamId = query.teamId;
-    if (query.priority) where.priority = query.priority;
-    if (query.categoryId) where.categoryId = query.categoryId;
-    if (query.scope === 'assigned' && user) where.assigneeId = user.id;
-    if (query.statusGroup === 'open') {
-      where.status = { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] };
-    } else if (query.statusGroup === 'resolved') {
-      where.status = { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] };
+    const dateField =
+      query.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const conditions: Prisma.TicketWhereInput[] = [
+      {
+        [dateField]: { gte: fromDate, lt: toEndExclusive },
+      } as Prisma.TicketWhereInput,
+    ];
+
+    if (query.teamId) conditions.push({ assignedTeamId: query.teamId });
+    if (query.priority) conditions.push({ priority: query.priority });
+    if (query.categoryId) conditions.push({ categoryId: query.categoryId });
+    if (query.channel) conditions.push({ channel: query.channel });
+    if (query.status) conditions.push({ status: query.status });
+    if (query.assigneeId) {
+      conditions.push({ assigneeId: query.assigneeId });
+    } else if (query.scope === 'assigned' && user) {
+      conditions.push({ assigneeId: user.id });
     }
-    return where;
+
+    if (query.statusGroup === 'open') {
+      conditions.push({
+        status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+      });
+    } else if (query.statusGroup === 'resolved') {
+      conditions.push({
+        status: { in: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+      });
+    }
+
+    return conditions.length === 1 ? conditions[0] : { AND: conditions };
   }
 
-  private dateRange(from?: string, to?: string): { fromDate: Date; toEndExclusive: Date; toDateInclusive: Date } {
+  private dateRange(
+    from?: string,
+    to?: string,
+  ): { fromDate: Date; toEndExclusive: Date; toDateInclusive: Date } {
     const now = new Date();
     const defaultFrom = new Date(now);
     defaultFrom.setDate(defaultFrom.getDate() - 30);
@@ -88,6 +131,9 @@ export class ReportsService {
     teamId?: string,
     priority?: TicketPriority,
     categoryId?: string,
+    channel?: TicketChannel,
+    status?: TicketStatus,
+    assigneeId?: string,
     tableAlias?: string,
     dateField: 'createdAt' | 'updatedAt' = 'createdAt',
   ): Prisma.Sql[] {
@@ -97,10 +143,102 @@ export class ReportsService {
       Prisma.sql`${Prisma.raw(dateCol)} >= ${fromDate}`,
       Prisma.sql`${Prisma.raw(dateCol)} < ${toEndExclusive}`,
     ];
-    if (teamId) conditions.push(Prisma.sql`${Prisma.raw(pre + 'assignedTeamId"')} = ${teamId}`);
-    if (priority) conditions.push(Prisma.sql`${Prisma.raw(pre + 'priority"')} = ${priority}`);
-    if (categoryId) conditions.push(Prisma.sql`${Prisma.raw(pre + 'categoryId"')} = ${categoryId}`);
+    if (teamId)
+      conditions.push(
+        Prisma.sql`${Prisma.raw(pre + 'assignedTeamId"')} = ${teamId}`,
+      );
+    if (priority)
+      conditions.push(
+        Prisma.sql`${Prisma.raw(pre + 'priority"::text')} = ${priority}`,
+      );
+    if (categoryId)
+      conditions.push(
+        Prisma.sql`${Prisma.raw(pre + 'categoryId"')} = ${categoryId}`,
+      );
+    if (channel)
+      conditions.push(
+        Prisma.sql`${Prisma.raw(pre + 'channel"::text')} = ${channel}`,
+      );
+    if (status)
+      conditions.push(
+        Prisma.sql`${Prisma.raw(pre + 'status"::text')} = ${status}`,
+      );
+    if (assigneeId)
+      conditions.push(
+        Prisma.sql`${Prisma.raw(pre + 'assigneeId"')} = ${assigneeId}`,
+      );
     return conditions;
+  }
+
+  /** Optional Ticket filters used by raw SQL report queries that already define date conditions. */
+  private applyTicketFilterConditions(
+    conditions: Prisma.Sql[],
+    scoped: ReportQueryDto,
+    user: AuthUser,
+    tableAlias = 't',
+  ) {
+    const col = (name: string) => Prisma.raw(`${tableAlias}."${name}"`);
+    const statusText = Prisma.raw(`${tableAlias}."status"::text`);
+
+    if (scoped.teamId) {
+      conditions.push(Prisma.sql`${col('assignedTeamId')} = ${scoped.teamId}`);
+    }
+    if (scoped.priority) {
+      conditions.push(
+        Prisma.sql`${Prisma.raw(`${tableAlias}."priority"::text`)} = ${scoped.priority}`,
+      );
+    }
+    if (scoped.categoryId) {
+      conditions.push(Prisma.sql`${col('categoryId')} = ${scoped.categoryId}`);
+    }
+    if (scoped.channel) {
+      conditions.push(
+        Prisma.sql`${Prisma.raw(`${tableAlias}."channel"::text`)} = ${scoped.channel}`,
+      );
+    }
+    if (scoped.status) {
+      conditions.push(Prisma.sql`${statusText} = ${scoped.status}`);
+    } else if (scoped.statusGroup === 'open') {
+      conditions.push(
+        Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`${statusText} IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
+    if (scoped.assigneeId) {
+      conditions.push(Prisma.sql`${col('assigneeId')} = ${scoped.assigneeId}`);
+    } else if (scoped.scope === 'assigned') {
+      conditions.push(Prisma.sql`${col('assigneeId')} = ${user.id}`);
+    }
+  }
+
+  /** Extract CSAT rating from event payload keys: rating | score | csat (numeric or numeric-string). */
+  private csatRatingSql(eventAlias = 'e') {
+    const payload = Prisma.raw(`${eventAlias}."payload"`);
+    return Prisma.sql`
+      coalesce(
+        CASE
+          WHEN jsonb_typeof(${payload}->'rating') = 'number' THEN (${payload}->>'rating')::numeric
+          WHEN jsonb_typeof(${payload}->'rating') = 'string'
+            AND (${payload}->>'rating') ~ '^[0-9]+(\\.[0-9]+)?$'
+          THEN (${payload}->>'rating')::numeric
+        END,
+        CASE
+          WHEN jsonb_typeof(${payload}->'score') = 'number' THEN (${payload}->>'score')::numeric
+          WHEN jsonb_typeof(${payload}->'score') = 'string'
+            AND (${payload}->>'score') ~ '^[0-9]+(\\.[0-9]+)?$'
+          THEN (${payload}->>'score')::numeric
+        END,
+        CASE
+          WHEN jsonb_typeof(${payload}->'csat') = 'number' THEN (${payload}->>'csat')::numeric
+          WHEN jsonb_typeof(${payload}->'csat') = 'string'
+            AND (${payload}->>'csat') ~ '^[0-9]+(\\.[0-9]+)?$'
+          THEN (${payload}->>'csat')::numeric
+        END
+      )
+    `;
   }
 
   async getSummary(query: ReportQueryDto, user: AuthUser) {
@@ -138,14 +276,21 @@ export class ReportsService {
 
   async getTicketVolume(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
-    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
-    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
+      scoped.from,
+      scoped.to,
+    );
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
       undefined,
       dateField,
     );
@@ -172,7 +317,10 @@ export class ReportsService {
     `;
     return {
       data: rows.map((r) => ({
-        date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+        date:
+          r.date instanceof Date
+            ? r.date.toISOString().slice(0, 10)
+            : String(r.date).slice(0, 10),
         count: Number(r.count),
       })),
     };
@@ -181,17 +329,23 @@ export class ReportsService {
   async getSlaCompliance(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
-    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
       undefined,
       dateField,
     );
-    conditions.push(Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`);
+    conditions.push(
+      Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`,
+    );
     // Count distinct tickets: a ticket is "breached" if it breached first response OR resolution (or both).
     // "met" = had SLA in range and did not breach either. No double-counting.
     const row = await this.prisma.$queryRaw<
@@ -249,16 +403,100 @@ export class ReportsService {
     };
   }
 
-  async getResolutionTime(query: ResolutionTimeQueryDto, user: AuthUser) {
+  async getSlaComplianceByPriority(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
-    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
+      undefined,
+      dateField,
+    );
+    conditions.push(
+      Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`,
+    );
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        priority: TicketPriority;
+        met: bigint;
+        breached: bigint;
+        first_response_met: bigint;
+        first_response_breached: bigint;
+        resolution_met: bigint;
+        resolution_breached: bigint;
+      }[]
+    >`
+      WITH base AS (
+        SELECT
+          "priority",
+          ("firstResponseDueAt" IS NOT NULL) AS has_fr,
+          ("dueAt" IS NOT NULL) AS has_res,
+          ("firstResponseDueAt" IS NOT NULL AND (
+            ("firstResponseAt" IS NULL AND now() > "firstResponseDueAt") OR
+            ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt")
+          )) AS fr_breached,
+          ("dueAt" IS NOT NULL AND (
+            ("resolvedAt" IS NULL AND now() > "dueAt") OR
+            ("resolvedAt" IS NOT NULL AND "resolvedAt" > "dueAt")
+          )) AS res_breached
+        FROM "Ticket"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      )
+      SELECT
+        "priority",
+        count(*) FILTER (WHERE NOT fr_breached AND NOT res_breached)::bigint AS met,
+        count(*) FILTER (WHERE fr_breached OR res_breached)::bigint AS breached,
+        count(*) FILTER (WHERE has_fr AND NOT fr_breached)::bigint AS first_response_met,
+        count(*) FILTER (WHERE has_fr AND fr_breached)::bigint AS first_response_breached,
+        count(*) FILTER (WHERE has_res AND NOT res_breached)::bigint AS resolution_met,
+        count(*) FILTER (WHERE has_res AND res_breached)::bigint AS resolution_breached
+      FROM base
+      GROUP BY "priority"
+    `;
+
+    const byPriority = new Map(rows.map((row) => [row.priority, row]));
+    return {
+      data: this.priorities.map((priority) => {
+        const row = byPriority.get(priority);
+        const met = Number(row?.met ?? 0);
+        const breached = Number(row?.breached ?? 0);
+        return {
+          priority,
+          met,
+          breached,
+          total: met + breached,
+          firstResponseMet: Number(row?.first_response_met ?? 0),
+          firstResponseBreached: Number(row?.first_response_breached ?? 0),
+          resolutionMet: Number(row?.resolution_met ?? 0),
+          resolutionBreached: Number(row?.resolution_breached ?? 0),
+        };
+      }),
+    };
+  }
+
+  async getResolutionTime(query: ResolutionTimeQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const conditions = this.rawConditions(
+      fromDate,
+      toEndExclusive,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
       undefined,
       dateField,
     );
@@ -285,7 +523,12 @@ export class ReportsService {
     }
 
     const rows = await this.prisma.$queryRaw<
-      { assigned_team_id: string | null; team_name: string | null; avg_hours: number; count: bigint }[]
+      {
+        assigned_team_id: string | null;
+        team_name: string | null;
+        avg_hours: number;
+        count: bigint;
+      }[]
     >`
       SELECT sub."assignedTeamId" as assigned_team_id, tm."name" as team_name,
         round(avg(EXTRACT(epoch FROM (sub."resolvedAt" - sub."createdAt"))/3600)::numeric, 1)::float as avg_hours,
@@ -348,13 +591,17 @@ export class ReportsService {
   async getAgentPerformance(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
-    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
       fromDate,
       toEndExclusive,
       scoped.teamId,
       scoped.priority,
       scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
       't',
       dateField,
     );
@@ -392,13 +639,18 @@ export class ReportsService {
         ticketsResolved: Number(r.resolved),
         avgResolutionHours:
           Number(r.resolved) > 0
-            ? Math.round((r.total_resolution_sec / 3600 / Number(r.resolved)) * 10) / 10
+            ? Math.round(
+                (r.total_resolution_sec / 3600 / Number(r.resolved)) * 10,
+              ) / 10
             : null,
         firstResponses: Number(r.first_responses),
         avgFirstResponseHours:
           Number(r.first_responses) > 0
             ? Math.round(
-                (r.total_first_response_sec / 3600 / Number(r.first_responses)) * 10,
+                (r.total_first_response_sec /
+                  3600 /
+                  Number(r.first_responses)) *
+                  10,
               ) / 10
             : null,
       })),
@@ -408,19 +660,36 @@ export class ReportsService {
   async getAgentWorkload(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const statusText = Prisma.raw('t."status"::text');
-    const conditions: Prisma.Sql[] = [
-      Prisma.sql`t."assigneeId" IS NOT NULL`,
-      Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
-    ];
+    const conditions: Prisma.Sql[] = [Prisma.sql`t."assigneeId" IS NOT NULL`];
+
+    if (scoped.status) {
+      conditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`${statusText} IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup !== 'all') {
+      conditions.push(
+        Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
 
     if (scoped.teamId) {
       conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
     }
     if (scoped.priority) {
-      conditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+      conditions.push(Prisma.sql`t."priority"::text = ${scoped.priority}`);
     }
     if (scoped.categoryId) {
       conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+    if (scoped.channel) {
+      conditions.push(Prisma.sql`t."channel"::text = ${scoped.channel}`);
+    }
+    if (scoped.assigneeId) {
+      conditions.push(Prisma.sql`t."assigneeId" = ${scoped.assigneeId}`);
+    } else if (scoped.scope === 'assigned') {
+      conditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
     }
 
     const rows = await this.prisma.$queryRaw<
@@ -460,21 +729,40 @@ export class ReportsService {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const statusText = Prisma.raw('t."status"::text');
-    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const dateColumn = Prisma.raw(`t."${dateField}"`);
     const conditions: Prisma.Sql[] = [
       Prisma.sql`${dateColumn} >= ${fromDate}`,
       Prisma.sql`${dateColumn} < ${toEndExclusive}`,
-      Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
     ];
+    if (scoped.status) {
+      conditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`${statusText} IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup !== 'all') {
+      conditions.push(
+        Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
     if (scoped.teamId) {
       conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
     }
     if (scoped.priority) {
-      conditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+      conditions.push(Prisma.sql`t."priority"::text = ${scoped.priority}`);
     }
     if (scoped.categoryId) {
       conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+    if (scoped.channel) {
+      conditions.push(Prisma.sql`t."channel"::text = ${scoped.channel}`);
+    }
+    if (scoped.assigneeId) {
+      conditions.push(Prisma.sql`t."assigneeId" = ${scoped.assigneeId}`);
+    } else if (scoped.scope === 'assigned') {
+      conditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
     }
 
     const rows = await this.prisma.$queryRaw<
@@ -510,7 +798,10 @@ export class ReportsService {
 
   async getReopenRate(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
-    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
+      scoped.from,
+      scoped.to,
+    );
     const conditions: Prisma.Sql[] = [
       Prisma.sql`e."type" = 'TICKET_STATUS_CHANGED'`,
       Prisma.sql`e."payload"->>'to' = 'REOPENED'`,
@@ -520,10 +811,33 @@ export class ReportsService {
     if (scoped.teamId) {
       conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
     }
+    if (scoped.priority) {
+      conditions.push(Prisma.sql`t."priority"::text = ${scoped.priority}`);
+    }
+    if (scoped.categoryId) {
+      conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
+    }
+    if (scoped.channel) {
+      conditions.push(Prisma.sql`t."channel"::text = ${scoped.channel}`);
+    }
+    if (scoped.status) {
+      conditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
+    } else if (scoped.statusGroup === 'open') {
+      conditions.push(
+        Prisma.sql`t."status"::text NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`t."status"::text IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
+    if (scoped.assigneeId) {
+      conditions.push(Prisma.sql`t."assigneeId" = ${scoped.assigneeId}`);
+    } else if (scoped.scope === 'assigned') {
+      conditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
+    }
 
-    const rows = await this.prisma.$queryRaw<
-      { date: Date; count: bigint }[]
-    >`
+    const rows = await this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
       SELECT d::date as date, coalesce(r.cnt, 0)::bigint as count
       FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
       LEFT JOIN (
@@ -538,37 +852,362 @@ export class ReportsService {
 
     return {
       data: rows.map((row) => ({
-        date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+        date:
+          row.date instanceof Date
+            ? row.date.toISOString().slice(0, 10)
+            : String(row.date).slice(0, 10),
         count: Number(row.count),
       })),
     };
   }
 
-  async getTicketsByCategory(query: ReportQueryDto, user: AuthUser) {
+  async getCsatTrend(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
+      scoped.from,
+      scoped.to,
+    );
+    const ratingExpr = this.csatRatingSql('e');
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`e."createdAt" >= ${fromDate}`,
+      Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+      Prisma.sql`e."type" IN (${Prisma.join(this.csatEventTypes)})`,
+      Prisma.sql`${ratingExpr} BETWEEN 1 AND 5`,
+    ];
+    this.applyTicketFilterConditions(conditions, scoped, user, 't');
+
+    const rows = await this.prisma.$queryRaw<
+      { date: Date; avg_rating: number; response_count: bigint }[]
+    >`
+      SELECT d::date as date, coalesce(s.avg_rating, 0)::float as avg_rating, coalesce(s.response_count, 0)::bigint as response_count
+      FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
+      LEFT JOIN (
+        SELECT
+          date_trunc('day', e."createdAt")::date as day,
+          round(avg(${ratingExpr})::numeric, 2)::float as avg_rating,
+          count(*)::bigint as response_count
+        FROM "TicketEvent" e
+        INNER JOIN "Ticket" t ON t.id = e."ticketId"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+        GROUP BY 1
+      ) s ON s.day = d::date
+      ORDER BY 1
+    `;
+
+    const series = rows.map((row) => ({
+      date:
+        row.date instanceof Date
+          ? row.date.toISOString().slice(0, 10)
+          : String(row.date).slice(0, 10),
+      average: Number(row.avg_rating ?? 0),
+      count: Number(row.response_count ?? 0),
+    }));
+    const responses = series.reduce((sum, row) => sum + row.count, 0);
+    const weighted = series.reduce(
+      (sum, row) => sum + row.average * row.count,
+      0,
+    );
+    const average =
+      responses > 0 ? Number((weighted / responses).toFixed(2)) : null;
+
+    return {
+      data: series,
+      summary: {
+        average,
+        responses,
+      },
+    };
+  }
+
+  async getCsatDrivers(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const ratingExpr = this.csatRatingSql('e');
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`e."createdAt" >= ${fromDate}`,
+      Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+      Prisma.sql`e."type" IN (${Prisma.join(this.csatEventTypes)})`,
+      Prisma.sql`${ratingExpr} BETWEEN 1 AND 5`,
+    ];
+    this.applyTicketFilterConditions(conditions, scoped, user, 't');
+
+    const rows = await this.prisma.$queryRaw<
+      { label: string; count: bigint }[]
+    >`
+      SELECT
+        rated.label as label,
+        count(*)::bigint as count
+      FROM (
+        SELECT
+          coalesce(
+            nullif(trim(coalesce(
+              e."payload"->>'reason',
+              e."payload"->>'driver',
+              e."payload"->>'category',
+              e."payload"->>'commentReason',
+              ''
+            )), ''),
+            'Unspecified'
+          ) as label,
+          ${ratingExpr} as rating
+        FROM "TicketEvent" e
+        INNER JOIN "Ticket" t ON t.id = e."ticketId"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      ) rated
+      WHERE rated.rating <= 3
+      GROUP BY rated.label
+      ORDER BY count DESC, rated.label ASC
+      LIMIT 8
+    `;
+
+    const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    return {
+      data: rows.map((row) => ({
+        label: row.label,
+        count: Number(row.count),
+        percent:
+          total > 0
+            ? Number(((Number(row.count) / total) * 100).toFixed(1))
+            : 0,
+      })),
+      total,
+    };
+  }
+
+  async getCsatLowTags(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const ratingExpr = this.csatRatingSql('e');
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`e."createdAt" >= ${fromDate}`,
+      Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+      Prisma.sql`e."type" IN (${Prisma.join(this.csatEventTypes)})`,
+      Prisma.sql`${ratingExpr} BETWEEN 1 AND 5`,
+    ];
+    this.applyTicketFilterConditions(conditions, scoped, user, 't');
+
+    const rows = await this.prisma.$queryRaw<{ tag: string; count: bigint }[]>`
+      WITH rated AS (
+        SELECT
+          e."payload" as payload,
+          ${ratingExpr} as rating
+        FROM "TicketEvent" e
+        INNER JOIN "Ticket" t ON t.id = e."ticketId"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      ),
+      low_tags AS (
+        SELECT lower(trim(tag_values.tag)) as tag
+        FROM rated r
+        CROSS JOIN LATERAL (
+          SELECT value as tag
+          FROM jsonb_array_elements_text(
+            CASE
+              WHEN jsonb_typeof(r.payload->'tags') = 'array' THEN r.payload->'tags'
+              ELSE '[]'::jsonb
+            END
+          )
+          UNION ALL
+          SELECT r.payload->>'tag'
+        ) tag_values
+        WHERE r.rating <= 3
+      )
+      SELECT
+        tag,
+        count(*)::bigint as count
+      FROM low_tags
+      WHERE tag IS NOT NULL AND tag <> ''
+      GROUP BY tag
+      ORDER BY count DESC, tag ASC
+      LIMIT 12
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        tag: row.tag,
+        count: Number(row.count),
+      })),
+    };
+  }
+
+  async getSlaBreaches(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const conditions = this.rawConditions(
+      fromDate,
+      toEndExclusive,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
+      't',
+      dateField,
+    );
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        ticket_id: string;
+        ticket_label: string;
+        team_name: string | null;
+        priority: string;
+        stage: 'FIRST_RESPONSE' | 'RESOLUTION';
+        breach_seconds: bigint;
+      }[]
+    >`
+      WITH scoped_tickets AS (
+        SELECT
+          t.id,
+          t."displayId",
+          t."number",
+          t."assignedTeamId",
+          t."priority"::text as priority,
+          greatest(
+            0,
+            CASE
+              WHEN t."firstResponseDueAt" IS NULL THEN 0
+              WHEN t."firstResponseAt" IS NOT NULL THEN extract(epoch from (t."firstResponseAt" - t."firstResponseDueAt"))
+              ELSE extract(epoch from (now() - t."firstResponseDueAt"))
+            END
+          )::bigint as fr_breach_seconds,
+          greatest(
+            0,
+            CASE
+              WHEN t."dueAt" IS NULL THEN 0
+              WHEN t."resolvedAt" IS NOT NULL THEN extract(epoch from (t."resolvedAt" - t."dueAt"))
+              WHEN t."status"::text IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])}) THEN 0
+              ELSE extract(epoch from (now() - t."dueAt"))
+            END
+          )::bigint as res_breach_seconds
+        FROM "Ticket" t
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      )
+      SELECT
+        st.id as ticket_id,
+        coalesce(st."displayId", concat('TKT-', st."number"::text)) as ticket_label,
+        tm."name" as team_name,
+        st.priority,
+        CASE
+          WHEN st.fr_breach_seconds >= st.res_breach_seconds THEN 'FIRST_RESPONSE'
+          ELSE 'RESOLUTION'
+        END as stage,
+        greatest(st.fr_breach_seconds, st.res_breach_seconds)::bigint as breach_seconds
+      FROM scoped_tickets st
+      LEFT JOIN "Team" tm ON tm.id = st."assignedTeamId"
+      WHERE greatest(st.fr_breach_seconds, st.res_breach_seconds) > 0
+      ORDER BY breach_seconds DESC
+      LIMIT 25
+    `;
+
+    return {
+      data: rows.map((row) => ({
+        ticketId: row.ticket_id,
+        ticket: row.ticket_label,
+        team: row.team_name ?? 'Unassigned',
+        priority: row.priority,
+        stage: row.stage === 'FIRST_RESPONSE' ? 'First response' : 'Resolution',
+        breachSeconds: Number(row.breach_seconds),
+        reason:
+          row.stage === 'FIRST_RESPONSE'
+            ? 'First response due time missed'
+            : 'Resolution due time missed',
+      })),
+    };
+  }
+
+  async getChannelBreakdown(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
     const groups = await this.prisma.ticket.groupBy({
-      by: ['categoryId'],
+      by: ['channel'],
       where,
       _count: { id: true },
-      orderBy: { _count: { id: 'desc' } },
+      orderBy: { channel: 'asc' },
     });
 
-    const categoryIds = groups
-      .map((g) => g.categoryId)
-      .filter((id): id is string => Boolean(id));
-    const categories = await this.prisma.category.findMany({
-      where: { id: { in: categoryIds } },
-      select: { id: true, name: true },
+    const byChannel = new Map(
+      groups.map((group) => [group.channel, group._count.id]),
+    );
+    const total = groups.reduce((sum, group) => sum + group._count.id, 0);
+    const rows = Object.values(TicketChannel).map((channel) => {
+      const count = byChannel.get(channel) ?? 0;
+      return {
+        channel,
+        label: channel === TicketChannel.PORTAL ? 'Portal' : 'Email',
+        count,
+        percent: total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0,
+      };
     });
-    const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
 
     return {
-      data: groups.map((g) => ({
-        id: g.categoryId ?? 'uncategorized',
-        name: g.categoryId ? categoryMap.get(g.categoryId) ?? 'Uncategorized' : 'Uncategorized',
-        count: g._count.id,
+      data: rows,
+      total,
+    };
+  }
+
+  /**
+   * Tickets by category – uses a single raw SQL query with LEFT JOIN to Category
+   * to avoid the N+1 of groupBy + separate category fetch.
+   */
+  async getTicketsByCategory(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const conditions = this.rawConditions(
+      fromDate,
+      toEndExclusive,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
+      't',
+      dateField,
+    );
+
+    if (scoped.statusGroup === 'open') {
+      conditions.push(
+        Prisma.sql`t."status"::text NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`t."status"::text IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
+    if (scoped.assigneeId) {
+      // already handled above
+    } else if (scoped.scope === 'assigned' && user) {
+      conditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      {
+        category_id: string | null;
+        category_name: string | null;
+        count: bigint;
+      }[]
+    >`
+      SELECT
+        t."categoryId" AS category_id,
+        c."name" AS category_name,
+        count(*)::bigint AS count
+      FROM "Ticket" t
+      LEFT JOIN "Category" c ON c."id" = t."categoryId"
+      WHERE ${Prisma.join(conditions, ' AND ')}
+      GROUP BY t."categoryId", c."name"
+      ORDER BY count DESC
+    `;
+
+    return {
+      data: rows.map((r) => ({
+        id: r.category_id ?? 'uncategorized',
+        name: r.category_name ?? 'Uncategorized',
+        count: Number(r.count),
       })),
     };
   }
@@ -576,7 +1215,8 @@ export class ReportsService {
   async getTeamSummary(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
-    const dateField = scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const dateColumn = Prisma.raw(`t."${dateField}"`);
     const statusText = Prisma.raw('t."status"::text');
     const conditions: Prisma.Sql[] = [
@@ -587,17 +1227,38 @@ export class ReportsService {
       conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
     }
     if (scoped.priority) {
-      conditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+      conditions.push(Prisma.sql`t."priority"::text = ${scoped.priority}`);
     }
     if (scoped.categoryId) {
       conditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
     }
-    if (scoped.scope === 'assigned') {
+    if (scoped.channel) {
+      conditions.push(Prisma.sql`t."channel"::text = ${scoped.channel}`);
+    }
+    if (scoped.status) {
+      conditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
+    } else if (scoped.statusGroup === 'open') {
+      conditions.push(
+        Prisma.sql`${statusText} NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup === 'resolved') {
+      conditions.push(
+        Prisma.sql`${statusText} IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
+    if (scoped.assigneeId) {
+      conditions.push(Prisma.sql`t."assigneeId" = ${scoped.assigneeId}`);
+    } else if (scoped.scope === 'assigned') {
       conditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
     }
 
     const rows = await this.prisma.$queryRaw<
-      { team_id: string | null; open_count: bigint; resolved_count: bigint; total_count: bigint }[]
+      {
+        team_id: string | null;
+        open_count: bigint;
+        resolved_count: bigint;
+        total_count: bigint;
+      }[]
     >`
       SELECT
         t."assignedTeamId" as team_id,
@@ -622,7 +1283,9 @@ export class ReportsService {
     return {
       data: rows.map((row) => ({
         id: row.team_id ?? 'unassigned',
-        name: row.team_id ? teamMap.get(row.team_id) ?? 'Unknown team' : 'Unassigned',
+        name: row.team_id
+          ? (teamMap.get(row.team_id) ?? 'Unknown team')
+          : 'Unassigned',
         open: Number(row.open_count),
         resolved: Number(row.resolved_count),
         total: Number(row.total_count),
@@ -632,7 +1295,10 @@ export class ReportsService {
 
   async getTransfers(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
-    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(scoped.from, scoped.to);
+    const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
+      scoped.from,
+      scoped.to,
+    );
     const eventConditions: Prisma.Sql[] = [
       Prisma.sql`e."type" = 'TICKET_TRANSFERRED'`,
       Prisma.sql`e."createdAt" >= ${fromDate}`,
@@ -645,18 +1311,34 @@ export class ReportsService {
       );
     }
     if (scoped.priority) {
-      ticketConditions.push(Prisma.sql`t."priority" = ${scoped.priority}`);
+      ticketConditions.push(
+        Prisma.sql`t."priority"::text = ${scoped.priority}`,
+      );
     }
     if (scoped.categoryId) {
       ticketConditions.push(Prisma.sql`t."categoryId" = ${scoped.categoryId}`);
     }
-    if (scoped.scope === 'assigned') {
+    if (scoped.channel) {
+      ticketConditions.push(Prisma.sql`t."channel"::text = ${scoped.channel}`);
+    }
+    if (scoped.status) {
+      ticketConditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
+    } else if (scoped.statusGroup === 'open') {
+      ticketConditions.push(
+        Prisma.sql`t."status"::text NOT IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    } else if (scoped.statusGroup === 'resolved') {
+      ticketConditions.push(
+        Prisma.sql`t."status"::text IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])})`,
+      );
+    }
+    if (scoped.assigneeId) {
+      ticketConditions.push(Prisma.sql`t."assigneeId" = ${scoped.assigneeId}`);
+    } else if (scoped.scope === 'assigned') {
       ticketConditions.push(Prisma.sql`t."assigneeId" = ${user.id}`);
     }
 
-    const rows = await this.prisma.$queryRaw<
-      { date: Date; count: bigint }[]
-    >`
+    const rows = await this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
       SELECT d::date as date, coalesce(tr.cnt, 0)::bigint as count
       FROM generate_series(${fromDate}::date, ${toDateInclusive}::date, '1 day'::interval) d
       LEFT JOIN (
@@ -675,7 +1357,10 @@ export class ReportsService {
       data: {
         total,
         series: rows.map((row) => ({
-          date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10),
+          date:
+            row.date instanceof Date
+              ? row.date.toISOString().slice(0, 10)
+              : String(row.date).slice(0, 10),
           count: Number(row.count),
         })),
       },

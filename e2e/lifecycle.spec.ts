@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type Page, type Locator } from '@playwright/test';
+import { authHeaders } from './auth';
 
 const API_BASE = 'http://localhost:3000/api';
 const IT_TEAM_ID = '11111111-1111-4111-8111-111111111111';
@@ -7,6 +8,7 @@ const REQUESTER_EMAIL = 'requester@company.com';
 const AGENT_EMAIL = 'agent@company.com';
 const LEAD_EMAIL = 'lead@company.com';
 const ADMIN_EMAIL = 'admin@company.com';
+const OWNER_EMAIL = 'owner@company.com';
 
 type TicketResponse = {
   id: string;
@@ -26,7 +28,7 @@ async function openCreateTicketModal(page: Page) {
 }
 
 async function waitForTicketOverview(page: Page) {
-  await expect(page.getByText('Ticket overview')).toBeVisible();
+  await expect(page.getByRole('tablist', { name: 'Ticket views' })).toBeVisible();
 }
 
 async function waitForSelectOption(select: Locator, label: string) {
@@ -64,7 +66,7 @@ async function createTicket(
   email: string
 ): Promise<TicketResponse> {
   const response = await api.post(`${API_BASE}/tickets`, {
-    headers: { 'x-user-email': email },
+    headers: authHeaders(email),
     data: {
       subject,
       description: 'E2E lifecycle test ticket',
@@ -86,7 +88,7 @@ async function waitForStatus(
   await expect.poll(
     async () => {
       const response = await api.get(`${API_BASE}/tickets/${ticketId}`, {
-        headers: { 'x-user-email': email }
+        headers: authHeaders(email)
       });
       if (!response.ok()) {
         return 'ERROR';
@@ -103,20 +105,13 @@ test('requester creates a ticket and sees it in My Tickets', async ({ page }) =>
   await openAs(page, REQUESTER_EMAIL, '/dashboard');
 
   await openCreateTicketModal(page);
-  const departmentSelect = await ensureDepartmentOption(page, 'IT Service Desk');
+  const departmentSelect = page.getByRole('combobox', { name: 'Department *' });
+  await waitForSelectOption(departmentSelect, 'IT Service Desk');
   await departmentSelect.selectOption({ label: 'IT Service Desk' });
 
-  await page
-    .locator('label:has-text("Subject")')
-    .locator('..')
-    .locator('input')
-    .fill(subject);
+  await page.getByRole('textbox', { name: 'Subject *' }).fill(subject);
 
-  await page
-    .locator('label:has-text("Description")')
-    .locator('..')
-    .locator('textarea')
-    .fill('E2E description');
+  await page.getByRole('textbox', { name: 'Description *' }).fill('E2E description');
 
   const [createResponse] = await Promise.all([
     page.waitForResponse((response) => {
@@ -130,7 +125,10 @@ test('requester creates a ticket and sees it in My Tickets', async ({ page }) =>
   });
 
   await page.goto('/tickets');
-  await page.getByPlaceholder('Search').fill(subject);
+  await page
+    .getByPlaceholder(/Search by ticket ID, subject, or description/)
+    .first()
+    .fill(subject);
   await expect(page.getByText(subject)).toBeVisible();
 });
 
@@ -141,16 +139,15 @@ test('agent assigns and transitions a ticket', async ({ page, request }) => {
   await openAs(page, AGENT_EMAIL, `/tickets/${ticket.id}`);
   await waitForTicketOverview(page);
 
-  const assignRow = page.getByRole('button', { name: 'Assign', exact: true }).locator('..');
-  await waitForSelectOption(assignRow.locator('select'), 'Agent One');
-  await assignRow.locator('select').selectOption({ label: 'Agent One' });
-  await assignRow.getByRole('button', { name: 'Assign', exact: true }).click();
+  const assignSelect = page.getByRole('combobox', { name: 'Assign', exact: true });
+  await waitForSelectOption(assignSelect, 'Agent One');
+  await assignSelect.selectOption({ label: 'Agent One' });
+  await page.getByRole('button', { name: 'Assign', exact: true }).first().click();
   await waitForStatus(request, ticket.id, AGENT_EMAIL, 'ASSIGNED');
 
-  await page.getByRole('button', { name: 'Status tab' }).click();
-  const statusRow = page.getByRole('button', { name: 'Update status' }).locator('..');
-  await statusRow.locator('select').selectOption({ label: 'In Progress' });
-  await page.getByRole('button', { name: 'Update status' }).click();
+  const statusSelect = page.getByRole('combobox', { name: 'Status' });
+  await statusSelect.selectOption({ label: 'In Progress' });
+  await page.getByRole('button', { name: 'Update' }).first().click();
   await waitForStatus(request, ticket.id, AGENT_EMAIL, 'IN_PROGRESS');
 });
 
@@ -161,15 +158,15 @@ test('internal notes are hidden from requester', async ({ page, request }) => {
   await openAs(page, AGENT_EMAIL, `/tickets/${ticket.id}`);
   await waitForTicketOverview(page);
 
-  await page.getByRole('button', { name: 'Internal note' }).click();
+  await page.getByRole('button', { name: 'Internal' }).click();
   const internalText = `Internal note ${Date.now()}`;
-  await page.getByPlaceholder('Add an internal note…').fill(internalText);
+  await page.getByPlaceholder(/Add an internal note/).fill(internalText);
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText(internalText)).toBeVisible();
 
-  await page.getByRole('button', { name: 'Public reply' }).click();
+  await page.getByRole('button', { name: 'Public' }).click();
   const publicText = `Public reply ${Date.now()}`;
-  await page.getByPlaceholder('Reply to the requester…').fill(publicText);
+  await page.getByPlaceholder(/Write a reply/).fill(publicText);
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText(publicText)).toBeVisible();
 
@@ -185,39 +182,40 @@ test('triage board drag-drop updates status and shows SLA badge', async ({ page,
 
   await openAs(page, LEAD_EMAIL, '/triage');
   await expect(page.getByRole('heading', { name: 'Triage Board', level: 1 })).toBeVisible();
-  await expect(page.getByPlaceholder('Search tickets')).toBeVisible();
-  await page.getByPlaceholder('Search tickets').fill(subject);
+  const triageSearch = page.getByPlaceholder('Search by ID, subject, requester, or team...');
+  await expect(triageSearch).toBeVisible();
+  await triageSearch.fill(subject);
 
-  const ticketCard = page.locator('button', { hasText: subject }).first();
+  const ticketCardTitle = page.getByRole('heading', { name: subject, level: 3 }).first();
+  const ticketCard = ticketCardTitle.locator('xpath=ancestor::div[contains(@class,"cursor-grab")]').first();
   await expect(ticketCard).toBeVisible();
   await expect(ticketCard.getByText('On track')).toBeVisible();
 
-  const triagedColumn = page.locator('div').filter({ has: page.getByText('Triaged', { exact: true }) }).first();
-  await ticketCard.dragTo(triagedColumn);
+  const moveSelect = ticketCard.getByRole('combobox', { name: 'Move ticket (keyboard accessible)' });
+  await moveSelect.selectOption({ label: 'Triaged' });
 
   await waitForStatus(request, ticket.id, LEAD_EMAIL, 'TRIAGED');
 });
 
-test('lead can transfer ticket and becomes read-only', async ({ page, request }) => {
+test('owner can transfer ticket and lead becomes read-only', async ({ page, request }) => {
   const subject = `E2E Transfer ${Date.now()}`;
   const ticket = await createTicket(request, subject, REQUESTER_EMAIL);
 
-  await openAs(page, LEAD_EMAIL, `/tickets/${ticket.id}`);
+  await openAs(page, OWNER_EMAIL, `/tickets/${ticket.id}`);
   await waitForTicketOverview(page);
 
-  await page.getByRole('button', { name: 'Transfer tab' }).click();
-  const transferCard = page.getByRole('button', { name: 'Transfer', exact: true }).locator('..');
-  const teamSelect = transferCard.locator('select').first();
+  const teamSelect = page.getByRole('combobox', { name: 'Transfer to department' });
   await waitForSelectOption(teamSelect, 'HR Operations');
   await teamSelect.selectOption({ label: 'HR Operations' });
   await expect(teamSelect).toHaveValue(HR_TEAM_ID);
+  const transferCard = teamSelect.locator('xpath=ancestor::div[contains(@class,"space-y-2")]').first();
   const transferButton = transferCard.getByRole('button', { name: 'Transfer' });
   await expect(transferButton).toBeEnabled();
   await transferButton.click();
 
   await expect.poll(async () => {
     const response = await request.get(`${API_BASE}/tickets/${ticket.id}`, {
-      headers: { 'x-user-email': ADMIN_EMAIL }
+      headers: authHeaders(OWNER_EMAIL)
     });
     if (!response.ok()) {
       return 'ERROR';
@@ -227,7 +225,7 @@ test('lead can transfer ticket and becomes read-only', async ({ page, request })
   }, { timeout: 15_000 }).toBe(HR_TEAM_ID);
 
   const writeAttempt = await request.post(`${API_BASE}/tickets/${ticket.id}/messages`, {
-    headers: { 'x-user-email': LEAD_EMAIL },
+    headers: authHeaders(LEAD_EMAIL),
     data: { body: 'Lead follow-up', type: 'PUBLIC' }
   });
   expect(writeAttempt.status()).toBe(403);
@@ -237,11 +235,14 @@ test('SLA badge appears on ticket list', async ({ page, request }) => {
   const subject = `E2E SLA ${Date.now()}`;
   await createTicket(request, subject, REQUESTER_EMAIL);
 
-  await openAs(page, AGENT_EMAIL, '/tickets');
-  await expect(page.getByPlaceholder('Search')).toBeVisible();
-  await page.getByPlaceholder('Search').fill(subject);
+  await openAs(page, AGENT_EMAIL, '/tickets?scope=all');
+  const searchInput = page
+    .getByPlaceholder(/Search by ticket ID, subject, or description/)
+    .first();
+  await expect(searchInput).toBeVisible();
+  await searchInput.fill(subject);
 
-  const ticketCard = page.locator('button', { hasText: subject }).first();
+  const ticketCard = page.getByRole('button', { name: new RegExp(subject) }).first();
   await expect(ticketCard).toBeVisible();
   await expect(ticketCard.getByText('On track')).toBeVisible();
 });

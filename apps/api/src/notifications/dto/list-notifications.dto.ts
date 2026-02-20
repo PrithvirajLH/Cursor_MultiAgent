@@ -1,15 +1,25 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
 
+function toInt(value: unknown): number | undefined {
+  if (typeof value === 'number')
+    return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+  return undefined;
+}
+
 export class ListNotificationsDto {
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) => toInt(value))
   @IsInt()
   @Min(1)
   page?: number = 1;
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }: { value: unknown }) => toInt(value))
   @IsInt()
   @Min(1)
   @Max(100)

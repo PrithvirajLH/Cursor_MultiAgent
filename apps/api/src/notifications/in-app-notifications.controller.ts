@@ -40,7 +40,7 @@ export class InAppNotificationsController {
   @Get('unread-count')
   async getUnreadCount(@CurrentUser() user: AuthUser) {
     const count = await this.notificationsService.getUnreadCount(user.id);
-    return { count };
+    return { data: { count } };
   }
 
   /**
@@ -52,7 +52,7 @@ export class InAppNotificationsController {
     @Param('id') notificationId: string,
   ) {
     await this.notificationsService.markAsRead(notificationId, user.id);
-    return { success: true };
+    return { data: { success: true } };
   }
 
   /**
@@ -61,6 +61,6 @@ export class InAppNotificationsController {
   @Patch('read-all')
   async markAllAsRead(@CurrentUser() user: AuthUser) {
     const result = await this.notificationsService.markAllAsRead(user.id);
-    return { success: true, count: result.count };
+    return { data: { success: true, count: result.count } };
   }
 }

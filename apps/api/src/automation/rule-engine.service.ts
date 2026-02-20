@@ -1,8 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { NotificationType, TicketPriority, TicketStatus, UserRole } from '@prisma/client';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import {
+  NotificationType,
+  TicketPriority,
+  TicketStatus,
+  UserRole,
+} from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
+import { TicketsService } from '../tickets/tickets.service';
 
 export type AutomationTrigger =
   | 'TICKET_CREATED'
@@ -42,9 +48,21 @@ const SLA_DE_DUPE_HOURS = 24;
 
 @Injectable()
 export class RuleEngineService {
+  private readonly defaultSlaConfig: Record<
+    TicketPriority,
+    { firstResponseHours: number; resolutionHours: number }
+  > = {
+    [TicketPriority.P1]: { firstResponseHours: 1, resolutionHours: 4 },
+    [TicketPriority.P2]: { firstResponseHours: 4, resolutionHours: 24 },
+    [TicketPriority.P3]: { firstResponseHours: 8, resolutionHours: 72 },
+    [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
+  };
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly slaEngine: SlaEngineService,
+    @Inject(forwardRef(() => TicketsService))
+    private readonly ticketsService: TicketsService,
   ) {}
 
   /**
@@ -54,12 +72,20 @@ export class RuleEngineService {
   async evaluateRuleForTicket(
     ruleId: string,
     ticketId: string,
-  ): Promise<{ matched: boolean; actionsThatWouldRun: ActionNode[]; message?: string }> {
+  ): Promise<{
+    matched: boolean;
+    actionsThatWouldRun: ActionNode[];
+    message?: string;
+  }> {
     const rule = await this.prisma.automationRule.findUnique({
       where: { id: ruleId },
     });
     if (!rule) {
-      return { matched: false, actionsThatWouldRun: [], message: 'Rule not found' };
+      return {
+        matched: false,
+        actionsThatWouldRun: [],
+        message: 'Rule not found',
+      };
     }
 
     const ticket = await this.prisma.ticket.findUnique({
@@ -67,7 +93,11 @@ export class RuleEngineService {
       include: { assignedTeam: true },
     });
     if (!ticket) {
-      return { matched: false, actionsThatWouldRun: [], message: 'Ticket not found' };
+      return {
+        matched: false,
+        actionsThatWouldRun: [],
+        message: 'Ticket not found',
+      };
     }
 
     const ctx: TicketContext = this.ticketToContext(ticket);
@@ -82,12 +112,20 @@ export class RuleEngineService {
 
     const conditions = rule.conditions as ConditionNode[];
     if (!Array.isArray(conditions) || conditions.length === 0) {
-      return { matched: false, actionsThatWouldRun: [], message: 'Rule has no conditions' };
+      return {
+        matched: false,
+        actionsThatWouldRun: [],
+        message: 'Rule has no conditions',
+      };
     }
 
     const matched = this.evaluateConditions(conditions, ctx);
     if (!matched) {
-      return { matched: false, actionsThatWouldRun: [], message: 'Conditions did not match' };
+      return {
+        matched: false,
+        actionsThatWouldRun: [],
+        message: 'Conditions did not match',
+      };
     }
 
     const actions = rule.actions as ActionNode[];
@@ -155,14 +193,39 @@ export class RuleEngineService {
 
       if (
         (trigger === 'SLA_APPROACHING' || trigger === 'SLA_BREACHED') &&
-        (await this.alreadyExecutedRecently(rule.id, ticketId, trigger, SLA_DE_DUPE_HOURS))
+        (await this.alreadyExecutedRecently(
+          rule.id,
+          ticketId,
+          trigger,
+          SLA_DE_DUPE_HOURS,
+        ))
       ) {
         continue;
       }
 
       try {
         await this.prisma.$transaction(async (tx) => {
-          await this.executeActions(tx, ticketId, actions, ticket, rule.id, rule.createdById);
+          await this.executeActions(
+            tx,
+            ticketId,
+            actions,
+            ticket,
+            rule.id,
+            rule.createdById,
+          );
+          await tx.ticketEvent.create({
+            data: {
+              ticketId,
+              type: 'AUTOMATION_RULE_EXECUTED',
+              payload: {
+                automationRuleId: rule.id,
+                automationRuleName: rule.name,
+                trigger,
+                actionCount: actions.length,
+              },
+              createdById: rule.createdById,
+            },
+          });
           await tx.automationExecution.create({
             data: { ruleId: rule.id, ticketId, trigger, success: true },
           });
@@ -172,7 +235,13 @@ export class RuleEngineService {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`Rule ${rule.name}: ${msg}`);
         await this.prisma.automationExecution.create({
-          data: { ruleId: rule.id, ticketId, trigger, success: false, error: msg },
+          data: {
+            ruleId: rule.id,
+            ticketId,
+            trigger,
+            success: false,
+            error: msg,
+          },
         });
       }
     }
@@ -224,7 +293,10 @@ export class RuleEngineService {
   }
 
   /** Top-level: all nodes must evaluate to true (AND). Each node can be and/or/field. */
-  private evaluateConditions(conditions: ConditionNode[], ctx: TicketContext): boolean {
+  private evaluateConditions(
+    conditions: ConditionNode[],
+    ctx: TicketContext,
+  ): boolean {
     return conditions.every((node) => this.evaluateNode(node, ctx));
   }
 
@@ -248,8 +320,8 @@ export class RuleEngineService {
     ctx: TicketContext,
   ): boolean {
     const raw = (ctx as Record<string, unknown>)[field];
-    const str = raw != null ? String(raw).toLowerCase() : '';
-    const valStr = value != null ? String(value).toLowerCase() : '';
+    const str = (this.normalizeComparableValue(raw) ?? '').toLowerCase();
+    const valStr = (this.normalizeComparableValue(value) ?? '').toLowerCase();
 
     switch (operator) {
       case 'contains':
@@ -260,17 +332,44 @@ export class RuleEngineService {
         return str !== valStr;
       case 'in':
         if (!Array.isArray(value)) return raw === value;
-        return value.some((v) => String(v).toLowerCase() === str || raw === v);
+        return value.some((v) => {
+          const option = this.normalizeComparableValue(v);
+          return (option != null && option.toLowerCase() === str) || raw === v;
+        });
       case 'notIn':
         if (!Array.isArray(value)) return raw !== value;
-        return !value.some((v) => String(v).toLowerCase() === str || raw === v);
+        return !value.some((v) => {
+          const option = this.normalizeComparableValue(v);
+          return (option != null && option.toLowerCase() === str) || raw === v;
+        });
       case 'isEmpty':
-        return raw == null || String(raw).trim() === '';
+        return (
+          raw == null ||
+          (this.normalizeComparableValue(raw) ?? '').trim() === ''
+        );
       case 'isNotEmpty':
-        return raw != null && String(raw).trim() !== '';
+        return (
+          raw != null &&
+          (this.normalizeComparableValue(raw) ?? '').trim() !== ''
+        );
       default:
         return false;
     }
+  }
+
+  private normalizeComparableValue(value: unknown): string | null {
+    if (typeof value === 'string') return value;
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value);
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    return null;
   }
 
   private async executeActions(
@@ -280,10 +379,17 @@ export class RuleEngineService {
     ticket: {
       id: string;
       subject: string;
+      createdAt: Date;
       priority: TicketPriority;
       status: TicketStatus;
       assignedTeamId: string | null;
       assigneeId: string | null;
+      firstResponseDueAt: Date | null;
+      resolvedAt: Date | null;
+      closedAt: Date | null;
+      completedAt: Date | null;
+      dueAt: Date | null;
+      slaPausedAt: Date | null;
       assignedTeam?: { members: { userId: string }[] } | null;
     },
     _ruleId: string,
@@ -313,6 +419,25 @@ export class RuleEngineService {
           break;
         case 'assign_user':
           if (action.userId) {
+            if (!current.assignedTeamId) {
+              throw new Error(
+                'assign_user requires the ticket to be assigned to a team first',
+              );
+            }
+            const membership = await tx.teamMember.findUnique({
+              where: {
+                teamId_userId: {
+                  teamId: current.assignedTeamId,
+                  userId: action.userId,
+                },
+              },
+              select: { id: true },
+            });
+            if (!membership) {
+              throw new Error(
+                `User ${action.userId} is not a member of team ${current.assignedTeamId}`,
+              );
+            }
             await tx.ticket.update({
               where: { id: ticketId },
               data: { assigneeId: action.userId },
@@ -330,12 +455,46 @@ export class RuleEngineService {
           }
           break;
         case 'set_priority':
-          if (action.priority && ['P1', 'P2', 'P3', 'P4'].includes(action.priority)) {
+          if (
+            action.priority &&
+            ['P1', 'P2', 'P3', 'P4'].includes(action.priority)
+          ) {
             const fromPriority = current.priority;
             const newPriority = action.priority as TicketPriority;
+
+            const oldSla = await this.getSlaConfig(
+              current.priority,
+              current.assignedTeamId,
+              tx,
+            );
+            const newSla = await this.getSlaConfig(
+              newPriority,
+              current.assignedTeamId,
+              tx,
+            );
+
+            const firstStart = current.firstResponseDueAt
+              ? this.addHours(
+                  current.firstResponseDueAt,
+                  -oldSla.firstResponseHours,
+                )
+              : current.createdAt;
+            const resolutionStart = current.dueAt
+              ? this.addHours(current.dueAt, -oldSla.resolutionHours)
+              : current.createdAt;
+
+            const firstResponseDueAt = this.addHours(
+              firstStart,
+              newSla.firstResponseHours,
+            );
+            const dueAt = this.addHours(
+              resolutionStart,
+              newSla.resolutionHours,
+            );
+
             await tx.ticket.update({
               where: { id: ticketId },
-              data: { priority: newPriority },
+              data: { priority: newPriority, firstResponseDueAt, dueAt },
             });
             await tx.ticketEvent.create({
               data: {
@@ -345,28 +504,24 @@ export class RuleEngineService {
                 createdById: ruleCreatedById,
               },
             });
-            await this.slaEngine.syncFromTicket(ticketId, undefined, tx);
-            current = { ...current, priority: newPriority };
+            await this.slaEngine.syncFromTicket(
+              ticketId,
+              { policyConfigId: newSla.policyConfigId ?? null },
+              tx,
+            );
+            current = await this.getTicketForActions(tx, ticketId);
           }
           break;
         case 'set_status':
           if (action.status) {
-            const fromStatus = current.status;
             const newStatus = action.status as TicketStatus;
-            await tx.ticket.update({
-              where: { id: ticketId },
-              data: { status: newStatus },
-            });
-            await tx.ticketEvent.create({
-              data: {
-                ticketId,
-                type: 'TICKET_STATUS_CHANGED',
-                payload: { from: fromStatus, to: newStatus },
-                createdById: ruleCreatedById,
-              },
-            });
-            await this.slaEngine.syncFromTicket(ticketId, undefined, tx);
-            current = { ...current, status: newStatus };
+            current = await this.applyStatusTransitionAction(
+              tx,
+              ticketId,
+              current,
+              newStatus,
+              ruleCreatedById,
+            );
           }
           break;
         case 'notify_team_lead':
@@ -390,20 +545,31 @@ export class RuleEngineService {
           break;
         case 'add_internal_note':
           if (action.body) {
-            const systemUser = await tx.user.findFirst({
-              where: { role: UserRole.OWNER },
+            let authorId = ruleCreatedById;
+            const author = await tx.user.findUnique({
+              where: { id: authorId },
               select: { id: true },
             });
-            if (systemUser) {
-              await tx.ticketMessage.create({
-                data: {
-                  ticketId,
-                  authorId: systemUser.id,
-                  type: 'INTERNAL',
-                  body: `[Automation] ${action.body}`,
-                },
+            if (!author) {
+              const fallbackOwner = await tx.user.findFirst({
+                where: { role: UserRole.OWNER },
+                select: { id: true },
               });
+              if (!fallbackOwner) {
+                throw new Error(
+                  'Unable to add automation internal note: no valid author account',
+                );
+              }
+              authorId = fallbackOwner.id;
             }
+            await tx.ticketMessage.create({
+              data: {
+                ticketId,
+                authorId,
+                type: 'INTERNAL',
+                body: `[Automation] ${action.body}`,
+              },
+            });
           }
           break;
         default:
@@ -418,10 +584,17 @@ export class RuleEngineService {
   ): Promise<{
     id: string;
     subject: string;
+    createdAt: Date;
     assignedTeamId: string | null;
     assigneeId: string | null;
     priority: TicketPriority;
     status: TicketStatus;
+    firstResponseDueAt: Date | null;
+    resolvedAt: Date | null;
+    closedAt: Date | null;
+    completedAt: Date | null;
+    dueAt: Date | null;
+    slaPausedAt: Date | null;
     assignedTeam?: { members: { userId: string }[] } | null;
   }> {
     const t = await tx.ticket.findUnique({
@@ -430,5 +603,117 @@ export class RuleEngineService {
     });
     if (!t) throw new Error('Ticket not found');
     return t;
+  }
+
+  private async applyStatusTransitionAction(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+    current: {
+      id: string;
+      subject: string;
+      createdAt: Date;
+      assignedTeamId: string | null;
+      assigneeId: string | null;
+      priority: TicketPriority;
+      status: TicketStatus;
+      firstResponseDueAt: Date | null;
+      resolvedAt: Date | null;
+      closedAt: Date | null;
+      completedAt: Date | null;
+      dueAt: Date | null;
+      slaPausedAt: Date | null;
+      assignedTeam?: { members: { userId: string }[] } | null;
+    },
+    newStatus: TicketStatus,
+    ruleCreatedById: string,
+  ) {
+    if (newStatus === current.status) {
+      return current;
+    }
+
+    await this.ticketsService.applyStatusTransitionInTx(
+      tx,
+      {
+        id: current.id,
+        status: current.status,
+        priority: current.priority,
+        assignedTeamId: current.assignedTeamId,
+        dueAt: current.dueAt,
+        slaPausedAt: current.slaPausedAt,
+        resolvedAt: current.resolvedAt,
+        closedAt: current.closedAt,
+        completedAt: current.completedAt,
+      },
+      newStatus,
+      ruleCreatedById,
+    );
+
+    return this.getTicketForActions(tx, ticketId);
+  }
+
+  private async getSlaConfig(
+    priority: TicketPriority,
+    teamId: string | null,
+    tx: Prisma.TransactionClient,
+  ) {
+    if (teamId) {
+      const assignedRows = await tx.$queryRaw<
+        Array<{
+          policyConfigId: string;
+          firstResponseHours: number;
+          resolutionHours: number;
+        }>
+      >`
+        SELECT
+          p."id" AS "policyConfigId",
+          t."firstResponseHours" AS "firstResponseHours",
+          t."resolutionHours" AS "resolutionHours"
+        FROM "SlaPolicyAssignment" a
+        INNER JOIN "SlaPolicyConfig" p ON p."id" = a."policyConfigId"
+        INNER JOIN "SlaPolicyConfigTarget" t
+          ON t."policyConfigId" = p."id"
+         AND t."priority" = ${priority}::"TicketPriority"
+        WHERE a."teamId" = ${teamId}
+          AND p."enabled" = true
+        ORDER BY a."updatedAt" DESC
+        LIMIT 1
+      `;
+      if (assignedRows[0]) {
+        return assignedRows[0];
+      }
+    }
+
+    const defaultRows = await tx.$queryRaw<
+      Array<{
+        policyConfigId: string;
+        firstResponseHours: number;
+        resolutionHours: number;
+      }>
+    >`
+      SELECT
+        p."id" AS "policyConfigId",
+        t."firstResponseHours" AS "firstResponseHours",
+        t."resolutionHours" AS "resolutionHours"
+      FROM "SlaPolicyConfig" p
+      INNER JOIN "SlaPolicyConfigTarget" t
+        ON t."policyConfigId" = p."id"
+       AND t."priority" = ${priority}::"TicketPriority"
+      WHERE p."isDefault" = true
+        AND p."enabled" = true
+      ORDER BY p."updatedAt" DESC
+      LIMIT 1
+    `;
+    if (defaultRows[0]) {
+      return defaultRows[0];
+    }
+
+    return {
+      policyConfigId: null,
+      ...this.defaultSlaConfig[priority],
+    };
+  }
+
+  private addHours(date: Date, hours: number) {
+    return new Date(date.getTime() + hours * 60 * 60 * 1000);
   }
 }

@@ -2,7 +2,7 @@ import { IsOptional, IsUUID } from 'class-validator';
 
 export class TransferTicketDto {
   @IsUUID()
-  newTeamId: string;
+  newTeamId!: string;
 
   @IsOptional()
   @IsUUID()

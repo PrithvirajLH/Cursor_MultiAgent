@@ -2,6 +2,7 @@ import {
   AccessLevel,
   MessageType,
   PrismaClient,
+  SlaNotifyRole,
   TeamRole,
   TicketChannel,
   TicketPriority,
@@ -701,17 +702,78 @@ async function seedTest() {
     ]
   });
 
-  await prisma.slaPolicy.createMany({
-    data: [
-      { teamId: ids.teamIt, priority: TicketPriority.P1, firstResponseHours: 1, resolutionHours: 4 },
-      { teamId: ids.teamIt, priority: TicketPriority.P2, firstResponseHours: 4, resolutionHours: 24 },
-      { teamId: ids.teamIt, priority: TicketPriority.P3, firstResponseHours: 8, resolutionHours: 72 },
-      { teamId: ids.teamIt, priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
-      { teamId: ids.teamHr, priority: TicketPriority.P1, firstResponseHours: 2, resolutionHours: 8 },
-      { teamId: ids.teamHr, priority: TicketPriority.P2, firstResponseHours: 6, resolutionHours: 32 },
-      { teamId: ids.teamHr, priority: TicketPriority.P3, firstResponseHours: 12, resolutionHours: 96 },
-      { teamId: ids.teamHr, priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 }
-    ]
+  const policyDefault = 'f1111111-1111-4111-8111-111111111111';
+  const policyIt = 'f2222222-2222-4222-8222-222222222222';
+  const policyHr = 'f3333333-3333-4333-8333-333333333333';
+
+  await prisma.slaPolicyConfig.create({
+    data: {
+      id: policyDefault,
+      name: 'Global Default SLA',
+      description: 'Default SLA targets for test seeds.',
+      isDefault: true,
+      enabled: true,
+      businessHoursOnly: true,
+      escalationEnabled: true,
+      escalationAfterPercent: 80,
+      breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
+      targets: {
+        create: [
+          { priority: TicketPriority.P1, firstResponseHours: 1, resolutionHours: 4 },
+          { priority: TicketPriority.P2, firstResponseHours: 4, resolutionHours: 24 },
+          { priority: TicketPriority.P3, firstResponseHours: 8, resolutionHours: 72 },
+          { priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+        ],
+      },
+    },
+  });
+
+  await prisma.slaPolicyConfig.create({
+    data: {
+      id: policyIt,
+      name: 'IT SLA',
+      description: 'Team-specific IT SLA targets.',
+      enabled: true,
+      businessHoursOnly: true,
+      escalationEnabled: true,
+      escalationAfterPercent: 80,
+      breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
+      targets: {
+        create: [
+          { priority: TicketPriority.P1, firstResponseHours: 1, resolutionHours: 4 },
+          { priority: TicketPriority.P2, firstResponseHours: 4, resolutionHours: 24 },
+          { priority: TicketPriority.P3, firstResponseHours: 8, resolutionHours: 72 },
+          { priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+        ],
+      },
+      assignments: {
+        create: [{ teamId: ids.teamIt }],
+      },
+    },
+  });
+
+  await prisma.slaPolicyConfig.create({
+    data: {
+      id: policyHr,
+      name: 'HR SLA',
+      description: 'Team-specific HR SLA targets.',
+      enabled: true,
+      businessHoursOnly: true,
+      escalationEnabled: true,
+      escalationAfterPercent: 80,
+      breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
+      targets: {
+        create: [
+          { priority: TicketPriority.P1, firstResponseHours: 2, resolutionHours: 8 },
+          { priority: TicketPriority.P2, firstResponseHours: 6, resolutionHours: 32 },
+          { priority: TicketPriority.P3, firstResponseHours: 12, resolutionHours: 96 },
+          { priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+        ],
+      },
+      assignments: {
+        create: [{ teamId: ids.teamHr }],
+      },
+    },
   });
 
   const ticketAssigned = await prisma.ticket.create({

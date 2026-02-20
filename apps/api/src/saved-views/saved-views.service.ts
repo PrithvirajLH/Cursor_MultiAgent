@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/current-user.decorator';
 import { CreateSavedViewDto } from './dto/create-saved-view.dto';
@@ -9,7 +13,9 @@ export class SavedViewsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(user: AuthUser) {
-    const orConditions: Array<{ userId: string } | { teamId: string }> = [{ userId: user.id }];
+    const orConditions: Array<{ userId: string } | { teamId: string }> = [
+      { userId: user.id },
+    ];
     if (user.teamId) {
       orConditions.push({ teamId: user.teamId });
     }
@@ -17,12 +23,14 @@ export class SavedViewsService {
       where: { OR: orConditions },
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
-    return views;
+    return { data: views };
   }
 
   async create(dto: CreateSavedViewDto, user: AuthUser) {
     const teamId =
-      dto.teamId != null && user.teamId != null && dto.teamId === user.teamId ? dto.teamId : null;
+      dto.teamId != null && user.teamId != null && dto.teamId === user.teamId
+        ? dto.teamId
+        : null;
     if (dto.isDefault) {
       await this.prisma.savedView.updateMany({
         where: { userId: user.id },

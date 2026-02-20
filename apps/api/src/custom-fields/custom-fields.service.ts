@@ -2,10 +2,13 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Prisma, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
+import { AccessControlService } from '../common/access-control.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCustomFieldDto } from './dto/create-custom-field.dto';
 import { ListCustomFieldsDto } from './dto/list-custom-fields.dto';
@@ -22,22 +25,43 @@ type CustomFieldWithOptions = {
   categoryId: string | null;
 };
 
+function toOptionText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value);
+  }
+  return '';
+}
+
 function parseOptions(raw: unknown): { value: string; label: string }[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => {
     if (item && typeof item === 'object' && 'value' in item) {
       const v = (item as { value: unknown }).value;
       const l = (item as { label?: unknown }).label;
-      return { value: String(v ?? ''), label: String(l ?? v ?? '') };
+      const value = toOptionText(v);
+      const label = toOptionText(l) || value;
+      return { value, label };
     }
-    const s = String(item);
+    const s = toOptionText(item);
     return { value: s, label: s };
   });
 }
 
 @Injectable()
 export class CustomFieldsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(CustomFieldsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessControl: AccessControlService,
+  ) {}
+  private readonly selectableFieldTypes = new Set(['DROPDOWN', 'MULTISELECT']);
+  private adminAuditEventTableExists: boolean | null = null;
 
   private ensureOwner(user: AuthUser) {
     if (user.role !== UserRole.OWNER) {
@@ -51,20 +75,83 @@ export class CustomFieldsService {
       return;
     }
     if (user.role === UserRole.OWNER) return;
-    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId) return;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId === teamId)
+      return;
     throw new ForbiddenException('Team admin or owner access required');
+  }
+
+  private isSelectableFieldType(fieldType: string): boolean {
+    return this.selectableFieldTypes.has(fieldType);
+  }
+
+  private normalizeSelectableOptions(
+    raw: unknown,
+    fieldType: string,
+  ): Prisma.InputJsonValue {
+    if (!Array.isArray(raw) || raw.length === 0) {
+      throw new BadRequestException(
+        `${fieldType} fields require at least one option`,
+      );
+    }
+
+    const normalized = raw.map((item, index) => {
+      if (typeof item === 'string') {
+        const value = item.trim();
+        if (!value) {
+          throw new BadRequestException(`Option ${index + 1} cannot be empty`);
+        }
+        return { value, label: value };
+      }
+      if (item && typeof item === 'object') {
+        const record = item as { value?: unknown; label?: unknown };
+        const value = toOptionText(record.value ?? record.label).trim();
+        const label = toOptionText(record.label ?? record.value).trim();
+        if (!value) {
+          throw new BadRequestException(
+            `Option ${index + 1} value is required`,
+          );
+        }
+        if (!label) {
+          throw new BadRequestException(
+            `Option ${index + 1} label is required`,
+          );
+        }
+        return { value, label };
+      }
+      throw new BadRequestException(`Option ${index + 1} is invalid`);
+    });
+
+    const seen = new Set<string>();
+    for (const option of normalized) {
+      const key = option.value.toLowerCase();
+      if (seen.has(key)) {
+        throw new BadRequestException(
+          `Duplicate option value "${option.value}" is not allowed`,
+        );
+      }
+      seen.add(key);
+    }
+
+    return normalized as unknown as Prisma.InputJsonValue;
   }
 
   async list(query: ListCustomFieldsDto, user: AuthUser) {
     if (user.role === UserRole.TEAM_ADMIN && !user.primaryTeamId) {
-      throw new ForbiddenException('Team administrator must have a primary team set');
+      throw new ForbiddenException(
+        'Team administrator must have a primary team set',
+      );
     }
 
-    type Where = { teamId?: string | null; categoryId?: string | null; OR?: { teamId: string | null }[] };
+    type Where = {
+      teamId?: string | null;
+      categoryId?: string | null;
+      OR?: { teamId: string | null }[];
+    };
     const where: Where = {};
 
     if (user.role === UserRole.OWNER || user.role === UserRole.TEAM_ADMIN) {
-      const allowedTeamId = user.role === UserRole.TEAM_ADMIN ? user.primaryTeamId! : null;
+      const allowedTeamId =
+        user.role === UserRole.TEAM_ADMIN ? user.primaryTeamId! : null;
       if (user.role === UserRole.OWNER) {
         if (query.teamId != null) where.teamId = query.teamId;
       } else {
@@ -74,6 +161,22 @@ export class CustomFieldsService {
           );
         }
         where.OR = [{ teamId: null }, { teamId: allowedTeamId }];
+      }
+      if (query.categoryId != null) where.categoryId = query.categoryId;
+    } else if (user.role === UserRole.EMPLOYEE) {
+      // Employees can raise tickets to any team, so allow listing
+      // global fields plus the selected team's fields.
+      if (query.teamId != null) {
+        const team = await this.prisma.team.findUnique({
+          where: { id: query.teamId },
+          select: { id: true, isActive: true },
+        });
+        if (!team || !team.isActive) {
+          throw new NotFoundException('Team not found');
+        }
+        where.OR = [{ teamId: null }, { teamId: query.teamId }];
+      } else {
+        where.teamId = null;
       }
       if (query.categoryId != null) where.categoryId = query.categoryId;
     } else {
@@ -95,57 +198,149 @@ export class CustomFieldsService {
   }
 
   async create(dto: CreateCustomFieldDto, user: AuthUser) {
-    this.ensureTeamAdminOrOwner(user, dto.teamId ?? null);
+    const teamId =
+      user.role === UserRole.TEAM_ADMIN
+        ? (dto.teamId ?? user.primaryTeamId ?? null)
+        : (dto.teamId ?? null);
+    this.ensureTeamAdminOrOwner(user, teamId);
+    const isSelectable = this.isSelectableFieldType(dto.fieldType);
+    if (!isSelectable && dto.options !== undefined) {
+      throw new BadRequestException(
+        `Options are only allowed for DROPDOWN or MULTISELECT fields`,
+      );
+    }
+    const options = isSelectable
+      ? this.normalizeSelectableOptions(dto.options, dto.fieldType)
+      : undefined;
 
-    return this.prisma.customField.create({
+    const created = await this.prisma.customField.create({
       data: {
         name: dto.name,
         fieldType: dto.fieldType,
-        options: dto.options ?? undefined,
+        options,
         isRequired: dto.isRequired ?? false,
-        teamId: dto.teamId ?? null,
+        teamId,
         categoryId: dto.categoryId ?? null,
         sortOrder: dto.sortOrder ?? 0,
       },
     });
+    await this.recordAdminAuditEvent(
+      'CUSTOM_FIELD_CREATED',
+      {
+        customFieldId: created.id,
+        name: created.name,
+        fieldType: created.fieldType,
+        teamId: created.teamId,
+        categoryId: created.categoryId,
+        isRequired: created.isRequired,
+        sortOrder: created.sortOrder,
+      },
+      user,
+      created.teamId,
+    );
+    return created;
   }
 
   async update(id: string, dto: UpdateCustomFieldDto, user: AuthUser) {
-    const existing = await this.prisma.customField.findUnique({ where: { id } });
+    const existing = await this.prisma.customField.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Custom field not found');
     }
     this.ensureTeamAdminOrOwner(user, existing.teamId);
+    if (dto.teamId !== undefined) {
+      this.ensureTeamAdminOrOwner(user, dto.teamId ?? null);
+    }
+    const nextFieldType = dto.fieldType ?? existing.fieldType;
+    const nextIsSelectable = this.isSelectableFieldType(nextFieldType);
 
     const data: Prisma.CustomFieldUpdateInput = {
       ...(dto.name != null && { name: dto.name }),
       ...(dto.fieldType != null && { fieldType: dto.fieldType }),
-      ...(dto.options !== undefined && {
-        options: dto.options === null ? Prisma.JsonNull : (dto.options as Prisma.InputJsonValue),
-      }),
       ...(dto.isRequired != null && { isRequired: dto.isRequired }),
       ...(dto.sortOrder != null && { sortOrder: dto.sortOrder }),
     };
+
+    if (nextIsSelectable) {
+      if (dto.options !== undefined) {
+        data.options = this.normalizeSelectableOptions(
+          dto.options,
+          nextFieldType,
+        );
+      } else if (
+        dto.fieldType != null &&
+        !this.isSelectableFieldType(existing.fieldType)
+      ) {
+        throw new BadRequestException(
+          `${nextFieldType} fields require options`,
+        );
+      }
+    } else {
+      if (dto.options !== undefined && dto.options !== null) {
+        throw new BadRequestException(
+          `Options are only allowed for DROPDOWN or MULTISELECT fields`,
+        );
+      }
+      if (dto.options !== undefined || dto.fieldType !== undefined) {
+        data.options = Prisma.JsonNull;
+      }
+    }
     if (dto.teamId !== undefined) {
-      data.team = dto.teamId == null ? { disconnect: true } : { connect: { id: dto.teamId } };
+      data.team =
+        dto.teamId == null
+          ? { disconnect: true }
+          : { connect: { id: dto.teamId } };
     }
     if (dto.categoryId !== undefined) {
-      data.category = dto.categoryId == null ? { disconnect: true } : { connect: { id: dto.categoryId } };
+      data.category =
+        dto.categoryId == null
+          ? { disconnect: true }
+          : { connect: { id: dto.categoryId } };
     }
-    return this.prisma.customField.update({
+    const updated = await this.prisma.customField.update({
       where: { id },
       data,
     });
+    await this.recordAdminAuditEvent(
+      'CUSTOM_FIELD_UPDATED',
+      {
+        customFieldId: updated.id,
+        name: updated.name,
+        fieldType: updated.fieldType,
+        teamId: updated.teamId,
+        categoryId: updated.categoryId,
+        isRequired: updated.isRequired,
+        sortOrder: updated.sortOrder,
+      },
+      user,
+      updated.teamId,
+    );
+    return updated;
   }
 
   async delete(id: string, user: AuthUser) {
-    const existing = await this.prisma.customField.findUnique({ where: { id } });
+    const existing = await this.prisma.customField.findUnique({
+      where: { id },
+    });
     if (!existing) {
       throw new NotFoundException('Custom field not found');
     }
     this.ensureTeamAdminOrOwner(user, existing.teamId);
 
     await this.prisma.customField.delete({ where: { id } });
+    await this.recordAdminAuditEvent(
+      'CUSTOM_FIELD_DELETED',
+      {
+        customFieldId: existing.id,
+        name: existing.name,
+        fieldType: existing.fieldType,
+        teamId: existing.teamId,
+        categoryId: existing.categoryId,
+      },
+      user,
+      existing.teamId,
+    );
     return { deleted: true };
   }
 
@@ -265,7 +460,11 @@ export class CustomFieldsService {
         return d.toISOString().slice(0, 10);
       }
       case 'CHECKBOX':
-        return value === 'true' || value === '1' || value.toLowerCase() === 'yes' ? 'true' : 'false';
+        return value === 'true' ||
+          value === '1' ||
+          value.toLowerCase() === 'yes'
+          ? 'true'
+          : 'false';
       case 'DROPDOWN': {
         const options = parseOptions(field.options);
         const allowed = new Set(options.map((o) => o.value));
@@ -281,7 +480,10 @@ export class CustomFieldsService {
       case 'MULTISELECT': {
         const options = parseOptions(field.options);
         const allowed = new Set(options.map((o) => o.value));
-        const parts = value.split(',').map((p) => p.trim()).filter(Boolean);
+        const parts = value
+          .split(',')
+          .map((p) => p.trim())
+          .filter(Boolean);
         for (const p of parts) {
           if (!allowed.has(p)) {
             throw new BadRequestException(
@@ -309,16 +511,7 @@ export class CustomFieldsService {
       throw new NotFoundException('Ticket not found');
     }
 
-    const canWrite =
-      user.role === UserRole.OWNER ||
-      (user.role === UserRole.TEAM_ADMIN &&
-        user.primaryTeamId &&
-        ticket.assignedTeamId === user.primaryTeamId) ||
-      user.role === UserRole.LEAD ||
-      (user.role === UserRole.AGENT &&
-        (ticket.assignedTeamId === user.teamId ||
-          ticket.accessGrants?.some((g) => g.teamId === user.teamId)));
-    if (!canWrite) {
+    if (!this.accessControl.canWriteTicket(user, ticket)) {
       throw new ForbiddenException('No write access to this ticket');
     }
 
@@ -332,7 +525,10 @@ export class CustomFieldsService {
       for (const item of validated) {
         await tx.customFieldValue.upsert({
           where: {
-            ticketId_customFieldId: { ticketId, customFieldId: item.customFieldId },
+            ticketId_customFieldId: {
+              ticketId,
+              customFieldId: item.customFieldId,
+            },
           },
           create: {
             ticketId,
@@ -342,11 +538,84 @@ export class CustomFieldsService {
           update: { value: item.value },
         });
       }
+
+      if (validated.length > 0) {
+        await tx.ticketEvent.create({
+          data: {
+            ticketId,
+            type: 'CUSTOM_FIELD_UPDATED',
+            payload: {
+              customFieldIds: validated.map((item) => item.customFieldId),
+              changedCount: validated.length,
+            },
+            createdById: user.id,
+          },
+        });
+      }
     });
 
     return this.prisma.customFieldValue.findMany({
       where: { ticketId },
       include: { customField: true },
     });
+  }
+
+  private async recordAdminAuditEvent(
+    type: string,
+    payload: Record<string, unknown>,
+    user: AuthUser,
+    teamId: string | null,
+  ) {
+    const hasTable = await this.hasAdminAuditEventTable();
+    if (!hasTable) return;
+    // Resolve snapshot fields (8.1 fix) so audit data survives user/team deletion
+    let actorName: string = user.email;
+    let teamName: string | null = null;
+    try {
+      const [actor, team] = await Promise.all([
+        this.prisma.user
+          .findUnique({ where: { id: user.id }, select: { displayName: true } })
+          .catch(() => null),
+        teamId
+          ? this.prisma.team
+              .findUnique({ where: { id: teamId }, select: { name: true } })
+              .catch(() => null)
+          : null,
+      ]);
+      actorName = actor?.displayName ?? user.email;
+      teamName = team?.name ?? null;
+    } catch {
+      /* best-effort */
+    }
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO "AdminAuditEvent" ("id", "type", "payload", "createdById", "teamId", "actorEmail", "actorName", "teamName", "createdAt")
+        VALUES (${randomUUID()}, ${type}, ${JSON.stringify(payload)}::jsonb, ${user.id}, ${teamId}, ${user.email}, ${actorName}, ${teamName}, now())
+      `;
+    } catch {
+      // Non-blocking audit log write
+    }
+  }
+
+  private async hasAdminAuditEventTable() {
+    if (this.adminAuditEventTableExists !== null) {
+      return this.adminAuditEventTableExists;
+    }
+
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.tables
+          WHERE table_schema = current_schema()
+            AND table_name = 'AdminAuditEvent'
+        ) AS "exists"
+      `;
+      this.adminAuditEventTableExists = Boolean(rows[0]?.exists);
+    } catch {
+      this.adminAuditEventTableExists = false;
+    }
+
+    return this.adminAuditEventTableExists;
   }
 }

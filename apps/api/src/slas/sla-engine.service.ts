@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TicketPriority } from '@prisma/client';
 import type { Prisma, SlaInstance } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -12,13 +13,13 @@ export class SlaEngineService {
   /**
    * Sync SLA instance from ticket data.
    * @param ticketId - The ticket ID to sync
-   * @param options - Optional settings for policyId and reset flags
+   * @param options - Optional settings for policy references and reset flags
    * @param tx - Optional transaction client; if provided, all queries use this client
    */
   async syncFromTicket(
     ticketId: string,
     options?: {
-      policyId?: string | null;
+      policyConfigId?: string | null;
       resetResolution?: boolean;
       resetFirstResponse?: boolean;
     },
@@ -49,32 +50,30 @@ export class SlaEngineService {
       where: { ticketId },
     });
 
-    // Derive policyId when not explicitly provided and no existing instance
-    // This ensures pre-migration tickets get properly tracked
-    let resolvedPolicyId = options?.policyId;
-    if (resolvedPolicyId === undefined && !existing?.policyId && ticket.assignedTeamId) {
-      const policy = await db.slaPolicy.findUnique({
-        where: {
-          teamId_priority: {
-            teamId: ticket.assignedTeamId,
-            priority: ticket.priority,
-          },
-        },
-      });
-      resolvedPolicyId = policy?.id ?? null;
+    // Resolve policy-config linkage first (new runtime source of truth).
+    let resolvedPolicyConfigId = options?.policyConfigId;
+    if (resolvedPolicyConfigId === undefined && !existing?.policyConfigId) {
+      resolvedPolicyConfigId = await this.resolveEffectivePolicyConfigId(
+        ticket.priority,
+        ticket.assignedTeamId,
+        db,
+      );
     }
 
     // Apply resets before computing nextDueAt so reopened tickets get re-scheduled
     const effective = {
       firstResponseBreachedAt: options?.resetFirstResponse
         ? null
-        : existing?.firstResponseBreachedAt ?? null,
+        : (existing?.firstResponseBreachedAt ?? null),
       resolutionBreachedAt: options?.resetResolution
         ? null
-        : existing?.resolutionBreachedAt ?? null,
+        : (existing?.resolutionBreachedAt ?? null),
     };
 
-    const nextDueAt = this.computeNextDueAt(ticket, effective as SlaInstance | null);
+    const nextDueAt = this.computeNextDueAt(
+      ticket,
+      effective as SlaInstance | null,
+    );
 
     const updateData: Prisma.SlaInstanceUpdateInput = {
       priority: ticket.priority,
@@ -84,11 +83,11 @@ export class SlaEngineService {
       nextDueAt,
     };
 
-    if (resolvedPolicyId !== undefined) {
-      if (resolvedPolicyId) {
-        updateData.policy = { connect: { id: resolvedPolicyId } };
-      } else if (existing?.policyId) {
-        updateData.policy = { disconnect: true };
+    if (resolvedPolicyConfigId !== undefined) {
+      if (resolvedPolicyConfigId) {
+        updateData.policyConfig = { connect: { id: resolvedPolicyConfigId } };
+      } else if (existing?.policyConfigId) {
+        updateData.policyConfig = { disconnect: true };
       }
     }
 
@@ -102,15 +101,15 @@ export class SlaEngineService {
       updateData.firstResponseAtRiskNotifiedAt = null;
     }
 
-    // Use existing policyId if we didn't resolve a new one and one exists
-    const createPolicyId = resolvedPolicyId ?? existing?.policyId ?? null;
+    const createPolicyConfigId =
+      resolvedPolicyConfigId ?? existing?.policyConfigId ?? null;
 
     return db.slaInstance.upsert({
       where: { ticketId },
       update: updateData,
       create: {
         ticketId,
-        policyId: createPolicyId,
+        policyConfigId: createPolicyConfigId,
         priority: ticket.priority,
         firstResponseDueAt: ticket.firstResponseDueAt,
         resolutionDueAt: ticket.dueAt,
@@ -118,6 +117,49 @@ export class SlaEngineService {
         nextDueAt,
       },
     });
+  }
+
+  /**
+   * Resolve the effective SLA policy config ID for a ticket context.
+   * Team-specific assignment wins; otherwise fall back to enabled global default.
+   */
+  private async resolveEffectivePolicyConfigId(
+    priority: TicketPriority,
+    teamId: string | null,
+    db: DbClient,
+  ): Promise<string | null> {
+    if (teamId) {
+      const assignedRows = await db.$queryRaw<
+        Array<{ policyConfigId: string }>
+      >`
+        SELECT p."id" AS "policyConfigId"
+        FROM "SlaPolicyAssignment" a
+        INNER JOIN "SlaPolicyConfig" p ON p."id" = a."policyConfigId"
+        INNER JOIN "SlaPolicyConfigTarget" t
+          ON t."policyConfigId" = p."id"
+         AND t."priority" = ${priority}::"TicketPriority"
+        WHERE a."teamId" = ${teamId}
+          AND p."enabled" = true
+        ORDER BY a."updatedAt" DESC
+        LIMIT 1
+      `;
+      if (assignedRows[0]?.policyConfigId) {
+        return assignedRows[0].policyConfigId;
+      }
+    }
+
+    const defaultRows = await db.$queryRaw<Array<{ policyConfigId: string }>>`
+      SELECT p."id" AS "policyConfigId"
+      FROM "SlaPolicyConfig" p
+      INNER JOIN "SlaPolicyConfigTarget" t
+        ON t."policyConfigId" = p."id"
+       AND t."priority" = ${priority}::"TicketPriority"
+      WHERE p."isDefault" = true
+        AND p."enabled" = true
+      ORDER BY p."updatedAt" DESC
+      LIMIT 1
+    `;
+    return defaultRows[0]?.policyConfigId ?? null;
   }
 
   private computeNextDueAt(

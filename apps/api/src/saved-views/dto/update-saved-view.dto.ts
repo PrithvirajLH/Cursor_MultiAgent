@@ -1,5 +1,11 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 function toBoolean(value: unknown): boolean | undefined {
   if (value === undefined || value === null) return undefined;

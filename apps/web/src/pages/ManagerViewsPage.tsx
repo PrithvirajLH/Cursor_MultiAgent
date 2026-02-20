@@ -24,14 +24,16 @@ import {
   fetchTicketActivity,
   fetchTicketMetrics,
   fetchTickets,
-  type NotificationRecord,
   type TeamRef,
   type TicketRecord
 } from '../api/client';
 import { EmptyState } from '../components/EmptyState';
 import { RelativeTime } from '../components/RelativeTime';
 import { TopBar } from '../components/TopBar';
+import { useHeaderContext } from '../contexts/HeaderContext';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { formatStatus, formatTicketId } from '../utils/format';
+import { getPriorityTone, priorityBadgeClass } from '../utils/statusColors';
 
 type TabKey = 'overview' | 'agents' | 'performance' | 'workload';
 type SortKey = 'workload' | 'resolved' | 'response' | 'resolution';
@@ -65,25 +67,6 @@ type MetricSummary = {
   firstResponseSla: string;
   resolutionSla: string;
 };
-type ManagerHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
-
 const DATE_OPTIONS = [7, 14, 30] as const;
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'workload', label: 'Workload' },
@@ -153,57 +136,94 @@ function downloadCsv(filename: string, rows: Array<Array<string | number | boole
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const label = priority === 'P1' ? 'Urgent' : priority === 'P2' ? 'High' : priority === 'P3' ? 'Medium' : 'Low';
-  const tone = priority === 'P1' ? 'bg-red-100 text-red-700' : priority === 'P2' ? 'bg-orange-100 text-orange-700' : priority === 'P3' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700';
-  return <span className={`rounded-md px-2 py-1 text-xs font-medium ${tone}`}>{label}</span>;
+  const tone = getPriorityTone(priority);
+  const label =
+    tone === 'urgent'
+      ? 'Urgent'
+      : tone === 'high'
+      ? 'High'
+      : tone === 'medium'
+      ? 'Medium'
+      : tone === 'low'
+      ? 'Low'
+      : priority;
+  return (
+    <span className={`rounded-md px-2 py-1 text-xs font-medium ${priorityBadgeClass(priority)}`}>
+      {label}
+    </span>
+  );
 }
 
-async function fetchAllOpenTickets() {
-  const pageSize = 100;
-  const allTickets: TicketRecord[] = [];
-  let page = 1;
-  let totalPages = 1;
+async function fetchTopOpenEscalations() {
+  const priorities = ['P1', 'P2', 'P3', 'P4'] as const;
+  const limit = 3;
+  const selected: TicketRecord[] = [];
+  const seenIds = new Set<string>();
 
-  do {
+  for (const priority of priorities) {
+    if (selected.length >= limit) {
+      break;
+    }
+
+    const remaining = limit - selected.length;
     const response = await fetchTickets({
       statusGroup: 'open',
+      priority,
       sort: 'updatedAt',
       order: 'desc',
-      pageSize,
-      page
+      pageSize: remaining,
+      page: 1
     });
-    allTickets.push(...response.data);
-    totalPages = response.meta.totalPages || 1;
-    page += 1;
-  } while (page <= totalPages);
 
-  return allTickets;
+    for (const ticket of response.data) {
+      if (seenIds.has(ticket.id)) {
+        continue;
+      }
+      seenIds.add(ticket.id);
+      selected.push(ticket);
+      if (selected.length >= limit) {
+        break;
+      }
+    }
+  }
+
+  return selected;
 }
 
 function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap({ open: true, containerRef: dialogRef, onClose });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-xl">
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Agent details for ${agent.name}`}
+        tabIndex={-1}
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-xl"
+      >
+        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">{agent.avatar}</div>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">{agent.name}</h2>
-              <p className="text-sm text-gray-500">{agent.email}</p>
+              <h2 className="text-lg font-semibold text-slate-900">{agent.name}</h2>
+              <p className="text-sm text-slate-500">{agent.email}</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-700" aria-label="Close">
+          <button type="button" onClick={onClose} className="text-slate-500 hover:text-slate-700" aria-label="Close">
             <X className="h-6 w-6" />
           </button>
         </div>
         <div className="space-y-6 p-6">
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Open Tickets</div><div className="text-2xl font-bold text-gray-900">{agent.openTickets}</div></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">In Progress</div><div className="text-2xl font-bold text-gray-900">{agent.inProgress}</div></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Resolved (Range)</div><div className="text-2xl font-bold text-gray-900">{agent.resolvedPeriod}</div></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">First Responses (Range)</div><div className="text-2xl font-bold text-gray-900">{agent.firstResponses}</div></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Avg First Response</div><div className="text-2xl font-bold text-gray-900">{hfmt(agent.avgResponseHours)}</div></div>
-            <div className="rounded-lg bg-gray-50 p-3"><div className="text-xs text-gray-600">Avg Resolution</div><div className="text-2xl font-bold text-gray-900">{hfmt(agent.avgResolutionHours)}</div></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-600">Open Tickets</div><div className="text-2xl font-bold text-slate-900">{agent.openTickets}</div></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-600">In Progress</div><div className="text-2xl font-bold text-slate-900">{agent.inProgress}</div></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-600">Resolved (Range)</div><div className="text-2xl font-bold text-slate-900">{agent.resolvedPeriod}</div></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-600">First Responses (Range)</div><div className="text-2xl font-bold text-slate-900">{agent.firstResponses}</div></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-600">Avg First Response</div><div className="text-2xl font-bold text-slate-900">{hfmt(agent.avgResponseHours)}</div></div>
+            <div className="rounded-lg bg-slate-50 p-3"><div className="text-xs text-slate-600">Avg Resolution</div><div className="text-2xl font-bold text-slate-900">{hfmt(agent.avgResolutionHours)}</div></div>
           </div>
         </div>
       </div>
@@ -213,13 +233,12 @@ function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void
 
 export function ManagerViewsPage({
   refreshKey,
-  teamsList,
-  headerProps
+  teamsList
 }: {
   refreshKey: number;
   teamsList: TeamRef[];
-  headerProps?: ManagerHeaderProps;
 }) {
+  const headerCtx = useHeaderContext();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [dateRange, setDateRange] = useState<number>(30);
   const [showDateDropdown, setShowDateDropdown] = useState(false);
@@ -238,7 +257,7 @@ export function ManagerViewsPage({
   const [categoryData, setCategoryData] = useState<Array<{ name: string; count: number; color: string }>>([]);
   const [reopenData, setReopenData] = useState<Array<{ date: string; count: number }>>([]);
   const loadRequestIdRef = useRef(0);
-  const userScopeKey = headerProps?.currentEmail ?? '';
+  const userScopeKey = headerCtx?.currentEmail ?? '';
 
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
@@ -263,7 +282,7 @@ export function ManagerViewsPage({
     from.setDate(now.getDate() - (dateRange - 1));
 
     try {
-      const [metricsRes, perfRes, workloadRes, slaRes, volumeRes, categoryRes, reopenRes, activityRes, openTickets] = await Promise.all([
+      const [metricsRes, perfRes, workloadRes, slaRes, volumeRes, categoryRes, reopenRes, activityRes, escalationTickets] = await Promise.all([
         fetchTicketMetrics(),
         fetchReportAgentPerformance({ from: ymd(from), to: ymd(now) }),
         fetchReportAgentWorkload({ from: ymd(from), to: ymd(now) }),
@@ -272,7 +291,7 @@ export function ManagerViewsPage({
         fetchReportTicketsByCategory({ from: ymd(from), to: ymd(now) }),
         fetchReportReopenRate({ from: ymd(from), to: ymd(now) }),
         fetchTicketActivity({ from: ymd(from), to: ymd(now) }),
-        fetchAllOpenTickets()
+        fetchTopOpenEscalations()
       ]);
       if (loadRequestIdRef.current !== requestId) return;
 
@@ -383,12 +402,7 @@ export function ManagerViewsPage({
         }))
       );
 
-      const priorityRank: Record<string, number> = { P1: 4, P2: 3, P3: 2, P4: 1 };
-      setEscalations(
-        [...openTickets]
-          .sort((a, b) => (priorityRank[b.priority] ?? 0) - (priorityRank[a.priority] ?? 0))
-          .slice(0, 3)
-      );
+      setEscalations(escalationTickets);
     } catch {
       if (loadRequestIdRef.current !== requestId) return;
       setError('Unable to load manager insights.');
@@ -473,22 +487,22 @@ export function ManagerViewsPage({
   }
 
   return (
-    <section className="min-h-full bg-gray-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
-          {headerProps ? (
+    <section className="min-h-full bg-slate-50 animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">{headerProps.title}</h1>
-                  <p className="text-sm text-slate-500">{headerProps.subtitle}</p>
+                  <h1 className="text-xl font-semibold text-slate-900">{headerCtx.title}</h1>
+                  <p className="text-sm text-slate-500">{headerCtx.subtitle}</p>
                 </div>
               }
             />
@@ -501,8 +515,8 @@ export function ManagerViewsPage({
         </div>
       </div>
 
-      <div className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 pl-6 pr-2 py-4">
+      <div className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div className="flex items-center gap-6">
             {[
               ['overview', 'Overview'],
@@ -515,7 +529,7 @@ export function ManagerViewsPage({
                 type="button"
                 onClick={() => setActiveTab(key as TabKey)}
                 className={`border-b-2 py-3 text-sm font-medium transition-colors ${
-                  activeTab === key ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                  activeTab === key ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
                 {label}
@@ -527,14 +541,14 @@ export function ManagerViewsPage({
               <button
                 type="button"
                 onClick={() => setShowDateDropdown((prev) => !prev)}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 hover:bg-gray-50"
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50"
               >
-                <CalendarDays className="h-4 w-4 text-gray-500" />
+                <CalendarDays className="h-4 w-4 text-slate-500" />
                 Last {dateRange} days
-                <ChevronDown className="h-4 w-4 text-gray-500" />
+                <ChevronDown className="h-4 w-4 text-slate-500" />
               </button>
               {showDateDropdown ? (
-                <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-gray-200 bg-white shadow-lg">
+                <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-slate-200 bg-white shadow-lg">
                   {DATE_OPTIONS.map((days) => (
                     <button
                       key={days}
@@ -543,8 +557,8 @@ export function ManagerViewsPage({
                         setDateRange(days);
                         setShowDateDropdown(false);
                       }}
-                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-gray-100 ${
-                        dateRange === days ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                        dateRange === days ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
                       }`}
                     >
                       Last {days} days
@@ -561,17 +575,17 @@ export function ManagerViewsPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         {loading ? (
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div key={`kpi-skeleton-${index}`} className="h-28 rounded-lg border border-gray-200 bg-white skeleton-shimmer" />
+                <div key={`kpi-skeleton-${index}`} className="h-28 rounded-lg border border-slate-200 bg-white skeleton-shimmer" />
               ))}
             </div>
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="h-80 rounded-lg border border-gray-200 bg-white skeleton-shimmer" />
-              <div className="h-80 rounded-lg border border-gray-200 bg-white skeleton-shimmer" />
+              <div className="h-80 rounded-lg border border-slate-200 bg-white skeleton-shimmer" />
+              <div className="h-80 rounded-lg border border-slate-200 bg-white skeleton-shimmer" />
             </div>
           </div>
         ) : null}
@@ -595,15 +609,15 @@ export function ManagerViewsPage({
         {!loading && !error && hasData && activeTab === 'overview' ? (
           <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Tickets Created</div><div className="text-3xl font-bold text-gray-900">{metrics?.createdInRange ?? 0}</div><div className="mt-1 text-xs text-gray-500">Last {dateRange} days</div></div>
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Tickets Resolved</div><div className="text-3xl font-bold text-gray-900">{metrics?.resolvedInRange ?? 0}</div><div className="mt-1 text-xs text-gray-500">Last {dateRange} days</div></div>
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">Current Open Tickets</div><div className="text-3xl font-bold text-gray-900">{metrics?.currentOpenTickets ?? 0}</div><div className="mt-1 text-xs text-gray-500">Current snapshot</div></div>
-              <div className="rounded-lg border border-gray-200 bg-white p-4"><div className="text-sm text-gray-600">SLA Compliance</div><div className="text-3xl font-bold text-gray-900">{metrics?.slaCompliance}</div><div className="mt-1 text-xs text-gray-500">First {metrics?.firstResponseSla} • Resolution {metrics?.resolutionSla}</div></div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">Tickets Created</div><div className="text-3xl font-bold text-slate-900">{metrics?.createdInRange ?? 0}</div><div className="mt-1 text-xs text-slate-500">Last {dateRange} days</div></div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">Tickets Resolved</div><div className="text-3xl font-bold text-slate-900">{metrics?.resolvedInRange ?? 0}</div><div className="mt-1 text-xs text-slate-500">Last {dateRange} days</div></div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">Current Open Tickets</div><div className="text-3xl font-bold text-slate-900">{metrics?.currentOpenTickets ?? 0}</div><div className="mt-1 text-xs text-slate-500">Current snapshot</div></div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">SLA Compliance</div><div className="text-3xl font-bold text-slate-900">{metrics?.slaCompliance}</div><div className="mt-1 text-xs text-slate-500">First {metrics?.firstResponseSla} • Resolution {metrics?.resolutionSla}</div></div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Ticket Trends</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Ticket Trends</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={trendData}>
@@ -622,8 +636,8 @@ export function ManagerViewsPage({
                   </ResponsiveContainer>
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">SLA Compliance</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">SLA Compliance</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={slaData} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
@@ -643,24 +657,24 @@ export function ManagerViewsPage({
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">SLA Breakdown</h3>
-                <div className="space-y-2 text-sm text-gray-700">
-                  <div className="flex items-center justify-between"><span>Overall Met</span><span className="font-medium text-gray-900">{metrics?.slaMet ?? 0}</span></div>
-                  <div className="flex items-center justify-between"><span>Overall Breached</span><span className="font-medium text-gray-900">{metrics?.slaBreached ?? 0}</span></div>
-                  <div className="mt-3 border-t border-gray-100 pt-3 flex items-center justify-between"><span>First Response Met</span><span className="font-medium text-gray-900">{metrics?.firstResponseMet ?? 0}</span></div>
-                  <div className="flex items-center justify-between"><span>First Response Breached</span><span className="font-medium text-gray-900">{metrics?.firstResponseBreached ?? 0}</span></div>
-                  <div className="mt-3 border-t border-gray-100 pt-3 flex items-center justify-between"><span>Resolution Met</span><span className="font-medium text-gray-900">{metrics?.resolutionMet ?? 0}</span></div>
-                  <div className="flex items-center justify-between"><span>Resolution Breached</span><span className="font-medium text-gray-900">{metrics?.resolutionBreached ?? 0}</span></div>
-                  <div className="mt-3 border-t border-gray-100 pt-3 flex items-center justify-between"><span>Avg First Response</span><span className="font-medium text-gray-900">{metrics?.avgFirstResponseTime ?? '—'}</span></div>
-                  <div className="flex items-center justify-between"><span>Avg Resolution</span><span className="font-medium text-gray-900">{metrics?.avgResolutionTime ?? '—'}</span></div>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">SLA Breakdown</h3>
+                <div className="space-y-2 text-sm text-slate-700">
+                  <div className="flex items-center justify-between"><span>Overall Met</span><span className="font-medium text-slate-900">{metrics?.slaMet ?? 0}</span></div>
+                  <div className="flex items-center justify-between"><span>Overall Breached</span><span className="font-medium text-slate-900">{metrics?.slaBreached ?? 0}</span></div>
+                  <div className="mt-3 border-t border-slate-100 pt-3 flex items-center justify-between"><span>First Response Met</span><span className="font-medium text-slate-900">{metrics?.firstResponseMet ?? 0}</span></div>
+                  <div className="flex items-center justify-between"><span>First Response Breached</span><span className="font-medium text-slate-900">{metrics?.firstResponseBreached ?? 0}</span></div>
+                  <div className="mt-3 border-t border-slate-100 pt-3 flex items-center justify-between"><span>Resolution Met</span><span className="font-medium text-slate-900">{metrics?.resolutionMet ?? 0}</span></div>
+                  <div className="flex items-center justify-between"><span>Resolution Breached</span><span className="font-medium text-slate-900">{metrics?.resolutionBreached ?? 0}</span></div>
+                  <div className="mt-3 border-t border-slate-100 pt-3 flex items-center justify-between"><span>Avg First Response</span><span className="font-medium text-slate-900">{metrics?.avgFirstResponseTime ?? '—'}</span></div>
+                  <div className="flex items-center justify-between"><span>Avg Resolution</span><span className="font-medium text-slate-900">{metrics?.avgResolutionTime ?? '—'}</span></div>
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Highest Priority Open Tickets</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Highest Priority Open Tickets</h3>
                 <div className="space-y-3">
                   {escalations.length === 0 ? (
-                    <p className="text-sm text-gray-500">No open tickets in this range.</p>
+                    <p className="text-sm text-slate-500">No open tickets in this range.</p>
                   ) : (
                     escalations.map((ticket) => (
                       <div key={ticket.id} className="rounded-lg border border-red-200 bg-red-50 p-3">
@@ -668,8 +682,8 @@ export function ManagerViewsPage({
                           <span className="text-sm font-medium text-blue-600">{formatTicketId(ticket)}</span>
                           <PriorityBadge priority={ticket.priority} />
                         </div>
-                        <p className="mb-1 text-sm text-gray-900">{ticket.subject}</p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                        <p className="mb-1 text-sm text-slate-900">{ticket.subject}</p>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                           <span>Assigned to {ticket.assignee?.displayName ?? 'Unassigned'}</span>
                           <span>•</span>
                           <span>Status: {formatStatus(ticket.status)}</span>
@@ -688,18 +702,18 @@ export function ManagerViewsPage({
         {!loading && !error && hasData && activeTab === 'agents' ? (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Team Members ({sortedAgents.length})</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Team Members ({sortedAgents.length})</h2>
               <div className="relative" data-sort-dropdown>
                 <button
                   type="button"
                   onClick={() => setShowSortDropdown((prev) => !prev)}
-                  className="inline-flex h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 hover:bg-gray-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   Sort by: {SORT_OPTIONS.find((item) => item.key === sortBy)?.label}
-                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                  <ChevronDown className="h-4 w-4 text-slate-500" />
                 </button>
                 {showSortDropdown ? (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-gray-200 bg-white shadow-lg">
+                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-slate-200 bg-white shadow-lg">
                     {SORT_OPTIONS.map((item) => (
                       <button
                         key={item.key}
@@ -708,8 +722,8 @@ export function ManagerViewsPage({
                           setSortBy(item.key);
                           setShowSortDropdown(false);
                         }}
-                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-gray-100 ${
-                          item.key === sortBy ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                          item.key === sortBy ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
                         }`}
                       >
                         {item.label}
@@ -722,23 +736,23 @@ export function ManagerViewsPage({
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {sortedAgents.map((agent) => (
-                <button key={agent.id} type="button" onClick={() => setSelectedAgent(agent)} className="rounded-lg border border-gray-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:bg-gray-50 hover:shadow-sm">
+                <button key={agent.id} type="button" onClick={() => setSelectedAgent(agent)} className="rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm">
                   <div className="mb-3 flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">{agent.avatar}</div>
                       <div>
-                        <h3 className="text-sm font-semibold text-gray-900">{agent.name}</h3>
-                        <p className="text-xs text-gray-500">{agent.email}</p>
+                        <h3 className="text-sm font-semibold text-slate-900">{agent.name}</h3>
+                        <p className="text-xs text-slate-500">{agent.email}</p>
                       </div>
                     </div>
                   </div>
                   <div className="mb-3 grid grid-cols-4 gap-3">
-                    <div className="text-center"><div className="text-lg font-bold text-blue-600">{agent.openTickets}</div><div className="text-xs text-gray-500">Open</div></div>
-                    <div className="text-center"><div className="text-lg font-bold text-amber-600">{agent.inProgress}</div><div className="text-xs text-gray-500">In Progress</div></div>
-                    <div className="text-center"><div className="text-lg font-bold text-purple-600">{agent.resolvedPeriod}</div><div className="text-xs text-gray-500">Period</div></div>
-                    <div className="text-center"><div className="text-lg font-bold text-emerald-600">{agent.firstResponses}</div><div className="text-xs text-gray-500">1st Resp.</div></div>
+                    <div className="text-center"><div className="text-lg font-bold text-blue-600">{agent.openTickets}</div><div className="text-xs text-slate-500">Open</div></div>
+                    <div className="text-center"><div className="text-lg font-bold text-amber-600">{agent.inProgress}</div><div className="text-xs text-slate-500">In Progress</div></div>
+                    <div className="text-center"><div className="text-lg font-bold text-purple-600">{agent.resolvedPeriod}</div><div className="text-xs text-slate-500">Period</div></div>
+                    <div className="text-center"><div className="text-lg font-bold text-emerald-600">{agent.firstResponses}</div><div className="text-xs text-slate-500">1st Resp.</div></div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-600"><span>Avg First Response: {hfmt(agent.avgResponseHours)}</span><span>Avg Resolution: {hfmt(agent.avgResolutionHours)}</span></div>
+                  <div className="flex items-center justify-between text-xs text-slate-600"><span>Avg First Response: {hfmt(agent.avgResponseHours)}</span><span>Avg Resolution: {hfmt(agent.avgResolutionHours)}</span></div>
                 </button>
               ))}
             </div>
@@ -748,16 +762,16 @@ export function ManagerViewsPage({
         {!loading && !error && hasData && activeTab === 'performance' ? (
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Avg First Response Hours by Agent</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Avg First Response Hours by Agent</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={responseData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} /><Tooltip /><Bar dataKey="hours" fill="#6366f1" radius={[6, 6, 0, 0]} /></BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Reopened Tickets Trend</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Reopened Tickets Trend</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={reopenData}>
@@ -782,12 +796,12 @@ export function ManagerViewsPage({
         {!loading && !error && hasData && activeTab === 'workload' ? (
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Current Workload Distribution</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Current Workload Distribution</h3>
                 <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={workloadData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} /><Tooltip /><Bar dataKey="openTickets" fill="#3b82f6" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
               </div>
-              <div className="rounded-lg border border-gray-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-gray-900">Tickets by Category</h3>
+              <div className="rounded-lg border border-slate-200 bg-white p-6">
+                <h3 className="mb-4 text-sm font-semibold text-slate-900">Tickets by Category</h3>
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart><Pie data={categoryData} dataKey="count" nameKey="name" innerRadius={55} outerRadius={100}>{categoryData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Pie><Tooltip /></PieChart>
@@ -795,34 +809,34 @@ export function ManagerViewsPage({
                 </div>
               </div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h3 className="mb-4 text-sm font-semibold text-gray-900">Workload Snapshot</h3>
+            <div className="rounded-lg border border-slate-200 bg-white p-6">
+              <h3 className="mb-4 text-sm font-semibold text-slate-900">Workload Snapshot</h3>
               <div className="space-y-4">
                 {[...agents]
                   .sort((a, b) => b.openTickets - a.openTickets)
                   .map((agent) => {
                     return (
-                      <div key={`workload-${agent.id}`} className="rounded-lg border border-gray-200 p-4">
+                      <div key={`workload-${agent.id}`} className="rounded-lg border border-slate-200 p-4">
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
                               {agent.avatar}
                             </div>
                             <div>
-                              <h4 className="text-sm font-semibold text-gray-900">{agent.name}</h4>
-                              <p className="text-xs text-gray-500">{agent.email}</p>
+                              <h4 className="text-sm font-semibold text-slate-900">{agent.name}</h4>
+                              <p className="text-xs text-slate-500">{agent.email}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-sm font-semibold text-gray-900">{agent.openTickets} open tickets</div>
-                            <div className="text-xs text-gray-500">{agent.inProgress} in progress</div>
+                            <div className="text-sm font-semibold text-slate-900">{agent.openTickets} open tickets</div>
+                            <div className="text-xs text-slate-500">{agent.inProgress} in progress</div>
                           </div>
                         </div>
 
-                        <div className="grid gap-2 text-xs text-gray-600 md:grid-cols-3">
-                          <div className="rounded-md bg-gray-50 px-3 py-2">Open: <span className="font-medium text-gray-900">{agent.openTickets}</span></div>
-                          <div className="rounded-md bg-gray-50 px-3 py-2">In Progress: <span className="font-medium text-gray-900">{agent.inProgress}</span></div>
-                          <div className="rounded-md bg-gray-50 px-3 py-2">Resolved: <span className="font-medium text-gray-900">{agent.resolvedPeriod}</span></div>
+                        <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-3">
+                          <div className="rounded-md bg-slate-50 px-3 py-2">Open: <span className="font-medium text-slate-900">{agent.openTickets}</span></div>
+                          <div className="rounded-md bg-slate-50 px-3 py-2">In Progress: <span className="font-medium text-slate-900">{agent.inProgress}</span></div>
+                          <div className="rounded-md bg-slate-50 px-3 py-2">Resolved: <span className="font-medium text-slate-900">{agent.resolvedPeriod}</span></div>
                         </div>
                       </div>
                     );

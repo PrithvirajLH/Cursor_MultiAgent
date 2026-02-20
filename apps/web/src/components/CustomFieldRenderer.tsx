@@ -99,6 +99,7 @@ export function CustomFieldInput({
   const label = field.name;
   const isRequired = field.isRequired;
   const options = parseOptions(field.options);
+  const inputId = `cf-input-${field.id}`;
 
   const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm';
 
@@ -106,8 +107,9 @@ export function CustomFieldInput({
     case 'TEXT':
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <input
+            id={inputId}
             type="text"
             className={inputClass}
             value={value}
@@ -119,8 +121,9 @@ export function CustomFieldInput({
     case 'TEXTAREA':
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <textarea
+            id={inputId}
             className={inputClass}
             rows={3}
             value={value}
@@ -132,8 +135,9 @@ export function CustomFieldInput({
     case 'NUMBER':
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <input
+            id={inputId}
             type="number"
             className={inputClass}
             value={value}
@@ -145,8 +149,9 @@ export function CustomFieldInput({
     case 'DATE':
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <input
+            id={inputId}
             type="date"
             className={inputClass}
             value={value}
@@ -160,19 +165,20 @@ export function CustomFieldInput({
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
-            id={`cf-${field.id}`}
+            id={inputId}
             checked={value === 'true' || value === '1'}
             onChange={(e) => onChange(e.target.checked ? 'true' : '')}
             className="rounded border-slate-300"
           />
-          <label htmlFor={`cf-${field.id}`} className="text-sm text-slate-700">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-sm text-slate-700">{label}{isRequired ? ' *' : ''}</label>
         </div>
       );
     case 'DROPDOWN':
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <select
+            id={inputId}
             className={inputClass}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -196,29 +202,50 @@ export function CustomFieldInput({
         onChange(next.join(','));
       }
       return (
-        <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+        <fieldset>
+          <legend className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</legend>
           <div className="mt-1 flex flex-wrap gap-2">
-            {options.map((opt) => (
-              <label key={opt.value} className="inline-flex items-center gap-1.5 text-sm text-slate-700">
+            {options.map((opt, index) => {
+              const optionId = `${inputId}-${index}`;
+              return (
+                <div key={opt.value} className="inline-flex items-center gap-1.5 text-sm text-slate-700">
                 <input
+                  id={optionId}
                   type="checkbox"
                   checked={selected.includes(opt.value)}
                   onChange={() => toggle(opt.value)}
                   className="rounded border-slate-300"
                 />
-                {opt.label}
-              </label>
-            ))}
+                <label htmlFor={optionId}>{opt.label}</label>
+              </div>
+              );
+            })}
           </div>
-        </div>
+        </fieldset>
       );
     }
     case 'USER':
+      if (users.length === 0) {
+        return (
+          <div>
+            <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+            <input
+              id={inputId}
+              type="text"
+              className={inputClass}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              required={isRequired}
+              placeholder="Enter user ID"
+            />
+          </div>
+        );
+      }
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <select
+            id={inputId}
             className={inputClass}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -236,8 +263,9 @@ export function CustomFieldInput({
     default:
       return (
         <div>
-          <label className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
           <input
+            id={inputId}
             type="text"
             className={inputClass}
             value={value}

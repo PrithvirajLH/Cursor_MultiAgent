@@ -16,7 +16,6 @@ import {
   fetchTickets,
   type AgentPerformanceResponse,
   type AgentWorkloadResponse,
-  type NotificationRecord,
   type ReopenRateResponse,
   type TeamSummaryResponse,
   type TicketActivityPoint,
@@ -37,33 +36,14 @@ import { TicketVolumeChart } from '../components/reports/TicketVolumeChart';
 import { TicketsByAgeChart } from '../components/reports/TicketsByAgeChart';
 import { formatStatus, formatTicketId, getSlaTone } from '../utils/format';
 import type { Role } from '../types';
+import { useHeaderContext } from '../contexts/HeaderContext';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const RECENT_TICKETS_COUNT = 6;
 
-type DashboardHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
-
 type DashboardPageProps = {
   refreshKey: number;
   role: Role;
-  headerProps?: DashboardHeaderProps;
 };
 
 type KpiTone = 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'gray';
@@ -461,7 +441,8 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
   );
 }
 
-export function DashboardPage({ refreshKey, role, headerProps }: DashboardPageProps) {
+export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
+  const headerCtx = useHeaderContext();
   const navigate = useNavigate();
   const isEmployee = role === 'EMPLOYEE';
   const isAgent = role === 'AGENT';
@@ -762,21 +743,21 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
 
   return (
     <section className="min-h-full bg-slate-50">
-      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white">
-        <div className="mx-auto w-full max-w-[1600px] pl-6 pr-2 py-4">
-          {headerProps ? (
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+        <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">{headerProps.title}</h1>
-                  <p className="text-sm text-slate-500">{headerProps.subtitle}</p>
+                  <h1 className="text-xl font-semibold text-slate-900">{headerCtx.title}</h1>
+                  <p className="text-sm text-slate-500">{headerCtx.subtitle}</p>
                   {refreshing ? <p className="mt-1 text-xs text-slate-400">Refreshing...</p> : null}
                 </div>
               }
@@ -791,7 +772,7 @@ export function DashboardPage({ refreshKey, role, headerProps }: DashboardPagePr
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1600px] pl-6 pr-2 py-6">
+      <div className="mx-auto w-full max-w-[1600px] px-6 py-6">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div
             className={`mb-6 grid gap-4 ${

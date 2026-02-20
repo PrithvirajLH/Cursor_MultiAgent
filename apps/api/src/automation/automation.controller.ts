@@ -39,8 +39,8 @@ export class AutomationRulesController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    const p = page ? parseInt(page, 10) : 1;
-    const ps = pageSize ? parseInt(pageSize, 10) : 20;
+    const p = this.parsePositiveInt(page, 1, 1, 10_000);
+    const ps = this.parsePositiveInt(pageSize, 20, 1, 100);
     return this.automationService.getExecutions(id, user, p, ps);
   }
 
@@ -74,13 +74,35 @@ export class AutomationRulesController {
     @CurrentUser() user: AuthUser,
   ) {
     if (!body.ticketId) {
-      return { matched: false, actionsThatWouldRun: [], message: 'Provide ticketId to test against a ticket.' };
+      return {
+        matched: false,
+        actionsThatWouldRun: [],
+        message: 'Provide ticketId to test against a ticket.',
+      };
     }
-    const result = await this.automationService.evaluateRuleForTicket(id, body.ticketId, user);
+    const result = await this.automationService.evaluateRuleForTicket(
+      id,
+      body.ticketId,
+      user,
+    );
     return {
       matched: result.matched,
       actionsThatWouldRun: result.actionsThatWouldRun,
-      message: result.message ?? (result.matched ? 'Rule would run.' : 'Rule did not match.'),
+      message:
+        result.message ??
+        (result.matched ? 'Rule would run.' : 'Rule did not match.'),
     };
+  }
+
+  private parsePositiveInt(
+    raw: string | undefined,
+    fallback: number,
+    min: number,
+    max: number,
+  ): number {
+    if (!raw) return fallback;
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
   }
 }

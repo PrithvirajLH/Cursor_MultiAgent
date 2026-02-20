@@ -14,7 +14,13 @@ import {
 import { Type } from 'class-transformer';
 
 const CONDITION_OPERATORS = [
-  'contains', 'equals', 'notEquals', 'in', 'notIn', 'isEmpty', 'isNotEmpty',
+  'contains',
+  'equals',
+  'notEquals',
+  'in',
+  'notIn',
+  'isEmpty',
+  'isNotEmpty',
 ] as const;
 
 /**
@@ -26,7 +32,11 @@ export function isValidConditionNode(obj: unknown): boolean {
   const o = obj as Record<string, unknown>;
   const hasAnd = o.and != null;
   const hasOr = o.or != null;
-  const hasLeaf = typeof o.field === 'string' && o.field.length > 0 && typeof o.operator === 'string' && o.operator.length > 0;
+  const hasLeaf =
+    typeof o.field === 'string' &&
+    o.field.length > 0 &&
+    typeof o.operator === 'string' &&
+    o.operator.length > 0;
 
   if (hasAnd && hasOr) return false;
   if ((hasAnd || hasOr) && hasLeaf) return false;
@@ -71,8 +81,12 @@ export class AutomationConditionDto {
 }
 
 const ACTION_TYPES = [
-  'assign_team', 'assign_user', 'set_priority', 'set_status',
-  'notify_team_lead', 'add_internal_note',
+  'assign_team',
+  'assign_user',
+  'set_priority',
+  'set_status',
+  'notify_team_lead',
+  'add_internal_note',
 ] as const;
 
 /** Single action: type + params */
@@ -97,8 +111,15 @@ export class AutomationActionDto {
   @IsOptional()
   @IsString()
   @IsIn([
-    'NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER',
-    'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED', 'REOPENED',
+    'NEW',
+    'TRIAGED',
+    'ASSIGNED',
+    'IN_PROGRESS',
+    'WAITING_ON_REQUESTER',
+    'WAITING_ON_VENDOR',
+    'RESOLVED',
+    'CLOSED',
+    'REOPENED',
   ])
   status?: string;
 

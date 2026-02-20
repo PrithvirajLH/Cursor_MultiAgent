@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Download } from 'lucide-react';
 import {
-  ApiError,
+  createSavedView,
+  fetchAllUsers,
+  fetchReportChannelBreakdown,
+  fetchReportCsatDrivers,
+  fetchReportCsatLowTags,
+  fetchReportCsatTrend,
+  fetchReportSlaBreaches,
   fetchReportSummary,
   fetchReportTeamSummary,
   fetchReportTicketVolume,
@@ -9,40 +15,30 @@ import {
   fetchReportTicketsByCategory,
   fetchReportReopenRate,
   fetchReportTransfers,
+  fetchSavedViews,
   fetchTeams,
   type AgentPerformanceResponse,
-  type NotificationRecord,
+  type ChannelBreakdownResponse,
+  type CsatDriversResponse,
+  type CsatLowTagsResponse,
+  type CsatTrendResponse,
   type ReportQuery,
   type ReopenRateResponse,
+  type SlaBreachesResponse,
   type SlaComplianceResponse,
   type TeamRef,
   type TeamSummaryResponse,
   type TicketAgeBucketResponse,
   type TicketsByCategoryResponse,
-  type TicketsByStatusResponse
+  type TicketsByStatusResponse,
+  type UserRef
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
+import { useHeaderContext } from '../contexts/HeaderContext';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useToast } from '../hooks/useToast';
 import type { Role } from '../types';
-
-type ReportsHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
+import { handleApiError } from '../utils/handleApiError';
 
 type ReportsTab = 'overview' | 'sla' | 'volume' | 'agents' | 'csat' | 'backlog' | 'export';
 type RangeKey = 'last_7' | 'last_14' | 'last_30' | 'custom';
@@ -55,7 +51,6 @@ type ReportsFilters = {
   status: string;
   priority: PriorityFilter;
   assignee: string;
-  tags: string[];
   compare: boolean;
 };
 
@@ -63,12 +58,19 @@ type SavedView = {
   id: string;
   name: string;
   desc: string;
+  filters: ReportsFilters;
+  isDefault: boolean;
 };
 
 type SourceState = {
   summary: boolean;
   solvedSeries: boolean;
   backlogSeries: boolean;
+  channelBreakdown: boolean;
+  csatTrend: boolean;
+  csatDrivers: boolean;
+  csatTags: boolean;
+  slaBreaches: boolean;
   categories: boolean;
   aging: boolean;
   reopenRate: boolean;
@@ -86,28 +88,23 @@ type OverviewKpis = {
   avgHandleMin: number;
 };
 
-type TopCategory = { name: string; count: number; trend: number };
-type WorstBreach = {
-  ticket: string;
-  team: string;
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  stage: string;
-  breachBy: string;
-  reason: string;
-};
-type AgentRow = { name: string; team: string; solved: number; fr: number; res: number; csat: number };
-type AgeBucket = { bucket: string; count: number };
+type AgentRow = { name: string; team: string; solved: number; fr: number; res: number; csat: number | null };
 
-const CHANNELS = ['email', 'web', 'chat', 'phone'];
-const STATUSES = ['new', 'open', 'pending', 'resolved', 'closed'];
-const TAGS = ['vip', 'bug', 'billing', 'feature', 'outage', 'refund', 'onboarding'];
-
-const PRIORITY_BADGES: Record<'critical' | 'high' | 'medium' | 'low', string> = {
-  critical: 'bg-red-100 text-red-700',
-  high: 'bg-orange-100 text-orange-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low: 'bg-blue-100 text-blue-700'
-};
+const CHANNELS = [
+  { value: 'PORTAL', label: 'Portal' },
+  { value: 'EMAIL', label: 'Email' }
+];
+const STATUSES = [
+  'NEW',
+  'TRIAGED',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'WAITING_ON_REQUESTER',
+  'WAITING_ON_VENDOR',
+  'RESOLVED',
+  'CLOSED',
+  'REOPENED'
+];
 
 const UI_TO_API_PRIORITY: Record<Exclude<PriorityFilter, 'all'>, string> = {
   critical: 'P1',
@@ -116,88 +113,15 @@ const UI_TO_API_PRIORITY: Record<Exclude<PriorityFilter, 'all'>, string> = {
   low: 'P4'
 };
 
-const DEMO_KPIS: OverviewKpis = {
-  tickets: 1248,
-  resolved: 287,
-  backlog: 611,
-  frSla: 93.6,
-  resSla: 89.2,
-  csat: 4.42,
-  avgHandleMin: 18.7
+const EMPTY_KPIS: OverviewKpis = {
+  tickets: 0,
+  resolved: 0,
+  backlog: 0,
+  frSla: 0,
+  resSla: 0,
+  csat: 0,
+  avgHandleMin: 0
 };
-
-const DEMO_SERIES = {
-  volume: [76, 81, 88, 92, 86, 94, 101, 97, 90, 104, 99, 95, 102, 108],
-  solved: [70, 68, 74, 76, 72, 80, 84, 81, 78, 86, 82, 79, 88, 91],
-  backlog: [49, 52, 56, 58, 55, 59, 61, 60, 62, 64, 63, 65, 66, 68],
-  frSla: [93, 94, 92, 95, 94, 93, 95, 94, 92, 93, 94, 95, 93, 94],
-  resSla: [88, 89, 87, 90, 89, 88, 90, 89, 88, 89, 90, 88, 89, 90],
-  csat: [4.3, 4.4, 4.35, 4.45, 4.4, 4.5, 4.55, 4.5, 4.48, 4.52, 4.49, 4.53, 4.55, 4.57]
-};
-
-const DEMO_TOP_CATEGORIES: TopCategory[] = [
-  { name: 'Billing and Invoices', count: 142, trend: 8 },
-  { name: 'Login and MFA', count: 118, trend: 3 },
-  { name: 'API Errors', count: 103, trend: -4 },
-  { name: 'Integrations', count: 92, trend: 6 },
-  { name: 'Bug Reports', count: 77, trend: 2 }
-];
-
-const DEMO_WORST_BREACHES: WorstBreach[] = [
-  {
-    ticket: 'TKT-25401',
-    team: 'Technical Support',
-    priority: 'critical',
-    stage: 'Resolution',
-    breachBy: '1h 12m',
-    reason: 'Awaiting vendor response'
-  },
-  {
-    ticket: 'TKT-25377',
-    team: 'Billing',
-    priority: 'high',
-    stage: 'First response',
-    breachBy: '38m',
-    reason: 'Queue overload'
-  },
-  {
-    ticket: 'TKT-25311',
-    team: 'Customer Success',
-    priority: 'medium',
-    stage: 'Resolution',
-    breachBy: '5h',
-    reason: 'Missing customer info'
-  },
-  {
-    ticket: 'TKT-25298',
-    team: 'Sales',
-    priority: 'high',
-    stage: 'Resolution',
-    breachBy: '2h',
-    reason: 'Escalation gap'
-  }
-];
-
-const DEMO_AGENTS: AgentRow[] = [
-  { name: 'Emily R.', team: 'Technical Support', solved: 92, fr: 96, res: 91, csat: 4.6 },
-  { name: 'Mike C.', team: 'Billing', solved: 61, fr: 93, res: 88, csat: 4.3 },
-  { name: 'Lisa W.', team: 'Customer Success', solved: 74, fr: 95, res: 90, csat: 4.5 },
-  { name: 'Robert K.', team: 'Sales', solved: 48, fr: 91, res: 85, csat: 4.2 }
-];
-
-const DEMO_AGE_BUCKETS: AgeBucket[] = [
-  { bucket: '0-1 day', count: 233 },
-  { bucket: '1-3 days', count: 171 },
-  { bucket: '3-7 days', count: 128 },
-  { bucket: '7-14 days', count: 54 },
-  { bucket: '14+ days', count: 25 }
-];
-
-const FIXED_BACKEND_TODO = [
-  'Persist saved report views in backend.',
-  'Add backend support for channel/status/assignee/tag report filters.',
-  'Expose CSAT and quality-trend report endpoints.'
-];
 
 function ymd(date: Date): string {
   const year = date.getFullYear();
@@ -227,18 +151,75 @@ function toSafePercent(numerator: number, denominator: number): number {
   return (numerator / denominator) * 100;
 }
 
-function apiErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    try {
-      const parsed = JSON.parse(err.message) as { message?: string };
-      if (typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message;
-    } catch {
-      // noop
-    }
-    return err.message || 'Request failed';
-  }
-  if (err instanceof Error) return err.message;
-  return 'Request failed';
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0m';
+  const total = Math.round(seconds);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatStatus(status: string): string {
+  return status
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function defaultFilters(): ReportsFilters {
+  return {
+    range: 'last_14',
+    teamId: 'all',
+    channel: 'all',
+    status: 'all',
+    priority: 'all',
+    assignee: 'all',
+    compare: true
+  };
+}
+
+function parseSavedReportFilters(raw: Record<string, unknown> | null | undefined): ReportsFilters | null {
+  if (!raw || raw.viewType !== 'reports') return null;
+  const base = defaultFilters();
+  const range = raw.range;
+  const teamId = raw.teamId;
+  const channel = raw.channel;
+  const status = raw.status;
+  const priority = raw.priority;
+  const assignee = raw.assignee;
+  const compare = raw.compare;
+
+  return {
+    range: range === 'last_7' || range === 'last_14' || range === 'last_30' || range === 'custom' ? range : base.range,
+    teamId: typeof teamId === 'string' && teamId ? teamId : base.teamId,
+    channel: typeof channel === 'string' && channel ? channel : base.channel,
+    status: typeof status === 'string' && status ? status : base.status,
+    priority: priority === 'critical' || priority === 'high' || priority === 'medium' || priority === 'low' || priority === 'all'
+      ? priority
+      : base.priority,
+    assignee: typeof assignee === 'string' && assignee ? assignee : base.assignee,
+    compare: typeof compare === 'boolean' ? compare : base.compare
+  };
+}
+
+function serializeSavedReportFilters(filters: ReportsFilters): Record<string, unknown> {
+  return {
+    viewType: 'reports',
+    range: filters.range,
+    teamId: filters.teamId,
+    channel: filters.channel,
+    status: filters.status,
+    priority: filters.priority,
+    assignee: filters.assignee,
+    compare: filters.compare
+  };
+}
+
+function savedViewDescription(filters: ReportsFilters): string {
+  return `${filters.range} · team:${filters.teamId} · priority:${filters.priority}`;
 }
 
 function toneForMetric(value: number, target: number): string {
@@ -413,35 +394,34 @@ function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
   );
 }
 
+function EmptyData({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+      {label}
+    </div>
+  );
+}
+
 export function ReportsPage({
   role,
-  headerProps
+  refreshKey
 }: {
   role: Role;
-  headerProps?: ReportsHeaderProps;
+  refreshKey: number;
 }) {
+  const headerCtx = useHeaderContext();
   const toast = useToast();
   const [tab, setTab] = useState<ReportsTab>('overview');
   const [teams, setTeams] = useState<TeamRef[]>([]);
-  const [savedViews, setSavedViews] = useState<SavedView[]>([
-    { id: 'v1', name: 'Exec Weekly', desc: 'Last 7d - All teams - Compare' },
-    { id: 'v2', name: 'Billing SLA', desc: 'Last 30d - Billing - High/Critical' }
-  ]);
-  const [activeView, setActiveView] = useState('v1');
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [activeView, setActiveView] = useState('');
+  const [assignees, setAssignees] = useState<UserRef[]>([]);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const exportDialogRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
   const [warning, setWarning] = useState<string | null>(null);
 
-  const [filters, setFilters] = useState<ReportsFilters>({
-    range: 'last_14',
-    teamId: 'all',
-    channel: 'all',
-    status: 'all',
-    priority: 'all',
-    assignee: 'all',
-    tags: [],
-    compare: true
-  });
+  const [filters, setFilters] = useState<ReportsFilters>(defaultFilters());
 
   const [volumeSeries, setVolumeSeries] = useState<number[]>([]);
   const [volumeDates, setVolumeDates] = useState<string[]>([]);
@@ -454,10 +434,23 @@ export function ReportsPage({
   const [ageData, setAgeData] = useState<TicketAgeBucketResponse['data']>([]);
   const [reopenData, setReopenData] = useState<ReopenRateResponse['data']>([]);
   const [teamSummaryData, setTeamSummaryData] = useState<TeamSummaryResponse['data']>([]);
+  const [channelBreakdownData, setChannelBreakdownData] = useState<ChannelBreakdownResponse['data']>(
+    [],
+  );
+  const [csatTrendData, setCsatTrendData] = useState<CsatTrendResponse['data']>([]);
+  const [csatSummary, setCsatSummary] = useState<CsatTrendResponse['summary'] | null>(null);
+  const [csatDriversData, setCsatDriversData] = useState<CsatDriversResponse['data']>([]);
+  const [csatTagsData, setCsatTagsData] = useState<CsatLowTagsResponse['data']>([]);
+  const [slaBreachesData, setSlaBreachesData] = useState<SlaBreachesResponse['data']>([]);
   const [sources, setSources] = useState<SourceState>({
     summary: false,
     solvedSeries: false,
     backlogSeries: false,
+    channelBreakdown: false,
+    csatTrend: false,
+    csatDrivers: false,
+    csatTags: false,
+    slaBreaches: false,
     categories: false,
     aging: false,
     reopenRate: false,
@@ -465,13 +458,63 @@ export function ReportsPage({
     transfers: false
   });
 
-  const canExport = role === 'LEAD' || role === 'TEAM_ADMIN' || role === 'OWNER';
+  const canExport = role === 'TEAM_ADMIN' || role === 'OWNER';
   const canSaveViews = role === 'TEAM_ADMIN' || role === 'OWNER';
 
+  useModalFocusTrap({
+    open: showExportModal,
+    containerRef: exportDialogRef,
+    onClose: () => setShowExportModal(false),
+  });
+
+  async function loadSavedViewsFromBackend(preferredId?: string) {
+    try {
+      const records = await fetchSavedViews();
+      const views = records
+        .map((record) => {
+          const parsed = parseSavedReportFilters(record.filters);
+          if (!parsed) return null;
+          return {
+            id: record.id,
+            name: record.name,
+            desc: savedViewDescription(parsed),
+            filters: parsed,
+            isDefault: record.isDefault
+          } satisfies SavedView;
+        })
+        .filter((view): view is SavedView => Boolean(view));
+
+      setSavedViews(views);
+      if (views.length === 0) {
+        setActiveView('');
+        return;
+      }
+
+      const pinned = preferredId && views.find((view) => view.id === preferredId);
+      if (pinned) {
+        setActiveView(pinned.id);
+        return;
+      }
+
+      const fallback = views.find((view) => view.isDefault) ?? views[0];
+      setActiveView(fallback.id);
+      setFilters(fallback.filters);
+    } catch {
+      setSavedViews([]);
+      setActiveView('');
+    }
+  }
+
   useEffect(() => {
+    void loadSavedViewsFromBackend();
+
     fetchTeams()
       .then((response) => setTeams(response.data))
       .catch(() => setTeams([]));
+
+    fetchAllUsers()
+      .then((response) => setAssignees(response.data))
+      .catch(() => setAssignees([]));
   }, []);
 
   const dateRange = useMemo(() => rangeToDates(filters.range), [filters.range]);
@@ -483,8 +526,19 @@ export function ReportsPage({
     };
     if (filters.teamId !== 'all') query.teamId = filters.teamId;
     if (filters.priority !== 'all') query.priority = UI_TO_API_PRIORITY[filters.priority];
+    if (filters.channel !== 'all') query.channel = filters.channel;
+    if (filters.status !== 'all') query.status = filters.status;
+    if (filters.assignee !== 'all') query.assigneeId = filters.assignee;
     return query;
-  }, [dateRange.from, dateRange.to, filters.priority, filters.teamId]);
+  }, [
+    dateRange.from,
+    dateRange.to,
+    filters.assignee,
+    filters.channel,
+    filters.priority,
+    filters.status,
+    filters.teamId
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -497,6 +551,11 @@ export function ReportsPage({
         summary: false,
         solvedSeries: false,
         backlogSeries: false,
+        channelBreakdown: false,
+        csatTrend: false,
+        csatDrivers: false,
+        csatTags: false,
+        slaBreaches: false,
         categories: false,
         aging: false,
         reopenRate: false,
@@ -504,11 +563,30 @@ export function ReportsPage({
         transfers: false
       };
 
-      const [summaryResult, solvedResult, backlogResult, categoriesResult, ageResult, reopenResult, teamSummaryResult, transfersResult] =
+      const [
+        summaryResult,
+        solvedResult,
+        backlogResult,
+        channelBreakdownResult,
+        csatTrendResult,
+        csatDriversResult,
+        csatTagsResult,
+        slaBreachesResult,
+        categoriesResult,
+        ageResult,
+        reopenResult,
+        teamSummaryResult,
+        transfersResult
+      ] =
         await Promise.allSettled([
           fetchReportSummary({ ...reportQuery, groupBy: 'team' }),
           fetchReportTicketVolume({ ...reportQuery, statusGroup: 'resolved' }),
           fetchReportTicketVolume({ ...reportQuery, statusGroup: 'open' }),
+          fetchReportChannelBreakdown(reportQuery),
+          fetchReportCsatTrend(reportQuery),
+          fetchReportCsatDrivers(reportQuery),
+          fetchReportCsatLowTags(reportQuery),
+          fetchReportSlaBreaches(reportQuery),
           fetchReportTicketsByCategory(reportQuery),
           fetchReportTicketsByAge(reportQuery),
           fetchReportReopenRate(reportQuery),
@@ -529,7 +607,7 @@ export function ReportsPage({
         setAgentData(summary.agentPerformance.data);
         nextSources.summary = true;
       } else {
-        warnings.push(`summary: ${apiErrorMessage(summaryResult.reason)}`);
+        warnings.push(`summary: ${handleApiError(summaryResult.reason)}`);
         setVolumeSeries([]);
         setVolumeDates([]);
         setSlaData(null);
@@ -541,7 +619,7 @@ export function ReportsPage({
         setSolvedSeries(solvedResult.value.data.map((point) => point.count));
         nextSources.solvedSeries = true;
       } else {
-        warnings.push(`resolved-series: ${apiErrorMessage(solvedResult.reason)}`);
+        warnings.push(`resolved-series: ${handleApiError(solvedResult.reason)}`);
         setSolvedSeries([]);
       }
 
@@ -549,15 +627,57 @@ export function ReportsPage({
         setBacklogSeries(backlogResult.value.data.map((point) => point.count));
         nextSources.backlogSeries = true;
       } else {
-        warnings.push(`open-series: ${apiErrorMessage(backlogResult.reason)}`);
+        warnings.push(`open-series: ${handleApiError(backlogResult.reason)}`);
         setBacklogSeries([]);
+      }
+
+      if (channelBreakdownResult.status === 'fulfilled') {
+        setChannelBreakdownData(channelBreakdownResult.value.data);
+        nextSources.channelBreakdown = true;
+      } else {
+        warnings.push(`channel-breakdown: ${handleApiError(channelBreakdownResult.reason)}`);
+        setChannelBreakdownData([]);
+      }
+
+      if (csatTrendResult.status === 'fulfilled') {
+        setCsatTrendData(csatTrendResult.value.data);
+        setCsatSummary(csatTrendResult.value.summary);
+        nextSources.csatTrend = true;
+      } else {
+        warnings.push(`csat-trend: ${handleApiError(csatTrendResult.reason)}`);
+        setCsatTrendData([]);
+        setCsatSummary(null);
+      }
+
+      if (csatDriversResult.status === 'fulfilled') {
+        setCsatDriversData(csatDriversResult.value.data);
+        nextSources.csatDrivers = true;
+      } else {
+        warnings.push(`csat-drivers: ${handleApiError(csatDriversResult.reason)}`);
+        setCsatDriversData([]);
+      }
+
+      if (csatTagsResult.status === 'fulfilled') {
+        setCsatTagsData(csatTagsResult.value.data);
+        nextSources.csatTags = true;
+      } else {
+        warnings.push(`csat-tags: ${handleApiError(csatTagsResult.reason)}`);
+        setCsatTagsData([]);
+      }
+
+      if (slaBreachesResult.status === 'fulfilled') {
+        setSlaBreachesData(slaBreachesResult.value.data);
+        nextSources.slaBreaches = true;
+      } else {
+        warnings.push(`sla-breaches: ${handleApiError(slaBreachesResult.reason)}`);
+        setSlaBreachesData([]);
       }
 
       if (categoriesResult.status === 'fulfilled') {
         setCategoryData(categoriesResult.value.data);
         nextSources.categories = true;
       } else {
-        warnings.push(`categories: ${apiErrorMessage(categoriesResult.reason)}`);
+        warnings.push(`categories: ${handleApiError(categoriesResult.reason)}`);
         setCategoryData([]);
       }
 
@@ -565,7 +685,7 @@ export function ReportsPage({
         setAgeData(ageResult.value.data);
         nextSources.aging = true;
       } else {
-        warnings.push(`aging: ${apiErrorMessage(ageResult.reason)}`);
+        warnings.push(`aging: ${handleApiError(ageResult.reason)}`);
         setAgeData([]);
       }
 
@@ -573,7 +693,7 @@ export function ReportsPage({
         setReopenData(reopenResult.value.data);
         nextSources.reopenRate = true;
       } else {
-        warnings.push(`reopen-rate: ${apiErrorMessage(reopenResult.reason)}`);
+        warnings.push(`reopen-rate: ${handleApiError(reopenResult.reason)}`);
         setReopenData([]);
       }
 
@@ -581,21 +701,21 @@ export function ReportsPage({
         setTeamSummaryData(teamSummaryResult.value.data);
         nextSources.teamSummary = true;
       } else {
-        warnings.push(`team-summary: ${apiErrorMessage(teamSummaryResult.reason)}`);
+        warnings.push(`team-summary: ${handleApiError(teamSummaryResult.reason)}`);
         setTeamSummaryData([]);
       }
 
       if (transfersResult.status === 'fulfilled') {
         nextSources.transfers = true;
       } else {
-        warnings.push(`transfers: ${apiErrorMessage(transfersResult.reason)}`);
+        warnings.push(`transfers: ${handleApiError(transfersResult.reason)}`);
       }
 
       setSources(nextSources);
       setLoading(false);
 
       if (warnings.length > 0) {
-        setWarning('Some report endpoints are unavailable. Matching sections are shown with demo fallback.');
+        setWarning('Some report endpoints are unavailable. Matching sections will stay empty until backend data is available.');
       }
     }
 
@@ -603,7 +723,7 @@ export function ReportsPage({
     return () => {
       cancelled = true;
     };
-  }, [reportQuery]);
+  }, [reportQuery, refreshKey]);
 
   const selectedTeamName = useMemo(() => {
     if (filters.teamId === 'all') return 'All teams';
@@ -617,10 +737,19 @@ export function ReportsPage({
     return 'Custom';
   }, [filters.range]);
 
-  const scopeLabel = `${selectedTeamName} - ${filters.channel === 'all' ? 'All channels' : filters.channel}`;
+  const selectedChannelLabel =
+    filters.channel === 'all'
+      ? 'All channels'
+      : CHANNELS.find((channel) => channel.value === filters.channel)?.label ?? filters.channel;
+  const scopeLabel = `${selectedTeamName} - ${selectedChannelLabel}`;
 
   const kpis = useMemo<OverviewKpis>(() => {
-    if (!sources.summary || !slaData) return DEMO_KPIS;
+    if (!sources.summary || !slaData) {
+      return {
+        ...EMPTY_KPIS,
+        csat: csatSummary?.average ?? 0,
+      };
+    }
     const totalFromStatus = sumCounts(statusData);
     const resolvedFromStatus = statusData
       .filter((row) => ['resolved', 'closed'].includes(row.status.toLowerCase()))
@@ -633,6 +762,10 @@ export function ReportsPage({
     const resTotal = slaData.resolutionMet + slaData.resolutionBreached;
     const fr = toSafePercent(slaData.firstResponseMet, frTotal);
     const res = toSafePercent(slaData.resolutionMet, resTotal);
+    const tickets = totalFromStatus > 0 ? totalFromStatus : slaData.total;
+    const resolvedFromSla = Math.max(slaData.met - slaData.breached, 0);
+    const resolved = resolvedFromStatus > 0 ? resolvedFromStatus : resolvedFromSla;
+    const backlog = backlogFromStatus > 0 ? backlogFromStatus : Math.max(tickets - resolved, 0);
 
     const avgResolutionHours =
       agentData.length > 0
@@ -640,30 +773,28 @@ export function ReportsPage({
         : 0;
 
     return {
-      tickets: totalFromStatus || slaData.total || DEMO_KPIS.tickets,
-      resolved: resolvedFromStatus || Math.max(slaData.met - slaData.breached, 0) || DEMO_KPIS.resolved,
-      backlog: backlogFromStatus || DEMO_KPIS.backlog,
-      frSla: fr || DEMO_KPIS.frSla,
-      resSla: res || DEMO_KPIS.resSla,
-      csat: DEMO_KPIS.csat,
-      avgHandleMin: avgResolutionHours > 0 ? avgResolutionHours * 60 : DEMO_KPIS.avgHandleMin
+      tickets,
+      resolved,
+      backlog,
+      frSla: fr,
+      resSla: res,
+      csat: csatSummary?.average ?? 0,
+      avgHandleMin: avgResolutionHours > 0 ? avgResolutionHours * 60 : 0
     };
-  }, [agentData, slaData, sources.summary, statusData]);
+  }, [agentData, csatSummary, slaData, sources.summary, statusData]);
 
-  const inboundSeries = volumeSeries.length > 0 ? volumeSeries : DEMO_SERIES.volume;
-  const solvedSeriesSafe = solvedSeries.length > 0 ? solvedSeries : DEMO_SERIES.solved;
-  const backlogSeriesSafe = backlogSeries.length > 0 ? backlogSeries : DEMO_SERIES.backlog;
+  const inboundSeries = volumeSeries;
+  const solvedSeriesSafe = solvedSeries;
+  const backlogSeriesSafe = backlogSeries;
 
-  const topCategories = useMemo<TopCategory[]>(() => {
-    if (!sources.categories || categoryData.length === 0) return DEMO_TOP_CATEGORIES;
+  const topCategories = useMemo(() => {
     return [...categoryData]
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
-      .map((row) => ({ name: row.name, count: row.count, trend: 0 }));
-  }, [categoryData, sources.categories]);
+      .map((row) => ({ name: row.name, count: row.count }));
+  }, [categoryData]);
 
   const agentRows = useMemo<AgentRow[]>(() => {
-    if (!sources.summary || agentData.length === 0) return DEMO_AGENTS;
     return agentData.map((agent) => {
       const frScore =
         agent.avgFirstResponseHours == null
@@ -673,124 +804,131 @@ export function ReportsPage({
         agent.avgResolutionHours == null
           ? 88
           : Math.max(55, Math.min(99, Math.round(100 - agent.avgResolutionHours * 2)));
-      const csat = Number((3.6 + (frScore + resScore) / 200).toFixed(1));
       return {
         name: agent.name || agent.email,
         team: selectedTeamName === 'All teams' ? 'Mixed' : selectedTeamName,
         solved: agent.ticketsResolved,
         fr: frScore,
         res: resScore,
-        csat
+        csat: null
       };
     });
-  }, [agentData, selectedTeamName, sources.summary]);
+  }, [agentData, selectedTeamName]);
 
-  const ageBuckets = useMemo<AgeBucket[]>(() => {
-    if (!sources.aging || ageData.length === 0) return DEMO_AGE_BUCKETS;
-    return ageData.map((row) => ({ bucket: row.bucket, count: row.count }));
-  }, [ageData, sources.aging]);
+  const ageBuckets = useMemo(() => ageData.map((row) => ({ bucket: row.bucket, count: row.count })), [ageData]);
 
   const reopenRate = useMemo(() => {
-    if (!sources.reopenRate || reopenData.length === 0) return 4.1;
+    if (!sources.reopenRate || reopenData.length === 0 || kpis.resolved <= 0) return 0;
     const reopens = sumCounts(reopenData);
     return Number(toSafePercent(reopens, Math.max(kpis.resolved, 1)).toFixed(1));
   }, [kpis.resolved, reopenData, sources.reopenRate]);
 
   const peakDays = useMemo(() => {
-    if (volumeDates.length === inboundSeries.length && volumeDates.length > 0) {
+    if (volumeDates.length > 0 && volumeDates.length === inboundSeries.length) {
       return volumeDates
         .map((date, idx) => ({ d: new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short' }), v: inboundSeries[idx] }))
         .sort((a, b) => b.v - a.v)
         .slice(0, 5);
     }
-    return [
-      { d: 'Mon', v: 112 },
-      { d: 'Tue', v: 104 },
-      { d: 'Wed', v: 98 },
-      { d: 'Thu', v: 91 },
-      { d: 'Fri', v: 86 }
-    ];
+    return [];
   }, [inboundSeries, volumeDates]);
 
-  const backendTodo = useMemo(() => {
-    const list = [...FIXED_BACKEND_TODO];
-    if (!sources.categories) list.push('Add or restore /reports/tickets-by-category endpoint.');
-    if (!sources.aging) list.push('Add or restore /reports/tickets-by-age endpoint.');
-    if (!sources.reopenRate) list.push('Add or restore /reports/reopen-rate endpoint.');
-    if (!sources.teamSummary) list.push('Add or restore /reports/team-summary endpoint.');
-    if (!sources.transfers) list.push('Add or restore /reports/transfers endpoint.');
-    return list;
-  }, [sources.aging, sources.categories, sources.reopenRate, sources.teamSummary, sources.transfers]);
-
-  function toggleTag(tag: string) {
-    setFilters((prev) => ({
-      ...prev,
-      tags: prev.tags.includes(tag) ? prev.tags.filter((item) => item !== tag) : [...prev.tags, tag]
-    }));
-  }
+  const hasInboundSeries = inboundSeries.length > 0;
+  const hasSolvedSeries = solvedSeriesSafe.length > 0;
+  const hasBacklogSeries = backlogSeriesSafe.length > 0;
+  const hasCategories = topCategories.length > 0;
+  const hasAgeBuckets = ageBuckets.length > 0;
+  const hasAgentRows = agentRows.length > 0;
+  const hasChannelBreakdown = channelBreakdownData.length > 0;
+  const hasCsatTrend = csatTrendData.length > 0;
+  const hasCsatDrivers = csatDriversData.length > 0;
+  const hasCsatTags = csatTagsData.length > 0;
+  const hasSlaBreaches = slaBreachesData.length > 0;
+  const csatAverage = csatSummary?.average ?? null;
+  const csatResponses = csatSummary?.responses ?? 0;
 
   function resetFilters() {
-    setFilters({
-      range: 'last_14',
-      teamId: 'all',
-      channel: 'all',
-      status: 'all',
-      priority: 'all',
-      assignee: 'all',
-      tags: [],
-      compare: true
-    });
+    setFilters(defaultFilters());
     toast.success('Filters reset');
   }
 
   function applyView(viewId: string) {
+    const view = savedViews.find((item) => item.id === viewId);
+    if (!view) return;
     setActiveView(viewId);
-    if (viewId === 'v1') {
-      setFilters((prev) => ({ ...prev, range: 'last_7', teamId: 'all', priority: 'all', compare: true, tags: [] }));
-    } else if (viewId === 'v2') {
-      const billingTeam = teams.find((team) => team.name.toLowerCase().includes('billing'));
-      setFilters((prev) => ({
-        ...prev,
-        range: 'last_30',
-        teamId: billingTeam?.id ?? 'all',
-        priority: 'high',
-        compare: false,
-        tags: ['billing']
-      }));
-    }
+    setFilters(view.filters);
     toast.success('View applied');
   }
 
-  function saveCurrentView() {
-    setSavedViews((prev) => [
-      ...prev,
-      { id: `v${Date.now()}`, name: 'New View', desc: `${rangeLabel} - ${scopeLabel}` }
-    ]);
-    toast.success('View saved');
+  async function saveCurrentView() {
+    const name = `Reports ${new Date().toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })}`;
+
+    try {
+      const created = await createSavedView({
+        name,
+        filters: serializeSavedReportFilters(filters)
+      });
+      await loadSavedViewsFromBackend(created.id);
+      toast.success('View saved');
+    } catch (err) {
+      toast.error(handleApiError(err));
+    }
   }
+
+  const shareLink = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return '/reports';
+    }
+
+    const params = new URLSearchParams();
+    params.set('tab', tab);
+    params.set('range', filters.range);
+    if (filters.teamId !== 'all') params.set('teamId', filters.teamId);
+    if (filters.channel !== 'all') params.set('channel', filters.channel);
+    if (filters.status !== 'all') params.set('status', filters.status);
+    if (filters.priority !== 'all') params.set('priority', filters.priority);
+    if (filters.assignee !== 'all') params.set('assignee', filters.assignee);
+    if (filters.compare) params.set('compare', '1');
+
+    const query = params.toString();
+    return `${window.location.origin}/reports${query ? `?${query}` : ''}`;
+  }, [
+    filters.assignee,
+    filters.channel,
+    filters.compare,
+    filters.priority,
+    filters.range,
+    filters.status,
+    filters.teamId,
+    tab,
+  ]);
+  const exportScopeLabel = `${rangeLabel} - ${scopeLabel}`;
 
   function copyShareLink() {
     navigator.clipboard
-      .writeText('https://app.helpdesk.local/reports/snapshots/abc123')
+      .writeText(shareLink)
       .then(() => toast.success('Link copied'))
       .catch(() => toast.error('Failed to copy link'));
   }
 
-  const exportScopeLabel = `${rangeLabel} - ${scopeLabel}`;
-
   return (
     <section className="min-h-full bg-slate-50 animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-[1600px] py-4 pl-6 pr-2">
-          {headerProps ? (
+        <div className="mx-auto max-w-[1600px] py-4 px-6">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
                   <h1 className="text-xl font-semibold text-slate-900">Reports</h1>
@@ -823,6 +961,9 @@ export function ReportsPage({
                 onChange={(event) => applyView(event.target.value)}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
+                <option value="" disabled>
+                  {savedViews.length > 0 ? 'Select saved view' : 'No saved views'}
+                </option>
                 {savedViews.map((view) => (
                   <option key={view.id} value={view.id}>
                     {view.name}
@@ -831,7 +972,9 @@ export function ReportsPage({
               </select>
               <button
                 type="button"
-                onClick={saveCurrentView}
+                onClick={() => {
+                  void saveCurrentView();
+                }}
                 disabled={!canSaveViews}
                 className={`rounded-lg px-3 py-2 text-sm font-medium ${
                   canSaveViews
@@ -849,7 +992,9 @@ export function ReportsPage({
                 Reset
               </button>
             </div>
-            <p className="mt-2 text-xs text-slate-400">{savedViews.find((view) => view.id === activeView)?.desc}</p>
+            <p className="mt-2 text-xs text-slate-400">
+              {savedViews.find((view) => view.id === activeView)?.desc ?? 'No saved view selected.'}
+            </p>
           </div>
         </div>
 
@@ -865,7 +1010,7 @@ export function ReportsPage({
                 <option value="last_7">Last 7 days</option>
                 <option value="last_14">Last 14 days</option>
                 <option value="last_30">Last 30 days</option>
-                <option value="custom">Custom (mock)</option>
+                <option value="custom">Custom</option>
               </select>
             </div>
             <div className="min-w-[180px]">
@@ -892,8 +1037,8 @@ export function ReportsPage({
               >
                 <option value="all">All channels</option>
                 {CHANNELS.map((channel) => (
-                  <option key={channel} value={channel}>
-                    {channel}
+                  <option key={channel.value} value={channel.value}>
+                    {channel.label}
                   </option>
                 ))}
               </select>
@@ -908,7 +1053,7 @@ export function ReportsPage({
                 <option value="all">All status</option>
                 {STATUSES.map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {formatStatus(status)}
                   </option>
                 ))}
               </select>
@@ -937,9 +1082,9 @@ export function ReportsPage({
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All assignees</option>
-                {agentRows.map((row) => (
-                  <option key={row.name} value={row.name}>
-                    {row.name} ({row.team})
+                {assignees.map((assignee) => (
+                  <option key={assignee.id} value={assignee.id}>
+                    {assignee.displayName || assignee.email}
                   </option>
                 ))}
               </select>
@@ -953,23 +1098,6 @@ export function ReportsPage({
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <p className="mr-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Tags</p>
-            {TAGS.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
-                  filters.tags.includes(tag)
-                    ? 'border-blue-600 bg-blue-600 text-white'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white px-4 pt-3">
@@ -998,8 +1126,26 @@ export function ReportsPage({
 
           <div className="py-5">
             {loading ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                Loading report data...
+              <div className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={`stat-skel-${i}`} className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="mb-3 h-4 w-24 skeleton-shimmer rounded" />
+                      <div className="mb-2 h-7 w-16 skeleton-shimmer rounded" />
+                      <div className="h-3 w-32 skeleton-shimmer rounded" />
+                    </div>
+                  ))}
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 h-72">
+                    <div className="mb-4 h-5 w-32 skeleton-shimmer rounded" />
+                    <div className="h-3/4 w-full skeleton-shimmer rounded-lg" />
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 h-72">
+                    <div className="mb-4 h-5 w-32 skeleton-shimmer rounded" />
+                    <div className="h-3/4 w-full skeleton-shimmer rounded-lg" />
+                  </div>
+                </div>
               </div>
             ) : null}
 
@@ -1030,8 +1176,8 @@ export function ReportsPage({
                   <StatCard
                     tone="purple"
                     label="CSAT"
-                    value={`${kpis.csat.toFixed(2)} / 5`}
-                    sub={sources.summary ? 'Demo metric (API pending)' : 'Demo metric'}
+                    value={csatAverage != null ? `${kpis.csat.toFixed(2)} / 5` : '-- / 5'}
+                    sub={csatResponses > 0 ? `${csatResponses} responses` : 'No CSAT responses'}
                     iconPath="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.95a1 1 0 00.95.69h4.155c.969 0 1.371 1.24.588 1.81l-3.36 2.44a1 1 0 00-.364 1.118l1.286 3.95c.3.921-.755 1.688-1.538 1.118l-3.36-2.44a1 1 0 00-1.175 0l-3.36 2.44c-.783.57-1.838-.197-1.538-1.118l1.286-3.95a1 1 0 00-.364-1.118l-3.36-2.44c-.783-.57-.38-1.81.588-1.81h4.155a1 1 0 00.95-.69l1.286-3.95z"
                   />
                 </div>
@@ -1049,13 +1195,19 @@ export function ReportsPage({
                             <p className="text-sm font-semibold text-slate-800">Inbound</p>
                             <span className="text-xs text-slate-500">{inboundSeries.length} pts</span>
                           </div>
-                          <div className="text-blue-600">
-                            <MiniBars points={inboundSeries} />
-                          </div>
+                          {hasInboundSeries ? (
+                            <div className="text-blue-600">
+                              <MiniBars points={inboundSeries} />
+                            </div>
+                          ) : (
+                            <EmptyData label="No inbound data for selected filters." />
+                          )}
                           <div className="mt-3 flex items-center justify-between text-xs">
                             <span className="text-slate-500">Avg/day</span>
                             <span className="font-semibold text-slate-700">
-                              {Math.round(inboundSeries.reduce((sum, point) => sum + point, 0) / inboundSeries.length)}
+                              {hasInboundSeries
+                                ? Math.round(inboundSeries.reduce((sum, point) => sum + point, 0) / inboundSeries.length)
+                                : 0}
                             </span>
                           </div>
                         </div>
@@ -1064,15 +1216,22 @@ export function ReportsPage({
                             <p className="text-sm font-semibold text-slate-800">Solved</p>
                             <span className="text-xs text-slate-500">{solvedSeriesSafe.length} pts</span>
                           </div>
-                          <div className="text-green-600">
-                            <MiniBars points={solvedSeriesSafe} />
-                          </div>
+                          {hasSolvedSeries ? (
+                            <div className="text-green-600">
+                              <MiniBars points={solvedSeriesSafe} />
+                            </div>
+                          ) : (
+                            <EmptyData label="No solved-series data for selected filters." />
+                          )}
                           <div className="mt-3 flex items-center justify-between text-xs">
                             <span className="text-slate-500">Avg/day</span>
                             <span className="font-semibold text-slate-700">
-                              {Math.round(
-                                solvedSeriesSafe.reduce((sum, point) => sum + point, 0) / solvedSeriesSafe.length
-                              )}
+                              {hasSolvedSeries
+                                ? Math.round(
+                                    solvedSeriesSafe.reduce((sum, point) => sum + point, 0) /
+                                      solvedSeriesSafe.length
+                                  )
+                                : 0}
                             </span>
                           </div>
                         </div>
@@ -1106,19 +1265,20 @@ export function ReportsPage({
                       title="Top categories"
                       sub="Highest volume categories"
                     >
-                      <div className="space-y-2">
-                        {topCategories.map((category) => (
-                          <div key={category.name} className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-slate-50">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-slate-800">{category.name}</p>
-                              <p className="text-xs text-slate-400">
-                                Trend: {category.trend > 0 ? `+${category.trend}%` : `${category.trend}%`}
-                              </p>
+                      {hasCategories ? (
+                        <div className="space-y-2">
+                          {topCategories.map((category) => (
+                            <div key={category.name} className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-slate-50">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-slate-800">{category.name}</p>
+                              </div>
+                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{category.count}</span>
                             </div>
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{category.count}</span>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyData label="No category data for selected filters." />
+                      )}
                     </CardShell>
                   </div>
                 </div>
@@ -1132,62 +1292,78 @@ export function ReportsPage({
                     <p className="text-xs text-slate-500">First response SLA</p>
                     <p className={`mt-1 text-3xl font-bold ${toneForMetric(kpis.frSla, 95)}`}>{kpis.frSla.toFixed(1)}%</p>
                     <p className="mt-1 text-xs text-slate-400">Target 95%</p>
-                    <div className="mt-3 text-blue-600">
-                      <SparkArea points={sources.summary ? inboundSeries.slice(-12) : DEMO_SERIES.frSla} />
-                    </div>
+                    {hasInboundSeries ? (
+                      <div className="mt-3 text-blue-600">
+                        <SparkArea points={inboundSeries.slice(-12)} />
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <EmptyData label="No trend data." />
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-5">
                     <p className="text-xs text-slate-500">Resolution SLA</p>
                     <p className={`mt-1 text-3xl font-bold ${toneForMetric(kpis.resSla, 92)}`}>{kpis.resSla.toFixed(1)}%</p>
                     <p className="mt-1 text-xs text-slate-400">Target 92%</p>
-                    <div className="mt-3 text-indigo-600">
-                      <SparkArea points={sources.summary ? solvedSeriesSafe.slice(-12) : DEMO_SERIES.resSla} />
-                    </div>
+                    {hasSolvedSeries ? (
+                      <div className="mt-3 text-indigo-600">
+                        <SparkArea points={solvedSeriesSafe.slice(-12)} />
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <EmptyData label="No trend data." />
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-5">
                     <p className="text-xs text-slate-500">Breaches</p>
                     <p className="mt-1 text-3xl font-bold text-red-600">
-                      {slaData ? slaData.firstResponseBreached + slaData.resolutionBreached : 23}
+                      {slaData ? slaData.firstResponseBreached + slaData.resolutionBreached : 0}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">In current scope</p>
                     <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3">
-                      <p className="text-xs font-medium text-red-700">Top driver</p>
-                      <p className="mt-1 text-sm font-semibold text-red-800">Queue overload</p>
-                      <p className="mt-1 text-xs text-red-700">Improve routing and staffing peaks</p>
+                      <p className="text-xs font-medium text-red-700">Driver details</p>
+                      <p className="mt-1 text-sm font-semibold text-red-800">
+                        {slaBreachesData[0]?.reason ?? 'No breach drivers in this range.'}
+                      </p>
+                      <p className="mt-1 text-xs text-red-700">
+                        {hasSlaBreaches ? `${slaBreachesData.length} breached tickets captured.` : 'No breached tickets found.'}
+                      </p>
                     </div>
                   </div>
                 </div>
 
                 <CardShell title="Worst SLA breaches" sub="Tickets with highest breach duration.">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b border-slate-200 bg-slate-50">
-                        <tr>
-                          {['Ticket', 'Team', 'Priority', 'Stage', 'Breach by', 'Reason'].map((heading) => (
-                            <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                              {heading}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {DEMO_WORST_BREACHES.map((row) => (
-                          <tr key={row.ticket} className="hover:bg-slate-50">
-                            <td className="px-4 py-3 font-semibold text-slate-900">{row.ticket}</td>
-                            <td className="px-4 py-3 text-slate-700">{row.team}</td>
-                            <td className="px-4 py-3">
-                              <span className={`rounded-lg px-2 py-1 text-xs font-medium ${PRIORITY_BADGES[row.priority]}`}>
-                                {row.priority}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-700">{row.stage}</td>
-                            <td className="px-4 py-3 font-semibold text-red-600">{row.breachBy}</td>
-                            <td className="px-4 py-3 text-slate-600">{row.reason}</td>
+                  {hasSlaBreaches ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50">
+                          <tr>
+                            {['Ticket', 'Team', 'Priority', 'Stage', 'Breach by', 'Reason'].map((heading) => (
+                              <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                {heading}
+                              </th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {slaBreachesData.map((row) => (
+                            <tr key={row.ticketId} className="hover:bg-slate-50">
+                              <td className="px-4 py-3 font-semibold text-slate-900">{row.ticket}</td>
+                              <td className="px-4 py-3 text-slate-700">{row.team}</td>
+                              <td className="px-4 py-3 text-slate-700">{row.priority}</td>
+                              <td className="px-4 py-3 text-slate-700">{row.stage}</td>
+                              <td className="px-4 py-3 font-semibold text-red-600">{formatDuration(row.breachSeconds)}</td>
+                              <td className="px-4 py-3 text-slate-600">{row.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <EmptyData label="No SLA breach-detail data available." />
+                  )}
                 </CardShell>
               </div>
             ) : null}
@@ -1201,23 +1377,35 @@ export function ReportsPage({
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <p className="text-sm font-semibold text-slate-800">Inbound</p>
                           <p className="mb-2 text-xs text-slate-400">Tickets/day</p>
-                          <div className="text-blue-600">
-                            <MiniBars points={inboundSeries} />
-                          </div>
+                          {hasInboundSeries ? (
+                            <div className="text-blue-600">
+                              <MiniBars points={inboundSeries} />
+                            </div>
+                          ) : (
+                            <EmptyData label="No inbound data." />
+                          )}
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <p className="text-sm font-semibold text-slate-800">Solved</p>
                           <p className="mb-2 text-xs text-slate-400">Tickets/day</p>
-                          <div className="text-green-600">
-                            <MiniBars points={solvedSeriesSafe} />
-                          </div>
+                          {hasSolvedSeries ? (
+                            <div className="text-green-600">
+                              <MiniBars points={solvedSeriesSafe} />
+                            </div>
+                          ) : (
+                            <EmptyData label="No solved data." />
+                          )}
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                           <p className="text-sm font-semibold text-slate-800">Backlog</p>
                           <p className="mb-2 text-xs text-slate-400">Open tickets</p>
-                          <div className="text-amber-600">
-                            <MiniBars points={backlogSeriesSafe} />
-                          </div>
+                          {hasBacklogSeries ? (
+                            <div className="text-amber-600">
+                              <MiniBars points={backlogSeriesSafe} />
+                            </div>
+                          ) : (
+                            <EmptyData label="No backlog data." />
+                          )}
                         </div>
                       </div>
                     </CardShell>
@@ -1225,35 +1413,38 @@ export function ReportsPage({
 
                   <div className="space-y-5 lg:col-span-4">
                     <CardShell title="By channel" sub="Share of inbound">
-                      <div className="space-y-2">
-                        {[
-                          { c: 'email', v: 46 },
-                          { c: 'web', v: 28 },
-                          { c: 'chat', v: 18 },
-                          { c: 'phone', v: 8 }
-                        ].map((row) => (
-                          <div key={row.c} className="rounded-lg px-3 py-2 hover:bg-slate-50">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium text-slate-800">{row.c}</span>
-                              <span className="text-slate-600">{toPercent(row.v)}</span>
+                      {hasChannelBreakdown ? (
+                        <div className="space-y-2">
+                          {channelBreakdownData.map((row) => (
+                            <div key={row.channel} className="rounded-lg px-3 py-2 hover:bg-slate-50">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium text-slate-800">{row.label}</span>
+                                <span className="text-slate-600">{toPercent(row.percent)}</span>
+                              </div>
+                              <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                                <div className="h-2 rounded-full bg-blue-600" style={{ width: `${row.percent}%` }} />
+                              </div>
                             </div>
-                            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
-                              <div className="h-2 rounded-full bg-blue-600" style={{ width: `${row.v}%` }} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyData label="No channel breakdown data for selected filters." />
+                      )}
                     </CardShell>
 
                     <CardShell title="Peak days" sub="Highest inbound volume">
-                      <div className="space-y-2">
-                        {peakDays.map((row) => (
-                          <div key={`${row.d}-${row.v}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <span className="text-sm font-medium text-slate-700">{row.d}</span>
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{row.v}</span>
-                          </div>
-                        ))}
-                      </div>
+                      {peakDays.length > 0 ? (
+                        <div className="space-y-2">
+                          {peakDays.map((row) => (
+                            <div key={`${row.d}-${row.v}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                              <span className="text-sm font-medium text-slate-700">{row.d}</span>
+                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{row.v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyData label="No peak-day data." />
+                      )}
                     </CardShell>
                   </div>
                 </div>
@@ -1267,9 +1458,15 @@ export function ReportsPage({
                     <p className="text-xs text-slate-500">Avg handle time</p>
                     <p className="mt-1 text-3xl font-bold text-slate-900">{kpis.avgHandleMin.toFixed(1)}m</p>
                     <p className="mt-1 text-xs text-slate-400">Lower is better</p>
-                    <div className="mt-3 text-slate-700">
-                      <SparkArea points={inboundSeries.slice(-12)} />
-                    </div>
+                    {hasInboundSeries ? (
+                      <div className="mt-3 text-slate-700">
+                        <SparkArea points={inboundSeries.slice(-12)} />
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <EmptyData label="No handle-time trend data." />
+                      </div>
+                    )}
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-5">
                     <p className="text-xs text-slate-500">Quality score</p>
@@ -1278,54 +1475,66 @@ export function ReportsPage({
                     </p>
                     <p className="mt-1 text-xs text-slate-400">Composite: SLA + reopen trend</p>
                     <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
-                      <p className="text-xs text-green-700">Biggest win</p>
-                      <p className="mt-1 text-sm font-semibold text-green-800">Faster triage</p>
+                      <p className="text-xs text-green-700">Data source</p>
+                      <p className="mt-1 text-sm font-semibold text-green-800">Computed from SLA and reopen metrics.</p>
                     </div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-5">
                     <p className="text-xs text-slate-500">Reopen rate</p>
                     <p className="mt-1 text-3xl font-bold text-amber-600">{reopenRate.toFixed(1)}%</p>
                     <p className="mt-1 text-xs text-slate-400">Target {'<='} 3%</p>
-                    <div className="mt-3 text-amber-600">
-                      <SparkArea points={sources.reopenRate ? reopenData.map((item) => item.count) : [4, 3, 5, 4, 4, 5, 3, 4, 4, 5, 4, 4]} />
-                    </div>
+                    {reopenData.length > 0 ? (
+                      <div className="mt-3 text-amber-600">
+                        <SparkArea points={reopenData.map((item) => item.count)} />
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <EmptyData label="No reopen-rate trend data." />
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <CardShell title="Agent leaderboard" sub="Sorted by solved tickets.">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b border-slate-200 bg-slate-50">
-                        <tr>
-                          {['Agent', 'Team', 'Solved', 'FR SLA', 'RES SLA', 'CSAT'].map((heading) => (
-                            <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                              {heading}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {[...agentRows]
-                          .sort((a, b) => b.solved - a.solved)
-                          .map((row) => (
-                            <tr key={row.name} className="hover:bg-slate-50">
-                              <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
-                              <td className="px-4 py-3 text-slate-700">{row.team}</td>
-                              <td className="px-4 py-3">
-                                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{row.solved}</span>
-                              </td>
-                              <td className={`px-4 py-3 font-semibold ${row.fr >= 95 ? 'text-green-600' : row.fr >= 92 ? 'text-amber-600' : 'text-red-600'}`}>
-                                {toPercent(row.fr)}
-                              </td>
-                              <td className={`px-4 py-3 font-semibold ${row.res >= 92 ? 'text-green-600' : row.res >= 88 ? 'text-amber-600' : 'text-red-600'}`}>
-                                {toPercent(row.res)}
-                              </td>
-                              <td className="px-4 py-3 font-semibold text-slate-900">{row.csat.toFixed(1)}</td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  {hasAgentRows ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50">
+                          <tr>
+                            {['Agent', 'Team', 'Solved', 'FR SLA', 'RES SLA', 'CSAT'].map((heading) => (
+                              <th key={heading} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {[...agentRows]
+                            .sort((a, b) => b.solved - a.solved)
+                            .map((row) => (
+                              <tr key={row.name} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
+                                <td className="px-4 py-3 text-slate-700">{row.team}</td>
+                                <td className="px-4 py-3">
+                                  <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{row.solved}</span>
+                                </td>
+                                <td className={`px-4 py-3 font-semibold ${row.fr >= 95 ? 'text-green-600' : row.fr >= 92 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  {toPercent(row.fr)}
+                                </td>
+                                <td className={`px-4 py-3 font-semibold ${row.res >= 92 ? 'text-green-600' : row.res >= 88 ? 'text-amber-600' : 'text-red-600'}`}>
+                                  {toPercent(row.res)}
+                                </td>
+                                <td className="px-4 py-3 font-semibold text-slate-900">
+                                  {row.csat == null ? '--' : row.csat.toFixed(1)}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <EmptyData label="No agent performance data for selected filters." />
+                  )}
                 </CardShell>
               </div>
             ) : null}
@@ -1338,46 +1547,56 @@ export function ReportsPage({
                       <div className="mb-2 flex items-end justify-between">
                         <div>
                           <p className="text-xs text-slate-500">Average</p>
-                          <p className="mt-1 text-3xl font-bold text-purple-600">{DEMO_KPIS.csat.toFixed(2)}</p>
+                          <p className="mt-1 text-3xl font-bold text-purple-600">
+                            {csatAverage == null ? '--' : csatAverage.toFixed(2)}
+                          </p>
                         </div>
                         <span className="rounded-lg bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">Scale 1-5</span>
                       </div>
-                      <div className="text-purple-600">
-                        <SparkArea points={DEMO_SERIES.csat.map((value) => value * 10)} />
-                      </div>
-                      <p className="mt-3 text-xs text-slate-400">Tip: correlate low CSAT with breach and reopens.</p>
+                      {hasCsatTrend ? (
+                        <>
+                          <div className="text-purple-600">
+                            <SparkArea points={csatTrendData.map((item) => Math.max(0, item.average * 20))} />
+                          </div>
+                          <p className="mt-3 text-xs text-slate-400">{csatResponses} responses in current scope.</p>
+                        </>
+                      ) : (
+                        <EmptyData label="No CSAT trend data for selected filters." />
+                      )}
                     </CardShell>
                   </div>
                   <div className="space-y-5 lg:col-span-5">
-                    <CardShell title="Drivers" sub="What impacts CSAT (demo)">
-                      <div className="space-y-3">
-                        {[
-                          { label: 'Slow response', value: 31 },
-                          { label: 'Unclear resolution', value: 24 },
-                          { label: 'Multiple handoffs', value: 18 },
-                          { label: 'Bug persists', value: 15 },
-                          { label: 'Other', value: 12 }
-                        ].map((row) => (
-                          <div key={row.label}>
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-700">{row.label}</span>
-                              <span className="text-slate-600">{toPercent(row.value)}</span>
+                    <CardShell title="Drivers" sub="What impacts CSAT">
+                      {hasCsatDrivers ? (
+                        <div className="space-y-3">
+                          {csatDriversData.map((row) => (
+                            <div key={row.label}>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-700">{row.label}</span>
+                                <span className="text-slate-600">{toPercent(row.percent)}</span>
+                              </div>
+                              <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                                <div className="h-2 rounded-full bg-purple-600" style={{ width: `${row.percent}%` }} />
+                              </div>
                             </div>
-                            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
-                              <div className="h-2 rounded-full bg-purple-600" style={{ width: `${row.value}%` }} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyData label="No low-CSAT driver data for selected filters." />
+                      )}
                     </CardShell>
-                    <CardShell title="Low CSAT tags" sub="Common tags on low-rated tickets (demo)">
-                      <div className="flex flex-wrap gap-2">
-                        {['outage', 'bug', 'refund', 'vip', 'billing'].map((tag) => (
-                          <span key={tag} className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
+                    <CardShell title="Low CSAT tags" sub="Common tags on low-rated tickets">
+                      {hasCsatTags ? (
+                        <div className="flex flex-wrap gap-2">
+                          {csatTagsData.map((row) => (
+                            <span key={row.tag} className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              #{row.tag} ({row.count})
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyData label="No low-CSAT tags for selected filters." />
+                      )}
                     </CardShell>
                   </div>
                 </div>
@@ -1389,54 +1608,48 @@ export function ReportsPage({
                 <div className="grid gap-5 lg:grid-cols-12">
                   <div className="lg:col-span-5">
                     <CardShell title="Aging distribution" sub="Open tickets by age bucket.">
-                      <div className="space-y-3">
-                        {ageBuckets.map((bucket) => (
-                          <div key={bucket.bucket} className="rounded-lg px-3 py-2 hover:bg-slate-50">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-slate-800">{bucket.bucket}</span>
-                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{bucket.count}</span>
+                      {hasAgeBuckets ? (
+                        <div className="space-y-3">
+                          {ageBuckets.map((bucket) => (
+                            <div key={bucket.bucket} className="rounded-lg px-3 py-2 hover:bg-slate-50">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-slate-800">{bucket.bucket}</span>
+                                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">{bucket.count}</span>
+                              </div>
+                              <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                                <div
+                                  className="h-2 rounded-full bg-amber-600"
+                                  style={{ width: `${Math.min(100, (bucket.count / Math.max(ageBuckets[0]?.count || 1, 1)) * 100)}%` }}
+                                />
+                              </div>
                             </div>
-                            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
-                              <div
-                                className="h-2 rounded-full bg-amber-600"
-                                style={{ width: `${Math.min(100, (bucket.count / Math.max(ageBuckets[0]?.count || 1, 1)) * 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <EmptyData label="No aging data for selected filters." />
+                      )}
                     </CardShell>
                   </div>
                   <div className="space-y-5 lg:col-span-7">
                     <CardShell title="Backlog risk" sub="Queues likely to breach next.">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                          <p className="text-xs font-medium text-red-700">Highest risk queue</p>
-                          <p className="mt-1 text-lg font-bold text-red-800">
-                            {teamSummaryData[0]?.name ?? 'Technical Support'} - Critical
-                          </p>
-                          <p className="mt-2 text-xs text-red-700">
-                            {teamSummaryData[0] ? `${teamSummaryData[0].open} open tickets in risk window` : '12 tickets within 80-100% SLA window'}
-                          </p>
+                      {teamSummaryData.length > 0 ? (
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                            <p className="text-xs font-medium text-red-700">Highest risk queue</p>
+                            <p className="mt-1 text-lg font-bold text-red-800">{teamSummaryData[0]?.name ?? 'Unknown team'}</p>
+                            <p className="mt-2 text-xs text-red-700">{teamSummaryData[0]?.open ?? 0} open tickets in risk window</p>
+                          </div>
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-xs font-medium text-amber-700">Second risk queue</p>
+                            <p className="mt-1 text-lg font-bold text-amber-800">{teamSummaryData[1]?.name ?? 'Not available'}</p>
+                            <p className="mt-2 text-xs text-amber-700">
+                              {teamSummaryData[1] ? `${teamSummaryData[1].open} open tickets pending action` : 'No additional team data.'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                          <p className="text-xs font-medium text-amber-700">Second risk queue</p>
-                          <p className="mt-1 text-lg font-bold text-amber-800">
-                            {teamSummaryData[1]?.name ?? 'Billing'} - High
-                          </p>
-                          <p className="mt-2 text-xs text-amber-700">
-                            {teamSummaryData[1] ? `${teamSummaryData[1].open} open tickets pending action` : '9 tickets stuck pending customer'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-sm font-semibold text-slate-900">Suggested actions</p>
-                        <ul className="mt-2 list-inside list-disc space-y-2 text-sm text-slate-600">
-                          <li>Enable escalation automation at 75% for critical tickets.</li>
-                          <li>Add routing rule: tag outage -&gt; priority critical -&gt; Technical Support queue.</li>
-                          <li>Staff peak inbound windows on Monday and Tuesday for email channel.</li>
-                        </ul>
-                      </div>
+                      ) : (
+                        <EmptyData label="No backlog risk data for selected filters." />
+                      )}
                     </CardShell>
                   </div>
                 </div>
@@ -1466,11 +1679,11 @@ export function ReportsPage({
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white p-4">
                         <p className="text-sm font-semibold text-slate-900">Share link</p>
-                        <p className="mt-1 text-xs text-slate-500">Share a read-only snapshot URL (demo)</p>
+                        <p className="mt-1 text-xs text-slate-500">Share the current report view URL.</p>
                         <div className="mt-3 flex items-center gap-2">
                           <input
                             readOnly
-                            value="https://app.helpdesk.local/reports/snapshots/abc123"
+                            value={shareLink}
                             className="flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600"
                           />
                           <button
@@ -1485,22 +1698,9 @@ export function ReportsPage({
                     </div>
                   </CardShell>
 
-                  <CardShell title="Schedules" sub="Email summaries (UI mock)">
+                  <CardShell title="Schedules" sub="Email summaries">
                     <div className="space-y-3">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Weekly exec summary</p>
-                            <p className="mt-1 text-xs text-slate-500">Every Monday at 9:00 AM</p>
-                          </div>
-                          <Toggle checked={true} onChange={() => toast.success('Schedule toggled')} />
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">PDF snapshot</span>
-                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Include SLA + CSAT</span>
-                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">Recipients: 5</span>
-                        </div>
-                      </div>
+                      <EmptyData label="No schedules are configured." />
                       <div className="rounded-xl border border-slate-200 bg-white p-4">
                         <p className="text-sm font-semibold text-slate-900">Create schedule</p>
                         <p className="mt-1 text-xs text-slate-500">Requires Team Admin+</p>
@@ -1508,7 +1708,7 @@ export function ReportsPage({
                           type="button"
                           onClick={() => {
                             if (canSaveViews) {
-                              toast.success('Schedule created (demo)');
+                              toast.info('Schedule creation endpoint is not available.');
                             }
                           }}
                           disabled={!canSaveViews}
@@ -1529,19 +1729,18 @@ export function ReportsPage({
           </div>
         </div>
 
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-semibold text-amber-900">Backend TODO (tracked)</h3>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-800">
-            {backendTodo.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
       </div>
 
       {showExportModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl">
+          <div
+            ref={exportDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Export report"
+            tabIndex={-1}
+            className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl"
+          >
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <div>
                 <p className="text-base font-semibold text-slate-900">Export report</p>
@@ -1574,9 +1773,6 @@ export function ReportsPage({
                       onRemove={() => setFilters((prev) => ({ ...prev, status: 'all' }))}
                     />
                   ) : null}
-                  {filters.tags.map((tag) => (
-                    <Chip key={tag} label={`Tag: ${tag}`} onRemove={() => toggleTag(tag)} />
-                  ))}
                 </div>
               </div>
 
@@ -1641,4 +1837,3 @@ export function ReportsPage({
     </section>
   );
 }
-

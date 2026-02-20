@@ -57,7 +57,10 @@ enum UserRole {
   EMPLOYEE
   AGENT
   LEAD
-  ADMIN   // deprecated: use TEAM_ADMIN or OWNER
+  // ADMIN is deprecated and scheduled for removal.
+  // Migration 20260202220000 already converted all ADMIN rows to TEAM_ADMIN.
+  // Kept temporarily for backward compatibility; remove once confirmed unused.
+  ADMIN   // @deprecated – use TEAM_ADMIN or OWNER
   TEAM_ADMIN
   OWNER
 }
@@ -96,12 +99,20 @@ enum NotificationType {
   TICKET_TRANSFERRED
 }
 
+enum SlaNotifyRole {
+  AGENT
+  LEAD
+  MANAGER
+  OWNER
+}
+
 model User {
   id                 String        @id @default(uuid())
   email              String        @unique
   displayName        String
   department         String?
   location           String?
+  graphProfile       Json?
   role               UserRole      @default(EMPLOYEE)
   primaryTeamId      String?       // for TEAM_ADMIN: the team they administer
   createdAt          DateTime      @default(now())
@@ -122,6 +133,9 @@ model User {
   savedViews         SavedView[]
   cannedResponses    CannedResponse[]
   automationRulesCreated AutomationRule[]
+  routingRulesAssigned RoutingRule[] @relation("RoutingRuleAssignee")
+  slaPolicyConfigsCreated SlaPolicyConfig[] @relation("SlaPolicyConfigCreatedBy")
+  adminAuditEvents AdminAuditEvent[] @relation("AdminAuditEventCreatedBy")
 }
 
 model Team {
@@ -140,12 +154,13 @@ model Team {
   tickets     Ticket[]
   ticketAccess TicketAccess[]
   routingRules RoutingRule[]
-  slaPolicies  SlaPolicy[]
+  slaPolicyAssignments SlaPolicyAssignment[]
   lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
   savedViews   SavedView[]
   cannedResponses CannedResponse[]
   customFields CustomField[]
   automationRules AutomationRule[]
+  adminAuditEvents AdminAuditEvent[] @relation("AdminAuditEventTeam")
 }
 
 model Category {
@@ -162,6 +177,8 @@ model Category {
   children    Category[] @relation("CategoryParent")
   tickets     Ticket[]
   customFields CustomField[]
+
+  @@index([parentId])
 }
 
 model TeamMember {
@@ -175,14 +192,15 @@ model TeamMember {
   user      User      @relation(fields: [userId], references: [id])
 
   @@unique([teamId, userId])
+  @@index([userId])
 }
 
 model Ticket {
   id             String         @id @default(uuid())
   number         Int            @unique @default(autoincrement())
   displayId      String?        @unique
-  subject        String
-  description    String
+  subject        String         @db.VarChar(200)
+  description    String         @db.Text
   status         TicketStatus   @default(NEW)
   priority       TicketPriority @default(P3)
   channel        TicketChannel  @default(PORTAL)
@@ -221,6 +239,10 @@ model Ticket {
   @@index([requesterId, createdAt])
   @@index([dueAt])
   @@index([completedAt])
+  @@index([categoryId])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([firstResponseDueAt])
 }
 
 model CustomField {
@@ -263,13 +285,14 @@ model TicketMessage {
   ticketId  String
   authorId  String
   type      MessageType @default(PUBLIC)
-  body      String
+  body      String      @db.Text
   createdAt DateTime    @default(now())
 
-  ticket    Ticket      @relation(fields: [ticketId], references: [id])
+  ticket    Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   author    User        @relation(fields: [authorId], references: [id])
 
   @@index([ticketId, createdAt])
+  @@index([authorId])
 }
 
 model TicketEvent {
@@ -280,10 +303,33 @@ model TicketEvent {
   createdAt   DateTime @default(now())
   createdById String?
 
-  ticket      Ticket   @relation(fields: [ticketId], references: [id])
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   createdBy   User?    @relation(fields: [createdById], references: [id])
 
   @@index([ticketId, createdAt])
+  @@index([type])
+  @@index([createdById])
+}
+
+model AdminAuditEvent {
+  id          String   @id @default(uuid())
+  type        String
+  payload     Json?
+  teamId      String?
+  createdById String?
+  // Snapshot fields (8.1 fix): preserve attribution even if user/team is deleted
+  actorEmail  String?
+  actorName   String?
+  teamName    String?
+  createdAt   DateTime @default(now())
+
+  team        Team?    @relation("AdminAuditEventTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  createdBy   User?    @relation("AdminAuditEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([type])
+  @@index([teamId])
+  @@index([createdById])
 }
 
 model TicketAccess {
@@ -293,7 +339,7 @@ model TicketAccess {
   accessLevel AccessLevel @default(READ)
   createdAt   DateTime    @default(now())
 
-  ticket      Ticket      @relation(fields: [ticketId], references: [id])
+  ticket      Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   team        Team        @relation(fields: [teamId], references: [id])
 
   @@unique([ticketId, teamId])
@@ -304,33 +350,83 @@ model RoutingRule {
   name      String
   keywords  String[]
   teamId    String
+  assigneeId String?
   priority  Int      @default(100)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   team      Team     @relation(fields: [teamId], references: [id])
+  assignee  User?    @relation("RoutingRuleAssignee", fields: [assigneeId], references: [id])
+
+  @@index([teamId])
+  @@index([assigneeId])
 }
 
-model SlaPolicy {
+model SlaPolicyConfig {
+  id                     String                 @id @default(uuid())
+  name                   String
+  description            String?
+  isDefault              Boolean                @default(false)
+  enabled                Boolean                @default(true)
+  businessHoursOnly      Boolean                @default(true)
+  escalationEnabled      Boolean                @default(true)
+  escalationAfterPercent Int                    @default(80)
+  breachNotifyRoles      SlaNotifyRole[]         @default([AGENT, LEAD])
+  createdById            String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  createdBy              User?                  @relation("SlaPolicyConfigCreatedBy", fields: [createdById], references: [id])
+  targets                SlaPolicyConfigTarget[]
+  assignments            SlaPolicyAssignment[]
+  instances              SlaInstance[]          @relation("SlaInstancePolicyConfig")
+
+  @@index([isDefault])
+  @@index([enabled])
+}
+
+model SlaPolicyConfigTarget {
   id                 String         @id @default(uuid())
-  teamId             String
+  policyConfigId     String
   priority           TicketPriority
   firstResponseHours Int
   resolutionHours    Int
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
-  team               Team           @relation(fields: [teamId], references: [id])
-  instances          SlaInstance[]
+  policy             SlaPolicyConfig @relation(fields: [policyConfigId], references: [id], onDelete: Cascade)
 
-  @@unique([teamId, priority])
+  @@unique([policyConfigId, priority])
+}
+
+model SlaPolicyAssignment {
+  id             String         @id @default(uuid())
+  policyConfigId String
+  teamId         String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  policy         SlaPolicyConfig @relation(fields: [policyConfigId], references: [id], onDelete: Cascade)
+  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId])
+  @@unique([policyConfigId, teamId])
+}
+
+model SlaBusinessHoursSetting {
+  id        String   @id @default("global")
+  timezone  String   @default("UTC")
+  schedule  Json
+  holidays  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SlaInstance {
   id                    String         @id @default(uuid())
   ticketId              String         @unique
-  policyId              String?
+  policyConfigId        String?
   priority              TicketPriority
   firstResponseDueAt    DateTime?
   resolutionDueAt       DateTime?
@@ -343,10 +439,12 @@ model SlaInstance {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
 
-  ticket                Ticket         @relation(fields: [ticketId], references: [id])
-  policy                SlaPolicy?     @relation(fields: [policyId], references: [id])
+  ticket                Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  policyConfig          SlaPolicyConfig? @relation("SlaInstancePolicyConfig", fields: [policyConfigId], references: [id])
 
   @@index([nextDueAt])
+  @@index([policyConfigId])
+  @@index([resolutionDueAt])
 }
 
 model TicketFollower {
@@ -355,7 +453,7 @@ model TicketFollower {
   userId    String
   createdAt DateTime @default(now())
 
-  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id])
 
   @@unique([ticketId, userId])
@@ -401,7 +499,7 @@ model Attachment {
   scanError    String?
   createdAt    DateTime             @default(now())
 
-  ticket       Ticket               @relation(fields: [ticketId], references: [id])
+  ticket       Ticket               @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
 
   @@index([ticketId])
@@ -499,4 +597,5 @@ model AutomationExecution {
   @@index([ruleId])
   @@index([ticketId])
   @@index([ruleId, ticketId, trigger])
+  @@index([executedAt])
 }

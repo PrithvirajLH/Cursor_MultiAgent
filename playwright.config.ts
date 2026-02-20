@@ -32,11 +32,17 @@ function loadEnvFile(filePath: string): EnvMap {
 
 const testEnvPath = path.resolve(__dirname, 'apps', 'api', '.env.test');
 const testEnv = loadEnvFile(testEnvPath);
+const e2eAuthJwtSecret =
+  process.env.E2E_AUTH_JWT_SECRET ?? 'e2e-local-auth-secret';
+process.env.E2E_AUTH_JWT_SECRET = e2eAuthJwtSecret;
 const serverEnv = {
   ...process.env,
   ...testEnv,
   NODE_ENV: 'test',
   SEED_MODE: 'test',
+  TEST_DB_RESET_STRATEGY: 'push',
+  AUTH_ALLOW_INSECURE_HEADERS: 'true',
+  AUTH_JWT_SECRET: e2eAuthJwtSecret,
   VITE_E2E_MODE: 'true',
   NOTIFICATIONS_QUEUE_ENABLED: 'false',
   SLA_BREACH_WORKER_ENABLED: 'true',
@@ -56,11 +62,20 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure'
   },
-  webServer: {
-    command: 'node apps/api/scripts/reset-test-db.cjs && npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: serverEnv
-  }
+  webServer: [
+    {
+      command: 'node apps/api/scripts/reset-test-db.cjs && npm run dev -w apps/api',
+      url: 'http://localhost:3000/api/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: serverEnv
+    },
+    {
+      command: 'npm run dev -w apps/web',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+      env: serverEnv
+    }
+  ]
 });

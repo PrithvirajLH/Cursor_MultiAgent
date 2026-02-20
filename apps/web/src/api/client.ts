@@ -1,5 +1,6 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api';
 const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as string | undefined;
+let authToken: string | null = null;
 
 /** Thrown by apiFetch when response is not ok; includes status for UI (e.g. 403). */
 export class ApiError extends Error {
@@ -16,6 +17,43 @@ export type UserRef = {
   email: string;
   displayName: string;
   role?: string;
+};
+
+export type MicrosoftGraphProfile = {
+  id: string;
+  displayName?: string | null;
+  givenName?: string | null;
+  surname?: string | null;
+  userPrincipalName?: string | null;
+  mail?: string | null;
+  jobTitle?: string | null;
+  mobilePhone?: string | null;
+  businessPhones?: string[];
+  officeLocation?: string | null;
+  preferredLanguage?: string | null;
+  department?: string | null;
+  companyName?: string | null;
+  employeeId?: string | null;
+  employeeType?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  streetAddress?: string | null;
+  usageLocation?: string | null;
+  mailNickname?: string | null;
+};
+
+export type CurrentUserSession = {
+  id: string;
+  email: string;
+  displayName: string;
+  role: string;
+  teamId: string | null;
+  teamRole: string | null;
+  primaryTeamId: string | null;
+  graphProfile?: MicrosoftGraphProfile | null;
+  avatarDataUrl?: string | null;
 };
 
 export type TeamRef = {
@@ -39,9 +77,11 @@ export type RoutingRule = {
   name: string;
   keywords: string[];
   teamId: string;
+  assigneeId?: string | null;
   priority: number;
   isActive: boolean;
   team?: TeamRef;
+  assignee?: UserRef | null;
 };
 
 export type TicketRecord = {
@@ -127,6 +167,7 @@ export type TicketDetail = TicketRecord & {
   followers: TicketFollower[];
   attachments: Attachment[];
   customFieldValues?: CustomFieldValueRecord[];
+  allowedTransitions?: string[];
 };
 
 export type TicketMessagePage = {
@@ -152,6 +193,49 @@ export type SlaPolicy = {
   firstResponseHours: number;
   resolutionHours: number;
   source?: 'team' | 'default';
+};
+
+export type SlaPolicyNotifyRole = 'AGENT' | 'LEAD' | 'MANAGER' | 'OWNER';
+
+export type SlaPolicyConfigRecord = {
+  id: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
+  enabled: boolean;
+  businessHoursOnly: boolean;
+  escalationEnabled: boolean;
+  escalationAfterPercent: number;
+  breachNotifyRoles: SlaPolicyNotifyRole[];
+  appliedTeamIds: string[];
+  appliedTeams: Array<{ id: string; name: string }>;
+  targets: Array<{
+    priority: string;
+    firstResponseHours: number;
+    resolutionHours: number;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SlaBusinessDayRecord = {
+  day: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+  enabled: boolean;
+  start: string;
+  end: string;
+};
+
+export type SlaHolidayRecord = {
+  name: string;
+  date: string;
+};
+
+export type SlaBusinessHoursSettings = {
+  timezone: string;
+  schedule: SlaBusinessDayRecord[];
+  holidays: SlaHolidayRecord[];
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TicketListResponse = {
@@ -219,6 +303,11 @@ export function setDemoUserEmail(email: string) {
   if (typeof window === 'undefined') {
     return;
   }
+  if (!email) {
+    window.localStorage.removeItem('demoUserEmail');
+    clearSearchCache();
+    return;
+  }
   const currentEmail = window.localStorage.getItem('demoUserEmail');
   if (currentEmail !== email) {
     // Clear search cache when persona changes to prevent leaking privileged data
@@ -227,8 +316,16 @@ export function setDemoUserEmail(email: string) {
   window.localStorage.setItem('demoUserEmail', email);
 }
 
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
 function authHeaders(): Record<string, string> {
+  if (authToken) {
+    return { Authorization: `Bearer ${authToken}` };
+  }
   const email = getDemoUserEmail();
+  // Dev-only fallback path. In production this is disabled server-side.
   return email ? { 'x-user-email': email } : {};
 }
 
@@ -248,6 +345,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+type DataEnvelope<T> = { data: T };
+
+function isDataEnvelope<T>(value: T | DataEnvelope<T>): value is DataEnvelope<T> {
+  return typeof value === 'object' && value !== null && 'data' in value;
+}
+
+function unwrapDataEnvelope<T>(value: T | DataEnvelope<T>): T {
+  return isDataEnvelope(value) ? value.data : value;
 }
 
 export function fetchTickets(params?: Record<string, string | number | undefined | string[]>) {
@@ -319,7 +426,8 @@ export type SavedViewRecord = {
 };
 
 export function fetchSavedViews() {
-  return apiFetch<SavedViewRecord[]>('/saved-views');
+  return apiFetch<SavedViewRecord[] | DataEnvelope<SavedViewRecord[]>>('/saved-views')
+    .then((response) => unwrapDataEnvelope(response));
 }
 
 export function createSavedView(payload: { name: string; filters: Record<string, unknown>; isDefault?: boolean; teamId?: string }) {
@@ -353,7 +461,8 @@ export type CannedResponseRecord = {
 };
 
 export function fetchCannedResponses() {
-  return apiFetch<CannedResponseRecord[]>('/canned-responses');
+  return apiFetch<CannedResponseRecord[] | DataEnvelope<CannedResponseRecord[]>>('/canned-responses')
+    .then((response) => unwrapDataEnvelope(response));
 }
 
 export function createCannedResponse(payload: { name: string; content: string; teamId?: string }) {
@@ -561,6 +670,28 @@ export function fetchUsers(params?: FetchUsersParams) {
   return apiFetch<{ data: UserRef[]; meta: PaginationMeta }>(`/users${suffix}`);
 }
 
+export function fetchCurrentUser() {
+  return apiFetch<{ data: CurrentUserSession }>('/auth/me');
+}
+
+export function syncCurrentUserProfile(
+  graphProfile: MicrosoftGraphProfile | null,
+) {
+  return apiFetch<{
+    data: {
+      id: string;
+      email: string;
+      displayName: string;
+      department: string | null;
+      location: string | null;
+      graphProfile: unknown;
+    } | null;
+  }>('/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ graphProfile }),
+  });
+}
+
 export async function fetchAllUsers(params?: Omit<FetchUsersParams, 'page'>) {
   const pageSize = Math.min(Math.max(params?.pageSize ?? 100, 1), 100);
   let page = 1;
@@ -672,10 +803,83 @@ export function resetSlaPolicies(teamId: string) {
   });
 }
 
+export function fetchSlaPolicyConfigs() {
+  return apiFetch<{ data: SlaPolicyConfigRecord[] }>('/slas/policies');
+}
+
+export function createSlaPolicyConfig(payload: {
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  enabled?: boolean;
+  businessHoursOnly?: boolean;
+  escalationEnabled?: boolean;
+  escalationAfterPercent?: number;
+  breachNotifyRoles?: SlaPolicyNotifyRole[];
+  appliedTeamIds?: string[];
+  targets: Array<{
+    priority: string;
+    firstResponseHours: number;
+    resolutionHours: number;
+  }>;
+}) {
+  return apiFetch<{ data: SlaPolicyConfigRecord }>('/slas/policies', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateSlaPolicyConfig(
+  policyId: string,
+  payload: {
+    name?: string;
+    description?: string;
+    isDefault?: boolean;
+    enabled?: boolean;
+    businessHoursOnly?: boolean;
+    escalationEnabled?: boolean;
+    escalationAfterPercent?: number;
+    breachNotifyRoles?: SlaPolicyNotifyRole[];
+    appliedTeamIds?: string[];
+    targets?: Array<{
+      priority: string;
+      firstResponseHours: number;
+      resolutionHours: number;
+    }>;
+  },
+) {
+  return apiFetch<{ data: SlaPolicyConfigRecord }>(`/slas/policies/${policyId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteSlaPolicyConfig(policyId: string) {
+  return apiFetch<{ id: string }>(`/slas/policies/${policyId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function fetchSlaBusinessHoursSettings() {
+  return apiFetch<{ data: SlaBusinessHoursSettings }>('/slas/settings');
+}
+
+export function updateSlaBusinessHoursSettings(payload: {
+  timezone?: string;
+  schedule?: SlaBusinessDayRecord[];
+  holidays?: SlaHolidayRecord[];
+}) {
+  return apiFetch<{ data: SlaBusinessHoursSettings }>('/slas/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createRoutingRule(payload: {
   name: string;
   keywords: string[];
-  teamId: string;
+  teamId?: string;
+  assigneeId?: string;
   priority?: number;
   isActive?: boolean;
 }) {
@@ -685,7 +889,17 @@ export function createRoutingRule(payload: {
   });
 }
 
-export function updateRoutingRule(id: string, payload: Partial<Omit<RoutingRule, 'id' | 'team'>>) {
+export function updateRoutingRule(
+  id: string,
+  payload: {
+    name?: string;
+    keywords?: string[];
+    teamId?: string;
+    assigneeId?: string;
+    priority?: number;
+    isActive?: boolean;
+  },
+) {
   return apiFetch<RoutingRule>(`/routing-rules/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(payload)
@@ -971,19 +1185,25 @@ export function fetchNotifications(params?: {
 }
 
 export function fetchUnreadNotificationCount() {
-  return apiFetch<{ count: number }>('/notifications/unread-count');
+  return apiFetch<{ count: number } | DataEnvelope<{ count: number }>>('/notifications/unread-count')
+    .then((response) => unwrapDataEnvelope(response));
 }
 
 export function markNotificationAsRead(notificationId: string) {
-  return apiFetch<{ success: boolean }>(`/notifications/${notificationId}/read`, {
-    method: 'PATCH'
-  });
+  return apiFetch<{ success: boolean } | DataEnvelope<{ success: boolean }>>(
+    `/notifications/${notificationId}/read`,
+    {
+      method: 'PATCH'
+    },
+  ).then((response) => unwrapDataEnvelope(response));
 }
 
 export function markAllNotificationsAsRead() {
-  return apiFetch<{ success: boolean; count: number }>('/notifications/read-all', {
+  return apiFetch<
+    { success: boolean; count: number } | DataEnvelope<{ success: boolean; count: number }>
+  >('/notifications/read-all', {
     method: 'PATCH'
-  });
+  }).then((response) => unwrapDataEnvelope(response));
 }
 
 // ============================================
@@ -997,31 +1217,31 @@ export type BulkResult = {
 };
 
 export function bulkAssignTickets(ticketIds: string[], assigneeId?: string) {
-  return apiFetch<BulkResult>('/tickets/bulk/assign', {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>('/tickets/bulk/assign', {
     method: 'POST',
     body: JSON.stringify({ ticketIds, assigneeId })
-  });
+  }).then((response) => unwrapDataEnvelope(response));
 }
 
 export function bulkTransferTickets(ticketIds: string[], newTeamId: string, assigneeId?: string) {
-  return apiFetch<BulkResult>('/tickets/bulk/transfer', {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>('/tickets/bulk/transfer', {
     method: 'POST',
     body: JSON.stringify({ ticketIds, newTeamId, assigneeId })
-  });
+  }).then((response) => unwrapDataEnvelope(response));
 }
 
 export function bulkStatusTickets(ticketIds: string[], status: string) {
-  return apiFetch<BulkResult>('/tickets/bulk/status', {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>('/tickets/bulk/status', {
     method: 'POST',
     body: JSON.stringify({ ticketIds, status })
-  });
+  }).then((response) => unwrapDataEnvelope(response));
 }
 
 export function bulkPriorityTickets(ticketIds: string[], priority: string) {
-  return apiFetch<BulkResult>('/tickets/bulk/priority', {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>('/tickets/bulk/priority', {
     method: 'POST',
     body: JSON.stringify({ ticketIds, priority })
-  });
+  }).then((response) => unwrapDataEnvelope(response));
 }
 
 // ============================================
@@ -1034,6 +1254,9 @@ export type ReportQuery = {
   teamId?: string;
   priority?: string;
   categoryId?: string;
+  channel?: string;
+  status?: string;
+  assigneeId?: string;
   groupBy?: 'team' | 'priority';
   scope?: 'assigned';
   dateField?: 'createdAt' | 'updatedAt';
@@ -1051,6 +1274,18 @@ export type SlaComplianceResponse = {
     resolutionMet: number;
     resolutionBreached: number;
   };
+};
+export type SlaComplianceByPriorityResponse = {
+  data: Array<{
+    priority: string;
+    met: number;
+    breached: number;
+    total: number;
+    firstResponseMet: number;
+    firstResponseBreached: number;
+    resolutionMet: number;
+    resolutionBreached: number;
+  }>;
 };
 export type ResolutionTimeResponse = {
   data: { label: string; id?: string; avgHours: number; count: number }[];
@@ -1083,6 +1318,32 @@ export type TicketAgeBucketResponse = {
 export type ReopenRateResponse = {
   data: { date: string; count: number }[];
 };
+export type CsatTrendResponse = {
+  data: { date: string; average: number; count: number }[];
+  summary: { average: number | null; responses: number };
+};
+export type CsatDriversResponse = {
+  data: { label: string; count: number; percent: number }[];
+  total: number;
+};
+export type CsatLowTagsResponse = {
+  data: { tag: string; count: number }[];
+};
+export type SlaBreachesResponse = {
+  data: {
+    ticketId: string;
+    ticket: string;
+    team: string;
+    priority: string;
+    stage: string;
+    breachSeconds: number;
+    reason: string;
+  }[];
+};
+export type ChannelBreakdownResponse = {
+  data: { channel: string; label: string; count: number; percent: number }[];
+  total: number;
+};
 export type TicketsByCategoryResponse = {
   data: { id: string; name: string; count: number }[];
 };
@@ -1105,7 +1366,12 @@ export type ReportSummaryResponse = {
 function reportQueryString(params: ReportQuery): string {
   const q = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== '') q.set(k, String(v));
+    if (v === undefined || v === '') return;
+    if (Array.isArray(v)) {
+      if (v.length > 0) q.set(k, v.join(','));
+      return;
+    }
+    q.set(k, String(v));
   });
   const s = q.toString();
   return s ? `?${s}` : '';
@@ -1120,6 +1386,11 @@ export function fetchReportSummary(params: ReportQuery) {
 }
 export function fetchReportSlaCompliance(params: ReportQuery) {
   return apiFetch<SlaComplianceResponse>(`/reports/sla-compliance${reportQueryString(params)}`);
+}
+export function fetchReportSlaComplianceByPriority(params: ReportQuery) {
+  return apiFetch<SlaComplianceByPriorityResponse>(
+    `/reports/sla-compliance-by-priority${reportQueryString(params)}`,
+  );
 }
 export function fetchReportResolutionTime(params: ReportQuery) {
   return apiFetch<ResolutionTimeResponse>(`/reports/resolution-time${reportQueryString(params)}`);
@@ -1141,6 +1412,21 @@ export function fetchReportTicketsByAge(params: ReportQuery) {
 }
 export function fetchReportReopenRate(params: ReportQuery) {
   return apiFetch<ReopenRateResponse>(`/reports/reopen-rate${reportQueryString(params)}`);
+}
+export function fetchReportCsatTrend(params: ReportQuery) {
+  return apiFetch<CsatTrendResponse>(`/reports/csat-trend${reportQueryString(params)}`);
+}
+export function fetchReportCsatDrivers(params: ReportQuery) {
+  return apiFetch<CsatDriversResponse>(`/reports/csat-drivers${reportQueryString(params)}`);
+}
+export function fetchReportCsatLowTags(params: ReportQuery) {
+  return apiFetch<CsatLowTagsResponse>(`/reports/csat-low-tags${reportQueryString(params)}`);
+}
+export function fetchReportSlaBreaches(params: ReportQuery) {
+  return apiFetch<SlaBreachesResponse>(`/reports/sla-breaches${reportQueryString(params)}`);
+}
+export function fetchReportChannelBreakdown(params: ReportQuery) {
+  return apiFetch<ChannelBreakdownResponse>(`/reports/channel-breakdown${reportQueryString(params)}`);
 }
 export function fetchReportTicketsByCategory(params: ReportQuery) {
   return apiFetch<TicketsByCategoryResponse>(`/reports/tickets-by-category${reportQueryString(params)}`);
@@ -1175,6 +1461,24 @@ export type AuditLogParams = {
   pageSize?: number;
 };
 
+export type AuditLogCategoryCounts = {
+  sla: number;
+  routing: number;
+  automation: number;
+  custom_fields: number;
+};
+
+export type AuditLogResponse = {
+  data: AuditLogEntry[];
+  meta: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    categoryCounts?: AuditLogCategoryCounts;
+  };
+};
+
 export function fetchAuditLog(params?: AuditLogParams) {
   const query = new URLSearchParams();
   if (params) {
@@ -1184,10 +1488,7 @@ export function fetchAuditLog(params?: AuditLogParams) {
     });
   }
   const suffix = query.toString() ? `?${query.toString()}` : '';
-  return apiFetch<{
-    data: AuditLogEntry[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>(`/audit-log${suffix}`);
+  return apiFetch<AuditLogResponse>(`/audit-log${suffix}`);
 }
 
 export async function fetchAuditLogExport(params?: Omit<AuditLogParams, 'page' | 'pageSize'>): Promise<string> {

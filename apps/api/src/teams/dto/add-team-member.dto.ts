@@ -3,7 +3,7 @@ import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 
 export class AddTeamMemberDto {
   @IsUUID()
-  userId: string;
+  userId!: string;
 
   @IsOptional()
   @IsEnum(TeamRole)

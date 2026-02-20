@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useRef } from 'react';
 import { X } from 'lucide-react';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 
 export type ShortcutContext = 'global' | 'tickets-list' | 'ticket-detail';
 
@@ -57,17 +58,9 @@ export function KeyboardShortcutsHelp({
   onClose: () => void;
   context: ShortcutContext;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useModalFocusTrap({ open, containerRef: dialogRef, onClose });
 
   if (!open) return null;
 
@@ -77,10 +70,12 @@ export function KeyboardShortcutsHelp({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
       <div
+        ref={dialogRef}
         className="glass-card-strong w-full max-w-md overflow-hidden shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"
+        tabIndex={-1}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <h2 className="text-lg font-semibold text-slate-900">Keyboard shortcuts</h2>

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MessageType, Prisma, TicketStatus, UserRole } from '@prisma/client';
 import type { TicketMessage, User } from '@prisma/client';
@@ -18,6 +18,8 @@ type RecipientOptions = {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
@@ -108,13 +110,20 @@ export class NotificationsService {
 
     // Create in-app notifications
     const recipientIds = recipients.map((r) => r.id);
-    await this.inAppNotifications.notifyNewMessage(
-      fullTicket.id,
-      recipientIds,
-      actor.id,
-      fullTicket.subject,
-      isInternal,
-    ).catch((error) => console.error('Failed to create in-app notification', error));
+    await this.inAppNotifications
+      .notifyNewMessage(
+        fullTicket.id,
+        recipientIds,
+        actor.id,
+        fullTicket.subject,
+        isInternal,
+      )
+      .catch((error) =>
+        this.logger.error(
+          'Failed to create in-app notification',
+          (error as Error).stack,
+        ),
+      );
   }
 
   async notifyMentioned(
@@ -123,12 +132,14 @@ export class NotificationsService {
     actorId: string,
     ticketSubject: string,
   ) {
-    await this.inAppNotifications.notifyMentioned(
-      ticketId,
-      mentionedUserIds,
-      actorId,
-      ticketSubject,
-    ).catch((error) => console.error('Failed to create mention notification', error));
+    await this.inAppNotifications
+      .notifyMentioned(ticketId, mentionedUserIds, actorId, ticketSubject)
+      .catch((error) =>
+        this.logger.error(
+          'Failed to create mention notification',
+          (error as Error).stack,
+        ),
+      );
   }
 
   async ticketAssigned(ticket: { id: string }, actor: AuthUser) {
@@ -165,12 +176,19 @@ export class NotificationsService {
 
     // Create in-app notification for assignee
     if (fullTicket.assigneeId) {
-      await this.inAppNotifications.notifyTicketAssigned(
-        fullTicket.id,
-        fullTicket.assigneeId,
-        actor.id,
-        fullTicket.subject,
-      ).catch((error) => console.error('Failed to create in-app notification', error));
+      await this.inAppNotifications
+        .notifyTicketAssigned(
+          fullTicket.id,
+          fullTicket.assigneeId,
+          actor.id,
+          fullTicket.subject,
+        )
+        .catch((error) =>
+          this.logger.error(
+            'Failed to create in-app notification',
+            (error as Error).stack,
+          ),
+        );
     }
   }
 
@@ -215,13 +233,20 @@ export class NotificationsService {
 
     // Create in-app notifications
     const recipientIds = recipients.map((r) => r.id);
-    await this.inAppNotifications.notifyTicketTransferred(
-      fullTicket.id,
-      recipientIds,
-      actor.id,
-      fullTicket.subject,
-      fullTicket.assignedTeam?.name ?? 'Unassigned',
-    ).catch((error) => console.error('Failed to create in-app notification', error));
+    await this.inAppNotifications
+      .notifyTicketTransferred(
+        fullTicket.id,
+        recipientIds,
+        actor.id,
+        fullTicket.subject,
+        fullTicket.assignedTeam?.name ?? 'Unassigned',
+      )
+      .catch((error) =>
+        this.logger.error(
+          'Failed to create in-app notification',
+          (error as Error).stack,
+        ),
+      );
   }
 
   async ticketStatusChanged(
@@ -261,14 +286,24 @@ export class NotificationsService {
     });
 
     // Create in-app notifications for resolved tickets
-    if (fullTicket.status === TicketStatus.RESOLVED || fullTicket.status === TicketStatus.CLOSED) {
+    if (
+      fullTicket.status === TicketStatus.RESOLVED ||
+      fullTicket.status === TicketStatus.CLOSED
+    ) {
       const recipientIds = recipients.map((r) => r.id);
-      await this.inAppNotifications.notifyTicketResolved(
-        fullTicket.id,
-        recipientIds,
-        actor.id,
-        fullTicket.subject,
-      ).catch((error) => console.error('Failed to create in-app notification', error));
+      await this.inAppNotifications
+        .notifyTicketResolved(
+          fullTicket.id,
+          recipientIds,
+          actor.id,
+          fullTicket.subject,
+        )
+        .catch((error) =>
+          this.logger.error(
+            'Failed to create in-app notification',
+            (error as Error).stack,
+          ),
+        );
     }
   }
 
@@ -312,7 +347,7 @@ export class NotificationsService {
         })
         .then((outbox) => this.emailQueue.enqueue(outbox.id))
         .catch((error) => {
-          console.error('Failed to queue email', error);
+          this.logger.error('Failed to queue email', (error as Error).stack);
         }),
     );
 
@@ -382,7 +417,10 @@ export class NotificationsService {
   ) {
     const tasks = recipients.map((user) =>
       this.queueEmail(user, details).catch((error) => {
-        console.error('Failed to queue email', error);
+        this.logger.error(
+          `Failed to queue email for user ${user.id}`,
+          (error as Error).stack,
+        );
       }),
     );
     await Promise.all(tasks);

@@ -8,7 +8,6 @@ import {
   bulkTransferTickets,
   fetchTickets,
   fetchUsers,
-  type NotificationRecord,
   type TicketRecord,
   type TeamRef,
   type UserRef,
@@ -21,9 +20,12 @@ import { FilterPanel } from '../components/filters/FilterPanel';
 import { TicketTableView } from '../components/TicketTableView';
 import { useFilters } from '../hooks/useFilters';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useTicketSelection } from '../hooks/useTicketSelection';
 import { useToast } from '../hooks/useToast';
 import type { Role, StatusFilter, TicketFilters, TicketScope } from '../types';
+import { useHeaderContext } from '../contexts/HeaderContext';
+import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationContext';
 
 type SortPreset = 'updated_desc' | 'updated_asc' | 'created_desc' | 'created_asc' | 'completed_desc';
 const DEFAULT_PAGE_SIZE = 50;
@@ -86,25 +88,6 @@ function clearedTicketFilters(presetScope: TicketScope, presetStatus: StatusFilt
   };
 }
 
-type TicketsHeaderProps = {
-  title: string;
-  subtitle: string;
-  currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
-  onOpenSearch?: () => void;
-  notificationProps?: {
-    notifications: NotificationRecord[];
-    unreadCount: number;
-    loading: boolean;
-    hasMore: boolean;
-    onLoadMore: () => void;
-    onMarkAsRead: (id: string) => void;
-    onMarkAllAsRead: () => void;
-    onRefresh: () => void;
-  };
-};
-
 export function TicketsPage({
   role,
   currentEmail: _currentEmail,
@@ -113,7 +96,6 @@ export function TicketsPage({
   refreshKey,
   teamsList,
   onCreateTicket,
-  headerProps,
 }: {
   role: Role;
   currentEmail: string;
@@ -122,8 +104,8 @@ export function TicketsPage({
   refreshKey: number;
   teamsList: TeamRef[];
   onCreateTicket?: () => void;
-  headerProps?: TicketsHeaderProps;
 }) {
+  const headerCtx = useHeaderContext();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -139,11 +121,16 @@ export function TicketsPage({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [advancedDraft, setAdvancedDraft] = useState<TicketFilters | null>(null);
   const [searchDraft, setSearchDraft] = useState(filters.q);
+  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
+  const [rangeAnchorIndex, setRangeAnchorIndex] = useState<number | null>(null);
   const ticketsRequestSeqRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const advancedFiltersDialogRef = useRef<HTMLDivElement>(null);
+  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
 
   useFocusSearchOnShortcut(searchInputRef);
 
@@ -168,6 +155,12 @@ export function TicketsPage({
     setShowAdvancedFilters(false);
     setAdvancedDraft(null);
   }, []);
+
+  useModalFocusTrap({
+    open: showAdvancedFilters && role !== 'EMPLOYEE',
+    containerRef: advancedFiltersDialogRef,
+    onClose: closeAdvancedFilters,
+  });
 
   const setAdvancedDraftFilters = useCallback(
     (updates: Partial<TicketFilters>) => {
@@ -248,6 +241,7 @@ export function TicketsPage({
       setRequesterOptions([]);
       return;
     }
+    setUsersLoading(true);
     fetchUsers()
       .then((res) => {
         setAssignableUsers(res.data);
@@ -256,7 +250,8 @@ export function TicketsPage({
       .catch(() => {
         setAssignableUsers([]);
         setRequesterOptions([]);
-      });
+      })
+      .finally(() => setUsersLoading(false));
   }, [role]);
 
   useEffect(() => {
@@ -267,6 +262,98 @@ export function TicketsPage({
 
   const ticketIds = useMemo(() => tickets.map((t) => t.id), [tickets]);
   const selection = useTicketSelection(ticketIds);
+  const focusedTicketId = tickets[focusedRowIndex]?.id ?? null;
+
+  useEffect(() => {
+    if (tickets.length === 0) {
+      setFocusedRowIndex(0);
+      setRangeAnchorIndex(null);
+      return;
+    }
+    setFocusedRowIndex((prev) => Math.min(prev, tickets.length - 1));
+  }, [tickets.length]);
+
+  useEffect(() => {
+    function handleTicketListKeyboardShortcuts(event: KeyboardEvent) {
+      if (location.pathname !== '/tickets') {
+        return;
+      }
+
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const isTypingContext =
+        !!target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+      if (isTypingContext) {
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'j') {
+        event.preventDefault();
+        setFocusedRowIndex((prev) => Math.min(prev + 1, Math.max(tickets.length - 1, 0)));
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setFocusedRowIndex((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'x' && role !== 'EMPLOYEE') {
+        const currentTicket = tickets[focusedRowIndex];
+        if (!currentTicket) return;
+        event.preventDefault();
+
+        if (
+          event.shiftKey &&
+          rangeAnchorIndex !== null &&
+          rangeAnchorIndex !== focusedRowIndex
+        ) {
+          const start = Math.min(rangeAnchorIndex, focusedRowIndex);
+          const end = Math.max(rangeAnchorIndex, focusedRowIndex);
+          for (let index = start; index <= end; index++) {
+            const ticketId = tickets[index]?.id;
+            if (ticketId && !selection.isSelected(ticketId)) {
+              selection.toggle(ticketId);
+            }
+          }
+          return;
+        }
+
+        selection.toggle(currentTicket.id);
+        setRangeAnchorIndex(focusedRowIndex);
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        const currentTicket = tickets[focusedRowIndex];
+        if (!currentTicket) return;
+        event.preventDefault();
+        navigate(`/tickets/${currentTicket.id}`, {
+          state: { fromTicketsPath: `${location.pathname}${location.search}` },
+        });
+      }
+    }
+
+    window.addEventListener('keydown', handleTicketListKeyboardShortcuts);
+    return () => window.removeEventListener('keydown', handleTicketListKeyboardShortcuts);
+  }, [
+    focusedRowIndex,
+    location.pathname,
+    location.search,
+    navigate,
+    rangeAnchorIndex,
+    role,
+    selection,
+    tickets,
+  ]);
 
   async function handleBulkAssign(assigneeId?: string) {
     return bulkAssignTickets(selection.selectedIds, assigneeId);
@@ -313,49 +400,52 @@ export function TicketsPage({
   }, [listMeta]);
 
   return (
-    <section className="min-h-full bg-gray-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
-          {headerProps ? (
+    <section className="min-h-full bg-slate-50 animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
+          {headerCtx ? (
             <TopBar
-              title={headerProps.title}
-              subtitle={headerProps.subtitle}
-              currentEmail={headerProps.currentEmail}
-              personas={headerProps.personas}
-              onEmailChange={headerProps.onEmailChange}
-              onOpenSearch={headerProps.onOpenSearch}
-              notificationProps={headerProps.notificationProps}
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              personas={headerCtx.personas}
+              onEmailChange={headerCtx.onEmailChange}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-xl font-semibold text-gray-900">Tickets</h1>
-                  <span className="text-sm text-gray-500">({totalCount} tickets)</span>
+                  <h1 className="text-xl font-semibold text-slate-900">Tickets</h1>
+                  <span className="text-sm text-slate-500">({totalCount} tickets)</span>
                 </div>
               }
             />
           ) : (
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl font-semibold text-gray-900">Tickets</h1>
-                <span className="text-sm text-gray-500">({totalCount} tickets)</span>
+                <h1 className="text-xl font-semibold text-slate-900">Tickets</h1>
+                <span className="text-sm text-slate-500">({totalCount} tickets)</span>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      <div className="border-b border-gray-200 bg-white">
-        <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-4">
+      <div className="border-b border-slate-200 bg-white">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 border-r border-gray-200 pr-4">
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
               {(['all', 'open', 'resolved'] as StatusFilter[]).map((value) => (
                 <button
                   key={value}
                   type="button"
+                  role="radio"
+                  aria-checked={(filters.statusGroup ?? 'all') === value}
+                  aria-label={`Filter: ${value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Resolved'}`}
                   onClick={() => setFilters({ statusGroup: value, statuses: [] })}
                   className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                     (filters.statusGroup ?? 'all') === value
                       ? 'bg-blue-600 text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   {value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Resolved'}
@@ -364,24 +454,25 @@ export function TicketsPage({
             </div>
 
             <div className="relative min-w-[240px] flex-1 max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Search by ticket ID, subject, or description..."
-                className="h-10 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
 
             {role !== 'EMPLOYEE' ? (
               <select
+                aria-label="Filter by assignee"
                 value={quickAssigneeValue}
                 onChange={(event) => setFilters({ assigneeIds: event.target.value ? [event.target.value] : [] })}
-                className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               >
-                <option value="">Assignee</option>
+                <option value="">{usersLoading ? 'Loading users...' : 'Assignee'}</option>
                 {assignableUsers.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.displayName}
@@ -391,9 +482,10 @@ export function TicketsPage({
             ) : null}
 
             <select
+              aria-label="Filter by priority"
               value={quickPriorityValue}
               onChange={(event) => setFilters({ priorities: event.target.value ? [event.target.value] : [] })}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <option value="">Priority</option>
               <option value="P1">P1</option>
@@ -403,6 +495,7 @@ export function TicketsPage({
             </select>
 
             <select
+              aria-label="Sort tickets"
               value={sortPreset}
               onChange={(event) => {
                 const preset = event.target.value as SortPreset;
@@ -412,7 +505,7 @@ export function TicketsPage({
                 if (preset === 'created_asc') setFilters({ sort: 'createdAt', order: 'asc' });
                 if (preset === 'completed_desc') setFilters({ sort: 'completedAt', order: 'desc' });
               }}
-              className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             >
               <option value="updated_desc">Sort: Newest</option>
               <option value="updated_asc">Sort: Oldest</option>
@@ -425,7 +518,7 @@ export function TicketsPage({
               <button
                 type="button"
                 onClick={openAdvancedFilters}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-50"
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Advanced
@@ -451,8 +544,8 @@ export function TicketsPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] pl-6 pr-2 py-6">
-        <p className="text-sm text-gray-600">{countLabel}</p>
+      <div className="mx-auto max-w-[1600px] p-6">
+        <p className="text-sm text-slate-600">{countLabel}</p>
 
         {selection.isSomeSelected && role !== 'EMPLOYEE' ? (
           <div className="mt-4">
@@ -468,6 +561,8 @@ export function TicketsPage({
               onSuccess={(message) => {
                 toast.success(message);
                 loadTickets();
+                notifyTicketAggregatesChanged();
+                notifyTicketReportsChanged();
               }}
               onError={(message) => toast.error(message)}
             />
@@ -486,11 +581,11 @@ export function TicketsPage({
         ) : null}
 
         {loadingTickets ? (
-          <div className="mt-4 space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+          <div className="mt-4 space-y-2 rounded-lg border border-slate-200 bg-white p-4">
             {Array.from({ length: 8 }).map((_, index) => (
               <div
                 key={`ticket-row-skeleton-${index}`}
-                className="h-14 rounded-md border border-gray-200 bg-gray-100 skeleton-shimmer"
+                className="h-14 rounded-md border border-slate-200 bg-slate-100 skeleton-shimmer"
               />
             ))}
           </div>
@@ -508,10 +603,11 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && tickets.length > 0 ? (
-          <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <TicketTableView
               tickets={tickets}
               role={role}
+              focusedTicketId={focusedTicketId}
               selection={{
                 isSelected: selection.isSelected,
                 toggle: selection.toggle,
@@ -528,18 +624,18 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && listMeta && listMeta.total > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-b-lg border border-t-0 border-gray-200 bg-gray-50 px-6 py-4">
-            <div className="text-sm text-gray-700">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-b-lg border border-t-0 border-slate-200 bg-slate-50 px-6 py-4">
+            <div className="text-sm text-slate-700">
               Showing <span className="font-medium">{pageStart}</span> to <span className="font-medium">{pageEnd}</span> of{' '}
               <span className="font-medium">{listMeta.total}</span> results
             </div>
             <div className="flex items-center gap-2">
-              <label className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700">
+              <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
                 Rows
                 <select
                   value={filters.pageSize}
                   onChange={(event) => setFilters({ pageSize: Number(event.target.value), page: 1 })}
-                  className="bg-transparent text-sm text-gray-700 focus:outline-none"
+                  className="bg-transparent text-sm text-slate-700 focus:outline-none"
                 >
                   <option value={20}>20</option>
                   <option value={50}>50</option>
@@ -551,7 +647,7 @@ export function TicketsPage({
                 type="button"
                 disabled={listMeta.page <= 1}
                 onClick={() => setFilters({ page: listMeta.page - 1 })}
-                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Previous
               </button>
@@ -564,7 +660,7 @@ export function TicketsPage({
                   className={`rounded-md px-3 py-2 text-sm ${
                     page === listMeta.page
                       ? 'bg-blue-600 text-white'
-                      : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
                   }`}
                 >
                   {page}
@@ -575,7 +671,7 @@ export function TicketsPage({
                 type="button"
                 disabled={listMeta.page >= listMeta.totalPages}
                 onClick={() => setFilters({ page: listMeta.page + 1 })}
-                className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
               </button>
@@ -589,16 +685,21 @@ export function TicketsPage({
           className="fixed inset-0 z-50 flex justify-end bg-black/50"
           onClick={closeAdvancedFilters}
         >
-          <div
-            className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-fade-in"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
-              <h2 className="text-lg font-semibold text-gray-900">Advanced Filters</h2>
+        <div
+          ref={advancedFiltersDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Advanced ticket filters"
+          tabIndex={-1}
+          className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-fade-in"
+          onClick={(event) => event.stopPropagation()}
+        >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+              <h2 className="text-lg font-semibold text-slate-900">Advanced Filters</h2>
               <button
                 type="button"
                 onClick={closeAdvancedFilters}
-                className="rounded-md p-1 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 aria-label="Close advanced filters"
               >
                 <X className="h-5 w-5" />
@@ -624,11 +725,11 @@ export function TicketsPage({
               />
             </div>
 
-            <div className="sticky bottom-0 flex items-center justify-between border-t border-gray-200 bg-white px-6 py-4">
+            <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-4">
               <button
                 type="button"
                 onClick={clearAdvancedDraft}
-                className="text-sm text-gray-600 transition-colors hover:text-gray-900"
+                className="text-sm text-slate-600 transition-colors hover:text-slate-900"
               >
                 Clear all
               </button>
@@ -636,7 +737,7 @@ export function TicketsPage({
                 <button
                   type="button"
                   onClick={closeAdvancedFilters}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
                 >
                   Cancel
                 </button>

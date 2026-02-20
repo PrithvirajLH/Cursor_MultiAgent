@@ -48,7 +48,9 @@ function formatDetails(entry: AuditLogEntry): string {
 }
 
 function ticketLabel(entry: AuditLogEntry): string {
-  return entry.ticketDisplayId ?? `#${entry.ticketNumber}`;
+  if (entry.ticketDisplayId) return entry.ticketDisplayId;
+  if (entry.ticketNumber > 0) return `#${entry.ticketNumber}`;
+  return 'N/A';
 }
 
 export function AuditLogTable({ data }: { data: AuditLogEntry[] }) {
@@ -82,12 +84,16 @@ export function AuditLogTable({ data }: { data: AuditLogEntry[] }) {
                 {entry.createdBy ? entry.createdBy.displayName || entry.createdBy.email : 'System'}
               </td>
               <td className="px-4 py-3">
-                <Link
-                  to={`/tickets/${entry.ticketId}`}
-                  className="font-medium text-primary hover:underline"
-                >
-                  {ticketLabel(entry)}
-                </Link>
+                {entry.ticketId && entry.ticketNumber > 0 ? (
+                  <Link
+                    to={`/tickets/${entry.ticketId}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {ticketLabel(entry)}
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">{ticketLabel(entry)}</span>
+                )}
               </td>
               <td className="px-4 py-3 text-foreground">
                 {eventDescription(entry)}

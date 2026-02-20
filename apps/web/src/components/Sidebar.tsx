@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight, Plus, type LucideIcon } from 'lucide-react';
 import type { Role } from '../types';
 
@@ -9,7 +10,7 @@ export type SidebarItem = {
   children?: SidebarItem[];
 };
 
-export function Sidebar({
+export const Sidebar = memo(function Sidebar({
   collapsed,
   onToggle,
   items,
@@ -196,4 +197,4 @@ export function Sidebar({
       </div>
     </aside>
   );
-}
+});

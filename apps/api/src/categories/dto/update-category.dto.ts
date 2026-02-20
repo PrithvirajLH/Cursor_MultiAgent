@@ -20,11 +20,11 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  description?: string;
+  description?: string | null;
 
   @IsOptional()
   @IsUUID()
-  parentId?: string;
+  parentId?: string | null;
 
   @IsOptional()
   @IsBoolean()

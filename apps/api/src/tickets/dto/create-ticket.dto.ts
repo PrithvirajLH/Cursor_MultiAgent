@@ -1,32 +1,40 @@
 import { TicketChannel, TicketPriority } from '@prisma/client';
 import {
+  ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class CustomFieldValueItemDto {
   @IsUUID()
-  customFieldId: string;
+  customFieldId!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(5000)
   value?: string | null;
 }
 
 export class CreateTicketDto {
   @IsString()
+  @IsNotEmpty()
+  @MinLength(1)
   @MaxLength(160)
-  subject: string;
+  subject!: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MinLength(1)
   @MaxLength(4000)
-  description: string;
+  description!: string;
 
   @IsOptional()
   @IsEnum(TicketPriority)
@@ -54,6 +62,7 @@ export class CreateTicketDto {
 
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => CustomFieldValueItemDto)
   customFieldValues?: CustomFieldValueItemDto[];
