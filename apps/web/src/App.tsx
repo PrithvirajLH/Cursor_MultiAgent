@@ -7,7 +7,6 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
-  LogIn,
   Menu,
   Settings,
   Ticket,
@@ -20,6 +19,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { CreateTicketModal } from './components/CreateTicketModal';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 import { AdminSidebar } from './components/AdminSidebar';
+import { SignInLandingPage } from './components/auth/SignInLandingPage';
 import { Sidebar, type SidebarItem } from './components/Sidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { TopBar } from './components/TopBar';
@@ -62,38 +62,6 @@ function PageFallback() {
   return (
     <div className="flex h-64 items-center justify-center">
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
-    </div>
-  );
-}
-
-function AuthRequiredScreen({
-  onSignIn,
-  error,
-}: {
-  onSignIn: () => void;
-  error: string | null;
-}) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-slate-900">Sign in required</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Sign in with your Microsoft account to access the ticketing system.
-        </p>
-        {error && (
-          <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={onSignIn}
-          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <LogIn className="h-4 w-4" />
-          <span>Sign in with Microsoft</span>
-        </button>
-      </div>
     </div>
   );
 }
@@ -688,7 +656,7 @@ function App() {
 
   if (!auth.user) {
     return (
-      <AuthRequiredScreen
+      <SignInLandingPage
         onSignIn={() => {
           void auth.signIn();
         }}
