@@ -22,6 +22,8 @@ type BulkResultEnvelope = {
   data: {
     success: number;
     failed: number;
+    succeededTicketIds: string[];
+    failedTicketIds: string[];
     errors: Array<{ ticketId: string; message: string }>;
   };
   success?: unknown;
@@ -105,6 +107,8 @@ describe('API contract envelopes', () => {
     const body = response.body as BulkResultEnvelope;
     expect(body.data.success).toBe(1);
     expect(body.data.failed).toBe(0);
+    expect(body.data.succeededTicketIds).toEqual([createdBody.id]);
+    expect(body.data.failedTicketIds).toEqual([]);
     expect(Array.isArray(body.data.errors)).toBe(true);
     expect(body.success).toBeUndefined();
   });

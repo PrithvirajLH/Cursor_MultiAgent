@@ -1965,6 +1965,8 @@ export class TicketsService {
     const results = {
       success: 0,
       failed: 0,
+      succeededTicketIds: [] as string[],
+      failedTicketIds: [] as string[],
       errors: [] as { ticketId: string; message: string }[],
     };
     const executing = new Set<Promise<void>>();
@@ -1974,8 +1976,10 @@ export class TicketsService {
         try {
           await operation(ticketId);
           results.success++;
+          results.succeededTicketIds.push(ticketId);
         } catch (err: unknown) {
           results.failed++;
+          results.failedTicketIds.push(ticketId);
           const message = err instanceof Error ? err.message : 'Unknown error';
           results.errors.push({ ticketId, message });
         }
