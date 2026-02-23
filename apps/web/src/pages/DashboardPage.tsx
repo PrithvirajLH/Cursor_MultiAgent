@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  fetchReportAgentPerformance,
   fetchReportAgentWorkload,
   fetchReportReopenRate,
-  fetchReportSlaCompliance,
+  fetchReportSummary,
   fetchReportTeamSummary,
-  fetchReportTicketVolume,
   fetchReportTicketsByAge,
   fetchReportTicketsByCategory,
-  fetchReportTicketsByPriority,
   fetchReportTransfers,
+  fetchTicketCounts,
   fetchTicketActivity,
   fetchTicketStatusBreakdown,
   fetchTickets,
@@ -20,6 +18,7 @@ import {
   type TeamSummaryResponse,
   type TicketActivityPoint,
   type TicketAgeBucketResponse,
+  type ReportSummaryResponse,
   type TicketRecord,
   type TicketStatusPoint,
   type TicketsByCategoryResponse,
@@ -72,12 +71,22 @@ const ROLE_META: Record<Role, { title: string; subtitle: string }> = {
   LEAD: { title: 'Team Lead Dashboard', subtitle: 'Team insights and performance' },
   TEAM_ADMIN: { title: 'Team Admin Dashboard', subtitle: 'Queue operations and SLA management' },
   OWNER: { title: 'Platform Dashboard', subtitle: 'Organization-wide metrics' },
-  ADMIN: { title: 'Admin Dashboard', subtitle: 'Operational metrics' },
 };
 
 const EMPTY_TICKETS = {
   data: [] as TicketRecord[],
   meta: { page: 1, pageSize: 0, total: 0, totalPages: 0 },
+};
+
+const EMPTY_COUNTS = {
+  assignedToMe: 0,
+  triage: 0,
+  open: 0,
+  unassigned: 0,
+  resolved: 0,
+  resolvedByMe: 0,
+  atRisk: 0,
+  overdue: 0,
 };
 
 const EMPTY_SLA = {
@@ -90,6 +99,15 @@ const EMPTY_SLA = {
     resolutionMet: 0,
     resolutionBreached: 0,
   },
+};
+
+const EMPTY_REPORT_SUMMARY: ReportSummaryResponse = {
+  ticketVolume: { data: [] },
+  slaCompliance: EMPTY_SLA,
+  resolutionTime: { data: [] },
+  ticketsByPriority: { data: [] },
+  ticketsByStatus: { data: [] },
+  agentPerformance: { data: [] },
 };
 
 function toRangeLabel(range: '3' | '7' | '30') {
@@ -506,22 +524,22 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
         const order = sort === 'oldest' ? 'asc' : 'desc';
 
         if (isEmployee) {
-          const [recentRes, openRes, resolvedRes] = await Promise.all([
+          const [recentRes, counts] = await Promise.all([
             fetchTickets({
               pageSize: RECENT_TICKETS_COUNT,
               sort: 'updatedAt',
               order,
               scope: 'created',
               updatedFrom,
+              includeTotal: false,
             }).catch(() => EMPTY_TICKETS),
-            fetchTickets({ pageSize: 1, statusGroup: 'open', scope: 'created' }).catch(() => EMPTY_TICKETS),
-            fetchTickets({ pageSize: 1, statusGroup: 'resolved', scope: 'created' }).catch(() => EMPTY_TICKETS),
+            fetchTicketCounts().catch(() => EMPTY_COUNTS),
           ]);
 
           if (!active) return;
 
-          const open = openRes.meta.total;
-          const resolved = resolvedRes.meta.total;
+          const open = counts.open;
+          const resolved = counts.resolved;
 
           setRecentTickets(recentRes.data);
           setStats({
@@ -548,23 +566,9 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
           setTransfers({ total: 0, series: [] });
           setSlaCompliance({ met: 0, breached: 0, total: 0, atRisk: 0 });
         } else {
-          const needsSlaCounts = isLead || isTeamAdmin || isOwner;
-          const [openRes, resolvedRes, unassignedRes, assignedToMeRes, resolvedByMeRes, atRiskRes, overdueRes] =
-            await Promise.all([
-              fetchTickets({ pageSize: 1, statusGroup: 'open' }).catch(() => EMPTY_TICKETS),
-              fetchTickets({ pageSize: 1, statusGroup: 'resolved' }).catch(() => EMPTY_TICKETS),
-              fetchTickets({ pageSize: 1, statusGroup: 'open', scope: 'unassigned' }).catch(() => EMPTY_TICKETS),
-              fetchTickets({ pageSize: 1, statusGroup: 'open', scope: 'assigned' }).catch(() => EMPTY_TICKETS),
-              fetchTickets({ pageSize: 1, statusGroup: 'resolved', scope: 'assigned' }).catch(() => EMPTY_TICKETS),
-              needsSlaCounts
-                ? fetchTickets({ pageSize: 1, slaStatus: ['at_risk'] }).catch(() => EMPTY_TICKETS)
-                : Promise.resolve(EMPTY_TICKETS),
-              needsSlaCounts
-                ? fetchTickets({ pageSize: 1, slaStatus: ['breached'] }).catch(() => EMPTY_TICKETS)
-                : Promise.resolve(EMPTY_TICKETS),
-            ]);
+          const counts = await fetchTicketCounts().catch(() => EMPTY_COUNTS);
 
-          const [recentRes, activityRes, statusRes, slaRes, workloadRes, performanceRes, priorityRes, ageRes, reopenRes, categoryRes, teamSummaryRes, volumeRes, transferRes] =
+          const [recentRes, activityRes, statusRes, summaryRes, workloadRes, ageRes, reopenRes, categoryRes, teamSummaryRes, transferRes] =
             await Promise.all([
               isAgent
                 ? fetchTickets({
@@ -573,6 +577,7 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
                     order,
                     scope: 'assigned',
                     updatedFrom,
+                    includeTotal: false,
                   }).catch(() => EMPTY_TICKETS)
                 : Promise.resolve(EMPTY_TICKETS),
               fetchTicketActivity({
@@ -580,23 +585,24 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
                 to: reportTo,
                 ...(isAgent ? { scope: 'assigned' as const } : {}),
               }).catch(() => ({ data: [] })),
-              fetchTicketStatusBreakdown({
-                from: reportFrom,
-                to: reportTo,
-                ...(isAgent ? { scope: 'assigned' as const } : {}),
-                dateField: 'updatedAt',
-              }).catch(() => ({ data: [] })),
+              isAgent
+                ? fetchTicketStatusBreakdown({
+                    from: reportFrom,
+                    to: reportTo,
+                    scope: 'assigned',
+                    dateField: 'updatedAt',
+                  }).catch(() => ({ data: [] }))
+                : Promise.resolve({ data: [] as TicketStatusPoint[] }),
               isLead || isTeamAdmin || isOwner
-                ? fetchReportSlaCompliance({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => EMPTY_SLA)
-                : Promise.resolve(EMPTY_SLA),
+                ? fetchReportSummary({
+                    from: reportFrom,
+                    to: reportTo,
+                    dateField: 'updatedAt',
+                    groupBy: 'team',
+                  }).catch(() => EMPTY_REPORT_SUMMARY)
+                : Promise.resolve(EMPTY_REPORT_SUMMARY),
               isLead || isTeamAdmin || isOwner
                 ? fetchReportAgentWorkload({ from: reportFrom, to: reportTo }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isLead || isOwner
-                ? fetchReportAgentPerformance({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isOwner
-                ? fetchReportTicketsByPriority({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
                 : Promise.resolve({ data: [] }),
               isTeamAdmin
                 ? fetchReportTicketsByAge({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
@@ -615,9 +621,6 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
               isOwner
                 ? fetchReportTeamSummary({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
                 : Promise.resolve({ data: [] }),
-              isOwner
-                ? fetchReportTicketVolume({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
               isTeamAdmin || isOwner
                 ? fetchReportTransfers({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: { total: 0, series: [] } }))
                 : Promise.resolve({ data: { total: 0, series: [] } }),
@@ -625,37 +628,43 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
 
           if (!active) return;
 
-          const open = openRes.meta.total;
-          const resolved = resolvedRes.meta.total;
+          const open = counts.open;
+          const resolved = counts.resolved;
 
           setRecentTickets(recentRes.data);
           setStats({
             open,
             resolved,
             total: open + resolved,
-            unassigned: unassignedRes.meta.total,
-            assignedToMe: assignedToMeRes.meta.total,
-            resolvedByMe: resolvedByMeRes.meta.total,
-            atRisk: atRiskRes.meta.total,
-            overdue: overdueRes.meta.total,
+            unassigned: counts.unassigned,
+            assignedToMe: counts.assignedToMe,
+            resolvedByMe: counts.resolvedByMe,
+            atRisk: counts.atRisk,
+            overdue: counts.overdue,
           });
 
           setActivity(mapActivitySeries(activityRes.data, rangeDays));
-          setStatusBreakdown(statusRes.data);
+          setStatusBreakdown(
+            isAgent ? statusRes.data : summaryRes.ticketsByStatus.data,
+          );
           setSlaCompliance({
-            met: slaRes.data.met,
-            breached: slaRes.data.breached,
-            total: slaRes.data.total,
-            atRisk: atRiskRes.meta.total,
+            met: summaryRes.slaCompliance.data.met,
+            breached: summaryRes.slaCompliance.data.breached,
+            total: summaryRes.slaCompliance.data.total,
+            atRisk: counts.atRisk,
           });
           setAgentWorkload(workloadRes.data);
-          setAgentPerformance(performanceRes.data);
-          setPriorityBreakdown(priorityRes.data);
+          setAgentPerformance(
+            isLead || isOwner ? summaryRes.agentPerformance.data : [],
+          );
+          setPriorityBreakdown(
+            isOwner ? summaryRes.ticketsByPriority.data : [],
+          );
           setAgeBreakdown(ageRes.data);
           setReopenSeries(reopenRes.data);
           setQueueCategories(categoryRes.data.slice(0, 6));
           setTeamSummary(teamSummaryRes.data);
-          setVolumeSeries(volumeRes.data);
+          setVolumeSeries(isOwner ? summaryRes.ticketVolume.data : []);
           setTransfers(transferRes.data);
         }
 

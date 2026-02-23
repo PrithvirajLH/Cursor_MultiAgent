@@ -14,7 +14,6 @@ import {
   fetchReportTicketsByAge,
   fetchReportTicketsByCategory,
   fetchReportReopenRate,
-  fetchReportTransfers,
   fetchSavedViews,
   fetchTeams,
   type AgentPerformanceResponse,
@@ -75,7 +74,6 @@ type SourceState = {
   aging: boolean;
   reopenRate: boolean;
   teamSummary: boolean;
-  transfers: boolean;
 };
 
 type OverviewKpis = {
@@ -454,8 +452,7 @@ export function ReportsPage({
     categories: false,
     aging: false,
     reopenRate: false,
-    teamSummary: false,
-    transfers: false
+    teamSummary: false
   });
 
   const canExport = role === 'TEAM_ADMIN' || role === 'OWNER';
@@ -559,171 +556,249 @@ export function ReportsPage({
         categories: false,
         aging: false,
         reopenRate: false,
-        teamSummary: false,
-        transfers: false
+        teamSummary: false
       };
 
-      const [
-        summaryResult,
-        solvedResult,
-        backlogResult,
-        channelBreakdownResult,
-        csatTrendResult,
-        csatDriversResult,
-        csatTagsResult,
-        slaBreachesResult,
-        categoriesResult,
-        ageResult,
-        reopenResult,
-        teamSummaryResult,
-        transfersResult
-      ] =
-        await Promise.allSettled([
-          fetchReportSummary({ ...reportQuery, groupBy: 'team' }),
-          fetchReportTicketVolume({ ...reportQuery, statusGroup: 'resolved' }),
-          fetchReportTicketVolume({ ...reportQuery, statusGroup: 'open' }),
-          fetchReportChannelBreakdown(reportQuery),
-          fetchReportCsatTrend(reportQuery),
-          fetchReportCsatDrivers(reportQuery),
-          fetchReportCsatLowTags(reportQuery),
-          fetchReportSlaBreaches(reportQuery),
-          fetchReportTicketsByCategory(reportQuery),
-          fetchReportTicketsByAge(reportQuery),
-          fetchReportReopenRate(reportQuery),
-          fetchReportTeamSummary(reportQuery),
-          fetchReportTransfers(reportQuery)
-        ]);
+      const needsSolvedSeries = tab === 'overview' || tab === 'sla' || tab === 'volume';
+      const needsBacklogSeries = tab === 'overview' || tab === 'volume';
+      const needsChannelBreakdown = tab === 'volume';
+      const needsCsatTrend = tab === 'overview' || tab === 'csat';
+      const needsCsatDrivers = tab === 'csat';
+      const needsCsatTags = tab === 'csat';
+      const needsSlaBreaches = tab === 'sla';
+      const needsCategories = tab === 'overview';
+      const needsAging = tab === 'backlog';
+      const needsReopenRate = tab === 'agents';
+      const needsTeamSummary = tab === 'backlog';
+
+      type LoadTask = {
+        key: keyof SourceState;
+        label: string;
+        request: () => Promise<unknown>;
+        onSuccess: (value: unknown) => void;
+        onError: () => void;
+      };
+
+      const tasks: LoadTask[] = [
+        {
+          key: 'summary',
+          label: 'summary',
+          request: () => fetchReportSummary({ ...reportQuery, groupBy: 'team' }),
+          onSuccess: (value) => {
+            const summary = value as Awaited<ReturnType<typeof fetchReportSummary>>;
+            setVolumeSeries(summary.ticketVolume.data.map((point) => point.count));
+            setVolumeDates(summary.ticketVolume.data.map((point) => point.date));
+            setSlaData(summary.slaCompliance.data);
+            setStatusData(summary.ticketsByStatus.data);
+            setAgentData(summary.agentPerformance.data);
+          },
+          onError: () => {
+            setVolumeSeries([]);
+            setVolumeDates([]);
+            setSlaData(null);
+            setStatusData([]);
+            setAgentData([]);
+          },
+        },
+      ];
+
+      if (needsSolvedSeries) {
+        tasks.push({
+          key: 'solvedSeries',
+          label: 'resolved-series',
+          request: () => fetchReportTicketVolume({ ...reportQuery, statusGroup: 'resolved' }),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportTicketVolume>>;
+            setSolvedSeries(result.data.map((point) => point.count));
+          },
+          onError: () => {
+            setSolvedSeries([]);
+          },
+        });
+      }
+
+      if (needsBacklogSeries) {
+        tasks.push({
+          key: 'backlogSeries',
+          label: 'open-series',
+          request: () => fetchReportTicketVolume({ ...reportQuery, statusGroup: 'open' }),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportTicketVolume>>;
+            setBacklogSeries(result.data.map((point) => point.count));
+          },
+          onError: () => {
+            setBacklogSeries([]);
+          },
+        });
+      }
+
+      if (needsChannelBreakdown) {
+        tasks.push({
+          key: 'channelBreakdown',
+          label: 'channel-breakdown',
+          request: () => fetchReportChannelBreakdown(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportChannelBreakdown>>;
+            setChannelBreakdownData(result.data);
+          },
+          onError: () => {
+            setChannelBreakdownData([]);
+          },
+        });
+      }
+
+      if (needsCsatTrend) {
+        tasks.push({
+          key: 'csatTrend',
+          label: 'csat-trend',
+          request: () => fetchReportCsatTrend(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportCsatTrend>>;
+            setCsatTrendData(result.data);
+            setCsatSummary(result.summary);
+          },
+          onError: () => {
+            setCsatTrendData([]);
+            setCsatSummary(null);
+          },
+        });
+      }
+
+      if (needsCsatDrivers) {
+        tasks.push({
+          key: 'csatDrivers',
+          label: 'csat-drivers',
+          request: () => fetchReportCsatDrivers(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportCsatDrivers>>;
+            setCsatDriversData(result.data);
+          },
+          onError: () => {
+            setCsatDriversData([]);
+          },
+        });
+      }
+
+      if (needsCsatTags) {
+        tasks.push({
+          key: 'csatTags',
+          label: 'csat-tags',
+          request: () => fetchReportCsatLowTags(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportCsatLowTags>>;
+            setCsatTagsData(result.data);
+          },
+          onError: () => {
+            setCsatTagsData([]);
+          },
+        });
+      }
+
+      if (needsSlaBreaches) {
+        tasks.push({
+          key: 'slaBreaches',
+          label: 'sla-breaches',
+          request: () => fetchReportSlaBreaches(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportSlaBreaches>>;
+            setSlaBreachesData(result.data);
+          },
+          onError: () => {
+            setSlaBreachesData([]);
+          },
+        });
+      }
+
+      if (needsCategories) {
+        tasks.push({
+          key: 'categories',
+          label: 'categories',
+          request: () => fetchReportTicketsByCategory(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportTicketsByCategory>>;
+            setCategoryData(result.data);
+          },
+          onError: () => {
+            setCategoryData([]);
+          },
+        });
+      }
+
+      if (needsAging) {
+        tasks.push({
+          key: 'aging',
+          label: 'aging',
+          request: () => fetchReportTicketsByAge(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportTicketsByAge>>;
+            setAgeData(result.data);
+          },
+          onError: () => {
+            setAgeData([]);
+          },
+        });
+      }
+
+      if (needsReopenRate) {
+        tasks.push({
+          key: 'reopenRate',
+          label: 'reopen-rate',
+          request: () => fetchReportReopenRate(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportReopenRate>>;
+            setReopenData(result.data);
+          },
+          onError: () => {
+            setReopenData([]);
+          },
+        });
+      }
+
+      if (needsTeamSummary) {
+        tasks.push({
+          key: 'teamSummary',
+          label: 'team-summary',
+          request: () => fetchReportTeamSummary(reportQuery),
+          onSuccess: (value) => {
+            const result = value as Awaited<ReturnType<typeof fetchReportTeamSummary>>;
+            setTeamSummaryData(result.data);
+          },
+          onError: () => {
+            setTeamSummaryData([]);
+          },
+        });
+      }
+
+      const results = await Promise.allSettled(tasks.map((task) => task.request()));
 
       if (cancelled) return;
 
       const warnings: string[] = [];
-
-      if (summaryResult.status === 'fulfilled') {
-        const summary = summaryResult.value;
-        setVolumeSeries(summary.ticketVolume.data.map((point) => point.count));
-        setVolumeDates(summary.ticketVolume.data.map((point) => point.date));
-        setSlaData(summary.slaCompliance.data);
-        setStatusData(summary.ticketsByStatus.data);
-        setAgentData(summary.agentPerformance.data);
-        nextSources.summary = true;
-      } else {
-        warnings.push(`summary: ${handleApiError(summaryResult.reason)}`);
-        setVolumeSeries([]);
-        setVolumeDates([]);
-        setSlaData(null);
-        setStatusData([]);
-        setAgentData([]);
-      }
-
-      if (solvedResult.status === 'fulfilled') {
-        setSolvedSeries(solvedResult.value.data.map((point) => point.count));
-        nextSources.solvedSeries = true;
-      } else {
-        warnings.push(`resolved-series: ${handleApiError(solvedResult.reason)}`);
-        setSolvedSeries([]);
-      }
-
-      if (backlogResult.status === 'fulfilled') {
-        setBacklogSeries(backlogResult.value.data.map((point) => point.count));
-        nextSources.backlogSeries = true;
-      } else {
-        warnings.push(`open-series: ${handleApiError(backlogResult.reason)}`);
-        setBacklogSeries([]);
-      }
-
-      if (channelBreakdownResult.status === 'fulfilled') {
-        setChannelBreakdownData(channelBreakdownResult.value.data);
-        nextSources.channelBreakdown = true;
-      } else {
-        warnings.push(`channel-breakdown: ${handleApiError(channelBreakdownResult.reason)}`);
-        setChannelBreakdownData([]);
-      }
-
-      if (csatTrendResult.status === 'fulfilled') {
-        setCsatTrendData(csatTrendResult.value.data);
-        setCsatSummary(csatTrendResult.value.summary);
-        nextSources.csatTrend = true;
-      } else {
-        warnings.push(`csat-trend: ${handleApiError(csatTrendResult.reason)}`);
-        setCsatTrendData([]);
-        setCsatSummary(null);
-      }
-
-      if (csatDriversResult.status === 'fulfilled') {
-        setCsatDriversData(csatDriversResult.value.data);
-        nextSources.csatDrivers = true;
-      } else {
-        warnings.push(`csat-drivers: ${handleApiError(csatDriversResult.reason)}`);
-        setCsatDriversData([]);
-      }
-
-      if (csatTagsResult.status === 'fulfilled') {
-        setCsatTagsData(csatTagsResult.value.data);
-        nextSources.csatTags = true;
-      } else {
-        warnings.push(`csat-tags: ${handleApiError(csatTagsResult.reason)}`);
-        setCsatTagsData([]);
-      }
-
-      if (slaBreachesResult.status === 'fulfilled') {
-        setSlaBreachesData(slaBreachesResult.value.data);
-        nextSources.slaBreaches = true;
-      } else {
-        warnings.push(`sla-breaches: ${handleApiError(slaBreachesResult.reason)}`);
-        setSlaBreachesData([]);
-      }
-
-      if (categoriesResult.status === 'fulfilled') {
-        setCategoryData(categoriesResult.value.data);
-        nextSources.categories = true;
-      } else {
-        warnings.push(`categories: ${handleApiError(categoriesResult.reason)}`);
-        setCategoryData([]);
-      }
-
-      if (ageResult.status === 'fulfilled') {
-        setAgeData(ageResult.value.data);
-        nextSources.aging = true;
-      } else {
-        warnings.push(`aging: ${handleApiError(ageResult.reason)}`);
-        setAgeData([]);
-      }
-
-      if (reopenResult.status === 'fulfilled') {
-        setReopenData(reopenResult.value.data);
-        nextSources.reopenRate = true;
-      } else {
-        warnings.push(`reopen-rate: ${handleApiError(reopenResult.reason)}`);
-        setReopenData([]);
-      }
-
-      if (teamSummaryResult.status === 'fulfilled') {
-        setTeamSummaryData(teamSummaryResult.value.data);
-        nextSources.teamSummary = true;
-      } else {
-        warnings.push(`team-summary: ${handleApiError(teamSummaryResult.reason)}`);
-        setTeamSummaryData([]);
-      }
-
-      if (transfersResult.status === 'fulfilled') {
-        nextSources.transfers = true;
-      } else {
-        warnings.push(`transfers: ${handleApiError(transfersResult.reason)}`);
-      }
+      results.forEach((result, index) => {
+        const task = tasks[index];
+        if (result.status === 'fulfilled') {
+          task.onSuccess(result.value);
+          nextSources[task.key] = true;
+        } else {
+          task.onError();
+          warnings.push(`${task.label}: ${handleApiError(result.reason)}`);
+        }
+      });
 
       setSources(nextSources);
       setLoading(false);
-
-      if (warnings.length > 0) {
-        setWarning('Some report endpoints are unavailable. Matching sections will stay empty until backend data is available.');
-      }
+      setWarning(
+        warnings.length > 0
+          ? 'Some report endpoints are unavailable. Matching sections will stay empty until backend data is available.'
+          : null,
+      );
     }
 
     void loadReports();
     return () => {
       cancelled = true;
     };
-  }, [reportQuery, refreshKey]);
+  }, [reportQuery, refreshKey, tab]);
 
   const selectedTeamName = useMemo(() => {
     if (filters.teamId === 'all') return 'All teams';

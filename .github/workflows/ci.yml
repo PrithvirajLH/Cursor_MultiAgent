@@ -31,6 +31,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: API unit tests
+        run: npm run -w apps/api test -- --runInBand
+
+      - name: Web unit tests
+        run: npm run -w apps/web test
+
       - name: Build
         run: npm run build
 
@@ -88,10 +94,12 @@ jobs:
           REDIS_PORT=6379
           ATTACHMENTS_DIR=tmp/test-uploads
           ATTACHMENTS_MAX_MB=5
+          ATTACHMENT_SCAN_WEBHOOK_SECRET=ci-scan-secret
+          INBOUND_EMAIL_WEBHOOK_SECRET=ci-inbound-secret
           AUTH_ALLOW_INSECURE_HEADERS=true
           AUTH_JWT_SECRET=ci-hs256-secret
           NODE_ENV=test
-          TEST_DB_RESET_STRATEGY=push
+          TEST_DB_RESET_STRATEGY=migrate
           NOTIFICATIONS_QUEUE_ENABLED=false
           SLA_BREACH_WORKER_ENABLED=false
           EOF
@@ -156,10 +164,12 @@ jobs:
           REDIS_PORT=6379
           ATTACHMENTS_DIR=tmp/test-uploads
           ATTACHMENTS_MAX_MB=5
+          ATTACHMENT_SCAN_WEBHOOK_SECRET=ci-scan-secret
+          INBOUND_EMAIL_WEBHOOK_SECRET=ci-inbound-secret
           AUTH_ALLOW_INSECURE_HEADERS=true
           AUTH_JWT_SECRET=ci-hs256-secret
           NODE_ENV=test
-          TEST_DB_RESET_STRATEGY=push
+          TEST_DB_RESET_STRATEGY=migrate
           NOTIFICATIONS_QUEUE_ENABLED=false
           SLA_BREACH_WORKER_ENABLED=false
           EOF

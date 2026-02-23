@@ -57,10 +57,6 @@ enum UserRole {
   EMPLOYEE
   AGENT
   LEAD
-  // ADMIN is deprecated and scheduled for removal.
-  // Migration 20260202220000 already converted all ADMIN rows to TEAM_ADMIN.
-  // Kept temporarily for backward compatibility; remove once confirmed unused.
-  ADMIN   // @deprecated – use TEAM_ADMIN or OWNER
   TEAM_ADMIN
   OWNER
 }
@@ -86,6 +82,11 @@ enum AttachmentScanStatus {
   CLEAN
   INFECTED
   FAILED
+}
+
+enum IdempotencyState {
+  IN_PROGRESS
+  COMPLETED
 }
 
 enum NotificationType {
@@ -227,6 +228,7 @@ model Ticket {
   accessGrants   TicketAccess[]
   followers      TicketFollower[]
   attachments    Attachment[]
+  inboundEmailReceipts InboundEmailReceipt[]
   notificationOutbox NotificationOutbox[]
   slaInstance    SlaInstance?
   notifications  Notification[]
@@ -243,6 +245,22 @@ model Ticket {
   @@index([priority])
   @@index([createdAt])
   @@index([firstResponseDueAt])
+}
+
+model InboundEmailReceipt {
+  id         String   @id @default(uuid())
+  messageId  String   @unique
+  fromEmail  String
+  subject    String
+  ticketId   String?
+  threaded   Boolean?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  ticket     Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+  @@index([createdAt])
 }
 
 model CustomField {
@@ -527,6 +545,25 @@ model Notification {
   @@index([userId, isRead])
   @@index([userId, createdAt])
   @@index([ticketId])
+}
+
+model IdempotencyRequest {
+  id           String           @id @default(uuid())
+  key          String
+  method       String
+  route        String
+  actorId      String
+  requestHash  String
+  state        IdempotencyState @default(IN_PROGRESS)
+  statusCode   Int?
+  responseBody Json?
+  expiresAt    DateTime
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([key, method, route, actorId])
+  @@index([expiresAt])
+  @@index([state, updatedAt])
 }
 
 model SavedView {

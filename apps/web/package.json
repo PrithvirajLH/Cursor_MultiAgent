@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "echo \"No lint configured\"",
-    "format": "echo \"No format configured\""
+    "lint": "tsc --noEmit",
+    "format": "prettier --check \"src/**/*.{ts,tsx,css}\"",
+    "test": "vitest run"
   },
   "dependencies": {
     "@azure/msal-browser": "^3.27.0",
@@ -36,8 +37,10 @@
     "@vitejs/plugin-react": "^4.5.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
+    "prettier": "^3.4.2",
     "tailwindcss": "^3.4.18",
     "typescript": "~5.9.3",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^2.1.9"
   }
 }

@@ -1,0 +1,3 @@
+-- Intentionally left blank.
+-- This migration folder was committed without SQL; keep as a no-op so
+-- migration history remains contiguous and `prisma migrate reset` is deterministic.

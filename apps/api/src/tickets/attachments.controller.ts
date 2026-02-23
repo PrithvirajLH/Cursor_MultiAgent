@@ -1,5 +1,15 @@
-import { Controller, Get, Param, StreamableFile } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  StreamableFile,
+} from '@nestjs/common';
+import { Public } from '../auth/public.decorator';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
+import { UpdateAttachmentScanDto } from './dto/update-attachment-scan.dto';
 import { TicketsService } from './tickets.service';
 
 @Controller('attachments')
@@ -18,5 +28,19 @@ export class AttachmentsController {
       disposition: `attachment; filename="${safeName}"`,
       length: attachment.sizeBytes,
     });
+  }
+
+  @Post(':id/scan-status')
+  @Public()
+  async updateScanStatus(
+    @Param('id') id: string,
+    @Body() payload: UpdateAttachmentScanDto,
+    @Headers('x-attachment-scan-secret') scannerSecret: string | undefined,
+  ) {
+    return this.ticketsService.updateAttachmentScanStatus(
+      id,
+      payload,
+      scannerSecret,
+    );
   }
 }

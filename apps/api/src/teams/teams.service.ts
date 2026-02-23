@@ -261,8 +261,7 @@ export class TeamsService {
       userRole === UserRole.EMPLOYEE ||
       userRole === UserRole.AGENT ||
       userRole === UserRole.LEAD ||
-      userRole === UserRole.TEAM_ADMIN ||
-      userRole === UserRole.ADMIN
+      userRole === UserRole.TEAM_ADMIN
     ) {
       return;
     }
@@ -273,23 +272,14 @@ export class TeamsService {
 
   private resolveTeamRole(userRole: UserRole, requestedRole?: TeamRole) {
     const defaultTeamRole =
-      userRole === UserRole.TEAM_ADMIN || userRole === UserRole.ADMIN
-        ? TeamRole.ADMIN
-        : TeamRole.AGENT;
+      userRole === UserRole.TEAM_ADMIN ? TeamRole.ADMIN : TeamRole.AGENT;
     const teamRole = requestedRole ?? defaultTeamRole;
 
-    if (
-      (userRole === UserRole.TEAM_ADMIN || userRole === UserRole.ADMIN) &&
-      teamRole !== TeamRole.ADMIN
-    ) {
+    if (userRole === UserRole.TEAM_ADMIN && teamRole !== TeamRole.ADMIN) {
       throw new ForbiddenException('Team admin users must use ADMIN team role');
     }
 
-    if (
-      userRole !== UserRole.TEAM_ADMIN &&
-      userRole !== UserRole.ADMIN &&
-      teamRole === TeamRole.ADMIN
-    ) {
+    if (userRole !== UserRole.TEAM_ADMIN && teamRole === TeamRole.ADMIN) {
       throw new ForbiddenException(
         'ADMIN team role is only allowed for team admin users',
       );
@@ -317,11 +307,7 @@ export class TeamsService {
       throw new NotFoundException('User not found');
     }
 
-    if (
-      user.role === UserRole.OWNER ||
-      user.role === UserRole.TEAM_ADMIN ||
-      user.role === UserRole.ADMIN
-    ) {
+    if (user.role === UserRole.OWNER || user.role === UserRole.TEAM_ADMIN) {
       return;
     }
 

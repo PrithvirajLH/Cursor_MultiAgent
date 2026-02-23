@@ -6,6 +6,39 @@ import { RelativeTime } from '../RelativeTime';
 import { initialsFor } from '../../utils/format';
 import { formatFileSize } from './utils';
 
+function getAttachmentScanBadge(scanStatus?: string) {
+  if (scanStatus === 'CLEAN') {
+    return {
+      label: 'Clean',
+      tone: 'bg-emerald-100 text-emerald-700',
+      canDownload: true,
+      blockedReason: null,
+    };
+  }
+  if (scanStatus === 'INFECTED') {
+    return {
+      label: 'Infected',
+      tone: 'bg-rose-100 text-rose-700',
+      canDownload: false,
+      blockedReason: 'Blocked: file was flagged as infected.',
+    };
+  }
+  if (scanStatus === 'FAILED') {
+    return {
+      label: 'Scan failed',
+      tone: 'bg-amber-100 text-amber-700',
+      canDownload: false,
+      blockedReason: 'Blocked: attachment scan failed.',
+    };
+  }
+  return {
+    label: 'Scan pending',
+    tone: 'bg-slate-100 text-slate-700',
+    canDownload: false,
+    blockedReason: 'Blocked: attachment scan is still pending.',
+  };
+}
+
 export type TicketConversationProps = {
   ticket: TicketDetail;
   messages: TicketMessage[];
@@ -114,7 +147,7 @@ export const TicketConversation = memo(function TicketConversation({
                   </div>
 
                   <div
-                    className={`rounded-2xl border px-4 py-3 text-sm leading-relaxed ${
+                    className={`inline-block max-w-full rounded-2xl border px-4 py-3 text-left text-sm leading-relaxed ${
                       isCurrentUser
                         ? 'border-blue-600 bg-blue-600 text-white'
                         : isInternal
@@ -122,7 +155,7 @@ export const TicketConversation = memo(function TicketConversation({
                           : 'border-slate-200 bg-white text-slate-900'
                     }`}
                   >
-                    <MessageBody body={message.body} />
+                    <MessageBody body={message.body} invert={isCurrentUser} />
                   </div>
                 </div>
 
@@ -218,31 +251,49 @@ export const TicketConversation = memo(function TicketConversation({
 
         {ticket.attachments.length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-2">
-            {ticket.attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700"
-              >
-                <Paperclip className="h-4 w-4 text-slate-500" />
-                <span className="font-semibold">{attachment.fileName}</span>
-                <span className="text-slate-400">•</span>
-                <span className="text-slate-500">{formatFileSize(attachment.sizeBytes)}</span>
-                <button
-                  type="button"
-                  onClick={() => onAttachmentView(attachment.id)}
-                  className="rounded-full p-1 text-blue-600 hover:bg-slate-100 hover:text-blue-700"
+            {ticket.attachments.map((attachment) => {
+              const badge = getAttachmentScanBadge(attachment.scanStatus);
+              return (
+                <div
+                  key={attachment.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700"
                 >
-                  View
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAttachmentDownload(attachment.id, attachment.fileName)}
-                  className="rounded-full p-1 text-blue-600 hover:bg-slate-100 hover:text-blue-700"
-                >
-                  Download
-                </button>
-              </div>
-            ))}
+                  <Paperclip className="h-4 w-4 text-slate-500" />
+                  <span className="font-semibold">{attachment.fileName}</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-slate-500">{formatFileSize(attachment.sizeBytes)}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.tone}`}>
+                    {badge.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onAttachmentView(attachment.id)}
+                    disabled={!badge.canDownload}
+                    title={badge.blockedReason ?? 'Open attachment'}
+                    className={`rounded-full p-1 ${
+                      badge.canDownload
+                        ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
+                        : 'cursor-not-allowed text-slate-400'
+                    }`}
+                  >
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAttachmentDownload(attachment.id, attachment.fileName)}
+                    disabled={!badge.canDownload}
+                    title={badge.blockedReason ?? 'Download attachment'}
+                    className={`rounded-full p-1 ${
+                      badge.canDownload
+                        ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
+                        : 'cursor-not-allowed text-slate-400'
+                    }`}
+                  >
+                    Download
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : null}
         {attachmentError ? <p className="mt-2 text-xs text-rose-600">{attachmentError}</p> : null}

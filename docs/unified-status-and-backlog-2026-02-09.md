@@ -1,6 +1,6 @@
 # Unified Delivery Status, Performance, and Backlog
 
-Last updated: 2026-02-09
+Last updated: 2026-02-20
 Owner: Engineering
 Scope: Consolidated view of sprint status, current performance findings, verified pending work, and prioritized next-sprint backlog.
 
@@ -15,8 +15,8 @@ Scope: Consolidated view of sprint status, current performance findings, verifie
 | SLA policy and breach processing | Mostly complete | Core SLA model and breach worker exist; business hours/holiday calendars pending. |
 | Email integration | Partial | Outbound email exists; inbound parsing/threading webhook path not implemented. |
 | Attachments security/storage | Partial | Upload/download works, but local disk only and no real malware scanner integration. |
-| Auth and production hardening | Pending | Still demo header auth; no idempotency/rate limiting baseline for mutating APIs/webhooks. |
-| CI/CD and rollout readiness | Pending | CI workflows and UAT rollout/runbook stabilization still missing. |
+| Auth and production hardening | Partial | Bearer/JWT and throttling are active; insecure header auth remains dev/test fallback only; production SSO rollout is still pending. |
+| CI/CD and rollout readiness | Partial | CI workflow exists for lint/build/integration/e2e; rollout runbooks and deployment cutover remain pending. |
 
 ### Top Immediate Gaps
 
@@ -36,7 +36,7 @@ Legend: COMPLETE / PARTIAL / PENDING
 | Sprint 2 | Weeks 3-4 | COMPLETE | Ticketing core and agent console shipped, including outbound notification pipeline. |
 | Sprint 3 | Weeks 5-6 | PARTIAL | Routing/audit/admin shipped; attachment security and non-local storage pending. |
 | Sprint 4 | Weeks 7-8 | PARTIAL | SLA model/worker shipped; inbound email and business-hours calendars pending. |
-| Sprint 5 | Weeks 9-10 | PARTIAL | Reporting shipped; performance hardening incomplete; no idempotency/rate-limit layer. |
+| Sprint 5 | Weeks 9-10 | PARTIAL | Reporting shipped; performance hardening incomplete; idempotency/rate-limit hardening is now baseline. |
 | Sprint 6 | Weeks 11-12 | PENDING | UAT, rollout runbooks, cutover, and stabilization not yet completed. |
 
 ## 3. Performance Snapshot (Measured 2026-02-06)
@@ -71,13 +71,13 @@ Legend: COMPLETE / PARTIAL / PENDING
 
 1. Inbound email ingestion and threading are not implemented.
 2. Authentication remains demo header-based (`x-user-email` / `x-user-id`).
-3. No idempotency-key support for mutating endpoints.
-4. No API rate-limiting layer.
-5. Attachments are local disk only and currently forced `CLEAN` without real scanning.
+3. Inbound email webhook idempotency/threading is still pending.
+4. API rate limiting is active globally; route-specific policies remain pending.
+5. Attachments are local disk only; uploads start as `PENDING`, scanner callback can set terminal states, and download is blocked unless scan status is `CLEAN`.
 6. SLA business-hours and holiday calendar logic are not implemented.
 7. Search still uses `contains` filters (no FTS/trigram index path).
 8. API-side response caching missing for heavy summary endpoints.
-9. CI/CD workflow files are missing.
+9. CI/CD baseline exists, but deployment runbook/cutover automation is still pending.
 10. Documentation has drift from implementation state in several files.
 
 ## 5. Planned Backlog (Sprints 7-9)

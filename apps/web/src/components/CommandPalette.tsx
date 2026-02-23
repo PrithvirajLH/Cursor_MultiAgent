@@ -47,7 +47,7 @@ const PAGES: PageResult[] = [
   { key: 'manager', label: 'Manager Views', path: '/manager', icon: FolderKanban, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'team', label: 'Team Management', path: '/team', icon: Users, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'sla', label: 'SLA Settings', path: '/sla-settings', icon: Clock, roles: ['TEAM_ADMIN', 'OWNER'] },
-  { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3, roles: ['TEAM_ADMIN', 'OWNER'] },
+  { key: 'reports', label: 'Reports', path: '/reports', icon: BarChart3, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'admin', label: 'Admin Settings', path: '/admin', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] },
   { key: 'routing', label: 'Routing Rules', path: '/routing', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] },
   { key: 'categories', label: 'Categories', path: '/categories', icon: FolderKanban, roles: ['OWNER'] },

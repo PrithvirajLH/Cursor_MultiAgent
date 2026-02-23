@@ -463,7 +463,10 @@ export function TicketDetailPage({
       link.href = url; link.download = fileName;
       document.body.appendChild(link); link.click(); link.remove();
       window.URL.revokeObjectURL(url);
-    } catch { setAttachmentError('Unable to download attachment.'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to download attachment.';
+      setAttachmentError(message || 'Unable to download attachment.');
+    }
   }, []);
 
   const handleAttachmentView = useCallback(async (attachmentId: string) => {
@@ -473,7 +476,10 @@ export function TicketDetailPage({
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank', 'noopener,noreferrer');
       window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
-    } catch { setAttachmentError('Unable to open attachment.'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to open attachment.';
+      setAttachmentError(message || 'Unable to open attachment.');
+    }
   }, []);
 
   const toggleSection = useCallback((section: keyof ExpandedSections) => {
@@ -558,9 +564,6 @@ export function TicketDetailPage({
                 <div className="flex shrink-0 items-center gap-2">
                   <button type="button" onClick={() => void handleCopyLink()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
                     <Copy className="h-4 w-4" /> Copy link
-                  </button>
-                  <button type="button" onClick={() => { setActiveTab('conversation'); messageInputRef.current?.focus(); }} className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                    Reply
                   </button>
                 </div>
               </div>

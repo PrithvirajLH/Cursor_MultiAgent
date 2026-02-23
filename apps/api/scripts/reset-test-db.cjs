@@ -65,11 +65,12 @@ function run(command) {
 }
 
 function getResetStrategy() {
-  const strategy = (process.env.TEST_DB_RESET_STRATEGY || 'auto').trim().toLowerCase();
+  const strategy = (process.env.TEST_DB_RESET_STRATEGY || 'migrate').trim().toLowerCase();
   if (strategy === 'migrate' || strategy === 'push') {
     return strategy;
   }
-  return 'auto';
+  console.warn(`Unknown TEST_DB_RESET_STRATEGY="${strategy}", defaulting to "migrate".`);
+  return 'migrate';
 }
 
 function resetDb() {
@@ -78,19 +79,10 @@ function resetDb() {
     run('npx prisma migrate reset --force --skip-generate');
     return;
   }
-  if (strategy === 'push') {
-    run('npx prisma db push --force-reset --skip-generate');
-    return;
-  }
-
-  try {
-    run('npx prisma migrate reset --force --skip-generate');
-  } catch {
-    console.warn(
-      'prisma migrate reset failed for test DB; falling back to prisma db push --force-reset.',
-    );
-    run('npx prisma db push --force-reset --skip-generate');
-  }
+  console.warn(
+    'Using prisma db push --force-reset for test DB reset. This bypasses migration history checks.',
+  );
+  run('npx prisma db push --force-reset --skip-generate');
 }
 
 try {

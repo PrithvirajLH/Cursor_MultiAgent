@@ -42,18 +42,6 @@ const TRIAGE_COLUMNS = [
 ];
 const TRIAGE_COLUMN_KEYS = TRIAGE_COLUMNS.map((column) => column.key);
 
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  NEW: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
-  TRIAGED: ['ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
-  ASSIGNED: ['IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
-  IN_PROGRESS: ['WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED'],
-  WAITING_ON_REQUESTER: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
-  WAITING_ON_VENDOR: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
-  RESOLVED: ['REOPENED', 'CLOSED'],
-  CLOSED: ['REOPENED'],
-  REOPENED: ['TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED']
-};
-
 const PRIORITY_OPTIONS = [
   { label: 'Urgent', value: 'P1' },
   { label: 'High', value: 'P2' },
@@ -142,6 +130,7 @@ export function TriageBoardPage({
         sort: 'updatedAt',
         order: 'desc',
         pageSize: 100,
+        includeTotal: false,
         teamId: isOwner && teamFilterId !== 'all' ? teamFilterId : undefined
       });
       if (loadRequestIdRef.current !== requestId) {
@@ -260,6 +249,16 @@ export function TriageBoardPage({
   }
 
   async function handleTransition(ticketId: string, status: string) {
+    const ticket = tickets.find((item) => item.id === ticketId);
+    if (!ticket) {
+      return;
+    }
+    if (!isValidTransition(ticket, status)) {
+      const message = `Cannot move from ${formatStatus(ticket.status)} to ${formatStatus(status)}.`;
+      setActionError(message);
+      toast.error(message);
+      return;
+    }
     setActionTicketId(ticketId);
     setActionError(null);
     try {
@@ -309,7 +308,13 @@ export function TriageBoardPage({
     if (!draggingStatus) {
       return;
     }
-    if (!isValidTransition(draggingStatus, status)) {
+    const ticket = draggingTicketId
+      ? tickets.find((item) => item.id === draggingTicketId)
+      : null;
+    if (!ticket) {
+      return;
+    }
+    if (!isValidTransition(ticket, status)) {
       return;
     }
     setDragOverColumn(status);
@@ -324,7 +329,13 @@ export function TriageBoardPage({
     if (!draggingStatus) {
       return;
     }
-    if (!isValidTransition(draggingStatus, status)) {
+    const draggingTicket = draggingTicketId
+      ? tickets.find((item) => item.id === draggingTicketId)
+      : null;
+    if (!draggingTicket) {
+      return;
+    }
+    if (!isValidTransition(draggingTicket, status)) {
       toast.error(`Cannot move from ${formatStatus(draggingStatus)} to ${formatStatus(status)}.`);
       return;
     }
@@ -424,11 +435,16 @@ export function TriageBoardPage({
     return 'bg-green-100 text-green-700';
   }
 
-  function isValidTransition(from: string, to: string) {
+  function isValidTransition(ticket: TicketRecord, to: string) {
+    const from = ticket.status;
     if (from === to) {
       return true;
     }
-    return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
+    return (ticket.allowedTransitions ?? []).includes(to);
+  }
+
+  function getPossibleMoves(ticket: TicketRecord) {
+    return ticket.allowedTransitions ?? [];
   }
 
   const filteredTickets = useMemo(() => {
@@ -596,7 +612,7 @@ export function TriageBoardPage({
                             slaPausedAt: ticket.slaPausedAt
                           });
                           const tags = [ticket.category?.name, ticket.channel].filter(Boolean) as string[];
-                          const possibleMoves = ALLOWED_TRANSITIONS[ticket.status] ?? [];
+                          const possibleMoves = getPossibleMoves(ticket);
 
                           return (
                             <div
@@ -714,7 +730,7 @@ export function TriageBoardPage({
           (() => {
             const ticket = tickets.find((t) => t.id === activeCardMenu);
             if (!ticket) return null;
-            const possibleMoves = ALLOWED_TRANSITIONS[ticket.status] ?? [];
+            const possibleMoves = getPossibleMoves(ticket);
             const teamId = ticket.assignedTeam?.id;
             const teamMembersState = teamId ? teamMembersByTeamId[teamId] : undefined;
             const isAssignSubmenuOpen =

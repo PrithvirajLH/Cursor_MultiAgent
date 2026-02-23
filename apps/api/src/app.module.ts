@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import path from 'path';
 import { AppController } from './app.controller';
@@ -21,6 +21,7 @@ import { SlasModule } from './slas/slas.module';
 import { TeamsModule } from './teams/teams.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
+import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 
 // Resolve env file from cwd (apps/api) to work in both dev and production builds
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
@@ -71,6 +72,10 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: IdempotencyInterceptor,
     },
   ],
 })

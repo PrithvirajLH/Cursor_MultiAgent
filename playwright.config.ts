@@ -40,7 +40,11 @@ const serverEnv = {
   ...testEnv,
   NODE_ENV: 'test',
   SEED_MODE: 'test',
-  TEST_DB_RESET_STRATEGY: 'push',
+  TEST_DB_RESET_STRATEGY: 'migrate',
+  ATTACHMENT_SCAN_WEBHOOK_SECRET:
+    process.env.ATTACHMENT_SCAN_WEBHOOK_SECRET ?? 'e2e-scan-secret',
+  INBOUND_EMAIL_WEBHOOK_SECRET:
+    process.env.INBOUND_EMAIL_WEBHOOK_SECRET ?? 'e2e-inbound-secret',
   AUTH_ALLOW_INSECURE_HEADERS: 'true',
   AUTH_JWT_SECRET: e2eAuthJwtSecret,
   VITE_E2E_MODE: 'true',

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BarChart3,
   CheckCircle,
   ClipboardList,
   Clock,
@@ -99,6 +100,7 @@ type NavKey =
   | 'completed'
   | 'triage'
   | 'manager'
+  | 'reports'
   | 'team'
   | 'sla-settings'
   | 'admin';
@@ -119,6 +121,7 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
   { key: 'completed', label: 'Completed', icon: CheckCircle, roles: ['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'triage', label: 'Triage Board', icon: ClipboardList, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'manager', label: 'Manager Views', icon: FolderKanban, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
+  { key: 'reports', label: 'Reports', icon: BarChart3, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'team', label: 'Team', icon: Users, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'sla-settings', label: 'SLA Settings', icon: Clock, roles: ['LEAD', 'TEAM_ADMIN', 'OWNER'] },
   { key: 'admin', label: 'Admin', icon: Settings, roles: ['TEAM_ADMIN', 'OWNER'] }
@@ -126,6 +129,10 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
 
 function canUseAdminMenu(role: Role): boolean {
   return role === 'TEAM_ADMIN' || role === 'OWNER';
+}
+
+function canAccessReports(role: Role): boolean {
+  return role === 'LEAD' || role === 'TEAM_ADMIN' || role === 'OWNER';
 }
 
 function isAdminRoutePath(pathname: string): boolean {
@@ -166,6 +173,7 @@ function deriveNavKey(
 ): NavKey {
   if (pathname.startsWith('/triage')) return 'triage';
   if (pathname.startsWith('/manager')) return 'manager';
+  if (pathname.startsWith('/reports')) return canAccessReports(role) ? 'reports' : 'admin';
   if (pathname.startsWith('/team')) return 'team';
   if (pathname.startsWith('/sla-settings')) return canUseAdminMenu(role) ? 'admin' : 'sla-settings';
   if (
@@ -173,8 +181,7 @@ function deriveNavKey(
     pathname.startsWith('/automation') ||
     pathname.startsWith('/audit-log') ||
     pathname.startsWith('/categories') ||
-    pathname.startsWith('/custom-fields') ||
-    pathname.startsWith('/reports')
+    pathname.startsWith('/custom-fields')
   ) return 'admin';
   if (pathname.startsWith('/admin')) return 'admin';
   if (pathname.startsWith('/tickets')) {
@@ -198,6 +205,7 @@ const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
   completed: { title: 'Completed', subtitle: 'Closed and resolved tickets.' },
   triage: { title: 'Triage Board', subtitle: 'Monitor open tickets by status.' },
   manager: { title: 'Manager Views', subtitle: 'High-level ticket volume and workload insights.' },
+  reports: { title: 'Reports', subtitle: 'Analytics and insights for helpdesk operations.' },
   team: { title: 'Team', subtitle: 'Manage members and roles.' },
   'sla-settings': { title: 'SLA Settings', subtitle: 'Configure SLA targets per department.' },
   admin: { title: 'Admin', subtitle: 'Configuration and settings.' },
@@ -444,6 +452,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
     currentPersona.role === 'LEAD' ||
     currentPersona.role === 'TEAM_ADMIN' ||
     currentPersona.role === 'OWNER';
+  const canViewReports = canAccessReports(currentPersona.role);
   const isAdminOrOwner =
     currentPersona.role === 'TEAM_ADMIN' || currentPersona.role === 'OWNER';
 
@@ -560,9 +569,9 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
                   <Route path="/dashboard" element={<DashboardPage refreshKey={refreshKey} role={currentPersona.role} />} />
                   <Route path="/triage" element={isLeadOrAbove ? <TriageBoardPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/manager" element={isLeadOrAbove ? <ManagerViewsPage refreshKey={refreshKey} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/reports" element={canViewReports ? <ReportsPage refreshKey={refreshKey} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/team" element={isLeadOrAbove ? <TeamPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/sla-settings" element={isLeadOrAbove ? <SlaSettingsPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/reports" element={isAdminOrOwner ? <ReportsPage refreshKey={refreshKey} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/admin" element={isAdminOrOwner ? <Navigate to="/sla-settings" replace /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/routing" element={isAdminOrOwner ? <RoutingRulesPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/automation" element={isAdminOrOwner ? <AutomationRulesPage role={currentPersona.role} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />

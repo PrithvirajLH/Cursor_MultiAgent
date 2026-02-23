@@ -1,6 +1,7 @@
 import { TicketPriority, TicketStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsArray,
   IsEnum,
   IsIn,
@@ -26,6 +27,17 @@ function splitStrings(value: unknown): string[] | undefined {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+  return undefined;
+}
+
+function parseBoolean(value: unknown): boolean | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
   return undefined;
 }
 
@@ -130,4 +142,9 @@ export class ListTicketsDto extends PaginationDto {
   @IsOptional()
   @IsIn(SORT_ORDER)
   order?: (typeof SORT_ORDER)[number];
+
+  @IsOptional()
+  @Transform(({ value }) => parseBoolean(value))
+  @IsBoolean()
+  includeTotal?: boolean;
 }

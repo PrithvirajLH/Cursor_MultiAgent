@@ -638,6 +638,7 @@ export class RuleEngineService {
         status: current.status,
         priority: current.priority,
         assignedTeamId: current.assignedTeamId,
+        assigneeId: current.assigneeId,
         dueAt: current.dueAt,
         slaPausedAt: current.slaPausedAt,
         resolvedAt: current.resolvedAt,

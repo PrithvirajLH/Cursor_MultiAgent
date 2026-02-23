@@ -19,6 +19,10 @@ build/
 # IDE
 .idea/
 .vscode/
+.cursor/
+.agents/
+.cursorrules
+.cursorrules_*
 *.swp
 *.swo
 .DS_Store
@@ -33,13 +37,6 @@ yarn-error.log*
 # Testing
 coverage/
 .nyc_output/
-**/test/
-**/*.spec.ts
-**/*.test.ts
-**/*.e2e-spec.ts
-jest.config.*
-jest-e2e.json
-jest.integration.json
 playwright-report/
 test-results/
 
@@ -64,5 +61,4 @@ temp/
 # OS files
 Thumbs.db
 
-# Docker (optional for cloud deployments)
-docker-compose.yml
+# Docker

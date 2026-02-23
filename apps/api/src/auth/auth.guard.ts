@@ -157,7 +157,15 @@ export class AuthGuard implements CanActivate {
 
   private shouldAllowInsecureHeaders() {
     const configured = this.config.get<string>('AUTH_ALLOW_INSECURE_HEADERS');
-    return configured === 'true';
+    if (configured !== 'true') {
+      return false;
+    }
+    const nodeEnv = (
+      this.config.get<string>('NODE_ENV') ??
+      process.env.NODE_ENV ??
+      ''
+    ).toLowerCase();
+    return nodeEnv !== 'production';
   }
 
   private async identityFromBearerToken(token: string): Promise<AuthIdentity> {

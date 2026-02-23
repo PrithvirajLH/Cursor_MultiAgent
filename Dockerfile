@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:20-bookworm-slim AS deps
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 
 COPY package*.json ./
@@ -21,7 +21,7 @@ RUN npm run build -w apps/api \
 RUN npm run -w apps/api db:generate
 RUN npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app/apps/api
 
 ENV NODE_ENV=production

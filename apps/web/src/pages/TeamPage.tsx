@@ -14,10 +14,15 @@ import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import type { Role } from '../types';
 
-const ELIGIBLE_MEMBER_USER_ROLES = new Set(['EMPLOYEE', 'AGENT', 'LEAD', 'TEAM_ADMIN', 'ADMIN']);
+const ELIGIBLE_MEMBER_USER_ROLES = new Set([
+  'EMPLOYEE',
+  'AGENT',
+  'LEAD',
+  'TEAM_ADMIN',
+]);
 
 function getAllowedTeamRolesForUser(userRole?: string | null): string[] {
-  if (userRole === 'TEAM_ADMIN' || userRole === 'ADMIN') {
+  if (userRole === 'TEAM_ADMIN') {
     return ['ADMIN'];
   }
   if (userRole === 'EMPLOYEE') {
@@ -630,4 +635,3 @@ export function TeamPage({
     </section>
   );
 }
-

@@ -1,4 +1,4 @@
-export type Role = 'EMPLOYEE' | 'AGENT' | 'LEAD' | 'ADMIN' | 'TEAM_ADMIN' | 'OWNER';
+export type Role = 'EMPLOYEE' | 'AGENT' | 'LEAD' | 'TEAM_ADMIN' | 'OWNER';
 
 export type StatusFilter = 'open' | 'resolved' | 'all';
 export type SortField = 'createdAt' | 'completedAt' | 'updatedAt';

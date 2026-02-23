@@ -18,11 +18,6 @@ prisma/*.db-journal
 
 # Testing
 coverage/
-test/
-*.spec.ts
-*.test.ts
-*.e2e-spec.ts
-jest-e2e.json
 
 # Scripts (dev utilities)
 scripts/

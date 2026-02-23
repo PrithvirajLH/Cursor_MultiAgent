@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   Post,
   Query,
@@ -11,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
+import { Public } from '../auth/public.decorator';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
@@ -20,6 +22,7 @@ import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
+import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
 import { ListTicketEventsDto } from './dto/list-ticket-events.dto';
 import { ListTicketMessagesDto } from './dto/list-ticket-messages.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
@@ -84,6 +87,15 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.create(payload, user);
+  }
+
+  @Post('inbound-email')
+  @Public()
+  async ingestInboundEmail(
+    @Body() payload: IngestInboundEmailDto,
+    @Headers('x-inbound-email-secret') inboundSecret: string | undefined,
+  ) {
+    return this.ticketsService.ingestInboundEmail(payload, inboundSecret);
   }
 
   @Post('bulk/assign')

@@ -27,13 +27,13 @@ export class CreateTicketDto {
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
-  @MaxLength(160)
+  @MaxLength(200)
   subject!: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
-  @MaxLength(4000)
+  @MaxLength(5000)
   description!: string;
 
   @IsOptional()

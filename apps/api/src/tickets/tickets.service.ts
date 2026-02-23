@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   forwardRef,
   Inject,
@@ -14,13 +15,15 @@ import {
   MessageType,
   Prisma,
   TeamAssignmentStrategy,
+  TicketChannel,
   TicketPriority,
   TicketStatus,
   UserRole,
 } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import type { Express } from 'express';
 import { createReadStream, promises as fs } from 'fs';
+import { DateTime } from 'luxon';
 import path from 'path';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
@@ -36,23 +39,52 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
+import { UpdateAttachmentScanDto } from './dto/update-attachment-scan.dto';
 
 export type StatusTransitionTicketSnapshot = {
   id: string;
   status: TicketStatus;
   priority: TicketPriority;
   assignedTeamId: string | null;
+  assigneeId: string | null;
   dueAt: Date | null;
   slaPausedAt: Date | null;
   resolvedAt: Date | null;
   closedAt: Date | null;
   completedAt: Date | null;
 };
+
+type BusinessWeekDay =
+  | 'Monday'
+  | 'Tuesday'
+  | 'Wednesday'
+  | 'Thursday'
+  | 'Friday'
+  | 'Saturday'
+  | 'Sunday';
+
+type BusinessDaySchedule = {
+  day: BusinessWeekDay;
+  enabled: boolean;
+  start: string;
+  end: string;
+};
+
+type BusinessHoursSettings = {
+  timezone: string;
+  schedule: BusinessDaySchedule[];
+  holidays: Array<{ name: string; date: string }>;
+};
+
+type InboundEmailReceiptReservation =
+  | { mode: 'reserved'; id: string }
+  | { mode: 'replay'; ticketId: string; threaded: boolean };
 
 @Injectable()
 export class TicketsService {
@@ -84,45 +116,26 @@ export class TicketsService {
     TicketStatus.WAITING_ON_VENDOR,
   ];
   private readonly STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-    [TicketStatus.NEW]: [
-      TicketStatus.TRIAGED,
-      TicketStatus.ASSIGNED,
-      TicketStatus.IN_PROGRESS,
-      TicketStatus.WAITING_ON_REQUESTER,
-      TicketStatus.WAITING_ON_VENDOR,
-      TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
-    ],
-    [TicketStatus.TRIAGED]: [
-      TicketStatus.ASSIGNED,
-      TicketStatus.IN_PROGRESS,
-      TicketStatus.WAITING_ON_REQUESTER,
-      TicketStatus.WAITING_ON_VENDOR,
-      TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
-    ],
+    [TicketStatus.NEW]: [TicketStatus.TRIAGED, TicketStatus.ASSIGNED],
+    [TicketStatus.TRIAGED]: [TicketStatus.ASSIGNED],
     [TicketStatus.ASSIGNED]: [
       TicketStatus.IN_PROGRESS,
       TicketStatus.WAITING_ON_REQUESTER,
       TicketStatus.WAITING_ON_VENDOR,
       TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
     ],
     [TicketStatus.IN_PROGRESS]: [
       TicketStatus.WAITING_ON_REQUESTER,
       TicketStatus.WAITING_ON_VENDOR,
       TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
     ],
     [TicketStatus.WAITING_ON_REQUESTER]: [
       TicketStatus.IN_PROGRESS,
       TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
     ],
     [TicketStatus.WAITING_ON_VENDOR]: [
       TicketStatus.IN_PROGRESS,
       TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
     ],
     [TicketStatus.RESOLVED]: [TicketStatus.REOPENED, TicketStatus.CLOSED],
     [TicketStatus.CLOSED]: [TicketStatus.REOPENED],
@@ -133,7 +146,6 @@ export class TicketsService {
       TicketStatus.WAITING_ON_REQUESTER,
       TicketStatus.WAITING_ON_VENDOR,
       TicketStatus.RESOLVED,
-      TicketStatus.CLOSED,
     ],
   };
 
@@ -142,10 +154,32 @@ export class TicketsService {
     exists: boolean;
     checkedAtMs: number;
   } | null = null;
+  private businessHoursSettingsCache: {
+    value: BusinessHoursSettings;
+    checkedAtMs: number;
+  } | null = null;
   private readonly schemaCheckCacheTtlMs = this.parsePositiveIntEnv(
     process.env.SCHEMA_CHECK_CACHE_TTL_MS,
     300_000,
   );
+  private readonly businessDaysOrder: BusinessWeekDay[] = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  private readonly defaultBusinessSchedule: BusinessDaySchedule[] = [
+    { day: 'Monday', enabled: true, start: '09:00', end: '18:00' },
+    { day: 'Tuesday', enabled: true, start: '09:00', end: '18:00' },
+    { day: 'Wednesday', enabled: true, start: '09:00', end: '18:00' },
+    { day: 'Thursday', enabled: true, start: '09:00', end: '18:00' },
+    { day: 'Friday', enabled: true, start: '09:00', end: '17:00' },
+    { day: 'Saturday', enabled: false, start: '10:00', end: '14:00' },
+    { day: 'Sunday', enabled: false, start: '10:00', end: '14:00' },
+  ];
 
   // ——— File upload security (4.1 fix) ———
 
@@ -445,9 +479,12 @@ export class TicketsService {
     const orderBy = {
       [orderByField]: orderByDirection,
     } as Prisma.TicketOrderByWithRelationInput;
+    const includeTotal = query.includeTotal !== false;
 
     const [total, data] = await Promise.all([
-      this.prisma.ticket.count({ where }),
+      includeTotal
+        ? this.prisma.ticket.count({ where })
+        : Promise.resolve<number>(0),
       this.prisma.ticket.findMany({
         where,
         skip,
@@ -493,14 +530,21 @@ export class TicketsService {
         },
       }),
     ]);
+    const totalPages = includeTotal ? Math.ceil(total / pageSize) : 0;
 
     return {
-      data,
+      data: data.map((ticket) => ({
+        ...ticket,
+        allowedTransitions: this.getAvailableTransitionsForTicket(
+          ticket.status,
+          ticket.assignee?.id ?? null,
+        ),
+      })),
       meta: {
         page,
         pageSize,
         total,
-        totalPages: Math.ceil(total / pageSize),
+        totalPages,
       },
     };
   }
@@ -510,7 +554,17 @@ export class TicketsService {
     triage: number;
     open: number;
     unassigned: number;
+    resolved: number;
+    resolvedByMe: number;
+    atRisk: number;
+    overdue: number;
   }> {
+    const now = new Date();
+    const atRiskThresholdMinutes = this.parsePositiveIntEnv(
+      process.env.SLA_AT_RISK_THRESHOLD_MINUTES,
+      120,
+    );
+    const riskEnd = new Date(now.getTime() + atRiskThresholdMinutes * 60_000);
     const accessCondition = this.accessConditionSql(user, 't');
     const rows = await this.prisma.$queryRaw<
       {
@@ -518,6 +572,10 @@ export class TicketsService {
         triage: bigint;
         open: bigint;
         unassigned: bigint;
+        resolved: bigint;
+        resolvedByMe: bigint;
+        atRisk: bigint;
+        overdue: bigint;
       }[]
     >`
       SELECT
@@ -536,6 +594,30 @@ export class TicketsService {
           WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
             AND t."assigneeId" IS NULL
           THEN 1 ELSE 0 END) AS "unassigned"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+          THEN 1 ELSE 0 END) AS "resolved"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."assigneeId" = ${user.id}
+          THEN 1 ELSE 0 END) AS "resolvedByMe"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
+            AND t."dueAt" IS NOT NULL
+            AND t."dueAt" >= ${now}
+            AND t."dueAt" <= ${riskEnd}
+          THEN 1 ELSE 0 END) AS "atRisk"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
+            AND t."dueAt" IS NOT NULL
+            AND t."dueAt" < ${now}
+          THEN 1 ELSE 0 END) AS "overdue"
       FROM "Ticket" t
       WHERE ${accessCondition}
     `;
@@ -545,12 +627,20 @@ export class TicketsService {
       triage: 0n,
       open: 0n,
       unassigned: 0n,
+      resolved: 0n,
+      resolvedByMe: 0n,
+      atRisk: 0n,
+      overdue: 0n,
     };
     return {
       assignedToMe: Number(row.assignedToMe ?? 0),
       triage: Number(row.triage ?? 0),
       open: Number(row.open ?? 0),
       unassigned: Number(row.unassigned ?? 0),
+      resolved: Number(row.resolved ?? 0),
+      resolvedByMe: Number(row.resolvedByMe ?? 0),
+      atRisk: Number(row.atRisk ?? 0),
+      overdue: Number(row.overdue ?? 0),
     };
   }
 
@@ -730,7 +820,10 @@ export class TicketsService {
     void accessGrants;
     return {
       ...rest,
-      allowedTransitions: this.getAvailableTransitions(rest.status),
+      allowedTransitions: this.getAvailableTransitionsForTicket(
+        rest.status,
+        rest.assigneeId,
+      ),
     };
   }
 
@@ -865,6 +958,9 @@ export class TicketsService {
       if (!payload.assigneeId && !resolvedAssigneeId) {
         resolvedAssigneeId = await this.resolveAssignee(routedTeamId, tx);
       }
+      const initialStatus = resolvedAssigneeId
+        ? TicketStatus.ASSIGNED
+        : TicketStatus.NEW;
 
       const validatedCustomValues =
         await this.customFieldsService.validateAndNormalizeValuesForTicket(
@@ -884,7 +980,7 @@ export class TicketsService {
           assignedTeamId: routedTeamId,
           assigneeId: resolvedAssigneeId,
           categoryId: payload.categoryId,
-          status: TicketStatus.NEW,
+          status: initialStatus,
         },
         include: {
           requester: true,
@@ -904,10 +1000,20 @@ export class TicketsService {
         tx,
       );
       const firstResponseDueAt = sla
-        ? this.addHours(ticket.createdAt, sla.firstResponseHours)
+        ? await this.addSlaHours(
+            ticket.createdAt,
+            sla.firstResponseHours,
+            sla.businessHoursOnly,
+            tx,
+          )
         : null;
       const resolutionDueAt = sla
-        ? this.addHours(ticket.createdAt, sla.resolutionHours)
+        ? await this.addSlaHours(
+            ticket.createdAt,
+            sla.resolutionHours,
+            sla.businessHoursOnly,
+            tx,
+          )
         : null;
 
       const updated = await tx.ticket.update({
@@ -943,6 +1049,17 @@ export class TicketsService {
               assigneeId: resolvedAssigneeId,
               assigneeName: updated.assignee?.displayName ?? null,
               assigneeEmail: updated.assignee?.email ?? null,
+            },
+            createdById: user.id,
+          },
+        });
+        await tx.ticketEvent.create({
+          data: {
+            ticketId: ticket.id,
+            type: 'TICKET_STATUS_CHANGED',
+            payload: {
+              from: TicketStatus.NEW,
+              to: TicketStatus.ASSIGNED,
             },
             createdById: user.id,
           },
@@ -1003,6 +1120,133 @@ export class TicketsService {
       },
     });
     return result ?? updatedTicket;
+  }
+
+  async ingestInboundEmail(
+    payload: IngestInboundEmailDto,
+    inboundSecret: string | undefined,
+  ) {
+    this.assertInboundEmailWebhookSecret(inboundSecret);
+    const messageId = payload.messageId.trim();
+    const reservation = await this.reserveInboundEmailReceipt(
+      messageId,
+      payload.fromEmail,
+      payload.subject,
+    );
+    if (reservation.mode === 'replay') {
+      return this.buildInboundEmailReplayResponse(
+        reservation.ticketId,
+        reservation.threaded,
+      );
+    }
+
+    try {
+      const requester = await this.findOrCreateInboundRequester(
+        payload.fromEmail,
+        payload.fromName,
+      );
+      const requesterAuth = this.toInboundRequesterAuthUser(requester);
+      const displayId = this.extractDisplayIdFromSubject(payload.subject);
+
+      if (displayId) {
+        const existing = await this.prisma.ticket.findFirst({
+          where: { displayId: { equals: displayId, mode: 'insensitive' } },
+          select: {
+            id: true,
+            status: true,
+            priority: true,
+            assignedTeamId: true,
+            assigneeId: true,
+            dueAt: true,
+            slaPausedAt: true,
+            resolvedAt: true,
+            closedAt: true,
+            completedAt: true,
+          },
+        });
+
+        if (existing) {
+          if (
+            existing.status === TicketStatus.RESOLVED ||
+            existing.status === TicketStatus.CLOSED
+          ) {
+            await this.prisma.$transaction(async (tx) => {
+              await this.applyStatusTransitionInTx(
+                tx,
+                existing,
+                TicketStatus.REOPENED,
+                requester.id,
+              );
+            });
+          }
+
+          await this.addMessage(
+            existing.id,
+            { body: payload.body, type: MessageType.PUBLIC },
+            requesterAuth,
+          );
+
+          await this.prisma.ticketEvent.create({
+            data: {
+              ticketId: existing.id,
+              type: 'INBOUND_EMAIL_RECEIVED',
+              payload: {
+                fromEmail: requester.email,
+                messageId,
+                subject: payload.subject,
+                threadedByDisplayId: displayId,
+              },
+              createdById: requester.id,
+            },
+          });
+
+          await this.completeInboundEmailReceipt(
+            reservation.id,
+            existing.id,
+            true,
+          );
+          const ticket = await this.getTicketForMutationResponse(existing.id);
+          return {
+            threaded: true,
+            ticket,
+          };
+        }
+      }
+
+      const created = await this.create(
+        {
+          subject: payload.subject,
+          description: payload.body,
+          priority: payload.priority ?? TicketPriority.P3,
+          channel: TicketChannel.EMAIL,
+          requesterId: requester.id,
+        },
+        requesterAuth,
+      );
+
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId: created.id,
+          type: 'INBOUND_EMAIL_RECEIVED',
+          payload: {
+            fromEmail: requester.email,
+            messageId,
+            subject: payload.subject,
+            threadedByDisplayId: null,
+          },
+          createdById: requester.id,
+        },
+      });
+
+      await this.completeInboundEmailReceipt(reservation.id, created.id, false);
+      return {
+        threaded: false,
+        ticket: created,
+      };
+    } catch (error) {
+      await this.releaseInboundEmailReceipt(reservation.id);
+      throw error;
+    }
   }
 
   async addMessage(
@@ -1316,23 +1560,42 @@ export class TicketsService {
     const newSla = await this.getSlaConfig(ticket.priority, payload.newTeamId);
 
     const firstStart = ticket.firstResponseDueAt
-      ? this.addHours(ticket.firstResponseDueAt, -oldSla.firstResponseHours)
+      ? await this.subtractSlaHours(
+          ticket.firstResponseDueAt,
+          oldSla.firstResponseHours,
+          oldSla.businessHoursOnly,
+        )
       : ticket.createdAt;
     const resolutionStart = ticket.dueAt
-      ? this.addHours(ticket.dueAt, -oldSla.resolutionHours)
+      ? await this.subtractSlaHours(
+          ticket.dueAt,
+          oldSla.resolutionHours,
+          oldSla.businessHoursOnly,
+        )
       : ticket.createdAt;
 
-    const firstResponseDueAt = this.addHours(
+    const firstResponseDueAt = await this.addSlaHours(
       firstStart,
       newSla.firstResponseHours,
+      newSla.businessHoursOnly,
     );
-    const dueAt = this.addHours(resolutionStart, newSla.resolutionHours);
+    const dueAt = await this.addSlaHours(
+      resolutionStart,
+      newSla.resolutionHours,
+      newSla.businessHoursOnly,
+    );
+    const assigneeId = payload.assigneeId ?? null;
+    const nextStatus = this.normalizeStatusAfterTransfer(
+      ticket.status,
+      assigneeId,
+    );
 
     const updated = await this.prisma.ticket.update({
       where: { id: ticketId },
       data: {
         assignedTeamId: payload.newTeamId,
-        assigneeId: payload.assigneeId ?? null,
+        assigneeId,
+        status: nextStatus,
         firstResponseDueAt,
         dueAt,
       },
@@ -1375,14 +1638,27 @@ export class TicketsService {
           fromTeamId: priorTeamId,
           toTeamId: payload.newTeamId,
           toTeamName: updated.assignedTeam?.name ?? null,
-          assigneeId: payload.assigneeId ?? null,
+          assigneeId,
         },
         createdById: user.id,
       },
     });
+    if (nextStatus !== ticket.status) {
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'TICKET_STATUS_CHANGED',
+          payload: {
+            from: ticket.status,
+            to: nextStatus,
+          },
+          createdById: user.id,
+        },
+      });
+    }
 
-    if (payload.assigneeId) {
-      await this.ensureFollower(ticketId, payload.assigneeId);
+    if (assigneeId) {
+      await this.ensureFollower(ticketId, assigneeId);
     }
     await this.slaEngine.syncFromTicket(ticketId, {
       policyConfigId: newSla.policyConfigId ?? null,
@@ -1390,6 +1666,11 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.ticketTransferred(updated, user, priorTeamId),
     );
+    if (nextStatus !== ticket.status) {
+      await this.safeNotify(() =>
+        this.notifications.ticketStatusChanged(updated, ticket.status, user),
+      );
+    }
 
     return updated;
   }
@@ -1420,6 +1701,7 @@ export class TicketsService {
       status: ticket.status,
       priority: ticket.priority,
       assignedTeamId: ticket.assignedTeamId,
+      assigneeId: ticket.assigneeId,
       dueAt: ticket.dueAt,
       slaPausedAt: ticket.slaPausedAt,
       resolvedAt: ticket.resolvedAt,
@@ -1468,6 +1750,11 @@ export class TicketsService {
   ) {
     if (!this.isValidTransition(ticket.status, newStatus)) {
       throw new ForbiddenException('Invalid status transition');
+    }
+    if (this.transitionRequiresAssignee(newStatus) && !ticket.assigneeId) {
+      throw new BadRequestException(
+        `Cannot set status to ${newStatus} without an assignee`,
+      );
     }
 
     const now = new Date();
@@ -1521,7 +1808,12 @@ export class TicketsService {
         ticket.assignedTeamId,
         tx,
       );
-      updateData.dueAt = this.addHours(now, sla.resolutionHours);
+      updateData.dueAt = await this.addSlaHours(
+        now,
+        sla.resolutionHours,
+        sla.businessHoursOnly,
+        tx,
+      );
     }
 
     await tx.ticket.update({
@@ -1637,17 +1929,30 @@ export class TicketsService {
 
       // Derive SLA start from current cycle so reopened/paused tickets and due dates are preserved
       const firstStart = ticket.firstResponseDueAt
-        ? this.addHours(ticket.firstResponseDueAt, -oldSla.firstResponseHours)
+        ? await this.subtractSlaHours(
+            ticket.firstResponseDueAt,
+            oldSla.firstResponseHours,
+            oldSla.businessHoursOnly,
+          )
         : ticket.createdAt;
       const resolutionStart = ticket.dueAt
-        ? this.addHours(ticket.dueAt, -oldSla.resolutionHours)
+        ? await this.subtractSlaHours(
+            ticket.dueAt,
+            oldSla.resolutionHours,
+            oldSla.businessHoursOnly,
+          )
         : ticket.createdAt;
 
-      const firstResponseDueAt = this.addHours(
+      const firstResponseDueAt = await this.addSlaHours(
         firstStart,
         newSla.firstResponseHours,
+        newSla.businessHoursOnly,
       );
-      const dueAt = this.addHours(resolutionStart, newSla.resolutionHours);
+      const dueAt = await this.addSlaHours(
+        resolutionStart,
+        newSla.resolutionHours,
+        newSla.businessHoursOnly,
+      );
 
       await this.prisma.$transaction(async (tx) => {
         await tx.ticket.update({
@@ -1850,6 +2155,8 @@ export class TicketsService {
       throw new ForbiddenException('No access to this attachment');
     }
 
+    this.assertAttachmentDownloadAllowed(attachment.scanStatus);
+
     const filePath = this.resolveAttachmentPath(attachment.storageKey);
     try {
       await fs.access(filePath);
@@ -1861,6 +2168,64 @@ export class TicketsService {
       attachment,
       stream: createReadStream(filePath),
     };
+  }
+
+  async updateAttachmentScanStatus(
+    attachmentId: string,
+    payload: UpdateAttachmentScanDto,
+    scannerSecret: string | undefined,
+  ) {
+    this.assertAttachmentScannerSecret(scannerSecret);
+
+    if (payload.status === AttachmentScanStatus.PENDING) {
+      throw new BadRequestException(
+        'Scanner callback must set attachment status to CLEAN, INFECTED, or FAILED',
+      );
+    }
+
+    const attachment = await this.prisma.attachment.findUnique({
+      where: { id: attachmentId },
+      select: { id: true, ticketId: true },
+    });
+    if (!attachment) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    const scanCheckedAt = new Date();
+    const scanError =
+      payload.status === AttachmentScanStatus.CLEAN
+        ? null
+        : payload.error?.trim() ||
+          (payload.status === AttachmentScanStatus.INFECTED
+            ? 'Attachment marked as infected'
+            : 'Attachment scan failed');
+
+    return this.prisma.$transaction(async (tx) => {
+      const updatedAttachment = await tx.attachment.update({
+        where: { id: attachmentId },
+        data: {
+          scanStatus: payload.status,
+          scanCheckedAt,
+          scanError,
+        },
+      });
+
+      await tx.ticketEvent.create({
+        data: {
+          ticketId: attachment.ticketId,
+          type: 'ATTACHMENT_SCAN_STATUS_CHANGED',
+          payload: {
+            attachmentId: attachment.id,
+            status: payload.status,
+            error: scanError,
+            scannedAt: scanCheckedAt.toISOString(),
+          },
+          createdById: null,
+        },
+      });
+
+      return updatedAttachment;
+    });
   }
 
   /** Delegates to shared AccessControlService */
@@ -1966,6 +2331,41 @@ export class TicketsService {
     return this.STATUS_TRANSITIONS[status] ?? [];
   }
 
+  private getAvailableTransitionsForTicket(
+    status: TicketStatus,
+    assigneeId: string | null,
+  ) {
+    const transitions = this.getAvailableTransitions(status);
+    if (assigneeId) {
+      return transitions;
+    }
+    return transitions.filter(
+      (nextStatus) => !this.transitionRequiresAssignee(nextStatus),
+    );
+  }
+
+  private transitionRequiresAssignee(status: TicketStatus) {
+    return (
+      status === TicketStatus.ASSIGNED || status === TicketStatus.IN_PROGRESS
+    );
+  }
+
+  private normalizeStatusAfterTransfer(
+    status: TicketStatus,
+    assigneeId: string | null,
+  ) {
+    if (assigneeId) {
+      return status;
+    }
+    if (
+      status === TicketStatus.ASSIGNED ||
+      status === TicketStatus.IN_PROGRESS
+    ) {
+      return TicketStatus.TRIAGED;
+    }
+    return status;
+  }
+
   private isPauseStatus(status: TicketStatus) {
     return (
       status === TicketStatus.WAITING_ON_REQUESTER ||
@@ -1985,12 +2385,14 @@ export class TicketsService {
           policyConfigId: string;
           firstResponseHours: number;
           resolutionHours: number;
+          businessHoursOnly: boolean;
         }>
       >`
         SELECT
           p."id" AS "policyConfigId",
           t."firstResponseHours" AS "firstResponseHours",
-          t."resolutionHours" AS "resolutionHours"
+          t."resolutionHours" AS "resolutionHours",
+          p."businessHoursOnly" AS "businessHoursOnly"
         FROM "SlaPolicyAssignment" a
         INNER JOIN "SlaPolicyConfig" p ON p."id" = a."policyConfigId"
         INNER JOIN "SlaPolicyConfigTarget" t
@@ -2011,12 +2413,14 @@ export class TicketsService {
         policyConfigId: string;
         firstResponseHours: number;
         resolutionHours: number;
+        businessHoursOnly: boolean;
       }>
     >`
       SELECT
         p."id" AS "policyConfigId",
         t."firstResponseHours" AS "firstResponseHours",
-        t."resolutionHours" AS "resolutionHours"
+        t."resolutionHours" AS "resolutionHours",
+        p."businessHoursOnly" AS "businessHoursOnly"
       FROM "SlaPolicyConfig" p
       INNER JOIN "SlaPolicyConfigTarget" t
         ON t."policyConfigId" = p."id"
@@ -2033,7 +2437,460 @@ export class TicketsService {
     return {
       policyConfigId: null,
       ...this.defaultSlaConfig[priority],
+      businessHoursOnly: true,
     };
+  }
+
+  private async addSlaHours(
+    startAt: Date,
+    hours: number,
+    businessHoursOnly: boolean,
+    tx?: Prisma.TransactionClient,
+  ) {
+    if (!businessHoursOnly) {
+      return this.addHours(startAt, hours);
+    }
+    const settings = await this.getBusinessHoursSettings(tx);
+    return this.addBusinessHours(startAt, hours, settings);
+  }
+
+  private async subtractSlaHours(
+    endAt: Date,
+    hours: number,
+    businessHoursOnly: boolean,
+    tx?: Prisma.TransactionClient,
+  ) {
+    if (!businessHoursOnly) {
+      return this.addHours(endAt, -hours);
+    }
+    const settings = await this.getBusinessHoursSettings(tx);
+    return this.subtractBusinessHours(endAt, hours, settings);
+  }
+
+  private async getBusinessHoursSettings(tx?: Prisma.TransactionClient) {
+    const now = Date.now();
+    if (
+      !tx &&
+      this.businessHoursSettingsCache &&
+      now - this.businessHoursSettingsCache.checkedAtMs <=
+        this.schemaCheckCacheTtlMs
+    ) {
+      return this.businessHoursSettingsCache.value;
+    }
+
+    const client = tx ?? this.prisma;
+    const row = await client.slaBusinessHoursSetting.findUnique({
+      where: { id: 'global' },
+      select: { timezone: true, schedule: true, holidays: true },
+    });
+    const value = row
+      ? this.normalizeBusinessHoursSettings(
+          row.timezone,
+          row.schedule,
+          row.holidays,
+        )
+      : {
+          timezone: 'UTC',
+          schedule: [...this.defaultBusinessSchedule],
+          holidays: [],
+        };
+
+    if (!tx) {
+      this.businessHoursSettingsCache = {
+        value,
+        checkedAtMs: now,
+      };
+    }
+
+    return value;
+  }
+
+  private normalizeBusinessHoursSettings(
+    timezoneRaw: string,
+    scheduleRaw: Prisma.JsonValue,
+    holidaysRaw: Prisma.JsonValue,
+  ): BusinessHoursSettings {
+    const timezone = this.normalizeTimeZone(timezoneRaw);
+    const schedule = this.normalizeBusinessSchedule(scheduleRaw);
+    const holidays = this.normalizeBusinessHolidays(holidaysRaw);
+    return { timezone, schedule, holidays };
+  }
+
+  private normalizeTimeZone(timezoneRaw: string) {
+    const candidate = (timezoneRaw ?? '').trim() || 'UTC';
+    return DateTime.now().setZone(candidate).isValid ? candidate : 'UTC';
+  }
+
+  private readTrimmedPrimitive(value: unknown) {
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+    if (
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      return String(value).trim();
+    }
+    return '';
+  }
+
+  private normalizeBusinessSchedule(raw: Prisma.JsonValue) {
+    const source = Array.isArray(raw) ? raw : [];
+    const map = new Map<BusinessWeekDay, BusinessDaySchedule>();
+
+    for (const value of source) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        continue;
+      }
+      const dayValue = (value as { day?: unknown }).day;
+      if (
+        typeof dayValue !== 'string' ||
+        !this.businessDaysOrder.includes(dayValue as BusinessWeekDay)
+      ) {
+        continue;
+      }
+
+      const startRaw = this.readTrimmedPrimitive(
+        (value as { start?: unknown }).start,
+      );
+      const endRaw = this.readTrimmedPrimitive(
+        (value as { end?: unknown }).end,
+      );
+      const startMinutes = this.timeToMinutes(startRaw);
+      const endMinutes = this.timeToMinutes(endRaw);
+      if (
+        startMinutes == null ||
+        endMinutes == null ||
+        startMinutes >= endMinutes
+      ) {
+        continue;
+      }
+
+      map.set(dayValue as BusinessWeekDay, {
+        day: dayValue as BusinessWeekDay,
+        enabled: Boolean((value as { enabled?: unknown }).enabled ?? true),
+        start: startRaw,
+        end: endRaw,
+      });
+    }
+
+    return this.businessDaysOrder.map((day, index) => {
+      const existing = map.get(day);
+      if (existing) {
+        return existing;
+      }
+      const fallback = this.defaultBusinessSchedule[index];
+      return {
+        day,
+        enabled: fallback.enabled,
+        start: fallback.start,
+        end: fallback.end,
+      };
+    });
+  }
+
+  private normalizeBusinessHolidays(raw: Prisma.JsonValue) {
+    if (!Array.isArray(raw)) {
+      return [] as Array<{ name: string; date: string }>;
+    }
+    const validDate = /^\d{4}-\d{2}-\d{2}$/;
+    const dedup = new Map<string, { name: string; date: string }>();
+    for (const value of raw) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        continue;
+      }
+      const name = this.readTrimmedPrimitive(
+        (value as { name?: unknown }).name,
+      );
+      const date = this.readTrimmedPrimitive(
+        (value as { date?: unknown }).date,
+      );
+      if (!name || !validDate.test(date)) {
+        continue;
+      }
+      dedup.set(date, { name, date });
+    }
+    return [...dedup.values()];
+  }
+
+  private addBusinessHours(
+    startAt: Date,
+    hours: number,
+    settings: BusinessHoursSettings,
+  ) {
+    const remainingMinutesStart = Math.max(0, Math.round(hours * 60));
+    if (remainingMinutesStart === 0) {
+      return new Date(startAt.getTime());
+    }
+
+    let remainingMinutes = remainingMinutesStart;
+    let cursor = DateTime.fromJSDate(startAt, { zone: 'utc' })
+      .setZone(settings.timezone)
+      .set({ second: 0, millisecond: 0 });
+
+    // Guardrail to avoid infinite loops when settings are malformed.
+    for (let i = 0; i < 20_000 && remainingMinutes > 0; i++) {
+      cursor = this.alignToBusinessWindow(cursor, settings);
+
+      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
+      const day = settings.schedule.find((item) => item.day === dayName);
+      if (!day || !day.enabled) {
+        cursor = cursor.plus({ days: 1 }).startOf('day');
+        continue;
+      }
+
+      const endMinutes = this.timeToMinutes(day.end);
+      if (endMinutes == null) {
+        cursor = cursor.plus({ days: 1 }).startOf('day');
+        continue;
+      }
+
+      const windowEnd = cursor.set({
+        hour: Math.floor(endMinutes / 60),
+        minute: endMinutes % 60,
+        second: 0,
+        millisecond: 0,
+      });
+      const available = Math.max(
+        0,
+        Math.floor(windowEnd.diff(cursor, 'minutes').minutes),
+      );
+
+      if (available === 0) {
+        cursor = cursor.plus({ days: 1 }).startOf('day');
+        continue;
+      }
+
+      if (remainingMinutes <= available) {
+        cursor = cursor.plus({ minutes: remainingMinutes });
+        remainingMinutes = 0;
+        break;
+      }
+
+      remainingMinutes -= available;
+      cursor = windowEnd.plus({ minutes: 1 });
+    }
+
+    if (remainingMinutes > 0) {
+      this.logger.warn(
+        'Business-hours due date calculation hit safety limit; falling back to raw hour addition',
+      );
+      return this.addHours(startAt, hours);
+    }
+
+    return cursor.toUTC().toJSDate();
+  }
+
+  private subtractBusinessHours(
+    endAt: Date,
+    hours: number,
+    settings: BusinessHoursSettings,
+  ) {
+    const remainingMinutesStart = Math.max(0, Math.round(hours * 60));
+    if (remainingMinutesStart === 0) {
+      return new Date(endAt.getTime());
+    }
+
+    let remainingMinutes = remainingMinutesStart;
+    let cursor = DateTime.fromJSDate(endAt, { zone: 'utc' })
+      .setZone(settings.timezone)
+      .set({ second: 0, millisecond: 0 });
+
+    // Guardrail to avoid infinite loops when settings are malformed.
+    for (let i = 0; i < 20_000 && remainingMinutes > 0; i++) {
+      cursor = this.alignBackwardToBusinessWindow(cursor, settings);
+
+      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
+      const day = settings.schedule.find((item) => item.day === dayName);
+      if (!day || !day.enabled) {
+        cursor = cursor
+          .minus({ days: 1 })
+          .endOf('day')
+          .set({ second: 0, millisecond: 0 });
+        continue;
+      }
+
+      const startMinutes = this.timeToMinutes(day.start);
+      if (startMinutes == null) {
+        cursor = cursor
+          .minus({ days: 1 })
+          .endOf('day')
+          .set({ second: 0, millisecond: 0 });
+        continue;
+      }
+
+      const windowStart = cursor.set({
+        hour: Math.floor(startMinutes / 60),
+        minute: startMinutes % 60,
+        second: 0,
+        millisecond: 0,
+      });
+      const available = Math.max(
+        0,
+        Math.floor(cursor.diff(windowStart, 'minutes').minutes),
+      );
+
+      if (available === 0) {
+        cursor = windowStart.minus({ minutes: 1 });
+        continue;
+      }
+
+      if (remainingMinutes <= available) {
+        cursor = cursor.minus({ minutes: remainingMinutes });
+        remainingMinutes = 0;
+        break;
+      }
+
+      remainingMinutes -= available;
+      cursor = windowStart.minus({ minutes: 1 });
+    }
+
+    if (remainingMinutes > 0) {
+      this.logger.warn(
+        'Business-hours reverse due date calculation hit safety limit; falling back to raw hour subtraction',
+      );
+      return this.addHours(endAt, -hours);
+    }
+
+    return cursor.toUTC().toJSDate();
+  }
+
+  private alignToBusinessWindow(
+    start: DateTime,
+    settings: BusinessHoursSettings,
+  ): DateTime {
+    let cursor = start.set({ second: 0, millisecond: 0 });
+
+    for (let i = 0; i < 14; i++) {
+      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
+      const localDate = cursor.toFormat('yyyy-LL-dd');
+      const day = settings.schedule.find((item) => item.day === dayName);
+      const isHoliday = settings.holidays.some(
+        (holiday) => holiday.date === localDate,
+      );
+
+      if (!day || !day.enabled || isHoliday) {
+        cursor = cursor.plus({ days: 1 }).startOf('day');
+        continue;
+      }
+
+      const startMinutes = this.timeToMinutes(day.start);
+      const endMinutes = this.timeToMinutes(day.end);
+      if (
+        startMinutes == null ||
+        endMinutes == null ||
+        startMinutes >= endMinutes
+      ) {
+        cursor = cursor.plus({ days: 1 }).startOf('day');
+        continue;
+      }
+
+      const windowStart = cursor.set({
+        hour: Math.floor(startMinutes / 60),
+        minute: startMinutes % 60,
+        second: 0,
+        millisecond: 0,
+      });
+      const windowEnd = cursor.set({
+        hour: Math.floor(endMinutes / 60),
+        minute: endMinutes % 60,
+        second: 0,
+        millisecond: 0,
+      });
+
+      const cursorMs = cursor.toMillis();
+      const startMs = windowStart.toMillis();
+      const endMs = windowEnd.toMillis();
+      if (cursorMs < startMs) {
+        return windowStart;
+      }
+      if (cursorMs >= endMs) {
+        cursor = cursor.plus({ days: 1 }).startOf('day');
+        continue;
+      }
+      return cursor;
+    }
+
+    return start;
+  }
+
+  private alignBackwardToBusinessWindow(
+    end: DateTime,
+    settings: BusinessHoursSettings,
+  ): DateTime {
+    let cursor = end.set({ second: 0, millisecond: 0 });
+
+    for (let i = 0; i < 14; i++) {
+      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
+      const localDate = cursor.toFormat('yyyy-LL-dd');
+      const day = settings.schedule.find((item) => item.day === dayName);
+      const isHoliday = settings.holidays.some(
+        (holiday) => holiday.date === localDate,
+      );
+
+      if (!day || !day.enabled || isHoliday) {
+        cursor = cursor
+          .minus({ days: 1 })
+          .endOf('day')
+          .set({ second: 0, millisecond: 0 });
+        continue;
+      }
+
+      const startMinutes = this.timeToMinutes(day.start);
+      const endMinutes = this.timeToMinutes(day.end);
+      if (
+        startMinutes == null ||
+        endMinutes == null ||
+        startMinutes >= endMinutes
+      ) {
+        cursor = cursor
+          .minus({ days: 1 })
+          .endOf('day')
+          .set({ second: 0, millisecond: 0 });
+        continue;
+      }
+
+      const windowStart = cursor.set({
+        hour: Math.floor(startMinutes / 60),
+        minute: startMinutes % 60,
+        second: 0,
+        millisecond: 0,
+      });
+      const windowEnd = cursor.set({
+        hour: Math.floor(endMinutes / 60),
+        minute: endMinutes % 60,
+        second: 0,
+        millisecond: 0,
+      });
+
+      const cursorMs = cursor.toMillis();
+      const startMs = windowStart.toMillis();
+      const endMs = windowEnd.toMillis();
+      if (cursorMs > endMs) {
+        return windowEnd;
+      }
+      if (cursorMs <= startMs) {
+        cursor = cursor
+          .minus({ days: 1 })
+          .endOf('day')
+          .set({ second: 0, millisecond: 0 });
+        continue;
+      }
+      return cursor;
+    }
+
+    return end;
+  }
+
+  private timeToMinutes(time: string): number | null {
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
+    if (!match) {
+      return null;
+    }
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    return hours * 60 + minutes;
   }
 
   private addHours(date: Date, hours: number) {
@@ -2195,11 +3052,269 @@ export class TicketsService {
     );
   }
 
+  private assertInboundEmailWebhookSecret(inboundSecret: string | undefined) {
+    const configuredSecret =
+      this.config.get<string>('INBOUND_EMAIL_WEBHOOK_SECRET') ??
+      this.config.get<string>('M365_INBOUND_WEBHOOK_SECRET');
+
+    if (!configuredSecret) {
+      throw new ForbiddenException(
+        'Inbound email webhook secret is not configured',
+      );
+    }
+
+    if (!inboundSecret) {
+      throw new ForbiddenException('Missing inbound email webhook secret');
+    }
+
+    const expected = Buffer.from(configuredSecret, 'utf8');
+    const received = Buffer.from(inboundSecret, 'utf8');
+    if (
+      expected.length !== received.length ||
+      !timingSafeEqual(expected, received)
+    ) {
+      throw new ForbiddenException('Invalid inbound email webhook secret');
+    }
+  }
+
+  private async findOrCreateInboundRequester(email: string, name?: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        role: true,
+        primaryTeamId: true,
+      },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    const fallbackDisplayName =
+      name?.trim() || normalizedEmail.split('@')[0] || 'Requester';
+    try {
+      return await this.prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          displayName: fallbackDisplayName,
+          role: UserRole.EMPLOYEE,
+        },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          role: true,
+          primaryTeamId: true,
+        },
+      });
+    } catch {
+      const concurrentCreate = await this.prisma.user.findUnique({
+        where: { email: normalizedEmail },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          role: true,
+          primaryTeamId: true,
+        },
+      });
+      if (!concurrentCreate) {
+        throw new BadRequestException(
+          'Unable to resolve inbound email requester',
+        );
+      }
+      return concurrentCreate;
+    }
+  }
+
+  private toInboundRequesterAuthUser(requester: {
+    id: string;
+    email: string;
+    displayName: string;
+    role: UserRole;
+    primaryTeamId: string | null;
+  }): AuthUser {
+    return {
+      id: requester.id,
+      email: requester.email,
+      displayName: requester.displayName,
+      role: requester.role,
+      primaryTeamId: requester.primaryTeamId,
+      teamId: requester.primaryTeamId,
+    };
+  }
+
+  private extractDisplayIdFromSubject(subject: string) {
+    const match = subject.trim().match(/\b([A-Za-z0-9]{2,12}_\d{8}_\d{3,})\b/);
+    return match?.[1]?.toUpperCase() ?? null;
+  }
+
+  private async reserveInboundEmailReceipt(
+    messageIdRaw: string,
+    fromEmailRaw: string,
+    subjectRaw: string,
+  ): Promise<InboundEmailReceiptReservation> {
+    const messageId = messageIdRaw.trim();
+    if (!messageId) {
+      throw new BadRequestException('Inbound email messageId is required');
+    }
+
+    const fromEmail = fromEmailRaw.trim().toLowerCase();
+    const subject = subjectRaw.trim();
+    const reservationId = randomUUID();
+    const inserted = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO "InboundEmailReceipt" ("id", "messageId", "fromEmail", "subject", "createdAt", "updatedAt")
+      VALUES (${reservationId}, ${messageId}, ${fromEmail}, ${subject}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT ("messageId") DO NOTHING
+      RETURNING "id"
+    `;
+    if (inserted[0]?.id) {
+      return { mode: 'reserved', id: inserted[0].id };
+    }
+
+    const existing = await this.prisma.$queryRaw<
+      Array<{
+        fromEmail: string;
+        ticketId: string | null;
+        threaded: boolean | null;
+      }>
+    >`
+      SELECT "fromEmail", "ticketId", "threaded"
+      FROM "InboundEmailReceipt"
+      WHERE "messageId" = ${messageId}
+      LIMIT 1
+    `;
+    if (!existing[0]) {
+      throw new ConflictException(
+        'Inbound email receipt conflicted and could not be resolved',
+      );
+    }
+
+    if (existing[0].fromEmail !== fromEmail) {
+      throw new ConflictException(
+        'Inbound email messageId already exists for another sender',
+      );
+    }
+
+    if (!existing[0].ticketId) {
+      throw new ConflictException(
+        'Inbound email with this messageId is still processing',
+      );
+    }
+
+    return {
+      mode: 'replay',
+      ticketId: existing[0].ticketId,
+      threaded: existing[0].threaded ?? false,
+    };
+  }
+
+  private async completeInboundEmailReceipt(
+    receiptId: string,
+    ticketId: string,
+    threaded: boolean,
+  ) {
+    await this.prisma.$executeRaw`
+      UPDATE "InboundEmailReceipt"
+      SET "ticketId" = ${ticketId},
+          "threaded" = ${threaded},
+          "updatedAt" = CURRENT_TIMESTAMP
+      WHERE "id" = ${receiptId}
+    `;
+  }
+
+  private async releaseInboundEmailReceipt(receiptId: string) {
+    await this.prisma.$executeRaw`
+      DELETE FROM "InboundEmailReceipt"
+      WHERE "id" = ${receiptId}
+    `.catch(() => {
+      // no-op: if already finalized or removed, retries can proceed.
+    });
+  }
+
+  private async buildInboundEmailReplayResponse(
+    ticketId: string,
+    threaded: boolean,
+  ) {
+    const ticket = await this.getTicketForMutationResponse(ticketId);
+    return {
+      threaded,
+      ticket,
+    };
+  }
+
+  private async getTicketForMutationResponse(ticketId: string) {
+    const result = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        requester: true,
+        assignee: true,
+        assignedTeam: true,
+        category: true,
+        customFieldValues: { include: { customField: true } },
+      },
+    });
+    if (!result) {
+      throw new NotFoundException('Ticket not found');
+    }
+    return result;
+  }
+
   private resolveAttachmentPath(storageKey: string) {
     const baseDir =
       this.config.get<string>('ATTACHMENTS_DIR') ??
       path.join(process.cwd(), 'uploads');
     return path.join(baseDir, storageKey);
+  }
+
+  private assertAttachmentScannerSecret(scannerSecret: string | undefined) {
+    const configuredSecret = this.config.get<string>(
+      'ATTACHMENT_SCAN_WEBHOOK_SECRET',
+    );
+
+    if (!configuredSecret) {
+      throw new ForbiddenException(
+        'Attachment scanner webhook secret is not configured',
+      );
+    }
+
+    if (!scannerSecret) {
+      throw new ForbiddenException('Missing attachment scanner webhook secret');
+    }
+
+    const expected = Buffer.from(configuredSecret, 'utf8');
+    const received = Buffer.from(scannerSecret, 'utf8');
+    if (
+      expected.length !== received.length ||
+      !timingSafeEqual(expected, received)
+    ) {
+      throw new ForbiddenException('Invalid attachment scanner webhook secret');
+    }
+  }
+
+  private assertAttachmentDownloadAllowed(scanStatus: AttachmentScanStatus) {
+    if (scanStatus === AttachmentScanStatus.CLEAN) {
+      return;
+    }
+
+    if (scanStatus === AttachmentScanStatus.PENDING) {
+      throw new ForbiddenException(
+        'Attachment scan is still pending; download is blocked',
+      );
+    }
+
+    if (scanStatus === AttachmentScanStatus.INFECTED) {
+      throw new ForbiddenException(
+        'Attachment was flagged as infected and cannot be downloaded',
+      );
+    }
+
+    throw new ForbiddenException(
+      'Attachment scan failed; download is blocked until the file is rescanned',
+    );
   }
 
   private sanitizeFileName(fileName: string) {
@@ -2230,6 +3345,8 @@ export class TicketsService {
       );
     }
 
+    this.assertFileSignatureMatchesExtension(file, ext);
+
     // 3. Block dangerous MIME types regardless of extension
     const blockedMimes = [
       'application/x-msdownload',
@@ -2240,6 +3357,72 @@ export class TicketsService {
     if (blockedMimes.includes(mime)) {
       throw new BadRequestException(
         `Files with MIME type "${mime}" are not allowed.`,
+      );
+    }
+  }
+
+  private assertFileSignatureMatchesExtension(
+    file: Express.Multer.File,
+    extension: string,
+  ) {
+    const signatureMap: Record<string, number[][]> = {
+      '.pdf': [[0x25, 0x50, 0x44, 0x46]], // %PDF
+      '.png': [[0x89, 0x50, 0x4e, 0x47]],
+      '.jpg': [[0xff, 0xd8, 0xff]],
+      '.jpeg': [[0xff, 0xd8, 0xff]],
+      '.gif': [[0x47, 0x49, 0x46, 0x38]],
+      '.zip': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+      '.docx': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+      '.xlsx': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+      '.pptx': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+      '.odt': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+      '.ods': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+      '.odp': [
+        [0x50, 0x4b, 0x03, 0x04],
+        [0x50, 0x4b, 0x05, 0x06],
+        [0x50, 0x4b, 0x07, 0x08],
+      ],
+    };
+    const signatures = signatureMap[extension];
+    if (!signatures) {
+      return;
+    }
+
+    const header = file.buffer?.subarray(0, 8);
+    if (!header || header.length < 4) {
+      throw new BadRequestException('Unable to validate attachment signature');
+    }
+
+    const isMatch = signatures.some((signature) =>
+      signature.every((byte, index) => header[index] === byte),
+    );
+    if (!isMatch) {
+      throw new BadRequestException(
+        `File content signature does not match extension "${extension}"`,
       );
     }
   }

@@ -1,0 +1,56 @@
+# ──────────────────────────────────────────────────────────────
+#  Docker Compose – local development services
+#
+#  Override credentials via a .env file in the repo root or
+#  by exporting shell variables before running docker compose.
+#
+#  Example .env (do NOT commit):
+#    POSTGRES_USER=postgres
+#    POSTGRES_PASSWORD=my-secure-password
+#    POSTGRES_DB=ticketing
+#    POSTGRES_TEST_DB=ticketing_test
+#    REDIS_PASSWORD=my-redis-password
+# ──────────────────────────────────────────────────────────────
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ticketing-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or environment}
+      POSTGRES_DB: ${POSTGRES_DB:-ticketing}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  postgres_test:
+    image: postgres:16
+    container_name: ticketing_test
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or environment}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-ticketing_test}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata_test:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: ticketing-redis
+    command: >
+      sh -c "if [ -n \"$$REDIS_PASSWORD\" ]; then
+               redis-server --requirepass \"$$REDIS_PASSWORD\";
+             else
+               redis-server;
+             fi"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+  pgdata_test:

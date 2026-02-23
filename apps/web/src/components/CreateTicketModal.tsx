@@ -5,7 +5,12 @@ import { X } from 'lucide-react';
 import type { CategoryRef, CustomFieldRecord, TeamRef } from '../api/client';
 import { CustomFieldInput } from './CustomFieldRenderer';
 import { Button } from './ui/Button';
-import { createTicketSchema, type CreateTicketFormData } from '../schemas/createTicket';
+import {
+  CREATE_TICKET_DESCRIPTION_MAX,
+  CREATE_TICKET_SUBJECT_MAX,
+  createTicketSchema,
+  type CreateTicketFormData,
+} from '../schemas/createTicket';
 
 export type CreateTicketForm = CreateTicketFormData;
 
@@ -182,13 +187,14 @@ export function CreateTicketModal({
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label htmlFor="create-ticket-subject" className="block text-xs font-medium text-slate-700">Subject *</label>
-              <span className={`text-xs ${(subjectValue?.length ?? 0) > 200 ? 'text-red-500' : 'text-slate-400'}`}>
-                {subjectValue?.length ?? 0}/200
+              <span className={`text-xs ${(subjectValue?.length ?? 0) > CREATE_TICKET_SUBJECT_MAX ? 'text-red-500' : 'text-slate-400'}`}>
+                {subjectValue?.length ?? 0}/{CREATE_TICKET_SUBJECT_MAX}
               </span>
             </div>
             <input
               id="create-ticket-subject"
               className={`${inputBase} ${errors.subject ? inputError : inputNormal}`}
+              maxLength={CREATE_TICKET_SUBJECT_MAX}
               {...register('subject')}
             />
             {errors.subject && (
@@ -198,14 +204,15 @@ export function CreateTicketModal({
           <div>
             <div className="mb-1 flex items-center justify-between">
               <label htmlFor="create-ticket-description" className="block text-xs font-medium text-slate-700">Description *</label>
-              <span className={`text-xs ${(descriptionValue?.length ?? 0) > 5000 ? 'text-red-500' : 'text-slate-400'}`}>
-                {descriptionValue?.length ?? 0}/5000
+              <span className={`text-xs ${(descriptionValue?.length ?? 0) > CREATE_TICKET_DESCRIPTION_MAX ? 'text-red-500' : 'text-slate-400'}`}>
+                {descriptionValue?.length ?? 0}/{CREATE_TICKET_DESCRIPTION_MAX}
               </span>
             </div>
             <textarea
               id="create-ticket-description"
               className={`${inputBase} ${errors.description ? inputError : inputNormal}`}
               rows={4}
+              maxLength={CREATE_TICKET_DESCRIPTION_MAX}
               {...register('description')}
             />
             {errors.description && (

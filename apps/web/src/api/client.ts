@@ -106,6 +106,7 @@ export type TicketRecord = {
   firstResponseDueAt?: string | null;
   firstResponseAt?: string | null;
   slaPausedAt?: string | null;
+  allowedTransitions?: string[];
 };
 
 export type TicketMessage = {
@@ -357,7 +358,9 @@ function unwrapDataEnvelope<T>(value: T | DataEnvelope<T>): T {
   return isDataEnvelope(value) ? value.data : value;
 }
 
-export function fetchTickets(params?: Record<string, string | number | undefined | string[]>) {
+export function fetchTickets(
+  params?: Record<string, string | number | boolean | undefined | string[]>,
+) {
   const query = new URLSearchParams();
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
@@ -375,7 +378,16 @@ export function fetchTickets(params?: Record<string, string | number | undefined
 }
 
 export function fetchTicketCounts() {
-  return apiFetch<{ assignedToMe: number; triage: number; open: number; unassigned: number }>('/tickets/counts');
+  return apiFetch<{
+    assignedToMe: number;
+    triage: number;
+    open: number;
+    unassigned: number;
+    resolved: number;
+    resolvedByMe: number;
+    atRisk: number;
+    overdue: number;
+  }>('/tickets/counts');
 }
 
 export type TicketMetricsResponse = {
@@ -605,7 +617,18 @@ export async function uploadTicketAttachment(ticketId: string, file: File) {
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const raw = await response.text();
+    let message = raw;
+    try {
+      const parsed = JSON.parse(raw) as { message?: string | string[] };
+      if (Array.isArray(parsed.message)) {
+        message = parsed.message.join(', ');
+      } else if (typeof parsed.message === 'string') {
+        message = parsed.message;
+      }
+    } catch {
+      // keep raw response text
+    }
     throw new Error(message || 'Attachment upload failed');
   }
 
@@ -620,7 +643,18 @@ export async function downloadAttachment(attachmentId: string) {
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const raw = await response.text();
+    let message = raw;
+    try {
+      const parsed = JSON.parse(raw) as { message?: string | string[] };
+      if (Array.isArray(parsed.message)) {
+        message = parsed.message.join(', ');
+      } else if (typeof parsed.message === 'string') {
+        message = parsed.message;
+      }
+    } catch {
+      // keep raw response text
+    }
     throw new Error(message || 'Attachment download failed');
   }
 
