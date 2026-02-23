@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   fetchReportAgentWorkload,
@@ -109,6 +109,49 @@ const EMPTY_REPORT_SUMMARY: ReportSummaryResponse = {
   ticketsByStatus: { data: [] },
   agentPerformance: { data: [] },
 };
+
+const RESOLVED_STATUSES = new Set(['RESOLVED', 'CLOSED']);
+const OPEN_STATUSES = new Set([
+  'NEW',
+  'TRIAGED',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'WAITING_ON_REQUESTER',
+  'WAITING_ON_VENDOR',
+  'REOPENED',
+]);
+
+function parseDateMillis(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isResolvedStatus(status?: string | null) {
+  return Boolean(status && RESOLVED_STATUSES.has(status));
+}
+
+function isOpenStatus(status?: string | null) {
+  return Boolean(status && OPEN_STATUSES.has(status));
+}
+
+function incrementTodaySeries(
+  series: Array<{ date: string; count: number }>,
+  delta: number,
+) {
+  if (delta === 0) return series;
+  const today = new Date().toISOString().slice(0, 10);
+  const index = series.findIndex((point) => point.date === today);
+  if (index === -1) {
+    return [...series, { date: today, count: Math.max(0, delta) }];
+  }
+  const next = [...series];
+  next[index] = {
+    ...next[index],
+    count: Math.max(0, next[index].count + delta),
+  };
+  return next;
+}
 
 function toRangeLabel(range: '3' | '7' | '30') {
   if (range === '3') return 'Last 3 days';
@@ -462,6 +505,7 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
 export function DashboardPage({ role }: DashboardPageProps) {
   const headerCtx = useHeaderContext();
   const navigate = useNavigate();
+  const currentEmail = headerCtx?.currentEmail?.trim().toLowerCase() ?? '';
   const isEmployee = role === 'EMPLOYEE';
   const isAgent = role === 'AGENT';
   const isLead = role === 'LEAD';
@@ -496,9 +540,10 @@ export function DashboardPage({ role }: DashboardPageProps) {
   const [volumeSeries, setVolumeSeries] = useState<{ date: string; count: number }[]>([]);
   const [transfers, setTransfers] = useState<TransfersResponse['data']>({ total: 0, series: [] });
   const [slaCompliance, setSlaCompliance] = useState({ met: 0, breached: 0, total: 0, atRisk: 0 });
-  const [realtimeRefreshToken, setRealtimeRefreshToken] = useState(0);
 
   const loadedOnceRef = useRef(false);
+  const recentTicketsRef = useRef<TicketRecord[]>([]);
+  const lastRealtimeUpdatedAtByTicketRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     setRange('30');
@@ -506,19 +551,267 @@ export function DashboardPage({ role }: DashboardPageProps) {
   }, [role]);
 
   useEffect(() => {
-    let refreshTimer: number | null = null;
+    recentTicketsRef.current = recentTickets;
+    for (const ticket of recentTickets) {
+      const updatedAtMs = parseDateMillis(ticket.updatedAt);
+      if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) {
+        continue;
+      }
+      const previous =
+        lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0;
+      if (updatedAtMs > previous) {
+        lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = updatedAtMs;
+      }
+    }
+  }, [recentTickets]);
 
-    const handleTicketChanged = (event: Event) => {
-      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
-      if (payload?.reason === 'message_added') {
+  const applyRealtimeTicketPatch = useCallback(
+    (payload: RealtimeTicketChangedEventPayload) => {
+      const ticketId = payload.ticketId;
+      if (!ticketId) {
         return;
       }
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
+
+      const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt ?? payload.occurredAt);
+      if (incomingUpdatedAtMs > 0) {
+        const lastUpdatedAtMs =
+          lastRealtimeUpdatedAtByTicketRef.current[ticketId] ?? 0;
+        if (incomingUpdatedAtMs < lastUpdatedAtMs) {
+          return;
+        }
+        lastRealtimeUpdatedAtByTicketRef.current[ticketId] = incomingUpdatedAtMs;
       }
-      refreshTimer = window.setTimeout(() => {
-        setRealtimeRefreshToken((prev) => prev + 1);
-      }, 300);
+
+      const currentTicket = recentTicketsRef.current.find(
+        (ticket) => ticket.id === ticketId,
+      );
+      const prevStatus = currentTicket?.status;
+      const prevPriority = currentTicket?.priority;
+      const nextStatus = payload.status ?? prevStatus;
+      const nextPriority = payload.priority ?? prevPriority;
+      const prevAssigneeEmail =
+        currentTicket?.assignee?.email?.toLowerCase() ?? '';
+      const nextAssigneeEmail =
+        payload.assignee?.email?.toLowerCase() ??
+        (Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
+        payload.assigneeId === null
+          ? ''
+          : prevAssigneeEmail);
+      const prevIsOpen = isOpenStatus(prevStatus);
+      const nextIsOpen = isOpenStatus(nextStatus);
+      const prevIsResolved = isResolvedStatus(prevStatus);
+      const nextIsResolved = isResolvedStatus(nextStatus);
+      const prevAssignedToMe = Boolean(
+        currentEmail && prevAssigneeEmail === currentEmail,
+      );
+      const nextAssignedToMe = Boolean(
+        currentEmail && nextAssigneeEmail === currentEmail,
+      );
+      const prevUnassignedOpen = prevIsOpen && !prevAssigneeEmail;
+      const nextUnassignedOpen = nextIsOpen && !nextAssigneeEmail;
+
+      setRecentTickets((prev) => {
+        const index = prev.findIndex((ticket) => ticket.id === ticketId);
+        if (index === -1) {
+          return prev;
+        }
+        const patched: TicketRecord = { ...prev[index] };
+        if (typeof payload.status === 'string' && payload.status) {
+          patched.status = payload.status;
+        }
+        if (typeof payload.priority === 'string' && payload.priority) {
+          patched.priority = payload.priority;
+        }
+        if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
+          patched.updatedAt = payload.updatedAt;
+        }
+        if (payload.assignedTeam?.id) {
+          patched.assignedTeam = payload.assignedTeam;
+        } else if (
+          Object.prototype.hasOwnProperty.call(payload, 'assignedTeamId') &&
+          payload.assignedTeamId === null
+        ) {
+          patched.assignedTeam = null;
+        }
+        if (payload.assignee?.id) {
+          patched.assignee = payload.assignee;
+        } else if (
+          Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
+          payload.assigneeId === null
+        ) {
+          patched.assignee = null;
+        }
+        const next = [...prev];
+        next[index] = patched;
+        next.sort((a, b) =>
+          sort === 'oldest'
+            ? parseDateMillis(a.updatedAt) - parseDateMillis(b.updatedAt)
+            : parseDateMillis(b.updatedAt) - parseDateMillis(a.updatedAt),
+        );
+        return next;
+      });
+
+      setStats((prev) => {
+        let open = prev.open;
+        let resolved = prev.resolved;
+        let total = prev.total;
+        let unassigned = prev.unassigned;
+        let assignedToMe = prev.assignedToMe;
+        let resolvedByMe = prev.resolvedByMe;
+
+        if (payload.reason === 'ticket_created' && !prevStatus) {
+          total += 1;
+          if (nextIsResolved) resolved += 1;
+          else if (nextIsOpen) open += 1;
+          if (nextUnassignedOpen) unassigned += 1;
+          if (nextAssignedToMe && nextIsOpen) assignedToMe += 1;
+          if (nextAssignedToMe && nextIsResolved) resolvedByMe += 1;
+        }
+
+        if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+          if (prevIsOpen && !nextIsOpen) open -= 1;
+          if (!prevIsOpen && nextIsOpen) open += 1;
+          if (prevIsResolved && !nextIsResolved) resolved -= 1;
+          if (!prevIsResolved && nextIsResolved) resolved += 1;
+          if (prevAssignedToMe && !nextAssignedToMe && prevIsResolved) {
+            resolvedByMe -= 1;
+          }
+          if (!prevAssignedToMe && nextAssignedToMe && nextIsResolved) {
+            resolvedByMe += 1;
+          }
+        }
+
+        if (
+          prevStatus &&
+          (prevAssignedToMe !== nextAssignedToMe || prevIsOpen !== nextIsOpen)
+        ) {
+          if (prevAssignedToMe && prevIsOpen) assignedToMe -= 1;
+          if (nextAssignedToMe && nextIsOpen) assignedToMe += 1;
+        }
+
+        if (prevStatus && prevUnassignedOpen !== nextUnassignedOpen) {
+          if (prevUnassignedOpen) unassigned -= 1;
+          if (nextUnassignedOpen) unassigned += 1;
+        }
+
+        return {
+          ...prev,
+          open: Math.max(0, open),
+          resolved: Math.max(0, resolved),
+          total: Math.max(0, total),
+          unassigned: Math.max(0, unassigned),
+          assignedToMe: Math.max(0, assignedToMe),
+          resolvedByMe: Math.max(0, resolvedByMe),
+        };
+      });
+
+      setStatusBreakdown((prev) => {
+        if (prev.length === 0 || !nextStatus) {
+          return prev;
+        }
+        const counts = new Map(prev.map((point) => [point.status, point.count]));
+        if (prevStatus && prevStatus !== nextStatus) {
+          counts.set(prevStatus, Math.max(0, (counts.get(prevStatus) ?? 0) - 1));
+          counts.set(nextStatus, Math.max(0, (counts.get(nextStatus) ?? 0) + 1));
+        } else if (!prevStatus && payload.reason === 'ticket_created') {
+          counts.set(nextStatus, Math.max(0, (counts.get(nextStatus) ?? 0) + 1));
+        }
+        const knownOrder = prev.map((point) => point.status);
+        const appended = Array.from(counts.keys()).filter(
+          (status) => !knownOrder.includes(status),
+        );
+        return [...knownOrder, ...appended].map((status) => ({
+          status,
+          count: Math.max(0, counts.get(status) ?? 0),
+        }));
+      });
+
+      setPriorityBreakdown((prev) => {
+        if (prev.length === 0 || !nextPriority) {
+          return prev;
+        }
+        const counts = new Map(prev.map((point) => [point.priority, point.count]));
+        if (prevPriority && prevPriority !== nextPriority) {
+          counts.set(
+            prevPriority,
+            Math.max(0, (counts.get(prevPriority) ?? 0) - 1),
+          );
+          counts.set(
+            nextPriority,
+            Math.max(0, (counts.get(nextPriority) ?? 0) + 1),
+          );
+        } else if (!prevPriority && payload.reason === 'ticket_created') {
+          counts.set(
+            nextPriority,
+            Math.max(0, (counts.get(nextPriority) ?? 0) + 1),
+          );
+        }
+        const knownOrder = prev.map((point) => point.priority);
+        const appended = Array.from(counts.keys()).filter(
+          (priority) => !knownOrder.includes(priority),
+        );
+        return [...knownOrder, ...appended].map((priority) => ({
+          priority,
+          count: Math.max(0, counts.get(priority) ?? 0),
+        }));
+      });
+
+      setActivity((prev) => {
+        if (prev.length === 0) return prev;
+        const today = new Date().toISOString().slice(0, 10);
+        const index = prev.findIndex((point) => point.date === today);
+        if (index === -1) return prev;
+        let openDelta = 0;
+        let resolvedDelta = 0;
+        if (payload.reason === 'ticket_created' && !prevStatus && nextIsOpen) {
+          openDelta += 1;
+        }
+        if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+          if (prevIsOpen && !nextIsOpen) openDelta -= 1;
+          if (!prevIsOpen && nextIsOpen) openDelta += 1;
+          if (!prevIsResolved && nextIsResolved) resolvedDelta += 1;
+          if (prevIsResolved && !nextIsResolved) resolvedDelta -= 1;
+        }
+        if (openDelta === 0 && resolvedDelta === 0) return prev;
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          open: Math.max(0, next[index].open + openDelta),
+          resolved: Math.max(0, next[index].resolved + resolvedDelta),
+        };
+        return next;
+      });
+
+      setVolumeSeries((prev) => {
+        if (payload.reason !== 'ticket_created') return prev;
+        return incrementTodaySeries(prev, 1);
+      });
+
+      setReopenSeries((prev) => {
+        if (!nextStatus || nextStatus !== 'REOPENED' || prevStatus === 'REOPENED') {
+          return prev;
+        }
+        return incrementTodaySeries(prev, 1);
+      });
+
+      setTransfers((prev) => {
+        if (payload.reason !== 'transferred') {
+          return prev;
+        }
+        return {
+          total: Math.max(0, prev.total + 1),
+          series: incrementTodaySeries(prev.series, 1),
+        };
+      });
+    },
+    [currentEmail, sort],
+  );
+
+  useEffect(() => {
+    const handleTicketChanged = (event: Event) => {
+      applyRealtimeTicketPatch(
+        (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail,
+      );
     };
 
     window.addEventListener(
@@ -526,16 +819,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
       handleTicketChanged as EventListener,
     );
 
-    return () => {
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
-      }
+    return () =>
       window.removeEventListener(
         REALTIME_TICKET_CHANGED_EVENT,
         handleTicketChanged as EventListener,
       );
-    };
-  }, []);
+  }, [applyRealtimeTicketPatch]);
 
   useEffect(() => {
     let active = true;
@@ -714,7 +1003,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
     return () => {
       active = false;
     };
-  }, [realtimeRefreshToken, role, range, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
+  }, [role, range, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
 
   const roleMeta = ROLE_META[role] ?? ROLE_META.EMPLOYEE;
   const rangeLabel = toRangeLabel(range);

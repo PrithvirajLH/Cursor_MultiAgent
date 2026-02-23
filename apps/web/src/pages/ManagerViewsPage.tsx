@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -79,12 +79,36 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'resolution', label: 'Resolution Time' }
 ];
 const CHART_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#64748b'];
+const RESOLVED_STATUSES = new Set(['RESOLVED', 'CLOSED']);
+const OPEN_STATUSES = new Set([
+  'NEW',
+  'TRIAGED',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'WAITING_ON_REQUESTER',
+  'WAITING_ON_VENDOR',
+  'REOPENED',
+]);
 
 function ymd(date: Date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function parseDateMillis(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isOpenStatus(status?: string | null) {
+  return Boolean(status && OPEN_STATUSES.has(status));
+}
+
+function isResolvedStatus(status?: string | null) {
+  return Boolean(status && RESOLVED_STATUSES.has(status));
 }
 
 function initials(name: string) {
@@ -258,8 +282,11 @@ export function ManagerViewsPage({
   const [workloadData, setWorkloadData] = useState<Array<{ name: string; openTickets: number }>>([]);
   const [categoryData, setCategoryData] = useState<Array<{ name: string; count: number; color: string }>>([]);
   const [reopenData, setReopenData] = useState<Array<{ date: string; count: number }>>([]);
-  const [realtimeRefreshToken, setRealtimeRefreshToken] = useState(0);
   const loadRequestIdRef = useRef(0);
+  const lastRealtimeUpdatedAtByTicketRef = useRef<Record<string, number>>({});
+  const knownTicketStateRef = useRef<
+    Record<string, { status: string; priority: string; updatedAt: string }>
+  >({});
   const userScopeKey = headerCtx?.currentEmail ?? '';
 
   useEffect(() => {
@@ -272,20 +299,156 @@ export function ManagerViewsPage({
     return () => document.removeEventListener('click', onClick);
   }, []);
 
-  useEffect(() => {
-    let refreshTimer: number | null = null;
-
-    const handleTicketChanged = (event: Event) => {
-      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
-      if (payload?.reason === 'message_added') {
+  const applyRealtimeTicketPatch = useCallback(
+    (payload: RealtimeTicketChangedEventPayload) => {
+      const ticketId = payload.ticketId;
+      if (!ticketId) {
         return;
       }
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
+
+      const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt ?? payload.occurredAt);
+      if (incomingUpdatedAtMs > 0) {
+        const previousMs = lastRealtimeUpdatedAtByTicketRef.current[ticketId] ?? 0;
+        if (incomingUpdatedAtMs < previousMs) {
+          return;
+        }
+        lastRealtimeUpdatedAtByTicketRef.current[ticketId] = incomingUpdatedAtMs;
       }
-      refreshTimer = window.setTimeout(() => {
-        setRealtimeRefreshToken((prev) => prev + 1);
-      }, 300);
+
+      const previousState = knownTicketStateRef.current[ticketId];
+      const prevStatus = previousState?.status;
+      const nextStatus = payload.status ?? prevStatus;
+      const prevPriority = previousState?.priority;
+      const nextPriority = payload.priority ?? prevPriority;
+
+      knownTicketStateRef.current[ticketId] = {
+        status: nextStatus ?? '',
+        priority: nextPriority ?? '',
+        updatedAt:
+          payload.updatedAt ??
+          previousState?.updatedAt ??
+          new Date().toISOString(),
+      };
+
+      const prevIsOpen = isOpenStatus(prevStatus);
+      const nextIsOpen = isOpenStatus(nextStatus);
+      const prevIsResolved = isResolvedStatus(prevStatus);
+      const nextIsResolved = isResolvedStatus(nextStatus);
+
+      setMetrics((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        let createdInRange = prev.createdInRange;
+        let resolvedInRange = prev.resolvedInRange;
+        let currentOpenTickets = prev.currentOpenTickets;
+
+        if (payload.reason === 'ticket_created' && !prevStatus) {
+          createdInRange += 1;
+          if (nextIsOpen) {
+            currentOpenTickets += 1;
+          }
+        }
+
+        if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+          if (prevIsOpen && !nextIsOpen) currentOpenTickets -= 1;
+          if (!prevIsOpen && nextIsOpen) currentOpenTickets += 1;
+          if (!prevIsResolved && nextIsResolved) resolvedInRange += 1;
+          if (prevIsResolved && !nextIsResolved) resolvedInRange -= 1;
+        }
+
+        return {
+          ...prev,
+          createdInRange: Math.max(0, createdInRange),
+          resolvedInRange: Math.max(0, resolvedInRange),
+          currentOpenTickets: Math.max(0, currentOpenTickets),
+        };
+      });
+
+      setTrendData((prev) => {
+        if (prev.length === 0) return prev;
+        const today = ymd(new Date());
+        const index = prev.findIndex((point) => point.date === today);
+        if (index === -1) return prev;
+        let newTicketsDelta = 0;
+        let resolvedDelta = 0;
+        if (payload.reason === 'ticket_created' && !prevStatus) {
+          newTicketsDelta += 1;
+        }
+        if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+          if (!prevIsResolved && nextIsResolved) resolvedDelta += 1;
+          if (prevIsResolved && !nextIsResolved) resolvedDelta -= 1;
+        }
+        if (newTicketsDelta === 0 && resolvedDelta === 0) return prev;
+        const next = [...prev];
+        next[index] = {
+          ...next[index],
+          newTickets: Math.max(0, next[index].newTickets + newTicketsDelta),
+          resolved: Math.max(0, next[index].resolved + resolvedDelta),
+        };
+        return next;
+      });
+
+      setReopenData((prev) => {
+        if (prev.length === 0 || nextStatus !== 'REOPENED' || prevStatus === 'REOPENED') {
+          return prev;
+        }
+        const today = ymd(new Date());
+        const index = prev.findIndex((point) => point.date === today);
+        if (index === -1) {
+          return [...prev, { date: today, count: 1 }];
+        }
+        const next = [...prev];
+        next[index] = { ...next[index], count: Math.max(0, next[index].count + 1) };
+        return next;
+      });
+
+      setEscalations((prev) => {
+        const index = prev.findIndex((ticket) => ticket.id === ticketId);
+        if (index === -1) {
+          return prev;
+        }
+        const next = [...prev];
+        const patched: TicketRecord = { ...next[index] };
+        if (typeof payload.status === 'string' && payload.status) {
+          patched.status = payload.status;
+        }
+        if (typeof payload.priority === 'string' && payload.priority) {
+          patched.priority = payload.priority;
+        }
+        if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
+          patched.updatedAt = payload.updatedAt;
+        }
+        if (payload.assignedTeam?.id) {
+          patched.assignedTeam = payload.assignedTeam;
+        }
+        if (payload.assignee?.id) {
+          patched.assignee = payload.assignee;
+        } else if (
+          Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
+          payload.assigneeId === null
+        ) {
+          patched.assignee = null;
+        }
+
+        const isEscalation = (patched.priority === 'P1' || patched.priority === 'P2') && isOpenStatus(patched.status);
+        if (!isEscalation) {
+          next.splice(index, 1);
+          return next;
+        }
+        next[index] = patched;
+        next.sort((a, b) => parseDateMillis(b.updatedAt) - parseDateMillis(a.updatedAt));
+        return next;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const handleTicketChanged = (event: Event) => {
+      applyRealtimeTicketPatch(
+        (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail,
+      );
     };
 
     window.addEventListener(
@@ -293,20 +456,16 @@ export function ManagerViewsPage({
       handleTicketChanged as EventListener,
     );
 
-    return () => {
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
-      }
+    return () =>
       window.removeEventListener(
         REALTIME_TICKET_CHANGED_EVENT,
         handleTicketChanged as EventListener,
       );
-    };
-  }, []);
+  }, [applyRealtimeTicketPatch]);
 
   useEffect(() => {
     void loadData();
-  }, [realtimeRefreshToken, dateRange, userScopeKey]);
+  }, [dateRange, userScopeKey]);
 
   async function loadData() {
     const requestId = ++loadRequestIdRef.current;
@@ -438,6 +597,22 @@ export function ManagerViewsPage({
       );
 
       setEscalations(escalationTickets);
+      const knownTickets: Record<string, { status: string; priority: string; updatedAt: string }> = {};
+      for (const ticket of escalationTickets) {
+        knownTickets[ticket.id] = {
+          status: ticket.status,
+          priority: ticket.priority,
+          updatedAt: ticket.updatedAt,
+        };
+        const updatedAtMs = parseDateMillis(ticket.updatedAt);
+        if (updatedAtMs > 0) {
+          lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = Math.max(
+            lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0,
+            updatedAtMs,
+          );
+        }
+      }
+      knownTicketStateRef.current = knownTickets;
     } catch {
       if (loadRequestIdRef.current !== requestId) return;
       setError('Unable to load manager insights.');

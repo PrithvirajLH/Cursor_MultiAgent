@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Download } from 'lucide-react';
 import {
   createSavedView,
@@ -107,6 +107,16 @@ const STATUSES = [
   'CLOSED',
   'REOPENED'
 ];
+const RESOLVED_STATUSES = new Set(['RESOLVED', 'CLOSED']);
+const OPEN_STATUSES = new Set([
+  'NEW',
+  'TRIAGED',
+  'ASSIGNED',
+  'IN_PROGRESS',
+  'WAITING_ON_REQUESTER',
+  'WAITING_ON_VENDOR',
+  'REOPENED',
+]);
 
 const UI_TO_API_PRIORITY: Record<Exclude<PriorityFilter, 'all'>, string> = {
   critical: 'P1',
@@ -130,6 +140,20 @@ function ymd(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function parseDateMillis(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isOpenStatus(status?: string | null) {
+  return Boolean(status && OPEN_STATUSES.has(status));
+}
+
+function isResolvedStatus(status?: string | null) {
+  return Boolean(status && RESOLVED_STATUSES.has(status));
 }
 
 function rangeToDates(range: RangeKey): { from: string; to: string } {
@@ -456,7 +480,10 @@ export function ReportsPage({
     reopenRate: false,
     teamSummary: false
   });
-  const [realtimeRefreshToken, setRealtimeRefreshToken] = useState(0);
+  const lastRealtimeUpdatedAtByTicketRef = useRef<Record<string, number>>({});
+  const knownTicketStateRef = useRef<
+    Record<string, { status: string; priority: string; teamId: string | null }>
+  >({});
 
   const canExport = role === 'TEAM_ADMIN' || role === 'OWNER';
   const canSaveViews = role === 'TEAM_ADMIN' || role === 'OWNER';
@@ -517,20 +544,155 @@ export function ReportsPage({
       .catch(() => setAssignees([]));
   }, []);
 
-  useEffect(() => {
-    let refreshTimer: number | null = null;
+  const canApplyRealtimeDelta = useMemo(
+    () =>
+      filters.teamId === 'all' &&
+      filters.channel === 'all' &&
+      filters.status === 'all' &&
+      filters.priority === 'all' &&
+      filters.assignee === 'all',
+    [
+      filters.assignee,
+      filters.channel,
+      filters.priority,
+      filters.status,
+      filters.teamId,
+    ],
+  );
 
-    const handleTicketChanged = (event: Event) => {
-      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
-      if (payload?.reason === 'message_added') {
+  const applyRealtimeTicketPatch = useCallback(
+    (payload: RealtimeTicketChangedEventPayload) => {
+      const ticketId = payload.ticketId;
+      if (!ticketId || !canApplyRealtimeDelta) {
         return;
       }
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
+
+      const eventDate = (payload.updatedAt ?? payload.occurredAt ?? '').slice(0, 10);
+      if (eventDate) {
+        const selectedRange = rangeToDates(filters.range);
+        if (selectedRange.from && eventDate < selectedRange.from) {
+          return;
+        }
+        if (selectedRange.to && eventDate > selectedRange.to) {
+          return;
+        }
       }
-      refreshTimer = window.setTimeout(() => {
-        setRealtimeRefreshToken((prev) => prev + 1);
-      }, 300);
+
+      const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt ?? payload.occurredAt);
+      if (incomingUpdatedAtMs > 0) {
+        const previousMs = lastRealtimeUpdatedAtByTicketRef.current[ticketId] ?? 0;
+        if (incomingUpdatedAtMs < previousMs) {
+          return;
+        }
+        lastRealtimeUpdatedAtByTicketRef.current[ticketId] = incomingUpdatedAtMs;
+      }
+
+      const previousState = knownTicketStateRef.current[ticketId];
+      const prevStatus = previousState?.status;
+      const nextStatus = payload.status ?? prevStatus;
+      const prevIsOpen = isOpenStatus(prevStatus);
+      const nextIsOpen = isOpenStatus(nextStatus);
+      const prevIsResolved = isResolvedStatus(prevStatus);
+      const nextIsResolved = isResolvedStatus(nextStatus);
+
+      knownTicketStateRef.current[ticketId] = {
+        status: nextStatus ?? '',
+        priority: payload.priority ?? previousState?.priority ?? '',
+        teamId:
+          payload.assignedTeamId ??
+          payload.assignedTeam?.id ??
+          previousState?.teamId ??
+          null,
+      };
+
+      setStatusData((prev) => {
+        if (!sources.summary || prev.length === 0 || !nextStatus) {
+          return prev;
+        }
+        const counts = new Map(
+          prev.map((row) => [row.status.toUpperCase(), row.count]),
+        );
+        if (prevStatus && prevStatus !== nextStatus) {
+          counts.set(prevStatus, Math.max(0, (counts.get(prevStatus) ?? 0) - 1));
+          counts.set(nextStatus, Math.max(0, (counts.get(nextStatus) ?? 0) + 1));
+        } else if (!prevStatus && payload.reason === 'ticket_created') {
+          counts.set(nextStatus, Math.max(0, (counts.get(nextStatus) ?? 0) + 1));
+        }
+        return STATUSES.map((status) => ({
+          status,
+          count: Math.max(0, counts.get(status) ?? 0),
+        }));
+      });
+
+      const today = ymd(new Date());
+      const adjustSeriesByDate = (
+        series: number[],
+        dates: string[],
+        delta: number,
+      ) => {
+        if (delta === 0) {
+          return series;
+        }
+        const index = dates.findIndex((date) => date === today);
+        if (index === -1) {
+          return series;
+        }
+        const next = [...series];
+        next[index] = Math.max(0, (next[index] ?? 0) + delta);
+        return next;
+      };
+
+      setVolumeSeries((prev) => {
+        if (!sources.summary || payload.reason !== 'ticket_created') {
+          return prev;
+        }
+        return adjustSeriesByDate(prev, volumeDates, 1);
+      });
+
+      setBacklogSeries((prev) => {
+        if (!sources.backlogSeries) return prev;
+        let delta = 0;
+        if (payload.reason === 'ticket_created' && !prevStatus && nextIsOpen) {
+          delta += 1;
+        }
+        if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+          if (prevIsOpen && !nextIsOpen) delta -= 1;
+          if (!prevIsOpen && nextIsOpen) delta += 1;
+        }
+        return adjustSeriesByDate(prev, volumeDates, delta);
+      });
+
+      setSolvedSeries((prev) => {
+        if (!sources.solvedSeries) return prev;
+        let delta = 0;
+        if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+          if (!prevIsResolved && nextIsResolved) delta += 1;
+          if (prevIsResolved && !nextIsResolved) delta -= 1;
+        }
+        return adjustSeriesByDate(prev, volumeDates, delta);
+      });
+
+      setReopenData((prev) => {
+        if (!sources.reopenRate || nextStatus !== 'REOPENED' || prevStatus === 'REOPENED') {
+          return prev;
+        }
+        const index = prev.findIndex((row) => row.date === today);
+        if (index === -1) {
+          return [...prev, { date: today, count: 1 }];
+        }
+        const next = [...prev];
+        next[index] = { ...next[index], count: Math.max(0, next[index].count + 1) };
+        return next;
+      });
+    },
+    [canApplyRealtimeDelta, filters.range, sources, volumeDates],
+  );
+
+  useEffect(() => {
+    const handleTicketChanged = (event: Event) => {
+      applyRealtimeTicketPatch(
+        (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail,
+      );
     };
 
     window.addEventListener(
@@ -538,16 +700,12 @@ export function ReportsPage({
       handleTicketChanged as EventListener,
     );
 
-    return () => {
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
-      }
+    return () =>
       window.removeEventListener(
         REALTIME_TICKET_CHANGED_EVENT,
         handleTicketChanged as EventListener,
       );
-    };
-  }, []);
+  }, [applyRealtimeTicketPatch]);
 
   const dateRange = useMemo(() => rangeToDates(filters.range), [filters.range]);
 
@@ -833,7 +991,7 @@ export function ReportsPage({
     return () => {
       cancelled = true;
     };
-  }, [reportQuery, realtimeRefreshToken, tab]);
+  }, [reportQuery, tab]);
 
   const selectedTeamName = useMemo(() => {
     if (filters.teamId === 'all') return 'All teams';
