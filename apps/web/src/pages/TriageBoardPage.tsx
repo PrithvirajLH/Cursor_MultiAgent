@@ -100,6 +100,7 @@ export function TriageBoardPage({
   const loadRequestIdRef = useRef(0);
   const ticketSnapshotRef = useRef<TicketRecord[]>([]);
   const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
+  const draggingTicketIdRef = useRef<string | null>(null);
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [teamFilterId, setTeamFilterId] = useState('all');
@@ -301,6 +302,10 @@ export function TriageBoardPage({
   useEffect(() => {
     ticketSnapshotRef.current = tickets;
   }, [tickets]);
+
+  useEffect(() => {
+    draggingTicketIdRef.current = draggingTicketId;
+  }, [draggingTicketId]);
 
   function isVisibleOnBoard(ticket: Pick<TicketRecord, 'status' | 'assignedTeam'>) {
     const belongsToVisibleTeam =
@@ -576,10 +581,21 @@ export function TriageBoardPage({
     event.dataTransfer.effectAllowed = 'move';
   }
 
-  function handleDragEnd() {
+  function clearDragState() {
     setDraggingTicketId(null);
     setDraggingStatus(null);
     setDragOverColumn(null);
+  }
+
+  function clearDragStateForTicket(ticketId: string) {
+    if (draggingTicketIdRef.current !== ticketId) {
+      return;
+    }
+    clearDragState();
+  }
+
+  function handleDragEnd() {
+    clearDragState();
   }
 
   function handleDragOver(event: DragEvent<HTMLDivElement>) {
@@ -610,23 +626,28 @@ export function TriageBoardPage({
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>, status: string) {
+    const droppedTicketId = draggingTicketId;
+    const droppedFromStatus = draggingStatus;
     setDragOverColumn(null);
-    if (!draggingStatus) {
-      return;
-    }
-    const draggingTicket = draggingTicketId
-      ? tickets.find((item) => item.id === draggingTicketId)
-      : null;
-    if (!draggingTicket) {
-      return;
-    }
-    if (!isValidTransition(draggingTicket, status)) {
-      toast.error(`Cannot move from ${formatStatus(draggingStatus)} to ${formatStatus(status)}.`);
+
+    if (!droppedFromStatus || !droppedTicketId) {
+      clearDragState();
       return;
     }
     event.preventDefault();
+    const draggingTicket = tickets.find((item) => item.id === droppedTicketId);
+    if (!draggingTicket) {
+      clearDragStateForTicket(droppedTicketId);
+      return;
+    }
+    if (!isValidTransition(draggingTicket, status)) {
+      toast.error(`Cannot move from ${formatStatus(droppedFromStatus)} to ${formatStatus(status)}.`);
+      clearDragStateForTicket(droppedTicketId);
+      return;
+    }
     const payload = event.dataTransfer.getData('text/plain');
     if (!payload) {
+      clearDragStateForTicket(droppedTicketId);
       return;
     }
     try {
@@ -636,10 +657,14 @@ export function TriageBoardPage({
         if (ticket?.status === status) {
           toast.info('Ticket already in that status.');
         }
+        clearDragStateForTicket(droppedTicketId);
         return;
       }
-      handleTransition(ticket.id, status);
+      void handleTransition(ticket.id, status).finally(() => {
+        clearDragStateForTicket(droppedTicketId);
+      });
     } catch {
+      clearDragStateForTicket(droppedTicketId);
       return;
     }
   }
