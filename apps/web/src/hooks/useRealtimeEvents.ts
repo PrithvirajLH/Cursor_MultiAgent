@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { negotiateRealtimeConnection } from '../api/client';
 import type {
+  RealtimeAdminChangedEventPayload,
   RealtimeTicketChangedEventPayload,
   RealtimeTicketTypingEventPayload,
 } from '../realtime/events';
+import { REALTIME_ADMIN_CHANGED_EVENT } from '../realtime/events';
 
 type RealtimeTicketPayload = RealtimeTicketChangedEventPayload;
 
@@ -13,6 +15,7 @@ type RealtimeNotificationPayload = {
 };
 
 type RealtimeTicketTypingPayload = RealtimeTicketTypingEventPayload;
+type RealtimeAdminPayload = RealtimeAdminChangedEventPayload;
 
 type RealtimeEnvelope = {
   event: string;
@@ -25,6 +28,7 @@ type UseRealtimeEventsOptions = {
   userKey?: string;
   onTicketChanged?: (payload: RealtimeTicketPayload) => void;
   onTicketTyping?: (payload: RealtimeTicketTypingPayload) => void;
+  onAdminChanged?: (payload: RealtimeAdminPayload) => void;
   onNotificationsUpdated?: (payload: RealtimeNotificationPayload) => void;
 };
 
@@ -74,10 +78,18 @@ function toTicketTypingPayload(payload: unknown): RealtimeTicketTypingPayload {
   return payload as RealtimeTicketTypingPayload;
 }
 
+function toAdminPayload(payload: unknown): RealtimeAdminPayload {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+  return payload as RealtimeAdminPayload;
+}
+
 export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
   const { enabled = true, userKey } = options;
   const ticketCallbackRef = useRef(options.onTicketChanged);
   const ticketTypingCallbackRef = useRef(options.onTicketTyping);
+  const adminCallbackRef = useRef(options.onAdminChanged);
   const notificationCallbackRef = useRef(options.onNotificationsUpdated);
 
   useEffect(() => {
@@ -91,6 +103,10 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
   useEffect(() => {
     ticketTypingCallbackRef.current = options.onTicketTyping;
   }, [options.onTicketTyping]);
+
+  useEffect(() => {
+    adminCallbackRef.current = options.onAdminChanged;
+  }, [options.onAdminChanged]);
 
   useEffect(() => {
     if (!enabled || !userKey) {
@@ -134,6 +150,20 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
           ...toTicketTypingPayload(envelope.payload),
           occurredAt: envelope.occurredAt,
         });
+        return;
+      }
+
+      if (envelope.event === 'admin.changed') {
+        const payload = {
+          ...toAdminPayload(envelope.payload),
+          occurredAt: envelope.occurredAt,
+        };
+        adminCallbackRef.current?.(payload);
+        window.dispatchEvent(
+          new CustomEvent<RealtimeAdminPayload>(REALTIME_ADMIN_CHANGED_EVENT, {
+            detail: payload,
+          }),
+        );
         return;
       }
 

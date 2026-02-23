@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CategoriesService } from './categories.service';
 
 type MockPrisma = {
@@ -28,6 +29,7 @@ function ownerUser() {
 describe('CategoriesService', () => {
   let service: CategoriesService;
   let prisma: MockPrisma;
+  let realtime: Pick<RealtimeService, 'publishAdminChanged'>;
 
   beforeEach(() => {
     prisma = {
@@ -40,7 +42,13 @@ describe('CategoriesService', () => {
         delete: jest.fn(),
       },
     };
-    service = new CategoriesService(prisma as unknown as PrismaService);
+    realtime = {
+      publishAdminChanged: jest.fn(),
+    };
+    service = new CategoriesService(
+      prisma as unknown as PrismaService,
+      realtime as RealtimeService,
+    );
   });
 
   it('creates category with parent validation', async () => {

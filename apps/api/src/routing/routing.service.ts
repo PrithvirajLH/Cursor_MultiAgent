@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { AuthUser } from '../auth/current-user.decorator';
 import { Prisma, TeamAssignmentStrategy, UserRole } from '@prisma/client';
 import { CreateRoutingRuleDto } from './dto/create-routing-rule.dto';
@@ -29,7 +30,10 @@ type RoutingRuleRow = {
 
 @Injectable()
 export class RoutingRulesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
   private routingAssigneeColumnCache: {
     exists: boolean;
     checkedAtMs: number;
@@ -95,7 +99,15 @@ export class RoutingRulesService {
     if (!row) {
       throw new NotFoundException('Routing rule not found');
     }
-    return this.mapRuleRow(row);
+    const createdRule = this.mapRuleRow(row);
+    await this.safePublishAdminChanged({
+      scope: 'routing_rule',
+      action: 'created',
+      entityId: createdRule.id,
+      teamId: createdRule.teamId,
+      actorId: user.id,
+    });
+    return createdRule;
   }
 
   async update(id: string, payload: UpdateRoutingRuleDto, user: AuthUser) {
@@ -150,7 +162,15 @@ export class RoutingRulesService {
     if (!updated) {
       throw new NotFoundException('Routing rule not found');
     }
-    return this.mapRuleRow(updated);
+    const updatedRule = this.mapRuleRow(updated);
+    await this.safePublishAdminChanged({
+      scope: 'routing_rule',
+      action: 'updated',
+      entityId: updatedRule.id,
+      teamId: updatedRule.teamId,
+      actorId: user.id,
+    });
+    return updatedRule;
   }
 
   async remove(id: string, user: AuthUser) {
@@ -164,7 +184,13 @@ export class RoutingRulesService {
     this.ensureTeamAdminOrOwner(user, rule.teamId);
 
     await this.prisma.routingRule.delete({ where: { id } });
-
+    await this.safePublishAdminChanged({
+      scope: 'routing_rule',
+      action: 'deleted',
+      entityId: id,
+      teamId: rule.teamId,
+      actorId: user.id,
+    });
     return { id };
   }
 
@@ -470,5 +496,19 @@ export class RoutingRulesService {
   ): number {
     const parsed = Number.parseInt(raw ?? '', 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private async safePublishAdminChanged(payload: {
+    scope: string;
+    action: string;
+    entityId: string | null;
+    teamId: string | null;
+    actorId: string | null;
+  }) {
+    try {
+      await this.realtime.publishAdminChanged(payload);
+    } catch {
+      // Best-effort realtime publish.
+    }
   }
 }

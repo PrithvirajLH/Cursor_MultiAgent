@@ -10,6 +10,7 @@ import { Prisma, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateCustomFieldDto } from './dto/create-custom-field.dto';
 import { ListCustomFieldsDto } from './dto/list-custom-fields.dto';
 import { SetTicketCustomValuesDto } from './dto/set-ticket-custom-values.dto';
@@ -59,6 +60,7 @@ export class CustomFieldsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControl: AccessControlService,
+    private readonly realtime: RealtimeService,
   ) {}
   private readonly selectableFieldTypes = new Set(['DROPDOWN', 'MULTISELECT']);
   private adminAuditEventTableExists: boolean | null = null;
@@ -238,6 +240,13 @@ export class CustomFieldsService {
       user,
       created.teamId,
     );
+    await this.safePublishAdminChanged({
+      scope: 'custom_field',
+      action: 'created',
+      entityId: created.id,
+      teamId: created.teamId,
+      actorId: user.id,
+    });
     return created;
   }
 
@@ -316,6 +325,13 @@ export class CustomFieldsService {
       user,
       updated.teamId,
     );
+    await this.safePublishAdminChanged({
+      scope: 'custom_field',
+      action: 'updated',
+      entityId: updated.id,
+      teamId: updated.teamId,
+      actorId: user.id,
+    });
     return updated;
   }
 
@@ -341,6 +357,13 @@ export class CustomFieldsService {
       user,
       existing.teamId,
     );
+    await this.safePublishAdminChanged({
+      scope: 'custom_field',
+      action: 'deleted',
+      entityId: existing.id,
+      teamId: existing.teamId,
+      actorId: user.id,
+    });
     return { deleted: true };
   }
 
@@ -617,5 +640,22 @@ export class CustomFieldsService {
     }
 
     return this.adminAuditEventTableExists;
+  }
+
+  private async safePublishAdminChanged(payload: {
+    scope: string;
+    action: string;
+    entityId: string | null;
+    teamId: string | null;
+    actorId: string | null;
+  }) {
+    try {
+      await this.realtime.publishAdminChanged(payload);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to publish admin realtime update for ${payload.scope}:${payload.action}`,
+      );
+      this.logger.debug((error as Error).stack);
+    }
   }
 }

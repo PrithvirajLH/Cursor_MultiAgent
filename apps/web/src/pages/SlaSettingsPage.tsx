@@ -21,6 +21,10 @@ import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useToast } from '../hooks/useToast';
+import {
+  REALTIME_ADMIN_CHANGED_EVENT,
+  type RealtimeAdminChangedEventPayload,
+} from '../realtime/events';
 import type { Role } from '../types';
 
 type TabKey = 'policies' | 'overview' | 'business-hours';
@@ -995,6 +999,30 @@ export function SlaSettingsPage({
     void loadOverview();
     void loadBusinessSettings();
   }, [teamsList]);
+
+  useEffect(() => {
+    const handleAdminChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeAdminChangedEventPayload>)
+        .detail;
+      const scope = payload?.scope;
+      if (scope !== 'sla_policy' && scope !== 'sla_business_hours') {
+        return;
+      }
+      void loadLivePolicies();
+      void loadOverview();
+      void loadBusinessSettings();
+    };
+
+    window.addEventListener(
+      REALTIME_ADMIN_CHANGED_EVENT,
+      handleAdminChanged as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        REALTIME_ADMIN_CHANGED_EVENT,
+        handleAdminChanged as EventListener,
+      );
+  }, [teamsList, fromDate, today]);
 
   const policies = useMemo(() => livePolicies, [livePolicies]);
 

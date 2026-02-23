@@ -19,6 +19,10 @@ import { useHeaderContext } from '../contexts/HeaderContext';
 import type { Role } from '../types';
 import { useToast } from '../hooks/useToast';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import {
+  REALTIME_ADMIN_CHANGED_EVENT,
+  type RealtimeAdminChangedEventPayload,
+} from '../realtime/events';
 import { handleApiError } from '../utils/handleApiError';
 
 type FlatCondition = {
@@ -760,6 +764,27 @@ export function AutomationRulesPage({
 
   useEffect(() => {
     void loadRules();
+  }, [teamsList]);
+
+  useEffect(() => {
+    const handleAdminChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeAdminChangedEventPayload>)
+        .detail;
+      if (payload?.scope !== 'automation_rule') {
+        return;
+      }
+      void loadRules();
+    };
+
+    window.addEventListener(
+      REALTIME_ADMIN_CHANGED_EVENT,
+      handleAdminChanged as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        REALTIME_ADMIN_CHANGED_EVENT,
+        handleAdminChanged as EventListener,
+      );
   }, [teamsList]);
 
   useEffect(() => {

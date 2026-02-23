@@ -12,6 +12,10 @@ import {
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
+import {
+  REALTIME_ADMIN_CHANGED_EVENT,
+  type RealtimeAdminChangedEventPayload,
+} from '../realtime/events';
 import type { Role } from '../types';
 
 const ELIGIBLE_MEMBER_USER_ROLES = new Set([
@@ -203,6 +207,33 @@ export function TeamPage({
     setShowRoleDropdown(false);
     setActionError(null);
   }, [selectedTeamId]);
+
+  useEffect(() => {
+    const handleAdminChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeAdminChangedEventPayload>)
+        .detail;
+      const scope = payload?.scope;
+      if (scope !== 'team' && scope !== 'team_member') {
+        return;
+      }
+      if (isAdmin) {
+        void loadUsers();
+      }
+      if (selectedTeamId) {
+        void loadMembers(selectedTeamId);
+      }
+    };
+
+    window.addEventListener(
+      REALTIME_ADMIN_CHANGED_EVENT,
+      handleAdminChanged as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        REALTIME_ADMIN_CHANGED_EVENT,
+        handleAdminChanged as EventListener,
+      );
+  }, [isAdmin, selectedTeamId]);
 
   const showDepartmentDropdown = isOwner;
 

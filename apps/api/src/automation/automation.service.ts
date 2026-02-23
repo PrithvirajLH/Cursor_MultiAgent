@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { TicketsService } from '../tickets/tickets.service';
 import {
   CreateAutomationRuleDto,
@@ -26,6 +27,7 @@ export class AutomationService {
     @Inject(forwardRef(() => TicketsService))
     private readonly ticketsService: TicketsService,
     private readonly ruleEngine: RuleEngineService,
+    private readonly realtime: RealtimeService,
   ) {}
   private adminAuditEventTableExists: boolean | null = null;
 
@@ -144,6 +146,13 @@ export class AutomationService {
       user,
       created.teamId ?? null,
     );
+    await this.safePublishAdminChanged({
+      scope: 'automation_rule',
+      action: 'created',
+      entityId: created.id,
+      teamId: created.teamId,
+      actorId: user.id,
+    });
     return created;
   }
 
@@ -224,6 +233,13 @@ export class AutomationService {
       user,
       updated.teamId ?? null,
     );
+    await this.safePublishAdminChanged({
+      scope: 'automation_rule',
+      action: 'updated',
+      entityId: updated.id,
+      teamId: updated.teamId,
+      actorId: user.id,
+    });
     return updated;
   }
 
@@ -249,6 +265,13 @@ export class AutomationService {
       user,
       rule.teamId ?? null,
     );
+    await this.safePublishAdminChanged({
+      scope: 'automation_rule',
+      action: 'deleted',
+      entityId: rule.id,
+      teamId: rule.teamId,
+      actorId: user.id,
+    });
     return { id };
   }
 
@@ -406,5 +429,19 @@ export class AutomationService {
     }
 
     return this.adminAuditEventTableExists;
+  }
+
+  private async safePublishAdminChanged(payload: {
+    scope: string;
+    action: string;
+    entityId: string | null;
+    teamId: string | null;
+    actorId: string | null;
+  }) {
+    try {
+      await this.realtime.publishAdminChanged(payload);
+    } catch {
+      // Best-effort realtime publish.
+    }
   }
 }

@@ -1,5 +1,6 @@
 export const REALTIME_TICKET_CHANGED_EVENT = 'ticketing:ticket-changed';
 export const REALTIME_TICKET_TYPING_EVENT = 'ticketing:ticket-typing';
+export const REALTIME_ADMIN_CHANGED_EVENT = 'ticketing:admin-changed';
 
 export type RealtimeTicketMessagePayload = {
   id: string;
@@ -48,4 +49,13 @@ export type RealtimeTicketTypingEventPayload = {
   actorDisplayName?: string;
   actorEmail?: string;
   isTyping?: boolean;
+};
+
+export type RealtimeAdminChangedEventPayload = {
+  occurredAt?: string;
+  scope?: string;
+  action?: string;
+  entityId?: string | null;
+  teamId?: string | null;
+  actorId?: string | null;
 };

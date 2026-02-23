@@ -25,6 +25,10 @@ import {
 import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import {
+  REALTIME_ADMIN_CHANGED_EVENT,
+  type RealtimeAdminChangedEventPayload,
+} from '../realtime/events';
 import type { Role } from '../types';
 import { handleApiError } from '../utils/handleApiError';
 
@@ -156,6 +160,32 @@ export function CustomFieldsAdminPage({
 
   useEffect(() => {
     void loadData();
+  }, []);
+
+  useEffect(() => {
+    const handleAdminChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeAdminChangedEventPayload>)
+        .detail;
+      const scope = payload?.scope;
+      if (
+        scope !== 'custom_field' &&
+        scope !== 'category' &&
+        scope !== 'team'
+      ) {
+        return;
+      }
+      void loadData();
+    };
+
+    window.addEventListener(
+      REALTIME_ADMIN_CHANGED_EVENT,
+      handleAdminChanged as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        REALTIME_ADMIN_CHANGED_EVENT,
+        handleAdminChanged as EventListener,
+      );
   }, []);
 
   async function loadData() {

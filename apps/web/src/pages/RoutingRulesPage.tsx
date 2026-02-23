@@ -14,6 +14,10 @@ import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useToast } from '../hooks/useToast';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import {
+  REALTIME_ADMIN_CHANGED_EVENT,
+  type RealtimeAdminChangedEventPayload,
+} from '../realtime/events';
 import type { Role } from '../types';
 import { handleApiError } from '../utils/handleApiError';
 
@@ -475,6 +479,60 @@ export function RoutingRulesPage({
     return () => {
       active = false;
     };
+  }, [assignmentMode, teamsList, toast]);
+
+  useEffect(() => {
+    const handleAdminChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeAdminChangedEventPayload>)
+        .detail;
+      const scope = payload?.scope;
+      if (
+        scope !== 'routing_rule' &&
+        scope !== 'team' &&
+        scope !== 'team_member'
+      ) {
+        return;
+      }
+
+      void loadRules();
+
+      if (assignmentMode !== 'member') {
+        return;
+      }
+
+      const teamId = teamsList[0]?.id;
+      if (!teamId) {
+        setMemberOptions([]);
+        return;
+      }
+      fetchTeamMembers(teamId)
+        .then((response) => {
+          const options = response.data
+            .map((member: TeamMember) => ({
+              id: member.user.id,
+              label: member.user.displayName || member.user.email,
+              email: member.user.email,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+          setMemberOptions(options);
+        })
+        .catch((err) => {
+          setMemberOptions([]);
+          const message = handleApiError(err);
+          setError(message);
+          toast.error(message);
+        });
+    };
+
+    window.addEventListener(
+      REALTIME_ADMIN_CHANGED_EVENT,
+      handleAdminChanged as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        REALTIME_ADMIN_CHANGED_EVENT,
+        handleAdminChanged as EventListener,
+      );
   }, [assignmentMode, teamsList, toast]);
 
   function updateMetaFromRules(nextRules: RoutingRule[]) {

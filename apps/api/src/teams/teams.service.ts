@@ -6,6 +6,7 @@ import {
 import { Prisma, TeamRole, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { ListTeamsDto } from './dto/list-teams.dto';
@@ -14,7 +15,10 @@ import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
 
 @Injectable()
 export class TeamsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(query: ListTeamsDto, user?: AuthUser) {
     const page = query.page ?? 1;
@@ -82,7 +86,7 @@ export class TeamsService {
     this.ensureOwner(user);
     const slug = payload.slug ?? this.slugify(payload.name);
 
-    return this.prisma.team.create({
+    const created = await this.prisma.team.create({
       data: {
         name: payload.name,
         slug,
@@ -90,6 +94,14 @@ export class TeamsService {
         assignmentStrategy: payload.assignmentStrategy,
       },
     });
+    await this.safePublishAdminChanged({
+      scope: 'team',
+      action: 'created',
+      entityId: created.id,
+      teamId: created.id,
+      actorId: user.id,
+    });
+    return created;
   }
 
   async update(teamId: string, payload: UpdateTeamDto, user: AuthUser) {
@@ -97,7 +109,7 @@ export class TeamsService {
 
     await this.ensureTeam(teamId);
 
-    return this.prisma.team.update({
+    const updated = await this.prisma.team.update({
       where: { id: teamId },
       data: {
         name: payload.name,
@@ -107,6 +119,14 @@ export class TeamsService {
         assignmentStrategy: payload.assignmentStrategy,
       },
     });
+    await this.safePublishAdminChanged({
+      scope: 'team',
+      action: 'updated',
+      entityId: updated.id,
+      teamId: updated.id,
+      actorId: user.id,
+    });
+    return updated;
   }
 
   async listMembers(teamId: string, user: AuthUser) {
@@ -131,7 +151,7 @@ export class TeamsService {
     this.ensureEligibleTeamMemberRole(targetUser.role);
     const teamRole = this.resolveTeamRole(targetUser.role, payload.role);
 
-    return this.prisma.$transaction(async (tx) => {
+    const member = await this.prisma.$transaction(async (tx) => {
       const member = await tx.teamMember.upsert({
         where: {
           teamId_userId: {
@@ -157,6 +177,14 @@ export class TeamsService {
         include: { user: true, team: true },
       });
     });
+    await this.safePublishAdminChanged({
+      scope: 'team_member',
+      action: 'added',
+      entityId: member.id,
+      teamId,
+      actorId: user.id,
+    });
+    return member;
   }
 
   async updateMember(
@@ -179,7 +207,7 @@ export class TeamsService {
     this.ensureEligibleTeamMemberRole(member.user.role);
     const teamRole = this.resolveTeamRole(member.user.role, payload.role);
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedMember = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.teamMember.update({
         where: { id: memberId },
         data: { role: teamRole },
@@ -193,6 +221,14 @@ export class TeamsService {
         include: { user: true, team: true },
       });
     });
+    await this.safePublishAdminChanged({
+      scope: 'team_member',
+      action: 'updated',
+      entityId: updatedMember.id,
+      teamId,
+      actorId: user.id,
+    });
+    return updatedMember;
   }
 
   async removeMember(teamId: string, memberId: string, user: AuthUser) {
@@ -211,6 +247,13 @@ export class TeamsService {
       await this.syncOperationalUserRole(tx, member.userId);
     });
 
+    await this.safePublishAdminChanged({
+      scope: 'team_member',
+      action: 'removed',
+      entityId: memberId,
+      teamId,
+      actorId: user.id,
+    });
     return { id: memberId };
   }
 
@@ -348,5 +391,19 @@ export class TeamsService {
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '');
+  }
+
+  private async safePublishAdminChanged(payload: {
+    scope: string;
+    action: string;
+    entityId: string | null;
+    teamId: string | null;
+    actorId: string | null;
+  }) {
+    try {
+      await this.realtime.publishAdminChanged(payload);
+    } catch {
+      // Best-effort realtime; never block team operations.
+    }
   }
 }

@@ -63,6 +63,14 @@ export type TicketTypingPayload = {
   isTyping: boolean;
 };
 
+export type AdminChangedPayload = {
+  scope: string;
+  action: string;
+  entityId: string | null;
+  teamId: string | null;
+  actorId: string | null;
+};
+
 type TicketChangedAudience = {
   teamIds: string[];
   userIds: string[];
@@ -177,6 +185,32 @@ export class RealtimeService {
     await this.publishTicketEventToAudience('ticket.typing', payload, audience);
   }
 
+  async publishAdminChanged(payload: AdminChangedPayload) {
+    if (!this.client) {
+      return;
+    }
+
+    const envelope = this.buildEnvelope('admin.changed', payload);
+    const activeTeamIds = await this.resolveActiveTeamIds();
+    const tasks: Array<Promise<void>> = [];
+
+    for (const teamId of activeTeamIds) {
+      tasks.push(
+        this.safeSend(`group:${this.teamGroupName(teamId)}`, () =>
+          this.client!.group(this.teamGroupName(teamId)).sendToAll(envelope),
+        ),
+      );
+    }
+
+    tasks.push(
+      this.safeSend(`group:${this.ownerGroupName()}`, () =>
+        this.client!.group(this.ownerGroupName()).sendToAll(envelope),
+      ),
+    );
+
+    await Promise.all(tasks);
+  }
+
   async publishUserEvent<Payload extends Record<string, unknown>>(
     userId: string,
     event: string,
@@ -266,6 +300,20 @@ export class RealtimeService {
   private parsePositiveInt(value: string | undefined, fallback: number) {
     const parsed = Number.parseInt(value ?? '', 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private async resolveActiveTeamIds() {
+    try {
+      const teams = await this.prisma.team.findMany({
+        where: { isActive: true },
+        select: { id: true },
+      });
+      return teams.map((team) => team.id);
+    } catch (error) {
+      this.logger.warn('Failed to resolve active teams for admin.changed publish.');
+      this.logger.debug((error as Error).stack);
+      return [] as string[];
+    }
   }
 
   private async publishTicketEventToAudience<

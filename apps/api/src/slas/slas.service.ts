@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { Prisma, TicketPriority, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { ListSlasDto } from './dto/list-slas.dto';
 import {
   CreateSlaPolicyConfigDto,
@@ -99,7 +100,10 @@ type PrismaTx = Prisma.TransactionClient | PrismaService;
 
 @Injectable()
 export class SlasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   private readonly defaultSlaConfig: Record<
     TicketPriority,
@@ -282,6 +286,13 @@ export class SlasService {
       });
     });
 
+    await this.safePublishAdminChanged({
+      scope: 'sla_policy',
+      action: 'updated',
+      entityId: effective.policyId ?? null,
+      teamId,
+      actorId: user.id,
+    });
     return this.list({ teamId }, user);
   }
 
@@ -295,6 +306,13 @@ export class SlasService {
       WHERE "teamId" = ${teamId}
     `;
 
+    await this.safePublishAdminChanged({
+      scope: 'sla_policy',
+      action: 'reset',
+      entityId: null,
+      teamId,
+      actorId: user.id,
+    });
     return this.list({ teamId }, user);
   }
 
@@ -412,6 +430,13 @@ export class SlasService {
     });
 
     const created = await this.getPolicyById(policyId, this.prisma);
+    await this.safePublishAdminChanged({
+      scope: 'sla_policy',
+      action: 'created',
+      entityId: created.id,
+      teamId: teamIds.length === 1 ? teamIds[0] : null,
+      actorId: user.id,
+    });
     return { data: this.serializePolicy(created, null) };
   }
 
@@ -548,6 +573,13 @@ export class SlasService {
     });
 
     const updated = await this.getPolicyById(policyId, this.prisma);
+    await this.safePublishAdminChanged({
+      scope: 'sla_policy',
+      action: 'updated',
+      entityId: updated.id,
+      teamId: nextTeamIds.length === 1 ? nextTeamIds[0] : null,
+      actorId: user.id,
+    });
     return { data: this.serializePolicy(updated, null) };
   }
 
@@ -589,6 +621,13 @@ export class SlasService {
       `;
     });
 
+    await this.safePublishAdminChanged({
+      scope: 'sla_policy',
+      action: 'deleted',
+      entityId: policyId,
+      teamId: existing.assignments.length === 1 ? existing.assignments[0].teamId : null,
+      actorId: user.id,
+    });
     return { id: policyId };
   }
 
@@ -624,6 +663,13 @@ export class SlasService {
     `;
 
     const updated = await this.ensureBusinessHoursSettingsRecord(this.prisma);
+    await this.safePublishAdminChanged({
+      scope: 'sla_business_hours',
+      action: 'updated',
+      entityId: 'global',
+      teamId: null,
+      actorId: user.id,
+    });
     return { data: this.serializeBusinessHours(updated) };
   }
 
@@ -1252,5 +1298,19 @@ export class SlasService {
     const [startH, startM] = start.split(':').map(Number);
     const [endH, endM] = end.split(':').map(Number);
     return startH * 60 + startM < endH * 60 + endM;
+  }
+
+  private async safePublishAdminChanged(payload: {
+    scope: string;
+    action: string;
+    entityId: string | null;
+    teamId: string | null;
+    actorId: string | null;
+  }) {
+    try {
+      await this.realtime.publishAdminChanged(payload);
+    } catch {
+      // Best-effort realtime publish.
+    }
   }
 }

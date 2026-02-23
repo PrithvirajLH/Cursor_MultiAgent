@@ -6,13 +6,17 @@ import {
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { ListCategoriesDto } from './dto/list-categories.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async list(query: ListCategoriesDto, user: AuthUser) {
     if (query.includeInactive && user.role !== UserRole.OWNER) {
@@ -47,7 +51,7 @@ export class CategoriesService {
 
     const slug = payload.slug ?? this.slugify(payload.name);
 
-    return this.prisma.category.create({
+    const created = await this.prisma.category.create({
       data: {
         name: payload.name,
         slug,
@@ -57,6 +61,14 @@ export class CategoriesService {
       },
       include: { parent: true },
     });
+    await this.safePublishAdminChanged({
+      scope: 'category',
+      action: 'created',
+      entityId: created.id,
+      teamId: null,
+      actorId: user.id,
+    });
+    return created;
   }
 
   async update(id: string, payload: UpdateCategoryDto, user: AuthUser) {
@@ -72,7 +84,7 @@ export class CategoriesService {
       await this.validateParentUpdate(id, payload.parentId ?? null);
     }
 
-    return this.prisma.category.update({
+    const updated = await this.prisma.category.update({
       where: { id },
       data: {
         name: payload.name,
@@ -84,6 +96,14 @@ export class CategoriesService {
       },
       include: { parent: true },
     });
+    await this.safePublishAdminChanged({
+      scope: 'category',
+      action: 'updated',
+      entityId: updated.id,
+      teamId: null,
+      actorId: user.id,
+    });
+    return updated;
   }
 
   async remove(id: string, user: AuthUser) {
@@ -103,7 +123,13 @@ export class CategoriesService {
     }
 
     await this.prisma.category.delete({ where: { id } });
-
+    await this.safePublishAdminChanged({
+      scope: 'category',
+      action: 'deleted',
+      entityId: id,
+      teamId: null,
+      actorId: user.id,
+    });
     return { id };
   }
 
@@ -169,5 +195,19 @@ export class CategoriesService {
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '');
+  }
+
+  private async safePublishAdminChanged(payload: {
+    scope: string;
+    action: string;
+    entityId: string | null;
+    teamId: string | null;
+    actorId: string | null;
+  }) {
+    try {
+      await this.realtime.publishAdminChanged(payload);
+    } catch {
+      // Best-effort realtime publish.
+    }
   }
 }

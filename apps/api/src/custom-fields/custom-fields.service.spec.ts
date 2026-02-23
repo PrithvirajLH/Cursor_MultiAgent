@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AccessControlService } from '../common/access-control.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CustomFieldsService } from './custom-fields.service';
 
 describe('CustomFieldsService', () => {
@@ -71,6 +72,12 @@ describe('CustomFieldsService', () => {
           provide: AccessControlService,
           useValue: {
             canWriteTicket: jest.fn(),
+          },
+        },
+        {
+          provide: RealtimeService,
+          useValue: {
+            publishAdminChanged: jest.fn(),
           },
         },
       ],
