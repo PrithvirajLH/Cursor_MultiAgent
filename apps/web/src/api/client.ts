@@ -1271,6 +1271,8 @@ export function negotiateRealtimeConnection() {
 export type BulkResult = {
   success: number;
   failed: number;
+  succeededTicketIds: string[];
+  failedTicketIds: string[];
   errors: Array<{ ticketId: string; message: string }>;
 };
 

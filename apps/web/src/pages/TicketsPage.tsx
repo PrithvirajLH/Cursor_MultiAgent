@@ -9,6 +9,7 @@ import {
   fetchTicketById,
   fetchTickets,
   fetchUsers,
+  type BulkResult,
   type TicketRecord,
   type TeamRef,
   type UserRef,
@@ -487,20 +488,33 @@ export function TicketsPage({
     [effectiveSort, filters.order, matchesTicketFilters],
   );
 
-  const reconcileTicketsInBackground = useCallback(async () => {
-    const requestSeq = ++ticketsRequestSeqRef.current;
-    try {
-      const response = await fetchTickets({
-        ...apiParams,
-        sort: effectiveSort,
-      });
-      if (ticketsRequestSeqRef.current !== requestSeq) return;
-      setTickets(response.data);
-      setListMeta(response.meta ?? null);
-    } catch {
-      // Keep optimistic list when reconciliation fails.
+  const restoreFailedSnapshots = useCallback(
+    (snapshots: Map<string, TicketRecord>, failedTicketIds: string[]) => {
+      if (snapshots.size === 0 || failedTicketIds.length === 0) {
+        return;
+      }
+      const failedSet = new Set(failedTicketIds);
+      const failedSnapshots = new Map<string, TicketRecord>();
+      for (const [ticketId, ticket] of snapshots.entries()) {
+        if (failedSet.has(ticketId)) {
+          failedSnapshots.set(ticketId, ticket);
+        }
+      }
+      restoreTicketSnapshots(failedSnapshots);
+    },
+    [restoreTicketSnapshots],
+  );
+
+  const failedTicketIdsFromBulkResult = useCallback((result: BulkResult) => {
+    const failedTicketIds = result.failedTicketIds ?? [];
+    if (failedTicketIds.length > 0) {
+      return failedTicketIds;
     }
-  }, [apiParams, effectiveSort]);
+    if (result.errors.length > 0) {
+      return result.errors.map((error) => error.ticketId);
+    }
+    return [];
+  }, []);
 
   const resolveAssigneeForBulkAction = useCallback(
     (assigneeId?: string): UserRef => {
@@ -745,10 +759,8 @@ export function TicketsPage({
 
     try {
       const result = await bulkAssignTickets(selectedIds, assigneeId);
-      if (result.success === 0) {
-        restoreTicketSnapshots(snapshots);
-      } else if (result.failed > 0) {
-        void reconcileTicketsInBackground();
+      if (result.failed > 0) {
+        restoreFailedSnapshots(snapshots, failedTicketIdsFromBulkResult(result));
       }
       if (result.success > 0) {
         notifyTicketAggregatesChanged();
@@ -781,10 +793,8 @@ export function TicketsPage({
 
     try {
       const result = await bulkTransferTickets(selectedIds, newTeamId, assigneeId);
-      if (result.success === 0) {
-        restoreTicketSnapshots(snapshots);
-      } else if (result.failed > 0) {
-        void reconcileTicketsInBackground();
+      if (result.failed > 0) {
+        restoreFailedSnapshots(snapshots, failedTicketIdsFromBulkResult(result));
       }
       if (result.success > 0) {
         notifyTicketAggregatesChanged();
@@ -809,10 +819,8 @@ export function TicketsPage({
 
     try {
       const result = await bulkStatusTickets(selectedIds, status);
-      if (result.success === 0) {
-        restoreTicketSnapshots(snapshots);
-      } else if (result.failed > 0) {
-        void reconcileTicketsInBackground();
+      if (result.failed > 0) {
+        restoreFailedSnapshots(snapshots, failedTicketIdsFromBulkResult(result));
       }
       if (result.success > 0) {
         notifyTicketAggregatesChanged();
@@ -836,10 +844,8 @@ export function TicketsPage({
 
     try {
       const result = await bulkPriorityTickets(selectedIds, priority);
-      if (result.success === 0) {
-        restoreTicketSnapshots(snapshots);
-      } else if (result.failed > 0) {
-        void reconcileTicketsInBackground();
+      if (result.failed > 0) {
+        restoreFailedSnapshots(snapshots, failedTicketIdsFromBulkResult(result));
       }
       if (result.success > 0) {
         notifyTicketAggregatesChanged();

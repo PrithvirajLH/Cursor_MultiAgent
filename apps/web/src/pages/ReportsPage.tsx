@@ -13,6 +13,7 @@ import {
   fetchReportTicketVolume,
   fetchReportTicketsByAge,
   fetchReportTicketsByCategory,
+  fetchTicketById,
   fetchReportReopenRate,
   fetchSavedViews,
   fetchTeams,
@@ -484,6 +485,7 @@ export function ReportsPage({
   const knownTicketStateRef = useRef<
     Record<string, { status: string; priority: string; teamId: string | null }>
   >({});
+  const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
 
   const canExport = role === 'TEAM_ADMIN' || role === 'OWNER';
   const canSaveViews = role === 'TEAM_ADMIN' || role === 'OWNER';
@@ -560,6 +562,40 @@ export function ReportsPage({
     ],
   );
 
+  const hydrateRealtimeTicketState = useCallback(
+    async (ticketId: string) => {
+      if (knownTicketStateRef.current[ticketId]) {
+        return knownTicketStateRef.current[ticketId];
+      }
+      if (realtimeHydrationInFlightRef.current.has(ticketId)) {
+        return null;
+      }
+      realtimeHydrationInFlightRef.current.add(ticketId);
+      try {
+        const ticket = await fetchTicketById(ticketId);
+        const nextState = {
+          status: ticket.status,
+          priority: ticket.priority,
+          teamId: ticket.assignedTeam?.id ?? null,
+        };
+        knownTicketStateRef.current[ticket.id] = nextState;
+        const updatedAtMs = parseDateMillis(ticket.updatedAt);
+        if (updatedAtMs > 0) {
+          lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = Math.max(
+            lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0,
+            updatedAtMs,
+          );
+        }
+        return nextState;
+      } catch {
+        return null;
+      } finally {
+        realtimeHydrationInFlightRef.current.delete(ticketId);
+      }
+    },
+    [],
+  );
+
   const applyRealtimeTicketPatch = useCallback(
     (payload: RealtimeTicketChangedEventPayload) => {
       const ticketId = payload.ticketId;
@@ -588,6 +624,10 @@ export function ReportsPage({
       }
 
       const previousState = knownTicketStateRef.current[ticketId];
+      if (!previousState && payload.reason !== 'ticket_created') {
+        void hydrateRealtimeTicketState(ticketId);
+        return;
+      }
       const prevStatus = previousState?.status;
       const nextStatus = payload.status ?? prevStatus;
       const prevIsOpen = isOpenStatus(prevStatus);
@@ -685,7 +725,7 @@ export function ReportsPage({
         return next;
       });
     },
-    [canApplyRealtimeDelta, filters.range, sources, volumeDates],
+    [canApplyRealtimeDelta, filters.range, hydrateRealtimeTicketState, sources, volumeDates],
   );
 
   useEffect(() => {

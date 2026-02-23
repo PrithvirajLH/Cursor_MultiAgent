@@ -22,6 +22,7 @@ import {
   fetchReportTicketVolume,
   fetchReportTicketsByCategory,
   fetchTicketActivity,
+  fetchTicketById,
   fetchTicketMetrics,
   fetchTickets,
   type TeamRef,
@@ -287,6 +288,7 @@ export function ManagerViewsPage({
   const knownTicketStateRef = useRef<
     Record<string, { status: string; priority: string; updatedAt: string }>
   >({});
+  const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
   const userScopeKey = headerCtx?.currentEmail ?? '';
 
   useEffect(() => {
@@ -298,6 +300,40 @@ export function ManagerViewsPage({
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
   }, []);
+
+  const hydrateRealtimeTicketState = useCallback(
+    async (ticketId: string) => {
+      if (knownTicketStateRef.current[ticketId]) {
+        return knownTicketStateRef.current[ticketId];
+      }
+      if (realtimeHydrationInFlightRef.current.has(ticketId)) {
+        return null;
+      }
+      realtimeHydrationInFlightRef.current.add(ticketId);
+      try {
+        const ticket = await fetchTicketById(ticketId);
+        const nextState = {
+          status: ticket.status,
+          priority: ticket.priority,
+          updatedAt: ticket.updatedAt,
+        };
+        knownTicketStateRef.current[ticket.id] = nextState;
+        const updatedAtMs = parseDateMillis(ticket.updatedAt);
+        if (updatedAtMs > 0) {
+          lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = Math.max(
+            lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0,
+            updatedAtMs,
+          );
+        }
+        return nextState;
+      } catch {
+        return null;
+      } finally {
+        realtimeHydrationInFlightRef.current.delete(ticketId);
+      }
+    },
+    [],
+  );
 
   const applyRealtimeTicketPatch = useCallback(
     (payload: RealtimeTicketChangedEventPayload) => {
@@ -316,6 +352,10 @@ export function ManagerViewsPage({
       }
 
       const previousState = knownTicketStateRef.current[ticketId];
+      if (!previousState && payload.reason !== 'ticket_created') {
+        void hydrateRealtimeTicketState(ticketId);
+        return;
+      }
       const prevStatus = previousState?.status;
       const nextStatus = payload.status ?? prevStatus;
       const prevPriority = previousState?.priority;
@@ -441,7 +481,7 @@ export function ManagerViewsPage({
         return next;
       });
     },
-    [],
+    [hydrateRealtimeTicketState],
   );
 
   useEffect(() => {

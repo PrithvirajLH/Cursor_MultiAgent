@@ -10,6 +10,7 @@ import {
   fetchReportTransfers,
   fetchTicketCounts,
   fetchTicketActivity,
+  fetchTicketById,
   fetchTicketStatusBreakdown,
   fetchTickets,
   type AgentPerformanceResponse,
@@ -544,6 +545,17 @@ export function DashboardPage({ role }: DashboardPageProps) {
   const loadedOnceRef = useRef(false);
   const recentTicketsRef = useRef<TicketRecord[]>([]);
   const lastRealtimeUpdatedAtByTicketRef = useRef<Record<string, number>>({});
+  const knownTicketStateRef = useRef<
+    Record<
+      string,
+      {
+        status: string;
+        priority: string;
+        assigneeEmail: string;
+      }
+    >
+  >({});
+  const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     setRange('30');
@@ -552,7 +564,13 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
   useEffect(() => {
     recentTicketsRef.current = recentTickets;
+    const knownStates = { ...knownTicketStateRef.current };
     for (const ticket of recentTickets) {
+      knownStates[ticket.id] = {
+        status: ticket.status,
+        priority: ticket.priority,
+        assigneeEmail: ticket.assignee?.email?.toLowerCase() ?? '',
+      };
       const updatedAtMs = parseDateMillis(ticket.updatedAt);
       if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) {
         continue;
@@ -563,7 +581,41 @@ export function DashboardPage({ role }: DashboardPageProps) {
         lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = updatedAtMs;
       }
     }
+    knownTicketStateRef.current = knownStates;
   }, [recentTickets]);
+
+  const hydrateRealtimeTicketState = useCallback(
+    async (ticketId: string) => {
+      if (knownTicketStateRef.current[ticketId]) {
+        return knownTicketStateRef.current[ticketId];
+      }
+      if (realtimeHydrationInFlightRef.current.has(ticketId)) {
+        return null;
+      }
+      realtimeHydrationInFlightRef.current.add(ticketId);
+      try {
+        const ticket = await fetchTicketById(ticketId);
+        knownTicketStateRef.current[ticket.id] = {
+          status: ticket.status,
+          priority: ticket.priority,
+          assigneeEmail: ticket.assignee?.email?.toLowerCase() ?? '',
+        };
+        const updatedAtMs = parseDateMillis(ticket.updatedAt);
+        if (updatedAtMs > 0) {
+          lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = Math.max(
+            lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0,
+            updatedAtMs,
+          );
+        }
+        return knownTicketStateRef.current[ticket.id];
+      } catch {
+        return null;
+      } finally {
+        realtimeHydrationInFlightRef.current.delete(ticketId);
+      }
+    },
+    [],
+  );
 
   const applyRealtimeTicketPatch = useCallback(
     (payload: RealtimeTicketChangedEventPayload) => {
@@ -585,12 +637,24 @@ export function DashboardPage({ role }: DashboardPageProps) {
       const currentTicket = recentTicketsRef.current.find(
         (ticket) => ticket.id === ticketId,
       );
-      const prevStatus = currentTicket?.status;
-      const prevPriority = currentTicket?.priority;
+      const previousState =
+        knownTicketStateRef.current[ticketId] ??
+        (currentTicket
+          ? {
+              status: currentTicket.status,
+              priority: currentTicket.priority,
+              assigneeEmail: currentTicket.assignee?.email?.toLowerCase() ?? '',
+            }
+          : null);
+      if (!previousState && payload.reason !== 'ticket_created') {
+        void hydrateRealtimeTicketState(ticketId);
+        return;
+      }
+      const prevStatus = previousState?.status;
+      const prevPriority = previousState?.priority;
       const nextStatus = payload.status ?? prevStatus;
       const nextPriority = payload.priority ?? prevPriority;
-      const prevAssigneeEmail =
-        currentTicket?.assignee?.email?.toLowerCase() ?? '';
+      const prevAssigneeEmail = previousState?.assigneeEmail ?? '';
       const nextAssigneeEmail =
         payload.assignee?.email?.toLowerCase() ??
         (Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
@@ -609,6 +673,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
       );
       const prevUnassignedOpen = prevIsOpen && !prevAssigneeEmail;
       const nextUnassignedOpen = nextIsOpen && !nextAssigneeEmail;
+
+      knownTicketStateRef.current[ticketId] = {
+        status: nextStatus ?? '',
+        priority: nextPriority ?? '',
+        assigneeEmail: nextAssigneeEmail,
+      };
 
       setRecentTickets((prev) => {
         const index = prev.findIndex((ticket) => ticket.id === ticketId);
@@ -804,7 +874,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         };
       });
     },
-    [currentEmail, sort],
+    [currentEmail, hydrateRealtimeTicketState, sort],
   );
 
   useEffect(() => {
