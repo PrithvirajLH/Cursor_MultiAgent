@@ -32,6 +32,10 @@ import { RelativeTime } from '../components/RelativeTime';
 import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  type RealtimeTicketChangedEventPayload,
+} from '../realtime/events';
 import { formatStatus, formatTicketId } from '../utils/format';
 import { getPriorityTone, priorityBadgeClass } from '../utils/statusColors';
 
@@ -232,10 +236,8 @@ function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void
 }
 
 export function ManagerViewsPage({
-  refreshKey,
   teamsList
 }: {
-  refreshKey: number;
   teamsList: TeamRef[];
 }) {
   const headerCtx = useHeaderContext();
@@ -256,6 +258,7 @@ export function ManagerViewsPage({
   const [workloadData, setWorkloadData] = useState<Array<{ name: string; openTickets: number }>>([]);
   const [categoryData, setCategoryData] = useState<Array<{ name: string; count: number; color: string }>>([]);
   const [reopenData, setReopenData] = useState<Array<{ date: string; count: number }>>([]);
+  const [realtimeRefreshToken, setRealtimeRefreshToken] = useState(0);
   const loadRequestIdRef = useRef(0);
   const userScopeKey = headerCtx?.currentEmail ?? '';
 
@@ -270,8 +273,40 @@ export function ManagerViewsPage({
   }, []);
 
   useEffect(() => {
+    let refreshTimer: number | null = null;
+
+    const handleTicketChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
+      if (payload?.reason === 'message_added') {
+        return;
+      }
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        setRealtimeRefreshToken((prev) => prev + 1);
+      }, 300);
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_CHANGED_EVENT,
+      handleTicketChanged as EventListener,
+    );
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      window.removeEventListener(
+        REALTIME_TICKET_CHANGED_EVENT,
+        handleTicketChanged as EventListener,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     void loadData();
-  }, [refreshKey, dateRange, userScopeKey]);
+  }, [realtimeRefreshToken, dateRange, userScopeKey]);
 
   async function loadData() {
     const requestId = ++loadRequestIdRef.current;

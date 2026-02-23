@@ -36,6 +36,10 @@ import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useToast } from '../hooks/useToast';
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  type RealtimeTicketChangedEventPayload,
+} from '../realtime/events';
 import type { Role } from '../types';
 import { handleApiError } from '../utils/handleApiError';
 
@@ -401,11 +405,9 @@ function EmptyData({ label }: { label: string }) {
 }
 
 export function ReportsPage({
-  role,
-  refreshKey
+  role
 }: {
   role: Role;
-  refreshKey: number;
 }) {
   const headerCtx = useHeaderContext();
   const toast = useToast();
@@ -454,6 +456,7 @@ export function ReportsPage({
     reopenRate: false,
     teamSummary: false
   });
+  const [realtimeRefreshToken, setRealtimeRefreshToken] = useState(0);
 
   const canExport = role === 'TEAM_ADMIN' || role === 'OWNER';
   const canSaveViews = role === 'TEAM_ADMIN' || role === 'OWNER';
@@ -512,6 +515,38 @@ export function ReportsPage({
     fetchAllUsers()
       .then((response) => setAssignees(response.data))
       .catch(() => setAssignees([]));
+  }, []);
+
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+
+    const handleTicketChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
+      if (payload?.reason === 'message_added') {
+        return;
+      }
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        setRealtimeRefreshToken((prev) => prev + 1);
+      }, 300);
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_CHANGED_EVENT,
+      handleTicketChanged as EventListener,
+    );
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      window.removeEventListener(
+        REALTIME_TICKET_CHANGED_EVENT,
+        handleTicketChanged as EventListener,
+      );
+    };
   }, []);
 
   const dateRange = useMemo(() => rangeToDates(filters.range), [filters.range]);
@@ -798,7 +833,7 @@ export function ReportsPage({
     return () => {
       cancelled = true;
     };
-  }, [reportQuery, refreshKey, tab]);
+  }, [reportQuery, realtimeRefreshToken, tab]);
 
   const selectedTeamName = useMemo(() => {
     if (filters.teamId === 'all') return 'All teams';

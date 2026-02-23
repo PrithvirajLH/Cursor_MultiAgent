@@ -123,11 +123,9 @@ function MemberSkeleton() {
 }
 
 export function TeamPage({
-  refreshKey,
   teamsList,
   role
 }: {
-  refreshKey: number;
   teamsList: TeamRef[];
   role: Role;
 }) {
@@ -187,7 +185,7 @@ export function TeamPage({
       return;
     }
     void loadMembers(selectedTeamId);
-  }, [selectedTeamId, refreshKey]);
+  }, [selectedTeamId]);
 
   useEffect(() => {
     if (!selectedTeamId) return;

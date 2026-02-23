@@ -33,6 +33,7 @@ import { TicketActivityChart, type ActivityPoint } from '../components/dashboard
 import { ReopenRateChart } from '../components/reports/ReopenRateChart';
 import { TicketVolumeChart } from '../components/reports/TicketVolumeChart';
 import { TicketsByAgeChart } from '../components/reports/TicketsByAgeChart';
+import { REALTIME_TICKET_CHANGED_EVENT, type RealtimeTicketChangedEventPayload } from '../realtime/events';
 import { formatStatus, formatTicketId, getSlaTone } from '../utils/format';
 import type { Role } from '../types';
 import { useHeaderContext } from '../contexts/HeaderContext';
@@ -41,7 +42,6 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 const RECENT_TICKETS_COUNT = 6;
 
 type DashboardPageProps = {
-  refreshKey: number;
   role: Role;
 };
 
@@ -459,7 +459,7 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
   );
 }
 
-export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
+export function DashboardPage({ role }: DashboardPageProps) {
   const headerCtx = useHeaderContext();
   const navigate = useNavigate();
   const isEmployee = role === 'EMPLOYEE';
@@ -496,6 +496,7 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
   const [volumeSeries, setVolumeSeries] = useState<{ date: string; count: number }[]>([]);
   const [transfers, setTransfers] = useState<TransfersResponse['data']>({ total: 0, series: [] });
   const [slaCompliance, setSlaCompliance] = useState({ met: 0, breached: 0, total: 0, atRisk: 0 });
+  const [realtimeRefreshToken, setRealtimeRefreshToken] = useState(0);
 
   const loadedOnceRef = useRef(false);
 
@@ -503,6 +504,38 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
     setRange('30');
     setSort('recent');
   }, [role]);
+
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+
+    const handleTicketChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
+      if (payload?.reason === 'message_added') {
+        return;
+      }
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        setRealtimeRefreshToken((prev) => prev + 1);
+      }, 300);
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_CHANGED_EVENT,
+      handleTicketChanged as EventListener,
+    );
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
+      window.removeEventListener(
+        REALTIME_TICKET_CHANGED_EVENT,
+        handleTicketChanged as EventListener,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -681,7 +714,7 @@ export function DashboardPage({ refreshKey, role }: DashboardPageProps) {
     return () => {
       active = false;
     };
-  }, [refreshKey, role, range, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
+  }, [realtimeRefreshToken, role, range, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
 
   const roleMeta = ROLE_META[role] ?? ROLE_META.EMPLOYEE;
   const rangeLabel = toRangeLabel(range);

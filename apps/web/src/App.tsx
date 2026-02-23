@@ -270,7 +270,6 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
   const setCurrentEmail = useCallback(() => {}, []);
   const sidebar = useSidebarState();
   const {
-    refreshKey,
     notifyTicketAggregatesChanged,
     notifyTicketReportsChanged,
   } = useTicketDataInvalidation();
@@ -299,7 +298,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
   // Notifications
   const notifications = useNotifications({
     pollingInterval: 30000,
-    enablePolling: true,
+    enablePolling: false,
     userKey: currentEmail,
   });
   const handleRealtimeTicketChange = useCallback(
@@ -324,9 +323,12 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
     },
     [notifyTicketAggregatesChanged, notifyTicketReportsChanged],
   );
-  const handleRealtimeNotificationsUpdated = useCallback(() => {
-    notifications.refresh();
-  }, [notifications.refresh]);
+  const handleRealtimeNotificationsUpdated = useCallback(
+    (payload?: { reason?: string; unreadCount?: number }) => {
+      notifications.applyRealtimeUpdate(payload);
+    },
+    [notifications.applyRealtimeUpdate],
+  );
   const handleRealtimeTicketTyping = useCallback(
     (payload: RealtimeTicketTypingEventPayload) => {
       window.dispatchEvent(
@@ -619,11 +621,11 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
               <Suspense fallback={<PageFallback />}>
                 <Routes>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<DashboardPage refreshKey={refreshKey} role={currentPersona.role} />} />
-                  <Route path="/triage" element={isLeadOrAbove ? <TriageBoardPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/manager" element={isLeadOrAbove ? <ManagerViewsPage refreshKey={refreshKey} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/reports" element={canViewReports ? <ReportsPage refreshKey={refreshKey} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/team" element={isLeadOrAbove ? <TeamPage refreshKey={refreshKey} teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage role={currentPersona.role} />} />
+                  <Route path="/triage" element={isLeadOrAbove ? <TriageBoardPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/manager" element={isLeadOrAbove ? <ManagerViewsPage teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/reports" element={canViewReports ? <ReportsPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                  <Route path="/team" element={isLeadOrAbove ? <TeamPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/sla-settings" element={isLeadOrAbove ? <SlaSettingsPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/admin" element={isAdminOrOwner ? <Navigate to="/sla-settings" replace /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/routing" element={isAdminOrOwner ? <RoutingRulesPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
@@ -631,7 +633,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
                   <Route path="/audit-log" element={isAdminOrOwner ? <AuditLogPage /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/categories" element={currentPersona.role === 'OWNER' ? <CategoriesPage /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/custom-fields" element={isAdminOrOwner ? <CustomFieldsAdminPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} refreshKey={refreshKey} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
+                  <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
                   <Route path="/tickets/:ticketId" element={<TicketDetailPage currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>

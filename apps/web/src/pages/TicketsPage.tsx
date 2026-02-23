@@ -6,6 +6,7 @@ import {
   bulkPriorityTickets,
   bulkStatusTickets,
   bulkTransferTickets,
+  fetchTicketById,
   fetchTickets,
   fetchUsers,
   type TicketRecord,
@@ -23,6 +24,10 @@ import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useTicketSelection } from '../hooks/useTicketSelection';
 import { useToast } from '../hooks/useToast';
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  type RealtimeTicketChangedEventPayload,
+} from '../realtime/events';
 import type { Role, StatusFilter, TicketFilters, TicketScope } from '../types';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationContext';
@@ -30,6 +35,7 @@ import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationCon
 type SortPreset = 'updated_desc' | 'updated_asc' | 'created_desc' | 'created_asc' | 'completed_desc';
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_KEYS: Array<keyof TicketFilters> = ['page', 'pageSize'];
+const RESOLVED_STATUSES = new Set(['RESOLVED', 'CLOSED']);
 
 function sortPresetFromFilters(sort: string, order: string): SortPreset {
   if (sort === 'createdAt' && order === 'asc') return 'created_asc';
@@ -88,12 +94,43 @@ function clearedTicketFilters(presetScope: TicketScope, presetStatus: StatusFilt
   };
 }
 
+function parseDateMillis(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isResolvedStatus(status: string): boolean {
+  return RESOLVED_STATUSES.has(status);
+}
+
+function isOpenStatus(status: string): boolean {
+  return !isResolvedStatus(status);
+}
+
+function compareTickets(a: TicketRecord, b: TicketRecord, sort: TicketFilters['sort'], order: TicketFilters['order']) {
+  const getSortValue = (ticket: TicketRecord) => {
+    if (sort === 'createdAt') return parseDateMillis(ticket.createdAt);
+    if (sort === 'completedAt') return parseDateMillis(ticket.completedAt);
+    return parseDateMillis(ticket.updatedAt);
+  };
+
+  const aValue = getSortValue(a);
+  const bValue = getSortValue(b);
+  const diff = aValue - bValue;
+  if (diff !== 0) {
+    return order === 'asc' ? diff : -diff;
+  }
+
+  // Keep a stable deterministic fallback ordering.
+  return b.number - a.number;
+}
+
 export function TicketsPage({
   role,
-  currentEmail: _currentEmail,
+  currentEmail,
   presetStatus,
   presetScope,
-  refreshKey,
   teamsList,
   onCreateTicket,
 }: {
@@ -101,7 +138,6 @@ export function TicketsPage({
   currentEmail: string;
   presetStatus: StatusFilter;
   presetScope: TicketScope;
-  refreshKey: number;
   teamsList: TeamRef[];
   onCreateTicket?: () => void;
 }) {
@@ -128,6 +164,8 @@ export function TicketsPage({
   const [focusedRowIndex, setFocusedRowIndex] = useState(0);
   const [rangeAnchorIndex, setRangeAnchorIndex] = useState<number | null>(null);
   const ticketsRequestSeqRef = useRef(0);
+  const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
+  const ticketsRef = useRef<TicketRecord[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const advancedFiltersDialogRef = useRef<HTMLDivElement>(null);
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
@@ -207,6 +245,165 @@ export function TicketsPage({
     [filters.sort, filters.statusGroup, hasOnlyResolvedStatuses],
   );
 
+  const matchesTicketFilters = useCallback(
+    (ticket: TicketRecord) => {
+      const normalizedCurrentEmail = currentEmail.trim().toLowerCase();
+
+      if (filters.statuses.length > 0 && !filters.statuses.includes(ticket.status)) {
+        return false;
+      }
+      if (filters.statuses.length === 0 && filters.statusGroup === 'open' && !isOpenStatus(ticket.status)) {
+        return false;
+      }
+      if (filters.statuses.length === 0 && filters.statusGroup === 'resolved' && !isResolvedStatus(ticket.status)) {
+        return false;
+      }
+      if (filters.priorities.length > 0 && !filters.priorities.includes(ticket.priority)) {
+        return false;
+      }
+      if (filters.teamIds.length > 0 && (!ticket.assignedTeam?.id || !filters.teamIds.includes(ticket.assignedTeam.id))) {
+        return false;
+      }
+      if (filters.assigneeIds.length > 0 && (!ticket.assignee?.id || !filters.assigneeIds.includes(ticket.assignee.id))) {
+        return false;
+      }
+      if (filters.requesterIds.length > 0 && (!ticket.requester?.id || !filters.requesterIds.includes(ticket.requester.id))) {
+        return false;
+      }
+      if (filters.scope === 'assigned') {
+        const assigneeEmail = ticket.assignee?.email?.toLowerCase() ?? '';
+        if (!normalizedCurrentEmail || assigneeEmail !== normalizedCurrentEmail) {
+          return false;
+        }
+      }
+      if (filters.scope === 'unassigned' && ticket.assignee) {
+        return false;
+      }
+      if (filters.scope === 'created') {
+        const requesterEmail = ticket.requester?.email?.toLowerCase() ?? '';
+        if (!normalizedCurrentEmail || requesterEmail !== normalizedCurrentEmail) {
+          return false;
+        }
+      }
+      if (filters.updatedFrom && parseDateMillis(ticket.updatedAt) < parseDateMillis(filters.updatedFrom)) {
+        return false;
+      }
+      if (filters.updatedTo && parseDateMillis(ticket.updatedAt) > parseDateMillis(filters.updatedTo)) {
+        return false;
+      }
+      if (filters.createdFrom && parseDateMillis(ticket.createdAt) < parseDateMillis(filters.createdFrom)) {
+        return false;
+      }
+      if (filters.createdTo && parseDateMillis(ticket.createdAt) > parseDateMillis(filters.createdTo)) {
+        return false;
+      }
+      if (filters.dueFrom && parseDateMillis(ticket.dueAt) < parseDateMillis(filters.dueFrom)) {
+        return false;
+      }
+      if (filters.dueTo && parseDateMillis(ticket.dueAt) > parseDateMillis(filters.dueTo)) {
+        return false;
+      }
+
+      const query = filters.q.trim().toLowerCase();
+      if (query) {
+        const haystack = [
+          ticket.displayId,
+          ticket.subject,
+          ticket.description,
+          ticket.requester?.displayName,
+          ticket.requester?.email,
+          ticket.assignee?.displayName,
+          ticket.assignee?.email,
+          ticket.assignedTeam?.name,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(query)) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [currentEmail, filters],
+  );
+
+  const applyRealtimeTicketPatch = useCallback(
+    (ticket: TicketRecord, payload: RealtimeTicketChangedEventPayload): TicketRecord => {
+      const next: TicketRecord = { ...ticket };
+      if (typeof payload.status === 'string' && payload.status) {
+        next.status = payload.status;
+      }
+      if (typeof payload.priority === 'string' && payload.priority) {
+        next.priority = payload.priority;
+      }
+      if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
+        next.updatedAt = payload.updatedAt;
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'assignedTeamId')) {
+        if (payload.assignedTeamId === null) {
+          next.assignedTeam = null;
+        } else if (payload.assignedTeam?.id) {
+          next.assignedTeam = payload.assignedTeam;
+        } else if (payload.assignedTeamId && next.assignedTeam?.id !== payload.assignedTeamId) {
+          next.assignedTeam = { id: payload.assignedTeamId, name: next.assignedTeam?.name ?? 'Team' };
+        }
+      } else if (payload.assignedTeam?.id) {
+        next.assignedTeam = payload.assignedTeam;
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'assigneeId')) {
+        if (payload.assigneeId === null) {
+          next.assignee = null;
+        } else if (payload.assignee?.id) {
+          next.assignee = payload.assignee;
+        } else if (payload.assigneeId && next.assignee?.id !== payload.assigneeId) {
+          next.assignee = {
+            id: payload.assigneeId,
+            email: next.assignee?.email ?? '',
+            displayName: next.assignee?.displayName ?? 'Assigned user',
+          };
+        }
+      } else if (payload.assignee?.id) {
+        next.assignee = payload.assignee;
+      }
+      return next;
+    },
+    [],
+  );
+
+  const maybeHydrateRealtimeTicket = useCallback(
+    async (ticketId: string) => {
+      if (filters.page > 1) {
+        return;
+      }
+      if (realtimeHydrationInFlightRef.current.has(ticketId)) {
+        return;
+      }
+      realtimeHydrationInFlightRef.current.add(ticketId);
+      try {
+        const ticket = await fetchTicketById(ticketId);
+        setTickets((prev) => {
+          if (prev.some((row) => row.id === ticket.id)) {
+            return prev;
+          }
+          if (!matchesTicketFilters(ticket)) {
+            return prev;
+          }
+          const next = [...prev, ticket].sort((a, b) =>
+            compareTickets(a, b, effectiveSort, filters.order),
+          );
+          return next.slice(0, filters.pageSize);
+        });
+      } catch {
+        // Ignore hydration misses for deleted/hidden tickets.
+      } finally {
+        realtimeHydrationInFlightRef.current.delete(ticketId);
+      }
+    },
+    [effectiveSort, filters.order, filters.page, filters.pageSize, matchesTicketFilters],
+  );
+
   const loadTickets = useCallback(async () => {
     const requestSeq = ++ticketsRequestSeqRef.current;
     setLoadingTickets(true);
@@ -233,7 +430,57 @@ export function TicketsPage({
   const searchParamsString = searchParams.toString();
   useEffect(() => {
     loadTickets();
-  }, [searchParamsString, refreshKey, loadTickets]);
+  }, [searchParamsString, loadTickets]);
+
+  useEffect(() => {
+    const handleTicketChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
+      const ticketId = payload?.ticketId;
+      if (!ticketId) {
+        return;
+      }
+      const presentBeforePatch = ticketsRef.current.some((ticket) => ticket.id === ticketId);
+      setTickets((prev) => {
+        const index = prev.findIndex((ticket) => ticket.id === ticketId);
+        if (index === -1) {
+          return prev;
+        }
+        const current = prev[index];
+        const currentUpdatedAtMs = parseDateMillis(current.updatedAt);
+        const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt);
+
+        if (incomingUpdatedAtMs > 0 && incomingUpdatedAtMs < currentUpdatedAtMs) {
+          return prev;
+        }
+
+        const patched = applyRealtimeTicketPatch(current, payload);
+        if (!matchesTicketFilters(patched)) {
+          return prev.filter((ticket) => ticket.id !== ticketId);
+        }
+
+        const next = [...prev];
+        next[index] = patched;
+        next.sort((a, b) => compareTickets(a, b, effectiveSort, filters.order));
+        return next;
+      });
+
+      if (!presentBeforePatch) {
+        void maybeHydrateRealtimeTicket(ticketId);
+      }
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_CHANGED_EVENT,
+      handleTicketChanged as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        REALTIME_TICKET_CHANGED_EVENT,
+        handleTicketChanged as EventListener,
+      );
+    };
+  }, [applyRealtimeTicketPatch, effectiveSort, filters.order, matchesTicketFilters, maybeHydrateRealtimeTicket]);
 
   useEffect(() => {
     if (role === 'EMPLOYEE') {
@@ -272,6 +519,10 @@ export function TicketsPage({
     }
     setFocusedRowIndex((prev) => Math.min(prev, tickets.length - 1));
   }, [tickets.length]);
+
+  useEffect(() => {
+    ticketsRef.current = tickets;
+  }, [tickets]);
 
   useEffect(() => {
     function handleTicketListKeyboardShortcuts(event: KeyboardEvent) {

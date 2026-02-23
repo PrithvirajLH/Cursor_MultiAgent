@@ -122,12 +122,18 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
 
     const handleEnvelope = (envelope: RealtimeEnvelope) => {
       if (envelope.event === 'ticket.changed') {
-        ticketCallbackRef.current?.(toTicketPayload(envelope.payload));
+        ticketCallbackRef.current?.({
+          ...toTicketPayload(envelope.payload),
+          occurredAt: envelope.occurredAt,
+        });
         return;
       }
 
       if (envelope.event === 'ticket.typing') {
-        ticketTypingCallbackRef.current?.(toTicketTypingPayload(envelope.payload));
+        ticketTypingCallbackRef.current?.({
+          ...toTicketTypingPayload(envelope.payload),
+          occurredAt: envelope.occurredAt,
+        });
         return;
       }
 

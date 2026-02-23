@@ -14,6 +14,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   bulkPriorityTickets,
   assignTicket,
+  fetchTicketById,
   fetchTickets,
   fetchTeamMembers,
   transferTicket,
@@ -26,6 +27,10 @@ import { RelativeTime } from '../components/RelativeTime';
 import { TopBar } from '../components/TopBar';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useToast } from '../hooks/useToast';
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  type RealtimeTicketChangedEventPayload,
+} from '../realtime/events';
 import type { Role } from '../types';
 import { formatStatus, formatTicketId, getSlaTone } from '../utils/format';
 import { getPriorityTone, priorityBadgeClass } from '../utils/statusColors';
@@ -54,12 +59,22 @@ const CARD_MENU_APPROX_HEIGHT = 220;
 
 type CardSubmenuType = 'assign' | 'move' | 'priority' | 'transfer';
 
+function parseDateMillis(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortByUpdatedDesc(tickets: TicketRecord[]) {
+  return [...tickets].sort(
+    (a, b) => parseDateMillis(b.updatedAt) - parseDateMillis(a.updatedAt),
+  );
+}
+
 export function TriageBoardPage({
-  refreshKey,
   teamsList,
   role
 }: {
-  refreshKey: number;
   teamsList: TeamRef[];
   role: Role;
 }) {
@@ -81,6 +96,8 @@ export function TriageBoardPage({
     Record<string, { loading: boolean; members: TeamMember[]; error: string | null }>
   >({});
   const loadRequestIdRef = useRef(0);
+  const ticketSnapshotRef = useRef<TicketRecord[]>([]);
+  const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [teamFilterId, setTeamFilterId] = useState('all');
@@ -89,7 +106,136 @@ export function TriageBoardPage({
 
   useEffect(() => {
     loadTickets();
-  }, [refreshKey, teamFilterId, isOwner]);
+  }, [teamFilterId, isOwner]);
+
+  useEffect(() => {
+    const handleTicketChanged = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
+      const ticketId = payload?.ticketId;
+      if (!ticketId) {
+        return;
+      }
+
+      const presentBeforePatch = ticketSnapshotRef.current.some(
+        (ticket) => ticket.id === ticketId,
+      );
+
+      setTickets((prev) => {
+        const index = prev.findIndex((ticket) => ticket.id === ticketId);
+        if (index === -1) {
+          return prev;
+        }
+
+        const current = prev[index];
+        const currentUpdatedAtMs = parseDateMillis(current.updatedAt);
+        const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt);
+
+        if (incomingUpdatedAtMs > 0 && incomingUpdatedAtMs < currentUpdatedAtMs) {
+          return prev;
+        }
+
+        const patched: TicketRecord = { ...current };
+        if (typeof payload.status === 'string' && payload.status) {
+          patched.status = payload.status;
+        }
+        if (typeof payload.priority === 'string' && payload.priority) {
+          patched.priority = payload.priority;
+        }
+        if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
+          patched.updatedAt = payload.updatedAt;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'assignedTeamId')) {
+          if (payload.assignedTeamId === null) {
+            patched.assignedTeam = null;
+          } else if (payload.assignedTeam?.id) {
+            patched.assignedTeam = payload.assignedTeam;
+          } else if (
+            payload.assignedTeamId &&
+            patched.assignedTeam?.id !== payload.assignedTeamId
+          ) {
+            patched.assignedTeam = {
+              id: payload.assignedTeamId,
+              name: patched.assignedTeam?.name ?? 'Team',
+            };
+          }
+        } else if (payload.assignedTeam?.id) {
+          patched.assignedTeam = payload.assignedTeam;
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'assigneeId')) {
+          if (payload.assigneeId === null) {
+            patched.assignee = null;
+          } else if (payload.assignee?.id) {
+            patched.assignee = payload.assignee;
+          } else if (
+            payload.assigneeId &&
+            patched.assignee?.id !== payload.assigneeId
+          ) {
+            patched.assignee = {
+              id: payload.assigneeId,
+              email: patched.assignee?.email ?? '',
+              displayName: patched.assignee?.displayName ?? 'Assigned user',
+            };
+          }
+        } else if (payload.assignee?.id) {
+          patched.assignee = payload.assignee;
+        }
+
+        const belongsToVisibleTeam =
+          teamFilterId === 'all' || patched.assignedTeam?.id === teamFilterId;
+        const isVisibleStatus = TRIAGE_COLUMN_KEYS.includes(patched.status);
+        if (!belongsToVisibleTeam || !isVisibleStatus) {
+          return prev.filter((ticket) => ticket.id !== ticketId);
+        }
+
+        const next = [...prev];
+        next[index] = patched;
+        return sortByUpdatedDesc(next);
+      });
+
+      if (presentBeforePatch) {
+        return;
+      }
+
+      if (realtimeHydrationInFlightRef.current.has(ticketId)) {
+        return;
+      }
+
+      realtimeHydrationInFlightRef.current.add(ticketId);
+      void fetchTicketById(ticketId)
+        .then((ticket) => {
+          setTickets((prev) => {
+            if (prev.some((row) => row.id === ticket.id)) {
+              return prev;
+            }
+            if (!TRIAGE_COLUMN_KEYS.includes(ticket.status)) {
+              return prev;
+            }
+            if (teamFilterId !== 'all' && ticket.assignedTeam?.id !== teamFilterId) {
+              return prev;
+            }
+            return sortByUpdatedDesc([...prev, ticket]);
+          });
+        })
+        .catch(() => {
+          // Ignore hydration misses for hidden/deleted tickets.
+        })
+        .finally(() => {
+          realtimeHydrationInFlightRef.current.delete(ticketId);
+        });
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_CHANGED_EVENT,
+      handleTicketChanged as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        REALTIME_TICKET_CHANGED_EVENT,
+        handleTicketChanged as EventListener,
+      );
+    };
+  }, [teamFilterId]);
 
   useEffect(() => {
     if (!isOwner && teamFilterId !== 'all') {
@@ -149,6 +295,10 @@ export function TriageBoardPage({
       }
     }
   }
+
+  useEffect(() => {
+    ticketSnapshotRef.current = tickets;
+  }, [tickets]);
 
   async function handleAssignSelf(ticket: TicketRecord) {
     setActionTicketId(ticket.id);

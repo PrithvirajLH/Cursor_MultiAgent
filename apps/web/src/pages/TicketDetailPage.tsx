@@ -128,6 +128,11 @@ export function TicketDetailPage({
   const typingIdleTimerRef = useRef<number | null>(null);
   const localTypingActiveRef = useRef(false);
   const lastTypingEmitAtRef = useRef(0);
+  const ticketSnapshotRef = useRef<TicketDetail | null>(null);
+  const lastTicketUpdateAtMsRef = useRef(0);
+  const seenRealtimeMessageIdsRef = useRef<Set<string>>(new Set());
+  const seenRealtimeEventIdsRef = useRef<Set<string>>(new Set());
+  const lastTypingOccurredAtByActorRef = useRef<Record<string, number>>({});
 
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
 
@@ -173,6 +178,17 @@ export function TicketDetailPage({
   const headerTitle = headerCtx?.title ?? 'Ticket details';
   const currentUserId = headerCtx?.currentUser?.id ?? null;
 
+  useEffect(() => {
+    ticketSnapshotRef.current = ticket;
+    if (!ticket?.updatedAt) {
+      return;
+    }
+    const updatedAtMs = Date.parse(ticket.updatedAt);
+    if (Number.isFinite(updatedAtMs) && updatedAtMs > lastTicketUpdateAtMsRef.current) {
+      lastTicketUpdateAtMsRef.current = updatedAtMs;
+    }
+  }, [ticket]);
+
   /* ——— Navigation (memoized, 6.3) ——— */
 
   const navigateBack = useCallback(() => {
@@ -201,17 +217,109 @@ export function TicketDetailPage({
   const appendRealtimeMessage = useCallback(
     (payload: RealtimeTicketMessagePayload) => {
       const incoming = toTicketMessage(payload);
+      if (seenRealtimeMessageIdsRef.current.has(incoming.id)) {
+        return false;
+      }
+      let appended = false;
       setMessages((prev) => {
         if (prev.some((message) => message.id === incoming.id)) {
           return prev;
         }
+        appended = true;
         return [...prev, incoming].sort(
           (left, right) =>
             new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
         );
       });
+      if (appended) {
+        seenRealtimeMessageIdsRef.current.add(incoming.id);
+      }
+      return appended;
     },
     [toTicketMessage],
+  );
+
+  const appendRealtimeEvent = useCallback(
+    (event: TicketEvent) => {
+      if (seenRealtimeEventIdsRef.current.has(event.id)) {
+        return false;
+      }
+      let appended = false;
+      setEvents((prev) => {
+        if (prev.some((existing) => existing.id === event.id)) {
+          return prev;
+        }
+        appended = true;
+        return [...prev, event].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+        );
+      });
+      if (appended) {
+        seenRealtimeEventIdsRef.current.add(event.id);
+      }
+      return appended;
+    },
+    [],
+  );
+
+  const applyTicketRealtimePatch = useCallback(
+    (payload: RealtimeTicketChangedEventPayload) => {
+      let patched = false;
+      setTicket((prev) => {
+        if (!prev || !payload.ticketId || prev.id !== payload.ticketId) {
+          return prev;
+        }
+
+        const next = { ...prev };
+        if (payload.status && payload.status !== next.status) {
+          next.status = payload.status as TicketDetail['status'];
+          patched = true;
+        }
+        if (payload.priority && payload.priority !== next.priority) {
+          next.priority = payload.priority as TicketDetail['priority'];
+          patched = true;
+        }
+        if (payload.updatedAt && payload.updatedAt !== next.updatedAt) {
+          next.updatedAt = payload.updatedAt;
+          patched = true;
+        }
+        if (payload.assignee && payload.assignee.id !== next.assignee?.id) {
+          next.assignee = payload.assignee;
+          patched = true;
+        } else if (
+          payload.assigneeId === null &&
+          next.assignee !== null
+        ) {
+          next.assignee = null;
+          patched = true;
+        }
+        if (
+          payload.assignedTeam &&
+          payload.assignedTeam.id !== next.assignedTeam?.id
+        ) {
+          next.assignedTeam = payload.assignedTeam;
+          patched = true;
+        } else if (
+          payload.assignedTeamId === null &&
+          next.assignedTeam !== null
+        ) {
+          next.assignedTeam = null;
+          patched = true;
+        }
+        if (
+          typeof payload.followerCount === 'number' &&
+          next.followers.length > payload.followerCount
+        ) {
+          next.followers = next.followers.slice(0, payload.followerCount);
+          patched = true;
+        }
+
+        return patched ? next : prev;
+      });
+      return patched;
+    },
+    [],
   );
 
   const clearTypingIdleTimer = useCallback(() => {
@@ -281,6 +389,7 @@ export function TicketDetailPage({
     if (reset) {
       if (clearOnReset) {
         setMessages([]);
+        seenRealtimeMessageIdsRef.current.clear();
       }
       setMessageCursor(null);
       setMessagesHasMore(false);
@@ -292,36 +401,60 @@ export function TicketDetailPage({
       });
       if (messageRequestSeqRef.current !== requestSeq) return;
       setMessages((prev) => (reset ? response.data : [...response.data, ...prev]));
+      for (const message of response.data) {
+        seenRealtimeMessageIdsRef.current.add(message.id);
+      }
       setMessageCursor(response.nextCursor ?? null);
       setMessagesHasMore(Boolean(response.nextCursor));
     } catch {
       if (messageRequestSeqRef.current === requestSeq && reset && clearOnReset) {
         setMessages([]);
         setMessagesHasMore(false);
+        seenRealtimeMessageIdsRef.current.clear();
       }
     } finally {
       if (messageRequestSeqRef.current === requestSeq) setMessagesLoading(false);
     }
   }, [messageCursor]);
 
-  const loadEventsPage = useCallback(async (id: string, reset = false) => {
+  const loadEventsPage = useCallback(
+    async (id: string, reset = false, clearOnReset = true) => {
     const requestSeq = ++eventRequestSeqRef.current;
-    if (reset) { setEvents([]); setEventCursor(null); setEventsHasMore(false); }
+      if (reset) {
+        if (clearOnReset) {
+          setEvents([]);
+          seenRealtimeEventIdsRef.current.clear();
+        }
+        setEventCursor(null);
+        setEventsHasMore(false);
+      }
     setEventsLoading(true);
     try {
       const response = await fetchTicketEvents(id, {
         cursor: reset ? undefined : eventCursor ?? undefined, take: 50,
       });
       if (eventRequestSeqRef.current !== requestSeq) return;
-      setEvents((prev) => (reset ? response.data : [...response.data, ...prev]));
+        setEvents((prev) => {
+          const merged = reset ? response.data : [...response.data, ...prev];
+          return merged;
+        });
+        for (const event of response.data) {
+          seenRealtimeEventIdsRef.current.add(event.id);
+        }
       setEventCursor(response.nextCursor ?? null);
       setEventsHasMore(Boolean(response.nextCursor));
     } catch {
-      if (eventRequestSeqRef.current === requestSeq && reset) { setEvents([]); setEventsHasMore(false); }
+        if (eventRequestSeqRef.current === requestSeq && reset && clearOnReset) {
+          setEvents([]);
+          setEventsHasMore(false);
+          seenRealtimeEventIdsRef.current.clear();
+        }
     } finally {
       if (eventRequestSeqRef.current === requestSeq) setEventsLoading(false);
     }
-  }, [eventCursor]);
+    },
+    [eventCursor],
+  );
 
   const loadTicketDetail = useCallback(async (id: string) => {
     const requestSeq = ++detailRequestSeqRef.current;
@@ -335,6 +468,9 @@ export function TicketDetailPage({
       setTicket(null); setMessages([]); setEvents([]);
       setMessageCursor(null); setEventCursor(null);
       setMessagesHasMore(false); setEventsHasMore(false);
+      seenRealtimeMessageIdsRef.current.clear();
+      seenRealtimeEventIdsRef.current.clear();
+      lastTicketUpdateAtMsRef.current = 0;
     }
     try {
       const detail = await fetchTicketById(id);
@@ -356,7 +492,7 @@ export function TicketDetailPage({
   }, [loadMessagesPage, loadEventsPage]);
 
   const refreshAfterMutation = useCallback(async (id: string, options?: { reloadEvents?: boolean }) => {
-    const shouldReloadEvents = options?.reloadEvents ?? true;
+    const shouldReloadEvents = options?.reloadEvents ?? false;
     try {
       const [detail] = await Promise.all([
         fetchTicketById(id),
@@ -384,6 +520,32 @@ export function TicketDetailPage({
         return;
       }
 
+      const incomingUpdatedAtMs = Number.isFinite(Date.parse(payload.updatedAt ?? ''))
+        ? Date.parse(payload.updatedAt ?? '')
+        : null;
+      if (
+        incomingUpdatedAtMs !== null &&
+        incomingUpdatedAtMs < lastTicketUpdateAtMsRef.current
+      ) {
+        return;
+      }
+      if (incomingUpdatedAtMs !== null) {
+        lastTicketUpdateAtMsRef.current = Math.max(
+          lastTicketUpdateAtMsRef.current,
+          incomingUpdatedAtMs,
+        );
+      }
+
+      const occurredAtIso = payload.occurredAt ?? new Date().toISOString();
+      const ticketSnapshot = ticketSnapshotRef.current;
+      const actorForEvent = payload.actor
+        ? {
+            id: payload.actor.id,
+            email: payload.actor.email,
+            displayName: payload.actor.displayName,
+          }
+        : null;
+
       // Keep conversation stream and timeline in sync for this specific ticket.
       if (payload.reason === 'message_added') {
         // Skip self-authored message events: the local optimistic/send flow already updated UI.
@@ -392,9 +554,22 @@ export function TicketDetailPage({
         }
 
         if (payload.message) {
-          appendRealtimeMessage(payload.message);
-          if (activeTab === 'timeline') {
-            void loadEventsPage(ticketId, true);
+          const appended = appendRealtimeMessage(payload.message);
+          if (appended) {
+            appendRealtimeEvent({
+              id: `rt:msg:${payload.message.id}`,
+              type: 'MESSAGE_ADDED',
+              createdAt: payload.message.createdAt || occurredAtIso,
+              payload: {
+                type: payload.message.type,
+                messageId: payload.message.id,
+              },
+              createdBy: {
+                id: payload.message.author.id,
+                email: payload.message.author.email,
+                displayName: payload.message.author.displayName,
+              },
+            });
           }
           return;
         }
@@ -402,12 +577,12 @@ export function TicketDetailPage({
         // Fallback for message events without inlined payload data.
         void loadMessagesPage(ticketId, true, false);
         if (activeTab === 'timeline') {
-          void loadEventsPage(ticketId, true);
+          void loadEventsPage(ticketId, true, false);
         }
         return;
       }
 
-      const shouldRefreshDetailInPlace =
+      const shouldPatchInPlace =
         payload.reason === 'attachment_added' ||
         payload.reason === 'attachment_scan_status_changed' ||
         payload.reason === 'followers_changed' ||
@@ -418,20 +593,156 @@ export function TicketDetailPage({
         payload.reason === 'ticket_created' ||
         payload.reason === 'automation_rule_executed';
 
-      if (shouldRefreshDetailInPlace) {
-        // Own writes are already handled optimistically by local handlers.
-        if (payload.actorId && currentUserId && payload.actorId === currentUserId) {
-          return;
-        }
+      if (!shouldPatchInPlace) {
+        return;
+      }
 
-        // Apply fast in-place status change immediately, then hydrate full detail.
-        if (payload.status) {
-          setTicket((prev) =>
-            prev ? { ...prev, status: payload.status as TicketDetail['status'] } : prev,
-          );
-        }
+      const patched = applyTicketRealtimePatch(payload);
 
-        void refreshAfterMutation(ticketId, { reloadEvents: activeTab === 'timeline' });
+      if (payload.reason === 'ticket_created') {
+        appendRealtimeEvent({
+          id: `rt:create:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'TICKET_CREATED',
+          createdAt: occurredAtIso,
+          payload: null,
+          createdBy: actorForEvent,
+        });
+      }
+
+      if (
+        payload.reason === 'status_changed' &&
+        ticketSnapshot?.status &&
+        payload.status &&
+        ticketSnapshot.status !== payload.status
+      ) {
+        appendRealtimeEvent({
+          id: `rt:status:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'TICKET_STATUS_CHANGED',
+          createdAt: occurredAtIso,
+          payload: {
+            from: ticketSnapshot.status,
+            to: payload.status,
+          },
+          createdBy: actorForEvent,
+        });
+      }
+
+      if (payload.reason === 'assigned') {
+        appendRealtimeEvent({
+          id: `rt:assign:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'TICKET_ASSIGNED',
+          createdAt: occurredAtIso,
+          payload: {
+            assigneeId: payload.assigneeId ?? null,
+            assigneeName: payload.assignee?.displayName ?? null,
+            assigneeEmail: payload.assignee?.email ?? null,
+          },
+          createdBy: actorForEvent,
+        });
+        if (
+          ticketSnapshot?.status &&
+          payload.status &&
+          ticketSnapshot.status !== payload.status
+        ) {
+          appendRealtimeEvent({
+            id: `rt:assign-status:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+            type: 'TICKET_STATUS_CHANGED',
+            createdAt: occurredAtIso,
+            payload: {
+              from: ticketSnapshot.status,
+              to: payload.status,
+            },
+            createdBy: actorForEvent,
+          });
+        }
+      }
+
+      if (payload.reason === 'transferred') {
+        appendRealtimeEvent({
+          id: `rt:transfer:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'TICKET_TRANSFERRED',
+          createdAt: occurredAtIso,
+          payload: {
+            fromTeamId: ticketSnapshot?.assignedTeam?.id ?? null,
+            toTeamId: payload.assignedTeamId ?? null,
+            toTeamName: payload.assignedTeam?.name ?? null,
+            assigneeId: payload.assigneeId ?? null,
+          },
+          createdBy: actorForEvent,
+        });
+        if (
+          ticketSnapshot?.status &&
+          payload.status &&
+          ticketSnapshot.status !== payload.status
+        ) {
+          appendRealtimeEvent({
+            id: `rt:transfer-status:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+            type: 'TICKET_STATUS_CHANGED',
+            createdAt: occurredAtIso,
+            payload: {
+              from: ticketSnapshot.status,
+              to: payload.status,
+            },
+            createdBy: actorForEvent,
+          });
+        }
+      }
+
+      if (
+        payload.reason === 'priority_changed' &&
+        ticketSnapshot?.priority &&
+        payload.priority &&
+        ticketSnapshot.priority !== payload.priority
+      ) {
+        appendRealtimeEvent({
+          id: `rt:priority:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'TICKET_PRIORITY_CHANGED',
+          createdAt: occurredAtIso,
+          payload: {
+            from: ticketSnapshot.priority,
+            to: payload.priority,
+          },
+          createdBy: actorForEvent,
+        });
+      }
+
+      if (payload.reason === 'attachment_added') {
+        appendRealtimeEvent({
+          id: `rt:attachment:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'ATTACHMENT_ADDED',
+          createdAt: occurredAtIso,
+          payload: {},
+          createdBy: actorForEvent,
+        });
+      }
+
+      if (payload.reason === 'attachment_scan_status_changed') {
+        appendRealtimeEvent({
+          id: `rt:attachment-scan:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
+          type: 'ATTACHMENT_SCAN_STATUS_CHANGED',
+          createdAt: occurredAtIso,
+          payload: {},
+          createdBy: actorForEvent,
+        });
+      }
+
+      const requiresDetailHydration =
+        payload.reason === 'attachment_added' ||
+        payload.reason === 'attachment_scan_status_changed' ||
+        payload.reason === 'followers_changed';
+      const hasPatchData =
+        typeof payload.status === 'string' ||
+        typeof payload.priority === 'string' ||
+        typeof payload.updatedAt === 'string' ||
+        payload.assigneeId !== undefined ||
+        payload.assignedTeamId !== undefined ||
+        payload.assignee !== undefined ||
+        payload.assignedTeam !== undefined;
+
+      if (requiresDetailHydration || (!patched && !hasPatchData)) {
+        void refreshAfterMutation(ticketId, {
+          reloadEvents: false,
+        });
       }
     };
 
@@ -449,6 +760,8 @@ export function TicketDetailPage({
   }, [
     ticketId,
     appendRealtimeMessage,
+    appendRealtimeEvent,
+    applyTicketRealtimePatch,
     activeTab,
     loadEventsPage,
     loadMessagesPage,
@@ -475,6 +788,16 @@ export function TicketDetailPage({
       if (currentUserId && actorId === currentUserId) {
         return;
       }
+
+      const occurredAtMs = Number.isFinite(Date.parse(payload.occurredAt ?? ''))
+        ? Date.parse(payload.occurredAt ?? '')
+        : Date.now();
+      const lastOccurredAtMs =
+        lastTypingOccurredAtByActorRef.current[actorId] ?? 0;
+      if (occurredAtMs < lastOccurredAtMs) {
+        return;
+      }
+      lastTypingOccurredAtByActorRef.current[actorId] = occurredAtMs;
 
       setTypingUsersById((prev) => {
         const existing = prev[actorId];
@@ -574,6 +897,10 @@ export function TicketDetailPage({
 
   useEffect(() => {
     setTypingUsersById({});
+    seenRealtimeMessageIdsRef.current.clear();
+    seenRealtimeEventIdsRef.current.clear();
+    lastTicketUpdateAtMsRef.current = 0;
+    lastTypingOccurredAtByActorRef.current = {};
   }, [ticketId]);
 
   useEffect(() => {
@@ -695,7 +1022,16 @@ export function TicketDetailPage({
     try {
       const serverMessage = await addTicketMessage(ticketId, { body, type: messageType });
       setMessages((prev) => prev.map((m) => (m.id === optimisticId ? serverMessage : m)));
-      void loadEventsPage(ticketId, true);
+      appendRealtimeEvent({
+        id: `rt:msg:${serverMessage.id}`,
+        type: 'MESSAGE_ADDED',
+        createdAt: serverMessage.createdAt,
+        payload: {
+          type: serverMessage.type,
+          messageId: serverMessage.id,
+        },
+        createdBy: serverMessage.author,
+      });
       setCopyToast({ message: messageType === 'INTERNAL' ? 'Internal note added' : 'Reply sent', type: 'success' });
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
@@ -704,7 +1040,7 @@ export function TicketDetailPage({
     } finally {
       setMessageSending(false);
     }
-  }, [messageBody, ticketId, ticket, messageSending, messageType, currentEmail, loadEventsPage, stopTyping]);
+  }, [messageBody, ticketId, ticket, messageSending, messageType, currentEmail, appendRealtimeEvent, stopTyping]);
 
   const handleAssignSelf = useCallback(async () => {
     if (!ticket) return;

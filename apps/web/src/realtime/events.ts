@@ -14,15 +14,35 @@ export type RealtimeTicketMessagePayload = {
 };
 
 export type RealtimeTicketChangedEventPayload = {
+  occurredAt?: string;
   ticketId?: string;
   reason?: string;
   actorId?: string | null;
   status?: string;
+  priority?: string;
+  updatedAt?: string;
   assignedTeamId?: string | null;
+  assignedTeam?: {
+    id: string;
+    name: string;
+  } | null;
+  assigneeId?: string | null;
+  assignee?: {
+    id: string;
+    email: string;
+    displayName: string;
+  } | null;
+  followerCount?: number;
+  actor?: {
+    id: string;
+    email: string;
+    displayName: string;
+  } | null;
   message?: RealtimeTicketMessagePayload | null;
 };
 
 export type RealtimeTicketTypingEventPayload = {
+  occurredAt?: string;
   ticketId?: string;
   actorId?: string | null;
   actorDisplayName?: string;

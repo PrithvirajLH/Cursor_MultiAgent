@@ -19,6 +19,11 @@ type UseNotificationsOptions = {
   userKey?: string;
 };
 
+type RealtimeNotificationUpdate = {
+  reason?: string;
+  unreadCount?: number;
+};
+
 export function useNotifications(options: UseNotificationsOptions = {}) {
   const { pollingInterval = 30000, enablePolling = true, pageSize = 20, userKey } = options;
 
@@ -42,6 +47,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const currentUserKeyRef = useRef(userKey);
   currentUserKeyRef.current = userKey;
   const countInFlightRef = useRef(false);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
 
   // Check if userKey matches the persisted email to prevent fetching with stale credentials
   const isUserKeySynced = useCallback(() => {
@@ -144,6 +150,31 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     fetchData(1, false);
   }, [fetchData]);
 
+  const applyRealtimeUpdate = useCallback(
+    (payload: RealtimeNotificationUpdate = {}) => {
+      if (
+        typeof payload.unreadCount === 'number' &&
+        Number.isFinite(payload.unreadCount)
+      ) {
+        setUnreadCount(Math.max(0, payload.unreadCount));
+      }
+
+      // Fetch latest list on realtime notification updates to keep the drawer
+      // content in sync without background polling.
+      if (!payload.reason || !isTabVisible) {
+        return;
+      }
+
+      if (realtimeRefreshTimerRef.current) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+      }
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        void fetchData(1, false);
+      }, 200);
+    },
+    [fetchData, isTabVisible],
+  );
+
   // Mark a single notification as read
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
@@ -198,42 +229,24 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  // Check if userKey is synced to storage and trigger fetch when ready
+  // Check if userKey is synced to storage and trigger fetch when ready.
+  // Use a single delayed check instead of an interval loop.
   useEffect(() => {
     if (!userKey) {
       setUserKeySynced(true);
       return;
     }
 
-    // Check periodically until userKey matches persisted email
-    const checkSync = () => {
-      if (isUserKeySynced()) {
-        setUserKeySynced(true);
-        return true;
-      }
-      return false;
-    };
+    if (isUserKeySynced()) {
+      setUserKeySynced(true);
+      return;
+    }
 
-    // Check immediately
-    if (checkSync()) return;
+    const timeout = window.setTimeout(() => {
+      setUserKeySynced(true);
+    }, 100);
 
-    // If not synced, poll briefly (setDemoUserEmail runs in useEffect, so it should sync quickly)
-    const interval = setInterval(() => {
-      if (checkSync()) {
-        clearInterval(interval);
-      }
-    }, 10);
-
-    // Clean up after a reasonable timeout
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
-      setUserKeySynced(true); // Proceed anyway after timeout
-    }, 500);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
+    return () => window.clearTimeout(timeout);
   }, [userKey, isUserKeySynced]);
 
   // Initial fetch and refetch when user changes and is synced
@@ -269,6 +282,15 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     };
   }, [enablePolling, pollingInterval, fetchCount, userKeySynced, isTabVisible]);
 
+  useEffect(() => {
+    return () => {
+      if (realtimeRefreshTimerRef.current) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+    };
+  }, []);
+
   return {
     notifications,
     unreadCount,
@@ -277,6 +299,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     hasMore,
     loadMore,
     refresh,
+    applyRealtimeUpdate,
     markAsRead,
     markAllAsRead
   };

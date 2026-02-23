@@ -1,8 +1,7 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
 type TicketDataInvalidationContextValue = {
-  refreshKey: number;
   notifyTicketAggregatesChanged: () => void;
   notifyTicketReportsChanged: () => void;
 };
@@ -13,16 +12,10 @@ const TicketDataInvalidationContext = createContext<TicketDataInvalidationContex
 
 export function TicketDataInvalidationProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const value = useMemo<TicketDataInvalidationContextValue>(
     () => ({
-      refreshKey,
       notifyTicketAggregatesChanged: () => {
-        // Bump refreshKey so views that depend on it (dashboard, manager, triage, tickets)
-        // refetch their data.
-        setRefreshKey((prev) => prev + 1);
-
         // Invalidate lightweight aggregate queries so shared consumers (e.g. sidebar)
         // get fresh values without relying on manual effects.
         void queryClient.invalidateQueries({ queryKey: ['ticketCounts'] });
@@ -35,7 +28,7 @@ export function TicketDataInvalidationProvider({ children }: { children: React.R
         void queryClient.invalidateQueries({ queryKey: ['reports'] });
       }
     }),
-    [queryClient, refreshKey]
+    [queryClient]
   );
 
   return (
