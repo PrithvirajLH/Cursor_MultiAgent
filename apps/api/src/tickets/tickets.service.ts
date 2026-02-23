@@ -2504,9 +2504,24 @@ export class TicketsService {
       select: {
         id: true,
         status: true,
+        priority: true,
+        updatedAt: true,
         assignedTeamId: true,
+        assignedTeam: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         requesterId: true,
         assigneeId: true,
+        assignee: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+          },
+        },
         followers: {
           select: {
             userId: true,
@@ -2518,6 +2533,18 @@ export class TicketsService {
     if (!ticket) {
       return;
     }
+
+    const actor =
+      params.actorId == null
+        ? null
+        : await this.prisma.user.findUnique({
+            where: { id: params.actorId },
+            select: {
+              id: true,
+              email: true,
+              displayName: true,
+            },
+          });
 
     const teamIds = [
       ticket.assignedTeamId,
@@ -2537,7 +2564,14 @@ export class TicketsService {
         reason: params.reason,
         actorId: params.actorId,
         status: ticket.status,
+        priority: ticket.priority,
+        updatedAt: ticket.updatedAt.toISOString(),
         assignedTeamId: ticket.assignedTeamId,
+        assignedTeam: ticket.assignedTeam,
+        assigneeId: ticket.assigneeId,
+        assignee: ticket.assignee,
+        followerCount: ticket.followers.length,
+        actor,
         message: params.message,
       },
       { teamIds, userIds },

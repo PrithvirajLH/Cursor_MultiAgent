@@ -23,7 +23,25 @@ export type TicketChangedPayload = {
   reason: string;
   actorId: string | null;
   status: string;
+  priority: string;
+  updatedAt: string;
   assignedTeamId: string | null;
+  assignedTeam: {
+    id: string;
+    name: string;
+  } | null;
+  assigneeId: string | null;
+  assignee: {
+    id: string;
+    email: string;
+    displayName: string;
+  } | null;
+  followerCount: number;
+  actor: {
+    id: string;
+    email: string;
+    displayName: string;
+  } | null;
   message?: {
     id: string;
     body: string;
