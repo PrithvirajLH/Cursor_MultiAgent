@@ -123,6 +123,7 @@ export class AuthGuard implements CanActivate {
       displayName: user.displayName,
       role: user.role,
       teamId: resolvedTeamId,
+      teamName: membership?.team?.name ?? null,
       teamRole: membership?.role ?? null,
       primaryTeamId: user.primaryTeamId ?? null,
     };

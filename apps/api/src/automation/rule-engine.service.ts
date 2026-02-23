@@ -231,6 +231,10 @@ export class RuleEngineService {
           });
         });
         executed++;
+        await this.ticketsService.publishAutomationRealtimeUpdate(
+          ticketId,
+          rule.createdById ?? null,
+        );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`Rule ${rule.name}: ${msg}`);

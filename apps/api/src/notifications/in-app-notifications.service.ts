@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 export type CreateNotificationInput = {
   userId: string;
@@ -15,13 +16,19 @@ export type CreateNotificationInput = {
 export class InAppNotificationsService {
   private readonly logger = new Logger(InAppNotificationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   /**
    * Create a new in-app notification
    */
-  async create(input: CreateNotificationInput) {
-    return this.prisma.notification.create({
+  async create(
+    input: CreateNotificationInput,
+    options?: { suppressRealtime?: boolean },
+  ) {
+    const created = await this.prisma.notification.create({
       data: {
         userId: input.userId,
         type: input.type,
@@ -48,6 +55,12 @@ export class InAppNotificationsService {
         },
       },
     });
+
+    if (!options?.suppressRealtime) {
+      await this.publishNotificationUpdates([input.userId], 'created');
+    }
+
+    return created;
   }
 
   /**
@@ -59,7 +72,10 @@ export class InAppNotificationsService {
   ) {
     const uniqueUserIds = [...new Set(userIds)];
     const tasks = uniqueUserIds.map((userId) =>
-      this.create({ ...notification, userId }).catch((error) => {
+      this.create(
+        { ...notification, userId },
+        { suppressRealtime: true },
+      ).catch((error) => {
         this.logger.error(
           `Failed to create notification for user ${userId}`,
           (error as Error).stack,
@@ -67,7 +83,9 @@ export class InAppNotificationsService {
         return null;
       }),
     );
-    return Promise.all(tasks);
+    const created = await Promise.all(tasks);
+    await this.publishNotificationUpdates(uniqueUserIds, 'created');
+    return created;
   }
 
   /**
@@ -144,7 +162,7 @@ export class InAppNotificationsService {
    * Mark a single notification as read
    */
   async markAsRead(notificationId: string, userId: string) {
-    return this.prisma.notification.updateMany({
+    const updated = await this.prisma.notification.updateMany({
       where: {
         id: notificationId,
         userId, // Ensure user can only mark their own notifications
@@ -154,13 +172,19 @@ export class InAppNotificationsService {
         readAt: new Date(),
       },
     });
+
+    if (updated.count > 0) {
+      await this.publishNotificationUpdates([userId], 'mark_read');
+    }
+
+    return updated;
   }
 
   /**
    * Mark all notifications as read for a user
    */
   async markAllAsRead(userId: string) {
-    return this.prisma.notification.updateMany({
+    const updated = await this.prisma.notification.updateMany({
       where: {
         userId,
         isRead: false,
@@ -170,6 +194,12 @@ export class InAppNotificationsService {
         readAt: new Date(),
       },
     });
+
+    if (updated.count > 0) {
+      await this.publishNotificationUpdates([userId], 'mark_all_read');
+    }
+
+    return updated;
   }
 
   /**
@@ -308,5 +338,29 @@ export class InAppNotificationsService {
       ticketId,
       actorId,
     });
+  }
+
+  private async publishNotificationUpdates(userIds: string[], reason: string) {
+    const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
+    if (uniqueUserIds.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      uniqueUserIds.map(async (userId) => {
+        try {
+          const unreadCount = await this.getUnreadCount(userId);
+          await this.realtime.publishNotificationsUpdated(userId, {
+            reason,
+            unreadCount,
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to publish realtime notification update for user ${userId}`,
+            (error as Error).stack,
+          );
+        }
+      }),
+    );
   }
 }

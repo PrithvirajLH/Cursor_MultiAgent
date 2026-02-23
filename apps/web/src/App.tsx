@@ -29,6 +29,13 @@ import { useCreateTicketForm } from './hooks/useCreateTicketForm';
 import { useAuthSession } from './hooks/useAuthSession';
 import { getShortcutContext, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useNotifications } from './hooks/useNotifications';
+import { useRealtimeEvents } from './hooks/useRealtimeEvents';
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  type RealtimeTicketChangedEventPayload,
+  REALTIME_TICKET_TYPING_EVENT,
+  type RealtimeTicketTypingEventPayload,
+} from './realtime/events';
 import { useSidebarState } from './hooks/useSidebarState';
 import { useToast } from './hooks/useToast';
 import { useTicketCountsQuery } from './hooks/useTicketCountsQuery';
@@ -294,6 +301,52 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
     pollingInterval: 30000,
     enablePolling: true,
     userKey: currentEmail,
+  });
+  const handleRealtimeTicketChange = useCallback(
+    (payload: RealtimeTicketChangedEventPayload) => {
+      window.dispatchEvent(
+        new CustomEvent<RealtimeTicketChangedEventPayload>(
+          REALTIME_TICKET_CHANGED_EVENT,
+          {
+            detail: payload,
+          },
+        ),
+      );
+
+      // Message-level updates are handled directly by ticket detail realtime listeners.
+      if (payload.reason === 'message_added') {
+        notifyTicketReportsChanged();
+        return;
+      }
+
+      notifyTicketAggregatesChanged();
+      notifyTicketReportsChanged();
+    },
+    [notifyTicketAggregatesChanged, notifyTicketReportsChanged],
+  );
+  const handleRealtimeNotificationsUpdated = useCallback(() => {
+    notifications.refresh();
+  }, [notifications.refresh]);
+  const handleRealtimeTicketTyping = useCallback(
+    (payload: RealtimeTicketTypingEventPayload) => {
+      window.dispatchEvent(
+        new CustomEvent<RealtimeTicketTypingEventPayload>(
+          REALTIME_TICKET_TYPING_EVENT,
+          {
+            detail: payload,
+          },
+        ),
+      );
+    },
+    [],
+  );
+
+  useRealtimeEvents({
+    enabled: true,
+    userKey: currentEmail,
+    onTicketChanged: handleRealtimeTicketChange,
+    onTicketTyping: handleRealtimeTicketTyping,
+    onNotificationsUpdated: handleRealtimeNotificationsUpdated,
   });
 
   // Keyboard shortcuts
@@ -579,7 +632,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
                   <Route path="/categories" element={currentPersona.role === 'OWNER' ? <CategoriesPage /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/custom-fields" element={isAdminOrOwner ? <CustomFieldsAdminPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                   <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} refreshKey={refreshKey} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
-                  <Route path="/tickets/:ticketId" element={<TicketDetailPage refreshKey={refreshKey} currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
+                  <Route path="/tickets/:ticketId" element={<TicketDetailPage currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </Suspense>

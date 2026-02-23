@@ -11,6 +11,7 @@ import {
   fetchTicketById,
   fetchTicketEvents,
   fetchTicketMessages,
+  sendTicketTypingSignal,
   transitionTicket,
   transferTicket,
   unfollowTicket,
@@ -39,14 +40,26 @@ import type { Role } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
 import { formatStatus, formatTicketId } from '../utils/format';
 import { RelativeTime } from '../components/RelativeTime';
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  REALTIME_TICKET_TYPING_EVENT,
+  type RealtimeTicketChangedEventPayload,
+  type RealtimeTicketTypingEventPayload,
+  type RealtimeTicketMessagePayload,
+} from '../realtime/events';
+
+type TypingUserEntry = {
+  id: string;
+  displayName: string;
+  email: string;
+  expiresAt: number;
+};
 
 export function TicketDetailPage({
-  refreshKey,
   currentEmail,
   role,
   teamsList,
 }: {
-  refreshKey: number;
   currentEmail: string;
   role: Role;
   teamsList: TeamRef[];
@@ -100,6 +113,7 @@ export function TicketDetailPage({
     history: false,
   });
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [typingUsersById, setTypingUsersById] = useState<Record<string, TypingUserEntry>>({});
 
   /* ——— Refs ——— */
 
@@ -111,6 +125,9 @@ export function TicketDetailPage({
   const detailRequestSeqRef = useRef(0);
   const messageRequestSeqRef = useRef(0);
   const eventRequestSeqRef = useRef(0);
+  const typingIdleTimerRef = useRef<number | null>(null);
+  const localTypingActiveRef = useRef(false);
+  const lastTypingEmitAtRef = useRef(0);
 
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
 
@@ -145,8 +162,16 @@ export function TicketDetailPage({
     if (availableTransitions.includes('TRIAGED')) return 'TRIAGED';
     return null;
   }, [availableTransitions]);
+  const typingUsers = useMemo(
+    () =>
+      Object.values(typingUsersById)
+        .sort((left, right) => left.displayName.localeCompare(right.displayName))
+        .map(({ id, displayName, email }) => ({ id, displayName, email })),
+    [typingUsersById],
+  );
 
   const headerTitle = headerCtx?.title ?? 'Ticket details';
+  const currentUserId = headerCtx?.currentUser?.id ?? null;
 
   /* ——— Navigation (memoized, 6.3) ——— */
 
@@ -158,11 +183,108 @@ export function TicketDetailPage({
     navigate('/tickets');
   }, [location.state, navigate]);
 
+  const toTicketMessage = useCallback(
+    (payload: RealtimeTicketMessagePayload): TicketMessage => ({
+      id: payload.id,
+      body: payload.body,
+      type: payload.type,
+      createdAt: payload.createdAt,
+      author: {
+        id: payload.author.id,
+        email: payload.author.email,
+        displayName: payload.author.displayName,
+      },
+    }),
+    [],
+  );
+
+  const appendRealtimeMessage = useCallback(
+    (payload: RealtimeTicketMessagePayload) => {
+      const incoming = toTicketMessage(payload);
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === incoming.id)) {
+          return prev;
+        }
+        return [...prev, incoming].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+        );
+      });
+    },
+    [toTicketMessage],
+  );
+
+  const clearTypingIdleTimer = useCallback(() => {
+    if (!typingIdleTimerRef.current) {
+      return;
+    }
+    window.clearTimeout(typingIdleTimerRef.current);
+    typingIdleTimerRef.current = null;
+  }, []);
+
+  const publishTypingSignal = useCallback((id: string, isTyping: boolean) => {
+    void sendTicketTypingSignal(id, { isTyping }).catch(() => {
+      // Typing indicator failures should not block message composition.
+    });
+  }, []);
+
+  const setLocalTypingState = useCallback(
+    (
+      isTyping: boolean,
+      targetTicketId?: string | null,
+      forceEmit = false,
+    ) => {
+      const id = targetTicketId ?? ticketId;
+      if (!id) {
+        return;
+      }
+      if (!forceEmit && localTypingActiveRef.current === isTyping) {
+        return;
+      }
+      localTypingActiveRef.current = isTyping;
+      publishTypingSignal(id, isTyping);
+      if (isTyping) {
+        lastTypingEmitAtRef.current = Date.now();
+      } else {
+        lastTypingEmitAtRef.current = 0;
+      }
+    },
+    [ticketId, publishTypingSignal],
+  );
+
+  const stopTyping = useCallback(
+    (targetTicketId?: string | null) => {
+      clearTypingIdleTimer();
+      setLocalTypingState(false, targetTicketId ?? ticketId);
+    },
+    [clearTypingIdleTimer, setLocalTypingState, ticketId],
+  );
+
+  const markTypingActivity = useCallback(() => {
+    if (!ticketId) {
+      return;
+    }
+    const now = Date.now();
+    const shouldEmitHeartbeat =
+      !localTypingActiveRef.current || now - lastTypingEmitAtRef.current >= 1500;
+    setLocalTypingState(true, ticketId, shouldEmitHeartbeat);
+    clearTypingIdleTimer();
+    typingIdleTimerRef.current = window.setTimeout(() => {
+      setLocalTypingState(false, ticketId);
+    }, 3500);
+  }, [ticketId, clearTypingIdleTimer, setLocalTypingState]);
+
   /* ——— Data loaders ——— */
 
-  const loadMessagesPage = useCallback(async (id: string, reset = false) => {
+  const loadMessagesPage = useCallback(async (id: string, reset = false, clearOnReset = true) => {
     const requestSeq = ++messageRequestSeqRef.current;
-    if (reset) { setMessages([]); setMessageCursor(null); setMessagesHasMore(false); }
+    if (reset) {
+      if (clearOnReset) {
+        setMessages([]);
+      }
+      setMessageCursor(null);
+      setMessagesHasMore(false);
+    }
     setMessagesLoading(true);
     try {
       const response = await fetchTicketMessages(id, {
@@ -173,7 +295,10 @@ export function TicketDetailPage({
       setMessageCursor(response.nextCursor ?? null);
       setMessagesHasMore(Boolean(response.nextCursor));
     } catch {
-      if (messageRequestSeqRef.current === requestSeq && reset) { setMessages([]); setMessagesHasMore(false); }
+      if (messageRequestSeqRef.current === requestSeq && reset && clearOnReset) {
+        setMessages([]);
+        setMessagesHasMore(false);
+      }
     } finally {
       if (messageRequestSeqRef.current === requestSeq) setMessagesLoading(false);
     }
@@ -230,9 +355,13 @@ export function TicketDetailPage({
     }
   }, [loadMessagesPage, loadEventsPage]);
 
-  const refreshAfterMutation = useCallback(async (id: string) => {
+  const refreshAfterMutation = useCallback(async (id: string, options?: { reloadEvents?: boolean }) => {
+    const shouldReloadEvents = options?.reloadEvents ?? true;
     try {
-      const [detail] = await Promise.all([fetchTicketById(id), loadEventsPage(id, true)]);
+      const [detail] = await Promise.all([
+        fetchTicketById(id),
+        shouldReloadEvents ? loadEventsPage(id, true) : Promise.resolve(),
+      ]);
       setTicket(detail);
     } catch { /* optimistic update is already applied */ }
   }, [loadEventsPage]);
@@ -241,7 +370,150 @@ export function TicketDetailPage({
 
   useEffect(() => {
     if (ticketId) void loadTicketDetail(ticketId);
-  }, [ticketId, refreshKey]);
+  }, [ticketId]);
+
+  useEffect(() => {
+    if (!ticketId) {
+      return;
+    }
+
+    const handleRealtimeTicketChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<RealtimeTicketChangedEventPayload>;
+      const payload = customEvent.detail;
+      if (!payload || payload.ticketId !== ticketId) {
+        return;
+      }
+
+      // Keep conversation stream and timeline in sync for this specific ticket.
+      if (payload.reason === 'message_added') {
+        // Skip self-authored message events: the local optimistic/send flow already updated UI.
+        if (payload.actorId && currentUserId && payload.actorId === currentUserId) {
+          return;
+        }
+
+        if (payload.message) {
+          appendRealtimeMessage(payload.message);
+          if (activeTab === 'timeline') {
+            void loadEventsPage(ticketId, true);
+          }
+          return;
+        }
+
+        // Fallback for message events without inlined payload data.
+        void loadMessagesPage(ticketId, true, false);
+        if (activeTab === 'timeline') {
+          void loadEventsPage(ticketId, true);
+        }
+        return;
+      }
+
+      const shouldRefreshDetailInPlace =
+        payload.reason === 'attachment_added' ||
+        payload.reason === 'attachment_scan_status_changed' ||
+        payload.reason === 'followers_changed' ||
+        payload.reason === 'status_changed' ||
+        payload.reason === 'assigned' ||
+        payload.reason === 'transferred' ||
+        payload.reason === 'priority_changed' ||
+        payload.reason === 'ticket_created' ||
+        payload.reason === 'automation_rule_executed';
+
+      if (shouldRefreshDetailInPlace) {
+        // Own writes are already handled optimistically by local handlers.
+        if (payload.actorId && currentUserId && payload.actorId === currentUserId) {
+          return;
+        }
+
+        // Apply fast in-place status change immediately, then hydrate full detail.
+        if (payload.status) {
+          setTicket((prev) =>
+            prev ? { ...prev, status: payload.status as TicketDetail['status'] } : prev,
+          );
+        }
+
+        void refreshAfterMutation(ticketId, { reloadEvents: activeTab === 'timeline' });
+      }
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_CHANGED_EVENT,
+      handleRealtimeTicketChanged as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        REALTIME_TICKET_CHANGED_EVENT,
+        handleRealtimeTicketChanged as EventListener,
+      );
+    };
+  }, [
+    ticketId,
+    appendRealtimeMessage,
+    activeTab,
+    loadEventsPage,
+    loadMessagesPage,
+    refreshAfterMutation,
+    currentUserId,
+  ]);
+
+  useEffect(() => {
+    if (!ticketId) {
+      return;
+    }
+
+    const handleRealtimeTicketTyping = (event: Event) => {
+      const customEvent = event as CustomEvent<RealtimeTicketTypingEventPayload>;
+      const payload = customEvent.detail;
+      if (!payload || payload.ticketId !== ticketId) {
+        return;
+      }
+
+      const actorId = payload.actorId?.trim();
+      if (!actorId) {
+        return;
+      }
+      if (currentUserId && actorId === currentUserId) {
+        return;
+      }
+
+      setTypingUsersById((prev) => {
+        const existing = prev[actorId];
+        if (!payload.isTyping) {
+          if (!existing) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[actorId];
+          return next;
+        }
+
+        const nextDisplayName =
+          payload.actorDisplayName || payload.actorEmail || existing?.displayName || 'Someone';
+        const nextEmail = payload.actorEmail || existing?.email || '';
+        return {
+          ...prev,
+          [actorId]: {
+            id: actorId,
+            displayName: nextDisplayName,
+            email: nextEmail,
+            expiresAt: Date.now() + 7000,
+          },
+        };
+      });
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_TYPING_EVENT,
+      handleRealtimeTicketTyping as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        REALTIME_TICKET_TYPING_EVENT,
+        handleRealtimeTicketTyping as EventListener,
+      );
+    };
+  }, [ticketId, currentUserId]);
 
   useEffect(() => {
     if (!ticket?.assignedTeam?.id) { setTeamMembers([]); return; }
@@ -293,6 +565,54 @@ export function TicketDetailPage({
     if (el.scrollHeight - el.scrollTop - el.clientHeight <= 180) el.scrollTop = el.scrollHeight;
   }, [messages.length, activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'conversation') return;
+    const el = conversationListRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 180) el.scrollTop = el.scrollHeight;
+  }, [typingUsers.length, activeTab]);
+
+  useEffect(() => {
+    setTypingUsersById({});
+  }, [ticketId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setTypingUsersById((prev) => {
+        let changed = false;
+        const next: Record<string, TypingUserEntry> = {};
+        for (const [id, entry] of Object.entries(prev)) {
+          if (entry.expiresAt > now) {
+            next[id] = entry;
+            continue;
+          }
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearTypingIdleTimer();
+      if (!ticketId || !localTypingActiveRef.current) {
+        return;
+      }
+      localTypingActiveRef.current = false;
+      publishTypingSignal(ticketId, false);
+    };
+  }, [ticketId, clearTypingIdleTimer, publishTypingSignal]);
+
+  useEffect(() => {
+    if (activeTab === 'conversation') {
+      return;
+    }
+    stopTyping();
+  }, [activeTab, stopTyping]);
+
   useEffect(() => { if (role === 'EMPLOYEE') setMessageType('PUBLIC'); }, [role]);
 
   useEffect(() => {
@@ -338,10 +658,30 @@ export function TicketDetailPage({
     setCopyToast({ message: copied ? 'Link copied to clipboard' : 'Could not copy link', type: copied ? 'success' : 'error' });
   }, [ticketId]);
 
+  const handleMessageBodyChange = useCallback(
+    (nextBody: string) => {
+      setMessageBody(nextBody);
+      if (!ticketId) {
+        return;
+      }
+      if (!nextBody.trim()) {
+        stopTyping();
+        return;
+      }
+      markTypingActivity();
+    },
+    [ticketId, stopTyping, markTypingActivity],
+  );
+
+  const handleMessageInputBlur = useCallback(() => {
+    stopTyping();
+  }, [stopTyping]);
+
   const handleReply = useCallback(async () => {
     const body = messageBody.trim();
     if (!ticketId || !ticket || !body || messageSending) return;
     setTicketError(null);
+    stopTyping();
     setMessageSending(true);
 
     const optimisticId = `opt-${Date.now()}`;
@@ -364,7 +704,7 @@ export function TicketDetailPage({
     } finally {
       setMessageSending(false);
     }
-  }, [messageBody, ticketId, ticket, messageSending, messageType, currentEmail, loadEventsPage]);
+  }, [messageBody, ticketId, ticket, messageSending, messageType, currentEmail, loadEventsPage, stopTyping]);
 
   const handleAssignSelf = useCallback(async () => {
     if (!ticket) return;
@@ -623,7 +963,8 @@ export function TicketDetailPage({
                     messageType={messageType}
                     setMessageType={setMessageType}
                     messageBody={messageBody}
-                    setMessageBody={setMessageBody}
+                    onMessageBodyChange={handleMessageBodyChange}
+                    onMessageInputBlur={handleMessageInputBlur}
                     messageSending={messageSending}
                     canManage={canManage}
                     canUpload={canUpload}
@@ -634,6 +975,7 @@ export function TicketDetailPage({
                     onAttachmentView={(id) => void handleAttachmentView(id)}
                     attachmentUploading={attachmentUploading}
                     attachmentError={attachmentError}
+                    typingUsers={typingUsers}
                     showJumpToLatest={showJumpToLatest}
                     onScrollToLatest={scrollToLatest}
                     messageInputRef={messageInputRef}

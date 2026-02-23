@@ -31,6 +31,10 @@ import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  RealtimeService,
+  type TicketChangedPayload,
+} from '../realtime/realtime.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
@@ -86,6 +90,18 @@ type InboundEmailReceiptReservation =
   | { mode: 'reserved'; id: string }
   | { mode: 'replay'; ticketId: string; threaded: boolean };
 
+type TicketRealtimeReason =
+  | 'ticket_created'
+  | 'message_added'
+  | 'assigned'
+  | 'transferred'
+  | 'status_changed'
+  | 'priority_changed'
+  | 'followers_changed'
+  | 'attachment_added'
+  | 'attachment_scan_status_changed'
+  | 'automation_rule_executed';
+
 @Injectable()
 export class TicketsService {
   private readonly logger = new Logger(TicketsService.name);
@@ -96,6 +112,7 @@ export class TicketsService {
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
     private readonly customFieldsService: CustomFieldsService,
+    private readonly realtime: RealtimeService,
     @Inject(forwardRef(() => AutomationQueueService))
     private readonly automationQueue: AutomationQueueService,
     private readonly accessControl: AccessControlService,
@@ -1105,6 +1122,13 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.ticketCreated(updatedTicket, user),
     );
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId: updatedTicket.id,
+        reason: 'ticket_created',
+        actorId: user.id,
+      }),
+    );
 
     // Queue automation with retry via BullMQ instead of fire-and-forget
     void this.automationQueue.enqueue(updatedTicket.id, 'TICKET_CREATED');
@@ -1178,6 +1202,13 @@ export class TicketsService {
                 requester.id,
               );
             });
+            await this.safeRealtime(() =>
+              this.emitTicketRealtimeEvent({
+                ticketId: existing.id,
+                reason: 'status_changed',
+                actorId: requester.id,
+              }),
+            );
           }
 
           await this.addMessage(
@@ -1415,8 +1446,72 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.messageAdded(ticketId, message, user),
     );
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'message_added',
+        actorId: user.id,
+        extraUserIds: allowedMentionedIds,
+        message:
+          message.type === MessageType.PUBLIC
+            ? this.toRealtimeMessagePayload(message)
+            : null,
+      }),
+    );
 
     return message;
+  }
+
+  async setTyping(
+    ticketId: string,
+    payload: { isTyping: boolean },
+    user: AuthUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        requesterId: true,
+        assigneeId: true,
+        assignedTeamId: true,
+        followers: {
+          select: { userId: true },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.canWriteTicket(user, ticket)) {
+      throw new ForbiddenException('No write access to this ticket');
+    }
+
+    await this.safeRealtime(() =>
+      this.realtime.publishTicketTyping(
+        {
+          ticketId: ticket.id,
+          actorId: user.id,
+          actorDisplayName: user.displayName,
+          actorEmail: user.email,
+          isTyping: payload.isTyping,
+        },
+        {
+          teamIds: [ticket.assignedTeamId].filter((teamId): teamId is string =>
+            Boolean(teamId),
+          ),
+          userIds: [
+            ticket.requesterId,
+            ticket.assigneeId,
+            ...ticket.followers.map((follower) => follower.userId),
+            user.id,
+          ].filter((userId): userId is string => Boolean(userId)),
+        },
+      ),
+    );
+
+    return { ok: true };
   }
 
   async assign(ticketId: string, payload: AssignTicketDto, user: AuthUser) {
@@ -1506,6 +1601,13 @@ export class TicketsService {
     });
     await this.safeNotify(() =>
       this.notifications.ticketAssigned(updated, user),
+    );
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId: updated.id,
+        reason: 'assigned',
+        actorId: user.id,
+      }),
     );
 
     return updated;
@@ -1671,6 +1773,14 @@ export class TicketsService {
         this.notifications.ticketStatusChanged(updated, ticket.status, user),
       );
     }
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId: updated.id,
+        reason: 'transferred',
+        actorId: user.id,
+        extraTeamIds: [priorTeamId],
+      }),
+    );
 
     return updated;
   }
@@ -1734,6 +1844,13 @@ export class TicketsService {
 
     await this.safeNotify(() =>
       this.notifications.ticketStatusChanged(updated, ticket.status, user),
+    );
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId: updated.id,
+        reason: 'status_changed',
+        actorId: user.id,
+      }),
     );
 
     // Queue automation with retry via BullMQ instead of fire-and-forget
@@ -1977,6 +2094,13 @@ export class TicketsService {
           tx,
         );
       });
+      await this.safeRealtime(() =>
+        this.emitTicketRealtimeEvent({
+          ticketId,
+          reason: 'priority_changed',
+          actorId: user.id,
+        }),
+      );
     });
   }
 
@@ -2030,6 +2154,14 @@ export class TicketsService {
     }
 
     await this.ensureFollower(ticketId, targetUserId);
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'followers_changed',
+        actorId: user.id,
+        extraUserIds: [targetUserId],
+      }),
+    );
 
     return this.listFollowers(ticketId, user);
   }
@@ -2060,6 +2192,14 @@ export class TicketsService {
     await this.prisma.ticketFollower.deleteMany({
       where: { ticketId, userId: targetUserId },
     });
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'followers_changed',
+        actorId: user.id,
+        extraUserIds: [targetUserId],
+      }),
+    );
 
     return { id: targetUserId };
   }
@@ -2133,6 +2273,13 @@ export class TicketsService {
         createdById: user.id,
       },
     });
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'attachment_added',
+        actorId: user.id,
+      }),
+    );
 
     return attachment;
   }
@@ -2200,7 +2347,7 @@ export class TicketsService {
             ? 'Attachment marked as infected'
             : 'Attachment scan failed');
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedAttachment = await this.prisma.$transaction(async (tx) => {
       const updatedAttachment = await tx.attachment.update({
         where: { id: attachmentId },
         data: {
@@ -2226,6 +2373,15 @@ export class TicketsService {
 
       return updatedAttachment;
     });
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId: attachment.ticketId,
+        reason: 'attachment_scan_status_changed',
+        actorId: null,
+      }),
+    );
+
+    return updatedAttachment;
   }
 
   /** Delegates to shared AccessControlService */
@@ -2318,6 +2474,111 @@ export class TicketsService {
         (error as Error).stack,
       );
     }
+  }
+
+  private async safeRealtime(task: () => Promise<void>) {
+    try {
+      await task();
+    } catch (error) {
+      this.logger.error(
+        `Realtime publish failed: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+    }
+  }
+
+  private async emitTicketRealtimeEvent(params: {
+    ticketId: string;
+    reason: TicketRealtimeReason;
+    actorId: string | null;
+    extraTeamIds?: Array<string | null | undefined>;
+    extraUserIds?: Array<string | null | undefined>;
+    message?: TicketChangedPayload['message'];
+  }) {
+    if (!this.realtime.isEnabled()) {
+      return;
+    }
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: params.ticketId },
+      select: {
+        id: true,
+        status: true,
+        assignedTeamId: true,
+        requesterId: true,
+        assigneeId: true,
+        followers: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!ticket) {
+      return;
+    }
+
+    const teamIds = [
+      ticket.assignedTeamId,
+      ...(params.extraTeamIds ?? []),
+    ].filter((teamId): teamId is string => Boolean(teamId));
+    const userIds = [
+      ticket.requesterId,
+      ticket.assigneeId,
+      params.actorId,
+      ...ticket.followers.map((follower) => follower.userId),
+      ...(params.extraUserIds ?? []),
+    ].filter((userId): userId is string => Boolean(userId));
+
+    await this.realtime.publishTicketChanged(
+      {
+        ticketId: ticket.id,
+        reason: params.reason,
+        actorId: params.actorId,
+        status: ticket.status,
+        assignedTeamId: ticket.assignedTeamId,
+        message: params.message,
+      },
+      { teamIds, userIds },
+    );
+  }
+
+  private toRealtimeMessagePayload(message: {
+    id: string;
+    body: string;
+    type: MessageType;
+    createdAt: Date;
+    author: {
+      id: string;
+      email: string;
+      displayName: string;
+    };
+  }): NonNullable<TicketChangedPayload['message']> {
+    return {
+      id: message.id,
+      body: message.body,
+      type: message.type,
+      createdAt: message.createdAt.toISOString(),
+      author: {
+        id: message.author.id,
+        email: message.author.email,
+        displayName: message.author.displayName,
+      },
+    };
+  }
+
+  async publishAutomationRealtimeUpdate(
+    ticketId: string,
+    actorId: string | null,
+  ) {
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'automation_rule_executed',
+        actorId,
+      }),
+    );
   }
 
   private isValidTransition(from: TicketStatus, to: TicketStatus) {

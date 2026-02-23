@@ -17,11 +17,6 @@ type NotificationProps = {
   onRefresh: () => void;
 };
 
-/** Formats role for display (e.g. TEAM_ADMIN -> Team Admin). */
-function formatRole(role: string): string {
-  return role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 type ProfileRow = {
   label: string;
   value: string;
@@ -73,7 +68,7 @@ export function TopBar({
   const email = resolvedUser?.email ?? currentEmail ?? graphProfile?.mail?.trim() ?? '—';
   const departmentOrTeam =
     graphProfile?.department?.trim() ||
-    (resolvedUser?.teamRole ? formatRole(resolvedUser.teamRole) : null) ||
+    resolvedUser?.teamName?.trim() ||
     '—';
 
   const profileRows: ProfileRow[] = [

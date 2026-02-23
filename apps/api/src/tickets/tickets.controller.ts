@@ -28,6 +28,7 @@ import { ListTicketMessagesDto } from './dto/list-ticket-messages.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
+import { TicketTypingDto } from './dto/ticket-typing.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { TicketsService } from './tickets.service';
@@ -146,6 +147,15 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.addMessage(id, payload, user);
+  }
+
+  @Post(':id/typing')
+  async setTyping(
+    @Param('id') id: string,
+    @Body() payload: TicketTypingDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.setTyping(id, payload, user);
   }
 
   @Post(':id/attachments')

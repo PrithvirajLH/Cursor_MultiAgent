@@ -14,6 +14,7 @@ import { CommonModule } from './common/common.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
 import { RoutingRulesModule } from './routing/routing.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
@@ -59,6 +60,7 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     CustomFieldsModule,
     NotificationsModule,
     PrismaModule,
+    RealtimeModule,
     ReportsModule,
     RoutingRulesModule,
     SavedViewsModule,

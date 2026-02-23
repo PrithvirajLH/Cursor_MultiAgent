@@ -34,6 +34,15 @@ type UnreadCountEnvelope = {
   count?: unknown;
 };
 
+type RealtimeNegotiateEnvelope = {
+  data: {
+    enabled: boolean;
+    hub: string | null;
+    url: string | null;
+    groups: string[];
+  };
+};
+
 describe('API contract envelopes', () => {
   let app: INestApplication;
   let server: SupertestApp;
@@ -109,5 +118,22 @@ describe('API contract envelopes', () => {
     const body = response.body as UnreadCountEnvelope;
     expect(typeof body.data.count).toBe('number');
     expect(body.count).toBeUndefined();
+  });
+
+  it('returns envelope for realtime negotiate', async () => {
+    const response = await request(server)
+      .get('/api/realtime/negotiate')
+      .set(authHeader(fixtureEmails.agent))
+      .expect(200);
+
+    const body = response.body as RealtimeNegotiateEnvelope;
+    expect(typeof body.data.enabled).toBe('boolean');
+    expect(Array.isArray(body.data.groups)).toBe(true);
+    if (body.data.enabled) {
+      expect(typeof body.data.url).toBe('string');
+      expect(typeof body.data.hub).toBe('string');
+    } else {
+      expect(body.data.url).toBeNull();
+    }
   });
 });

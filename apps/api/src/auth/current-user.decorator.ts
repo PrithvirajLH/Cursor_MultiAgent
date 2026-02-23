@@ -8,6 +8,7 @@ export type AuthUser = {
   displayName: string;
   role: UserRole;
   teamId?: string | null;
+  teamName?: string | null;
   teamRole?: string | null;
   /** For TEAM_ADMIN: the team they administer (primary team). */
   primaryTeamId?: string | null;

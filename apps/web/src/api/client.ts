@@ -50,6 +50,7 @@ export type CurrentUserSession = {
   displayName: string;
   role: string;
   teamId: string | null;
+  teamName?: string | null;
   teamRole: string | null;
   primaryTeamId: string | null;
   graphProfile?: MicrosoftGraphProfile | null;
@@ -602,6 +603,16 @@ export function addTicketMessage(ticketId: string, payload: AddMessagePayload) {
   return apiFetch<TicketMessage>(`/tickets/${ticketId}/messages`, {
     method: 'POST',
     body: JSON.stringify(payload)
+  });
+}
+
+export function sendTicketTypingSignal(
+  ticketId: string,
+  payload: { isTyping: boolean },
+) {
+  return apiFetch<{ ok: boolean }>(`/tickets/${ticketId}/typing`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 
@@ -1238,6 +1249,19 @@ export function markAllNotificationsAsRead() {
   >('/notifications/read-all', {
     method: 'PATCH'
   }).then((response) => unwrapDataEnvelope(response));
+}
+
+export type RealtimeNegotiation = {
+  enabled: boolean;
+  hub: string | null;
+  url: string | null;
+  groups: string[];
+};
+
+export function negotiateRealtimeConnection() {
+  return apiFetch<DataEnvelope<RealtimeNegotiation>>('/realtime/negotiate').then((response) =>
+    unwrapDataEnvelope(response),
+  );
 }
 
 // ============================================
