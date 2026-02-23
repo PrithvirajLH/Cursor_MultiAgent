@@ -312,16 +312,13 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
         ),
       );
 
-      // Message-level updates are handled directly by ticket detail realtime listeners.
-      if (payload.reason === 'message_added') {
-        notifyTicketReportsChanged();
-        return;
+      // Pages now apply ticket deltas directly from realtime payloads, so we only
+      // refresh lightweight shared aggregates (e.g. sidebar counts).
+      if (payload.reason !== 'message_added') {
+        notifyTicketAggregatesChanged();
       }
-
-      notifyTicketAggregatesChanged();
-      notifyTicketReportsChanged();
     },
-    [notifyTicketAggregatesChanged, notifyTicketReportsChanged],
+    [notifyTicketAggregatesChanged],
   );
   const handleRealtimeNotificationsUpdated = useCallback(
     (payload?: { reason?: string; unreadCount?: number }) => {

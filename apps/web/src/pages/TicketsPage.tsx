@@ -404,6 +404,133 @@ export function TicketsPage({
     [effectiveSort, filters.order, filters.page, filters.pageSize, matchesTicketFilters],
   );
 
+  const applyBulkPatchForTicketIds = useCallback(
+    (
+      ticketIds: string[],
+      patcher: (ticket: TicketRecord, nowIso: string) => TicketRecord,
+    ) => {
+      if (ticketIds.length === 0) {
+        return;
+      }
+      const selectedIdSet = new Set(ticketIds);
+      const nowIso = new Date().toISOString();
+      setTickets((prev) => {
+        let changed = false;
+        const next: TicketRecord[] = [];
+        for (const ticket of prev) {
+          if (!selectedIdSet.has(ticket.id)) {
+            next.push(ticket);
+            continue;
+          }
+          changed = true;
+          const patched = patcher(ticket, nowIso);
+          if (matchesTicketFilters(patched)) {
+            next.push(patched);
+          }
+        }
+        if (!changed) {
+          return prev;
+        }
+        next.sort((a, b) => compareTickets(a, b, effectiveSort, filters.order));
+        return next;
+      });
+    },
+    [effectiveSort, filters.order, matchesTicketFilters],
+  );
+
+  const snapshotTicketsById = useCallback((ticketIds: string[]) => {
+    if (ticketIds.length === 0) {
+      return new Map<string, TicketRecord>();
+    }
+    const selectedIdSet = new Set(ticketIds);
+    const snapshots = new Map<string, TicketRecord>();
+    for (const ticket of ticketsRef.current) {
+      if (selectedIdSet.has(ticket.id)) {
+        snapshots.set(ticket.id, ticket);
+      }
+    }
+    return snapshots;
+  }, []);
+
+  const restoreTicketSnapshots = useCallback(
+    (snapshots: Map<string, TicketRecord>) => {
+      if (snapshots.size === 0) {
+        return;
+      }
+      const snapshotIds = new Set(snapshots.keys());
+      setTickets((prev) => {
+        const seenIds = new Set<string>();
+        const next: TicketRecord[] = [];
+        for (const ticket of prev) {
+          if (!snapshotIds.has(ticket.id)) {
+            next.push(ticket);
+            continue;
+          }
+          seenIds.add(ticket.id);
+          const original = snapshots.get(ticket.id);
+          if (original && matchesTicketFilters(original)) {
+            next.push(original);
+          }
+        }
+        for (const [ticketId, original] of snapshots.entries()) {
+          if (seenIds.has(ticketId)) {
+            continue;
+          }
+          if (matchesTicketFilters(original)) {
+            next.push(original);
+          }
+        }
+        next.sort((a, b) => compareTickets(a, b, effectiveSort, filters.order));
+        return next;
+      });
+    },
+    [effectiveSort, filters.order, matchesTicketFilters],
+  );
+
+  const reconcileTicketsInBackground = useCallback(async () => {
+    const requestSeq = ++ticketsRequestSeqRef.current;
+    try {
+      const response = await fetchTickets({
+        ...apiParams,
+        sort: effectiveSort,
+      });
+      if (ticketsRequestSeqRef.current !== requestSeq) return;
+      setTickets(response.data);
+      setListMeta(response.meta ?? null);
+    } catch {
+      // Keep optimistic list when reconciliation fails.
+    }
+  }, [apiParams, effectiveSort]);
+
+  const resolveAssigneeForBulkAction = useCallback(
+    (assigneeId?: string): UserRef => {
+      const normalizedCurrentEmail = currentEmail.trim().toLowerCase();
+      if (assigneeId) {
+        const assignedUser = assignableUsers.find((user) => user.id === assigneeId);
+        if (assignedUser) {
+          return assignedUser;
+        }
+        return {
+          id: assigneeId,
+          email: '',
+          displayName: 'Assigned user',
+        };
+      }
+      const currentUserByEmail = assignableUsers.find(
+        (user) => user.email.toLowerCase() === normalizedCurrentEmail,
+      );
+      if (currentUserByEmail) {
+        return currentUserByEmail;
+      }
+      return {
+        id: `me:${normalizedCurrentEmail || 'current-user'}`,
+        email: currentEmail,
+        displayName: currentEmail.split('@')[0] || 'You',
+      };
+    },
+    [assignableUsers, currentEmail],
+  );
+
   const loadTickets = useCallback(async () => {
     const requestSeq = ++ticketsRequestSeqRef.current;
     setLoadingTickets(true);
@@ -607,19 +734,122 @@ export function TicketsPage({
   ]);
 
   async function handleBulkAssign(assigneeId?: string) {
-    return bulkAssignTickets(selection.selectedIds, assigneeId);
+    const selectedIds = selection.selectedIds;
+    const snapshots = snapshotTicketsById(selectedIds);
+    const optimisticAssignee = resolveAssigneeForBulkAction(assigneeId);
+    applyBulkPatchForTicketIds(selectedIds, (ticket, nowIso) => ({
+      ...ticket,
+      assignee: optimisticAssignee,
+      updatedAt: nowIso,
+    }));
+
+    try {
+      const result = await bulkAssignTickets(selectedIds, assigneeId);
+      if (result.success === 0) {
+        restoreTicketSnapshots(snapshots);
+      } else if (result.failed > 0) {
+        void reconcileTicketsInBackground();
+      }
+      if (result.success > 0) {
+        notifyTicketAggregatesChanged();
+        notifyTicketReportsChanged();
+      }
+      return result;
+    } catch (error) {
+      restoreTicketSnapshots(snapshots);
+      throw error;
+    }
   }
 
   async function handleBulkTransfer(newTeamId: string, assigneeId?: string) {
-    return bulkTransferTickets(selection.selectedIds, newTeamId, assigneeId);
+    const selectedIds = selection.selectedIds;
+    const snapshots = snapshotTicketsById(selectedIds);
+    const assignedTeam = teamsList.find((team) => team.id === newTeamId) ?? {
+      id: newTeamId,
+      name: 'Team',
+    };
+    const optimisticAssignee = assigneeId
+      ? resolveAssigneeForBulkAction(assigneeId)
+      : null;
+
+    applyBulkPatchForTicketIds(selectedIds, (ticket, nowIso) => ({
+      ...ticket,
+      assignedTeam,
+      assignee: optimisticAssignee,
+      updatedAt: nowIso,
+    }));
+
+    try {
+      const result = await bulkTransferTickets(selectedIds, newTeamId, assigneeId);
+      if (result.success === 0) {
+        restoreTicketSnapshots(snapshots);
+      } else if (result.failed > 0) {
+        void reconcileTicketsInBackground();
+      }
+      if (result.success > 0) {
+        notifyTicketAggregatesChanged();
+        notifyTicketReportsChanged();
+      }
+      return result;
+    } catch (error) {
+      restoreTicketSnapshots(snapshots);
+      throw error;
+    }
   }
 
   async function handleBulkStatus(status: string) {
-    return bulkStatusTickets(selection.selectedIds, status);
+    const selectedIds = selection.selectedIds;
+    const snapshots = snapshotTicketsById(selectedIds);
+    applyBulkPatchForTicketIds(selectedIds, (ticket, nowIso) => ({
+      ...ticket,
+      status,
+      updatedAt: nowIso,
+      completedAt: isResolvedStatus(status) ? nowIso : ticket.completedAt,
+    }));
+
+    try {
+      const result = await bulkStatusTickets(selectedIds, status);
+      if (result.success === 0) {
+        restoreTicketSnapshots(snapshots);
+      } else if (result.failed > 0) {
+        void reconcileTicketsInBackground();
+      }
+      if (result.success > 0) {
+        notifyTicketAggregatesChanged();
+        notifyTicketReportsChanged();
+      }
+      return result;
+    } catch (error) {
+      restoreTicketSnapshots(snapshots);
+      throw error;
+    }
   }
 
   async function handleBulkPriority(priority: string) {
-    return bulkPriorityTickets(selection.selectedIds, priority);
+    const selectedIds = selection.selectedIds;
+    const snapshots = snapshotTicketsById(selectedIds);
+    applyBulkPatchForTicketIds(selectedIds, (ticket, nowIso) => ({
+      ...ticket,
+      priority,
+      updatedAt: nowIso,
+    }));
+
+    try {
+      const result = await bulkPriorityTickets(selectedIds, priority);
+      if (result.success === 0) {
+        restoreTicketSnapshots(snapshots);
+      } else if (result.failed > 0) {
+        void reconcileTicketsInBackground();
+      }
+      if (result.success > 0) {
+        notifyTicketAggregatesChanged();
+        notifyTicketReportsChanged();
+      }
+      return result;
+    } catch (error) {
+      restoreTicketSnapshots(snapshots);
+      throw error;
+    }
   }
 
   const quickAssigneeValue = filters.assigneeIds.length === 1 ? filters.assigneeIds[0] : '';
@@ -811,9 +1041,6 @@ export function TicketsPage({
               assignableUsers={assignableUsers}
               onSuccess={(message) => {
                 toast.success(message);
-                loadTickets();
-                notifyTicketAggregatesChanged();
-                notifyTicketReportsChanged();
               }}
               onError={(message) => toast.error(message)}
             />
