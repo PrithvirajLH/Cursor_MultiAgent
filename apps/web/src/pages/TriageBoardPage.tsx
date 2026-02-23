@@ -85,7 +85,9 @@ export function TriageBoardPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [actionTicketId, setActionTicketId] = useState<string | null>(null);
+  const [pendingActionTicketIds, setPendingActionTicketIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [draggingTicketId, setDraggingTicketId] = useState<string | null>(null);
   const [draggingStatus, setDraggingStatus] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -300,78 +302,214 @@ export function TriageBoardPage({
     ticketSnapshotRef.current = tickets;
   }, [tickets]);
 
+  function isVisibleOnBoard(ticket: Pick<TicketRecord, 'status' | 'assignedTeam'>) {
+    const belongsToVisibleTeam =
+      teamFilterId === 'all' || ticket.assignedTeam?.id === teamFilterId;
+    const isVisibleStatus = TRIAGE_COLUMN_KEYS.includes(ticket.status);
+    return belongsToVisibleTeam && isVisibleStatus;
+  }
+
+  function getTicketSnapshot(ticketId: string) {
+    return ticketSnapshotRef.current.find((item) => item.id === ticketId) ?? null;
+  }
+
+  function startTicketAction(ticketId: string) {
+    setPendingActionTicketIds((prev) => {
+      if (prev.has(ticketId)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.add(ticketId);
+      return next;
+    });
+  }
+
+  function endTicketAction(ticketId: string) {
+    setPendingActionTicketIds((prev) => {
+      if (!prev.has(ticketId)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(ticketId);
+      return next;
+    });
+  }
+
+  function isTicketActionInProgress(ticketId: string) {
+    return pendingActionTicketIds.has(ticketId);
+  }
+
+  function patchTicketInPlace(
+    ticketId: string,
+    patcher: (ticket: TicketRecord) => TicketRecord,
+  ) {
+    setTickets((prev) => {
+      const index = prev.findIndex((item) => item.id === ticketId);
+      if (index === -1) {
+        return prev;
+      }
+      const patched = patcher(prev[index]);
+      if (!isVisibleOnBoard(patched)) {
+        return prev.filter((item) => item.id !== ticketId);
+      }
+      const next = [...prev];
+      next[index] = patched;
+      return sortByUpdatedDesc(next);
+    });
+  }
+
+  function reconcileTicketFromServer(ticketId: string, updated: TicketRecord) {
+    setTickets((prev) => {
+      const index = prev.findIndex((item) => item.id === ticketId);
+      if (index === -1) {
+        if (!isVisibleOnBoard(updated)) {
+          return prev;
+        }
+        return sortByUpdatedDesc([...prev, updated]);
+      }
+      const merged = { ...prev[index], ...updated };
+      if (!isVisibleOnBoard(merged)) {
+        return prev.filter((item) => item.id !== ticketId);
+      }
+      const next = [...prev];
+      next[index] = merged;
+      return sortByUpdatedDesc(next);
+    });
+  }
+
+  function restoreTicket(previousTicket: TicketRecord | null) {
+    if (!previousTicket) {
+      return;
+    }
+    setTickets((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === previousTicket.id);
+      if (!isVisibleOnBoard(previousTicket)) {
+        if (existingIndex === -1) {
+          return prev;
+        }
+        return prev.filter((item) => item.id !== previousTicket.id);
+      }
+      if (existingIndex === -1) {
+        return sortByUpdatedDesc([...prev, previousTicket]);
+      }
+      const next = [...prev];
+      next[existingIndex] = previousTicket;
+      return sortByUpdatedDesc(next);
+    });
+  }
+
   async function handleAssignSelf(ticket: TicketRecord) {
-    setActionTicketId(ticket.id);
+    const previousTicket = getTicketSnapshot(ticket.id);
+    if (!previousTicket) {
+      return;
+    }
+    startTicketAction(ticket.id);
     setActionError(null);
+    const currentUser = headerCtx?.currentUser;
+    patchTicketInPlace(ticket.id, (current) => ({
+      ...current,
+      assignee: currentUser
+        ? {
+            id: currentUser.id,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            role: currentUser.role,
+          }
+        : current.assignee,
+    }));
     try {
       const updated = await assignTicket(ticket.id, {});
-      setTickets((prev) => prev.map((item) => (item.id === ticket.id ? { ...item, ...updated } : item)));
+      reconcileTicketFromServer(ticket.id, updated);
       toast.success('Ticket assigned to you.');
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
     } catch (err) {
+      restoreTicket(previousTicket);
       setActionError('Unable to assign ticket.');
       toast.error('Unable to assign ticket.');
     } finally {
-      setActionTicketId(null);
+      endTicketAction(ticket.id);
     }
   }
 
   async function handleAssignUser(ticket: TicketRecord, assigneeId: string, assigneeName: string) {
-    setActionTicketId(ticket.id);
+    const previousTicket = getTicketSnapshot(ticket.id);
+    if (!previousTicket) {
+      return;
+    }
+    startTicketAction(ticket.id);
     setActionError(null);
+    patchTicketInPlace(ticket.id, (current) => ({
+      ...current,
+      assignee: {
+        id: assigneeId,
+        displayName: assigneeName,
+        email: current.assignee?.id === assigneeId ? current.assignee.email : '',
+      },
+    }));
     try {
       const updated = await assignTicket(ticket.id, { assigneeId });
-      setTickets((prev) => prev.map((item) => (item.id === ticket.id ? { ...item, ...updated } : item)));
+      reconcileTicketFromServer(ticket.id, updated);
       toast.success(`Assigned to ${assigneeName}.`);
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
     } catch (err) {
+      restoreTicket(previousTicket);
       setActionError('Unable to assign ticket.');
       toast.error('Unable to assign ticket.');
     } finally {
-      setActionTicketId(null);
+      endTicketAction(ticket.id);
     }
   }
 
   async function handlePriorityChange(ticketId: string, priority: string, priorityLabel: string) {
-    setActionTicketId(ticketId);
+    const previousTicket = getTicketSnapshot(ticketId);
+    if (!previousTicket) {
+      return;
+    }
+    startTicketAction(ticketId);
     setActionError(null);
+    patchTicketInPlace(ticketId, (current) => ({ ...current, priority }));
     try {
       const result = await bulkPriorityTickets([ticketId], priority);
       if (result.success > 0) {
-        setTickets((prev) => prev.map((item) => (item.id === ticketId ? { ...item, priority } : item)));
         toast.success(`Priority changed to ${priorityLabel}.`);
       } else {
         throw new Error('No tickets updated');
       }
     } catch (err) {
+      restoreTicket(previousTicket);
       setActionError('Unable to update priority.');
       toast.error('Unable to update priority.');
     } finally {
-      setActionTicketId(null);
+      endTicketAction(ticketId);
     }
   }
 
   async function handleTransfer(ticketId: string, newTeamId: string, newTeamName: string) {
-    setActionTicketId(ticketId);
+    const previousTicket = getTicketSnapshot(ticketId);
+    if (!previousTicket) {
+      return;
+    }
+    startTicketAction(ticketId);
     setActionError(null);
+    patchTicketInPlace(ticketId, (current) => ({
+      ...current,
+      assignedTeam: { id: newTeamId, name: newTeamName },
+      assignee: null,
+    }));
     try {
       const updated = await transferTicket(ticketId, { newTeamId });
-      setTickets((prev) => {
-        if (teamFilterId !== 'all' && updated.assignedTeam?.id !== teamFilterId) {
-          return prev.filter((item) => item.id !== ticketId);
-        }
-        return prev.map((item) => (item.id === ticketId ? { ...item, ...updated } : item));
-      });
+      reconcileTicketFromServer(ticketId, updated);
       toast.success(`Transferred to ${newTeamName}.`);
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
     } catch (err) {
+      restoreTicket(previousTicket);
       setActionError('Unable to transfer ticket.');
       toast.error('Unable to transfer ticket.');
     } finally {
-      setActionTicketId(null);
+      endTicketAction(ticketId);
     }
   }
 
@@ -399,7 +537,7 @@ export function TriageBoardPage({
   }
 
   async function handleTransition(ticketId: string, status: string) {
-    const ticket = tickets.find((item) => item.id === ticketId);
+    const ticket = getTicketSnapshot(ticketId);
     if (!ticket) {
       return;
     }
@@ -409,16 +547,12 @@ export function TriageBoardPage({
       toast.error(message);
       return;
     }
-    setActionTicketId(ticketId);
+    startTicketAction(ticketId);
     setActionError(null);
+    patchTicketInPlace(ticketId, (current) => ({ ...current, status }));
     try {
       const updated = await transitionTicket(ticketId, { status });
-      setTickets((prev) => {
-        if (!TRIAGE_COLUMN_KEYS.includes(updated.status)) {
-          return prev.filter((item) => item.id !== ticketId);
-        }
-        return prev.map((item) => (item.id === ticketId ? { ...item, ...updated } : item));
-      });
+      reconcileTicketFromServer(ticketId, updated);
       toast.success(`Moved to ${formatStatus(status)}.`);
       notifyTicketAggregatesChanged();
       // Only some status changes materially affect report data; for now, refresh
@@ -427,10 +561,11 @@ export function TriageBoardPage({
         notifyTicketReportsChanged();
       }
     } catch (err) {
+      restoreTicket(ticket);
       setActionError('Unable to move ticket to that status.');
       toast.error('Unable to move ticket to that status.');
     } finally {
-      setActionTicketId(null);
+      endTicketAction(ticketId);
     }
   }
 
@@ -841,7 +976,7 @@ export function TriageBoardPage({
                                   <select
                                     id={`triage-move-${ticket.id}`}
                                     defaultValue=""
-                                    disabled={actionTicketId === ticket.id}
+                                    disabled={isTicketActionInProgress(ticket.id)}
                                     onChange={(event) => {
                                       const nextStatus = event.target.value;
                                       if (!nextStatus) return;
@@ -925,7 +1060,7 @@ export function TriageBoardPage({
                           closeMenus();
                           void handleAssignSelf(ticket);
                         }}
-                        disabled={actionTicketId === ticket.id}
+                        disabled={isTicketActionInProgress(ticket.id)}
                         className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
                       >
                         <UserPlus className="h-4 w-4" />
@@ -955,7 +1090,7 @@ export function TriageBoardPage({
                                 member.user.displayName
                               );
                             }}
-                            disabled={actionTicketId === ticket.id}
+                            disabled={isTicketActionInProgress(ticket.id)}
                             className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
                           >
                             {member.user.displayName}
@@ -992,7 +1127,7 @@ export function TriageBoardPage({
                               option.label
                             );
                           }}
-                          disabled={actionTicketId === ticket.id}
+                          disabled={isTicketActionInProgress(ticket.id)}
                           className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
                         >
                           {option.label}
@@ -1028,7 +1163,7 @@ export function TriageBoardPage({
                             closeMenus();
                             void handleTransition(ticket.id, status);
                           }}
-                          disabled={actionTicketId === ticket.id}
+                          disabled={isTicketActionInProgress(ticket.id)}
                           className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
                         >
                           {formatStatus(status)}
@@ -1062,7 +1197,7 @@ export function TriageBoardPage({
                             void handleTransfer(ticket.id, team.id, team.name);
                           }}
                           disabled={
-                            actionTicketId === ticket.id ||
+                            isTicketActionInProgress(ticket.id) ||
                             team.id === ticket.assignedTeam?.id
                           }
                           className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
