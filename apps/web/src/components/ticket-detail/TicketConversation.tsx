@@ -173,8 +173,8 @@ export const TicketConversation = memo(function TicketConversation({
     : 'Someone';
 
   return (
-    <>
-      <div className="px-4 pt-5 sm:px-6">
+    <div className="flex flex-1 flex-col min-h-0 w-full">
+      <div className="shrink-0 px-4 pt-5 sm:px-6">
         {messagesHasMore ? (
           <button
             type="button"
@@ -189,7 +189,7 @@ export const TicketConversation = memo(function TicketConversation({
 
       <div
         ref={conversationListRef}
-        className="max-h-[560px] space-y-1 overflow-y-auto bg-slate-50/70 px-4 py-5 sm:px-6"
+        className="flex-1 space-y-1 overflow-y-auto px-4 py-5 sm:px-6"
       >
         {messages.length === 0 && !messagesLoading ? (
           <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
@@ -209,7 +209,7 @@ export const TicketConversation = memo(function TicketConversation({
           const previousIsSameSender =
             previousMessage != null &&
             (previousMessage.author?.email ?? null) ===
-              (message.author?.email ?? null) &&
+            (message.author?.email ?? null) &&
             previousMessage.type === message.type &&
             isWithinMinutes(previousMessage.createdAt, message.createdAt, 10);
           const nextIsSameSender =
@@ -254,7 +254,9 @@ export const TicketConversation = memo(function TicketConversation({
                       className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                     >
                       <span className="text-xs font-semibold text-slate-700">
-                        {message.author?.displayName ??
+                        {isCurrentUser
+                          ? 'You'
+                          : message.author?.displayName ??
                           message.author?.email ??
                           'Unknown'}
                       </span>
@@ -276,17 +278,15 @@ export const TicketConversation = memo(function TicketConversation({
                   )}
 
                   <div
-                    className={`inline-block max-w-full border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
-                      isCurrentUser
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : isInternal
-                          ? 'border-amber-200 bg-amber-50 text-slate-900'
-                          : 'border-slate-200 bg-white text-slate-900'
-                    } ${
-                      isCurrentUser
-                        ? `${isGroupStart ? 'rounded-tr-2xl' : 'rounded-tr-md'} ${isGroupEnd ? 'rounded-br-2xl' : 'rounded-br-md'} rounded-tl-2xl rounded-bl-2xl`
-                        : `${isGroupStart ? 'rounded-tl-2xl' : 'rounded-tl-md'} ${isGroupEnd ? 'rounded-bl-2xl' : 'rounded-bl-md'} rounded-tr-2xl rounded-br-2xl`
-                    }`}
+                    className={`inline-block max-w-full border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${isCurrentUser
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : isInternal
+                        ? 'border-amber-200 bg-amber-50 text-slate-900'
+                        : 'border-slate-200 bg-white text-slate-900'
+                      } ${isCurrentUser
+                        ? `${isGroupStart ? 'rounded-tr-[20px]' : 'rounded-tr-md'} ${isGroupEnd ? 'rounded-br-[20px]' : 'rounded-br-md'} rounded-tl-[20px] rounded-bl-[20px]`
+                        : `${isGroupStart ? 'rounded-tl-[20px]' : 'rounded-tl-md'} ${isGroupEnd ? 'rounded-bl-[20px]' : 'rounded-bl-md'} rounded-tr-[20px] rounded-br-[20px]`
+                      }`}
                   >
                     <MessageBody body={message.body} invert={isCurrentUser} />
                   </div>
@@ -325,7 +325,7 @@ export const TicketConversation = memo(function TicketConversation({
       </div>
 
       {showJumpToLatest ? (
-        <div className="absolute bottom-[108px] left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-[200px] left-1/2 -translate-x-1/2">
           <button
             type="button"
             onClick={onScrollToLatest}
@@ -336,29 +336,27 @@ export const TicketConversation = memo(function TicketConversation({
         </div>
       ) : null}
 
-      <div className="border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
+      <div className="shrink-0 border-t border-slate-200 bg-white p-4 sm:p-6 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
         <div className="flex items-center justify-between gap-3">
           {canManage ? (
             <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
               <button
                 type="button"
                 onClick={() => setMessageType('PUBLIC')}
-                className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                  messageType === 'PUBLIC'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
+                className={`rounded-xl px-3 py-1.5 text-[13px] font-semibold ${messageType === 'PUBLIC'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-700 hover:bg-slate-100'
+                  }`}
               >
                 Public
               </button>
               <button
                 type="button"
                 onClick={() => setMessageType('INTERNAL')}
-                className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                  messageType === 'INTERNAL'
-                    ? 'bg-amber-600 text-white'
-                    : 'text-slate-700 hover:bg-slate-100'
-                }`}
+                className={`rounded-xl px-3 py-1.5 text-[13px] font-semibold ${messageType === 'INTERNAL'
+                  ? 'bg-amber-600 text-white'
+                  : 'text-slate-700 hover:bg-slate-100'
+                  }`}
               >
                 Internal
               </button>
@@ -393,7 +391,7 @@ export const TicketConversation = memo(function TicketConversation({
               type="button"
               onClick={onReply}
               disabled={!messageBody.trim() || messageSending}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:ring-2 focus:ring-blue-500/50"
             >
               {messageSending ? 'Sending...' : 'Send'}
             </button>
@@ -408,7 +406,7 @@ export const TicketConversation = memo(function TicketConversation({
           onKeyDown={handleMessageInputKeyDown}
           placeholder={messageType === 'INTERNAL' ? 'Add an internal note...' : 'Write a reply...'}
           rows={4}
-          className="mt-3 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-relaxed outline-none transition focus:bg-white focus:ring-2 focus:ring-blue-500"
+          className="mt-3 w-full resize-none rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-900 leading-relaxed outline-none transition focus:bg-white focus:ring-2 focus:ring-blue-500/30 shadow-sm"
         />
 
         {ticket.attachments.length > 0 ? (
@@ -432,11 +430,10 @@ export const TicketConversation = memo(function TicketConversation({
                     onClick={() => onAttachmentView(attachment.id)}
                     disabled={!badge.canDownload}
                     title={badge.blockedReason ?? 'Open attachment'}
-                    className={`rounded-full p-1 ${
-                      badge.canDownload
-                        ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
-                        : 'cursor-not-allowed text-slate-400'
-                    }`}
+                    className={`rounded-full p-1 ${badge.canDownload
+                      ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
+                      : 'cursor-not-allowed text-slate-400'
+                      }`}
                   >
                     View
                   </button>
@@ -445,11 +442,10 @@ export const TicketConversation = memo(function TicketConversation({
                     onClick={() => onAttachmentDownload(attachment.id, attachment.fileName)}
                     disabled={!badge.canDownload}
                     title={badge.blockedReason ?? 'Download attachment'}
-                    className={`rounded-full p-1 ${
-                      badge.canDownload
-                        ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
-                        : 'cursor-not-allowed text-slate-400'
-                    }`}
+                    className={`rounded-full p-1 ${badge.canDownload
+                      ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
+                      : 'cursor-not-allowed text-slate-400'
+                      }`}
                   >
                     Download
                   </button>
@@ -460,6 +456,6 @@ export const TicketConversation = memo(function TicketConversation({
         ) : null}
         {attachmentError ? <p className="mt-2 text-xs text-rose-600">{attachmentError}</p> : null}
       </div>
-    </>
+    </div>
   );
 });

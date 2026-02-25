@@ -34,14 +34,14 @@ export function ResolutionTimeChart({ data }: { data: Point[] }) {
     <div className="h-[240px] w-full min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="#64748b" />
-          <YAxis tick={{ fontSize: 11 }} stroke="#64748b" unit="h" />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: '#64748b', fontSize: 11 }} unit="h" axisLine={false} tickLine={false} />
           <Tooltip
             formatter={(value: number | undefined) => [value ?? 0, 'Avg hours']}
-            contentStyle={{ fontSize: 12 }}
+            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
           />
-          <Bar dataKey="avgHours" name="Avg resolution (h)" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="avgHours" name="Avg resolution (h)" radius={[6, 6, 0, 0]} animationBegin={0} animationDuration={800} animationEasing="ease-out">
             {data.map((_, index) => (
               <Cell key={index} fill={DEPARTMENT_COLORS[index % DEPARTMENT_COLORS.length]} />
             ))}

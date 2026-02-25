@@ -134,7 +134,7 @@ export function TopBar({
           <button
             type="button"
             onClick={onOpenSearch}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             aria-label="Search"
           >
             <Search className="h-4 w-4" />
@@ -144,7 +144,7 @@ export function TopBar({
         {personas.length > 1 && (
           <div className="relative">
             <select
-              className="h-10 appearance-none rounded-md border border-slate-300 bg-white px-3 pr-10 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               value={currentEmail}
               onChange={(event) => onEmailChange(event.target.value)}
             >
@@ -177,7 +177,7 @@ export function TopBar({
             ref={triggerRef}
             type="button"
             onClick={() => setUserMenuOpen((open) => !open)}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-blue-600 text-sm font-semibold text-white shadow-sm ring-2 ring-transparent transition hover:bg-blue-700 hover:ring-blue-500/20 focus:outline-none"
             aria-label="User menu"
             aria-expanded={userMenuOpen}
             aria-haspopup="true"
@@ -186,7 +186,7 @@ export function TopBar({
               <img
                 src={resolvedUser.avatarDataUrl}
                 alt={resolvedUser.displayName || resolvedUser.email || 'User avatar'}
-                className="h-10 w-10 rounded-full object-cover"
+                className="h-full w-full rounded-[12px] object-cover"
               />
             ) : (
               avatarInitials
@@ -197,7 +197,7 @@ export function TopBar({
             createPortal(
               <div
                 ref={panelRef}
-                className="w-96 max-h-[70vh] overflow-y-auto rounded-xl border border-slate-200 bg-white py-2 shadow-lg"
+                className="w-[380px] max-h-[70vh] overflow-y-auto rounded-[20px] border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgb(0,0,0,0.08)]"
                 role="menu"
                 aria-orientation="vertical"
                 style={{
@@ -207,7 +207,7 @@ export function TopBar({
                   zIndex: 9999,
                 }}
               >
-                <div className="border-b border-slate-100 px-4 py-3">
+                <div className="mb-2 rounded-xl bg-slate-50 p-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
                       {resolvedUser?.avatarDataUrl ? (
@@ -230,8 +230,8 @@ export function TopBar({
                     </div>
                   </div>
                 </div>
-                <div className="border-t border-slate-100 px-4 py-2">
-                  <div className="space-y-1.5">
+                <div className="px-2 py-2">
+                  <div className="space-y-2">
                     {profileRows.map((row) => (
                       <div key={row.label} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 text-xs">
                         <span className="font-medium text-slate-500">{row.label}</span>
@@ -241,14 +241,14 @@ export function TopBar({
                   </div>
                 </div>
                 {resolvedSignOut && (
-                  <div className="border-t border-slate-100 pt-2">
+                  <div className="mt-2 border-t border-slate-100 px-2 pt-2">
                     <button
                       type="button"
                       onClick={() => {
                         handleCloseUserMenu();
                         resolvedSignOut();
                       }}
-                      className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
+                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
                       role="menuitem"
                     >
                       <LogOut className="h-4 w-4 shrink-0" />

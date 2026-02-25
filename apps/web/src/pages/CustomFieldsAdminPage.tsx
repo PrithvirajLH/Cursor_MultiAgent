@@ -51,15 +51,15 @@ const FIELD_TYPES: Array<{
   apiType: string;
   icon: typeof Type;
 }> = [
-  { value: 'text', label: 'Short Text', apiType: 'TEXT', icon: Type },
-  { value: 'textarea', label: 'Long Text', apiType: 'TEXTAREA', icon: AlignLeft },
-  { value: 'number', label: 'Number', apiType: 'NUMBER', icon: Hash },
-  { value: 'dropdown', label: 'Dropdown', apiType: 'DROPDOWN', icon: ChevronDown },
-  { value: 'multiselect', label: 'Multi Select', apiType: 'MULTISELECT', icon: CheckSquare },
-  { value: 'checkbox', label: 'Checkbox', apiType: 'CHECKBOX', icon: CheckSquare },
-  { value: 'date', label: 'Date', apiType: 'DATE', icon: Calendar },
-  { value: 'user', label: 'User', apiType: 'USER', icon: Users }
-];
+    { value: 'text', label: 'Short Text', apiType: 'TEXT', icon: Type },
+    { value: 'textarea', label: 'Long Text', apiType: 'TEXTAREA', icon: AlignLeft },
+    { value: 'number', label: 'Number', apiType: 'NUMBER', icon: Hash },
+    { value: 'dropdown', label: 'Dropdown', apiType: 'DROPDOWN', icon: ChevronDown },
+    { value: 'multiselect', label: 'Multi Select', apiType: 'MULTISELECT', icon: CheckSquare },
+    { value: 'checkbox', label: 'Checkbox', apiType: 'CHECKBOX', icon: CheckSquare },
+    { value: 'date', label: 'Date', apiType: 'DATE', icon: Calendar },
+    { value: 'user', label: 'User', apiType: 'USER', icon: Users }
+  ];
 
 const API_TO_UI_TYPE: Record<string, UiFieldType> = {
   TEXT: 'text',
@@ -549,7 +549,10 @@ export function CustomFieldsAdminPage({
       </div>
 
       {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) closeEditor(); }}
+        >
           <div
             ref={editorDialogRef}
             role="dialog"
@@ -599,11 +602,10 @@ export function CustomFieldsAdminPage({
                             options: type.value === 'dropdown' || type.value === 'multiselect' ? prev.options : []
                           }))
                         }
-                        className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${
-                          selected
+                        className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${selected
                             ? 'border-blue-500 bg-blue-50 text-blue-700'
                             : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
+                          }`}
                       >
                         <TypeIcon className="mb-1 h-5 w-5" />
                         {type.label}
@@ -742,7 +744,10 @@ export function CustomFieldsAdminPage({
       )}
 
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}
+        >
           <div
             ref={deleteDialogRef}
             role="dialog"

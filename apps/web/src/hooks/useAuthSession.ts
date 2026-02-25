@@ -30,6 +30,20 @@ type GraphProfilePayload = {
   profile: MicrosoftGraphProfile | null;
   avatarDataUrl: string | null;
 };
+type EasyAuthClaim = {
+  typ: string;
+  val: string;
+};
+type EasyAuthEntry = {
+  provider_name?: string;
+  id_token?: string;
+  access_token?: string;
+  user_claims?: EasyAuthClaim[];
+};
+type EasyAuthIdentity = {
+  token: string;
+  email: string | null;
+};
 
 const tenantId = import.meta.env.VITE_AZURE_TENANT_ID as string | undefined;
 const clientId = import.meta.env.VITE_AZURE_CLIENT_ID as string | undefined;
@@ -80,6 +94,11 @@ const graphProfileFields = [
 const graphProfileEndpoint = `https://graph.microsoft.com/v1.0/me?$select=${graphProfileFields}`;
 const graphPhotoEndpoint = 'https://graph.microsoft.com/v1.0/me/photo/$value';
 const isE2EMode = import.meta.env.VITE_E2E_MODE === 'true';
+const isLocalhost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1');
+let easyAuthEndpointAvailable = false;
 
 let msalClient: PublicClientApplication | null = null;
 
@@ -104,6 +123,117 @@ function getMsalClient() {
     },
   });
   return msalClient;
+}
+function buildEasyAuthLoginUrl() {
+  const postLoginRedirectUri = encodeURIComponent(window.location.href);
+  return `/.auth/login/aad?post_login_redirect_uri=${postLoginRedirectUri}`;
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+function asEasyAuthClaim(value: unknown): EasyAuthClaim | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const typ = typeof value.typ === 'string' ? value.typ : '';
+  const val = typeof value.val === 'string' ? value.val : '';
+  if (!typ || !val) {
+    return null;
+  }
+  return { typ, val };
+}
+function asEasyAuthEntry(value: unknown): EasyAuthEntry | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const providerName =
+    typeof value.provider_name === 'string' ? value.provider_name : undefined;
+  const idToken = typeof value.id_token === 'string' ? value.id_token : undefined;
+  const accessToken =
+    typeof value.access_token === 'string' ? value.access_token : undefined;
+  const userClaims = Array.isArray(value.user_claims)
+    ? value.user_claims
+        .map((claim) => asEasyAuthClaim(claim))
+        .filter((claim): claim is EasyAuthClaim => claim !== null)
+    : undefined;
+  return {
+    provider_name: providerName,
+    id_token: idToken,
+    access_token: accessToken,
+    user_claims: userClaims,
+  };
+}
+function getEasyAuthEmail(entry: EasyAuthEntry) {
+  const claims = entry.user_claims ?? [];
+  const preferredClaim = claims.find(
+    (claim) =>
+      claim.typ === 'preferred_username' ||
+      claim.typ === 'upn' ||
+      claim.typ === 'email',
+  );
+  return preferredClaim?.val?.trim().toLowerCase() || null;
+}
+async function readEasyAuthIdentity(): Promise<EasyAuthIdentity | null> {
+  try {
+    const response = await fetch('/.auth/me', {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (response.status === 401 || response.status === 403) {
+      easyAuthEndpointAvailable = true;
+      return null;
+    }
+    if (!response.ok) {
+      return null;
+    }
+    easyAuthEndpointAvailable = true;
+    const payload = (await response.json()) as unknown;
+    if (!Array.isArray(payload)) {
+      return null;
+    }
+    const entries = payload
+      .map((item) => asEasyAuthEntry(item))
+      .filter((item): item is EasyAuthEntry => item !== null);
+    if (entries.length === 0) {
+      return null;
+    }
+    const preferredEntry =
+      entries.find((entry) => entry.provider_name === 'aad') ?? entries[0];
+    const token = preferredEntry.id_token ?? preferredEntry.access_token ?? null;
+    if (!token) {
+      return null;
+    }
+    return {
+      token,
+      email: getEasyAuthEmail(preferredEntry),
+    };
+  } catch {
+    return null;
+  }
+}
+async function initializeEasyAuthSession(): Promise<CurrentUserSession | null> {
+  const identity = await readEasyAuthIdentity();
+  if (!identity?.token) {
+    return null;
+  }
+  try {
+    setAuthToken(identity.token);
+    const me = await fetchCurrentUser();
+    const normalizedEmail = (me.data.email || identity.email || '').toLowerCase();
+    if (normalizedEmail) {
+      setDemoUserEmail(normalizedEmail);
+    } else {
+      setDemoUserEmail('');
+    }
+    return {
+      ...me.data,
+      graphProfile: null,
+      avatarDataUrl: null,
+    };
+  } catch {
+    setAuthToken(null);
+    return null;
+  }
 }
 
 function asString(value: unknown): string | null {
@@ -257,13 +387,13 @@ export function useAuthSession() {
       }));
       return;
     }
+    if (!isLocalhost && easyAuthEndpointAvailable) {
+      window.location.assign(buildEasyAuthLoginUrl());
+      return;
+    }
     const client = getMsalClient();
     if (!client) {
-      setState((prev) => ({
-        ...prev,
-        error:
-          'Missing Azure auth configuration. Set VITE_AZURE_TENANT_ID and VITE_AZURE_CLIENT_ID.',
-      }));
+      window.location.assign(buildEasyAuthLoginUrl());
       return;
     }
     await client.loginRedirect(loginRequest);
@@ -334,6 +464,20 @@ export function useAuthSession() {
           }
         }
         return;
+      }
+
+      if (!isLocalhost) {
+        const easyAuthSession = await initializeEasyAuthSession();
+        if (easyAuthSession) {
+          if (isMounted) {
+            setState({
+              loading: false,
+              user: easyAuthSession,
+              error: null,
+            });
+          }
+          return;
+        }
       }
 
       const client = getMsalClient();

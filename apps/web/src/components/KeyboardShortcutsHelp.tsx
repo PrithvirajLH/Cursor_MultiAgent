@@ -68,7 +68,10 @@ export function KeyboardShortcutsHelp({
   const showTicketDetail = context === 'ticket-detail' || context === 'global';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         ref={dialogRef}
         className="glass-card-strong w-full max-w-md overflow-hidden shadow-2xl"

@@ -239,8 +239,8 @@ export function TicketsPage({
   const effectiveSort = useMemo(
     () =>
       filters.sort === 'completedAt' &&
-      filters.statusGroup !== 'resolved' &&
-      !hasOnlyResolvedStatuses
+        filters.statusGroup !== 'resolved' &&
+        !hasOnlyResolvedStatuses
         ? 'createdAt'
         : filters.sort,
     [filters.sort, filters.statusGroup, hasOnlyResolvedStatuses],
@@ -869,10 +869,10 @@ export function TicketsPage({
     filters.statuses.length > 0
       ? `${totalCount} tickets`
       : filters.statusGroup === 'open'
-      ? `${totalCount} open tickets`
-      : filters.statusGroup === 'resolved'
-        ? `${totalCount} resolved tickets`
-        : `${totalCount} tickets`;
+        ? `${totalCount} open tickets`
+        : filters.statusGroup === 'resolved'
+          ? `${totalCount} resolved tickets`
+          : `${totalCount} tickets`;
 
   const pageStart = listMeta ? (listMeta.page - 1) * listMeta.pageSize + 1 : 0;
   const pageEnd = listMeta ? Math.min(listMeta.page * listMeta.pageSize, listMeta.total) : 0;
@@ -929,11 +929,10 @@ export function TicketsPage({
                   aria-checked={(filters.statusGroup ?? 'all') === value}
                   aria-label={`Filter: ${value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Resolved'}`}
                   onClick={() => setFilters({ statusGroup: value, statuses: [] })}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    (filters.statusGroup ?? 'all') === value
-                      ? 'bg-blue-600 text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${(filters.statusGroup ?? 'all') === value
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-700 hover:bg-slate-100'
+                    }`}
                 >
                   {value === 'all' ? 'All' : value === 'open' ? 'Open' : 'Resolved'}
                 </button>
@@ -948,7 +947,7 @@ export function TicketsPage({
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Search by ticket ID, subject, or description..."
-                className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white shadow-sm pl-9 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
               />
             </div>
 
@@ -957,7 +956,7 @@ export function TicketsPage({
                 aria-label="Filter by assignee"
                 value={quickAssigneeValue}
                 onChange={(event) => setFilters({ assigneeIds: event.target.value ? [event.target.value] : [] })}
-                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="h-10 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
               >
                 <option value="">{usersLoading ? 'Loading users...' : 'Assignee'}</option>
                 {assignableUsers.map((user) => (
@@ -972,7 +971,7 @@ export function TicketsPage({
               aria-label="Filter by priority"
               value={quickPriorityValue}
               onChange={(event) => setFilters({ priorities: event.target.value ? [event.target.value] : [] })}
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
             >
               <option value="">Priority</option>
               <option value="P1">P1</option>
@@ -992,7 +991,7 @@ export function TicketsPage({
                 if (preset === 'created_asc') setFilters({ sort: 'createdAt', order: 'asc' });
                 if (preset === 'completed_desc') setFilters({ sort: 'completedAt', order: 'desc' });
               }}
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
             >
               <option value="updated_desc">Sort: Newest</option>
               <option value="updated_asc">Sort: Oldest</option>
@@ -1005,7 +1004,7 @@ export function TicketsPage({
               <button
                 type="button"
                 onClick={openAdvancedFilters}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-50"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 transition-all hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Advanced
@@ -1021,7 +1020,7 @@ export function TicketsPage({
               <button
                 type="button"
                 onClick={onCreateTicket}
-                className="ml-auto inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-all hover:bg-blue-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               >
                 <Plus className="h-4 w-4" />
                 New Ticket
@@ -1087,7 +1086,7 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && tickets.length > 0 ? (
-          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="mt-4 overflow-hidden rounded-[20px] bg-white border border-slate-200 shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
             <TicketTableView
               tickets={tickets}
               role={role}
@@ -1108,7 +1107,7 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && listMeta && listMeta.total > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-b-lg border border-t-0 border-slate-200 bg-slate-50 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-b-[20px] border border-t-0 border-slate-200 bg-slate-50 px-6 py-4">
             <div className="text-sm text-slate-700">
               Showing <span className="font-medium">{pageStart}</span> to <span className="font-medium">{pageEnd}</span> of{' '}
               <span className="font-medium">{listMeta.total}</span> results
@@ -1141,11 +1140,10 @@ export function TicketsPage({
                   key={page}
                   type="button"
                   onClick={() => setFilters({ page })}
-                  className={`rounded-md px-3 py-2 text-sm ${
-                    page === listMeta.page
-                      ? 'bg-blue-600 text-white'
-                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                  }`}
+                  className={`rounded-md px-3 py-2 text-sm ${page === listMeta.page
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                    }`}
                 >
                   {page}
                 </button>
@@ -1169,15 +1167,14 @@ export function TicketsPage({
           className="fixed inset-0 z-50 flex justify-end bg-black/50"
           onClick={closeAdvancedFilters}
         >
-        <div
-          ref={advancedFiltersDialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Advanced ticket filters"
-          tabIndex={-1}
-          className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-fade-in"
-          onClick={(event) => event.stopPropagation()}
-        >
+          <div
+            ref={advancedFiltersDialogRef}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-slide-in-right"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-900">Advanced Filters</h2>
               <button

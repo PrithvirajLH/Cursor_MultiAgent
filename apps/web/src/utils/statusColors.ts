@@ -28,12 +28,12 @@ export function getStatusTone(status?: string | null): StatusTone {
 
 /** Badge classes (bg + text + border) keyed by tone. */
 const STATUS_BADGE_CLASSES: Record<StatusTone, string> = {
-  new: 'bg-sky-100 text-sky-700 border-sky-200',
-  progress: 'bg-amber-100 text-amber-700 border-amber-200',
-  resolved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  closed: 'bg-zinc-100 text-zinc-700 border-zinc-200',
-  reopened: 'bg-slate-100 text-slate-700 border-slate-200',
-  neutral: 'bg-slate-100 text-slate-700 border-slate-200',
+  new: 'bg-indigo-50 text-indigo-700',
+  progress: 'bg-amber-50 text-amber-700',
+  resolved: 'bg-emerald-50 text-emerald-700',
+  closed: 'bg-slate-100 text-slate-700',
+  reopened: 'bg-rose-50 text-rose-700',
+  neutral: 'bg-slate-100 text-slate-700',
 };
 
 /** Returns Tailwind badge classes for a given ticket status. */
@@ -66,11 +66,11 @@ export function getPriorityTone(priority?: string | null): PriorityTone {
 }
 
 const PRIORITY_BADGE_CLASSES: Record<PriorityTone, string> = {
-  urgent: 'bg-red-100 text-red-700 border-red-200',
-  high: 'bg-orange-100 text-orange-700 border-orange-200',
-  medium: 'bg-blue-100 text-blue-700 border-blue-200',
-  low: 'bg-gray-100 text-gray-700 border-gray-200',
-  neutral: 'bg-gray-100 text-gray-700 border-gray-200',
+  urgent: 'bg-red-50 text-red-700',
+  high: 'bg-orange-50 text-orange-700',
+  medium: 'bg-blue-50 text-blue-700',
+  low: 'bg-slate-100 text-slate-600',
+  neutral: 'bg-slate-100 text-slate-600',
 };
 
 /** Returns Tailwind badge classes for a given ticket priority. */

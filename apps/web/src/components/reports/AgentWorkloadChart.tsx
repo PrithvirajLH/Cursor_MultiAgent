@@ -38,7 +38,7 @@ function WorkloadTooltip({
     return null;
   }
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2 text-[11px] shadow-card">
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] shadow-card">
       <div className="text-xs font-semibold text-slate-700">{row.label}</div>
       <div className="mt-2 space-y-1">
         <div className="flex items-center justify-between gap-3 text-slate-600">
@@ -86,13 +86,15 @@ export function AgentWorkloadChart({ data }: { data: AgentWorkloadResponse['data
       <div className="h-[240px] w-full min-h-0 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis type="number" tick={{ fontSize: 11 }} stroke="#64748b" allowDecimals={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+            <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
             <YAxis
               type="category"
               dataKey="label"
               width={140}
-              tick={{ fontSize: 11, fill: '#475569' }}
+              tick={{ fontSize: 11, fill: '#64748b' }}
+              axisLine={false}
+              tickLine={false}
               tickFormatter={truncateLabel}
             />
             <Tooltip content={<WorkloadTooltip />} />
@@ -100,15 +102,21 @@ export function AgentWorkloadChart({ data }: { data: AgentWorkloadResponse['data
               dataKey="assignedOther"
               stackId="open"
               fill={ASSIGNED_COLOR}
-              radius={[4, 0, 0, 4]}
+              radius={[6, 0, 0, 6]}
               name="Open assigned"
+              animationBegin={0}
+              animationDuration={800}
+              animationEasing="ease-out"
             />
             <Bar
               dataKey="inProgress"
               stackId="open"
               fill={IN_PROGRESS_COLOR}
-              radius={[0, 4, 4, 0]}
+              radius={[0, 6, 6, 0]}
               name="In progress"
+              animationBegin={0}
+              animationDuration={800}
+              animationEasing="ease-out"
             />
           </BarChart>
         </ResponsiveContainer>

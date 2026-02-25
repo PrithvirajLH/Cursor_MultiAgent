@@ -36,8 +36,11 @@ export function SlaComplianceChart({ data }: { data: SlaData }) {
               <Cell key={i} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Tickets']} />
-          <Legend />
+          <Tooltip
+            formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
+            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+          />
+          <Legend wrapperStyle={{ fontSize: '12px', color: '#64748b' }} />
         </PieChart>
       </ResponsiveContainer>
     </div>

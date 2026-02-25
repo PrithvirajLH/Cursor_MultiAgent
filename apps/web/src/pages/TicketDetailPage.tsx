@@ -139,7 +139,18 @@ export function TicketDetailPage({
   /* ——— Derived / memoized values (6.3) ——— */
 
   const followers = ticket?.followers ?? [];
-  const statusEvents = useMemo(() => events.filter((e) => e.type === 'TICKET_STATUS_CHANGED'), [events]);
+  const statusEvents = useMemo(
+    () =>
+      events
+        .filter((event) => event.type === 'TICKET_STATUS_CHANGED')
+        .slice()
+        .sort(
+          (left, right) =>
+            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+        )
+        .slice(0, 5),
+    [events],
+  );
   const isFollowing = followers.some((f) => f.user.email === currentEmail);
   const isCurrentUserOnAssignedTeam = useMemo(
     () => teamMembers.some((m) => m.user.email === currentEmail),
@@ -419,7 +430,7 @@ export function TicketDetailPage({
 
   const loadEventsPage = useCallback(
     async (id: string, reset = false, clearOnReset = true) => {
-    const requestSeq = ++eventRequestSeqRef.current;
+      const requestSeq = ++eventRequestSeqRef.current;
       if (reset) {
         if (clearOnReset) {
           setEvents([]);
@@ -428,12 +439,12 @@ export function TicketDetailPage({
         setEventCursor(null);
         setEventsHasMore(false);
       }
-    setEventsLoading(true);
-    try {
-      const response = await fetchTicketEvents(id, {
-        cursor: reset ? undefined : eventCursor ?? undefined, take: 50,
-      });
-      if (eventRequestSeqRef.current !== requestSeq) return;
+      setEventsLoading(true);
+      try {
+        const response = await fetchTicketEvents(id, {
+          cursor: reset ? undefined : eventCursor ?? undefined, take: 50,
+        });
+        if (eventRequestSeqRef.current !== requestSeq) return;
         setEvents((prev) => {
           const merged = reset ? response.data : [...response.data, ...prev];
           return merged;
@@ -441,17 +452,17 @@ export function TicketDetailPage({
         for (const event of response.data) {
           seenRealtimeEventIdsRef.current.add(event.id);
         }
-      setEventCursor(response.nextCursor ?? null);
-      setEventsHasMore(Boolean(response.nextCursor));
-    } catch {
+        setEventCursor(response.nextCursor ?? null);
+        setEventsHasMore(Boolean(response.nextCursor));
+      } catch {
         if (eventRequestSeqRef.current === requestSeq && reset && clearOnReset) {
           setEvents([]);
           setEventsHasMore(false);
           seenRealtimeEventIdsRef.current.clear();
         }
-    } finally {
-      if (eventRequestSeqRef.current === requestSeq) setEventsLoading(false);
-    }
+      } finally {
+        if (eventRequestSeqRef.current === requestSeq) setEventsLoading(false);
+      }
     },
     [eventCursor],
   );
@@ -540,10 +551,10 @@ export function TicketDetailPage({
       const ticketSnapshot = ticketSnapshotRef.current;
       const actorForEvent = payload.actor
         ? {
-            id: payload.actor.id,
-            email: payload.actor.email,
-            displayName: payload.actor.displayName,
-          }
+          id: payload.actor.id,
+          email: payload.actor.email,
+          displayName: payload.actor.displayName,
+        }
         : null;
 
       // Keep conversation stream and timeline in sync for this specific ticket.
@@ -1172,14 +1183,13 @@ export function TicketDetailPage({
   /* ——— Render ——— */
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in" title={headerTitle}>
+    <section className="flex h-screen flex-col bg-white animate-fade-in" title={headerTitle}>
       {/* Toast notification */}
       {copyToast && (
         <div className="fixed right-4 top-4 z-50">
           <div
-            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${
-              copyToast.type === 'success' ? 'border-emerald-200 text-slate-900' : 'border-rose-200 text-rose-700'
-            }`}
+            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${copyToast.type === 'success' ? 'border-emerald-200 text-slate-900' : 'border-rose-200 text-rose-700'
+              }`}
           >
             {copyToast.type === 'success' ? <Check className="h-5 w-5 text-emerald-600" /> : <Clock3 className="h-5 w-5" />}
             <span className="text-sm font-medium">{copyToast.message}</span>
@@ -1188,14 +1198,14 @@ export function TicketDetailPage({
       )}
 
       {/* Sticky header */}
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="shrink-0 z-40 border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-[1600px] px-6 py-3">
           <TopBar
             title={headerTitle}
             subtitle={headerCtx?.subtitle ?? 'Review context, collaborate, and update workflow in one workspace.'}
             currentEmail={headerCtx?.currentEmail ?? currentEmail}
             personas={headerCtx?.personas ?? [{ label: currentEmail, email: currentEmail }]}
-            onEmailChange={headerCtx?.onEmailChange ?? (() => {})}
+            onEmailChange={headerCtx?.onEmailChange ?? (() => { })}
             onOpenSearch={headerCtx?.onOpenSearch}
             notificationProps={headerCtx?.notificationProps}
             leftAction={
@@ -1221,48 +1231,51 @@ export function TicketDetailPage({
           />
         </div>
 
-        {/* Subject bar */}
-        {ticket && (
-          <div className="border-t border-slate-200 bg-white">
-            <div className="mx-auto max-w-[1600px] px-6 py-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">{ticket.subject}</h1>
-                  {ticket.description ? <p className="mt-1 text-sm text-slate-600">{ticket.description}</p> : <p className="mt-1 text-sm text-slate-500">No description provided.</p>}
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                    <span>Created <RelativeTime value={ticket.createdAt} /></span>
-                    <span className="text-slate-300">•</span>
-                    <span>Requester: <span className="font-medium text-slate-800">{ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}</span></span>
-                    <span className="text-slate-300">•</span>
-                    <span>Assignee: <span className="font-medium text-slate-800">{ticket.assignee?.displayName ?? 'Unassigned'}</span></span>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button type="button" onClick={() => void handleCopyLink()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
-                    <Copy className="h-4 w-4" /> Copy link
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Main content */}
-      <div className="mx-auto max-w-[1600px] px-6 py-6">
-        {ticketError && <p className="mb-4 text-sm text-red-600">{ticketError}</p>}
+      <div className="flex flex-1 overflow-hidden">
+        {ticketError && <p className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600 shadow-lg">{ticketError}</p>}
         {accessDenied && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-            <p className="text-sm">Switch to a user with access, or go back to the ticket list.</p>
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-900 shadow-lg">
+            Switch to a user with access, or go back to the ticket list.
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="flex w-full max-w-[1600px] mx-auto min-h-0">
           {/* Left: conversation / timeline panel */}
-          <div className="xl:col-span-2">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+          <div className="flex flex-1 flex-col border-r border-slate-200 bg-white min-w-0 min-h-0">
+            <div className="flex flex-1 flex-col min-h-0">
+              {/* Integrated Subject Header */}
+              {ticket && (
+                <div className="px-6 pt-6 pb-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h1 className="text-xl font-bold text-slate-900 tracking-tight sm:text-2xl">{ticket.subject}</h1>
+                      {ticket.description ? (
+                        <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{ticket.description}</p>
+                      ) : (
+                        <p className="mt-2 text-[14px] leading-relaxed text-slate-500 italic">No description provided.</p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-medium text-slate-500">
+                        <span>Created <RelativeTime value={ticket.createdAt} /></span>
+                        <span className="text-slate-300">•</span>
+                        <span>Requester: <span className="font-semibold text-slate-800">{ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}</span></span>
+                        <span className="text-slate-300">•</span>
+                        <span>Assignee: <span className="font-semibold text-slate-800">{ticket.assignee?.displayName ?? 'Unassigned'}</span></span>
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button type="button" onClick={() => void handleCopyLink()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30">
+                        <Copy className="h-4 w-4 text-slate-400" /> Copy link
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Tab bar */}
-              <div className="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 sm:px-6">
+              <div className="shrink-0 flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-3">
                 <div className="flex items-center gap-2" role="tablist" aria-label="Ticket views">
                   <button type="button" role="tab" aria-selected={activeTab === 'conversation'} aria-controls="panel-conversation" onClick={() => setActiveTab('conversation')} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${activeTab === 'conversation' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
                     Conversation <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${activeTab === 'conversation' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{conversationCount}</span>
@@ -1271,21 +1284,11 @@ export function TicketDetailPage({
                     Timeline <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${activeTab === 'timeline' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{timelineCount}</span>
                   </button>
                 </div>
-                <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
-                  <span className="inline-flex items-center gap-1"><kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">R</kbd> Reply</span>
-                  {canManage ? (
-                    <>
-                      <span className="text-slate-300">•</span>
-                      <span className="inline-flex items-center gap-1"><kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">A</kbd> Assign</span>
-                      <span className="text-slate-300">•</span>
-                      <span className="inline-flex items-center gap-1"><kbd className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1">S</kbd> Status</span>
-                    </>
-                  ) : null}
-                </div>
+                <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex" />
               </div>
 
               {/* Tab content */}
-              <div className="relative">
+              <div className="relative flex flex-1 flex-col min-h-0 bg-[#fafafa]">
                 {loadingDetail && !ticket ? <div className="p-6"><TicketDetailSkeleton count={4} /></div> : null}
                 {!loadingDetail && !ticket && !accessDenied ? <p className="p-6 text-sm text-slate-500">Ticket not found.</p> : null}
 
@@ -1334,41 +1337,43 @@ export function TicketDetailPage({
 
           {/* Right: sidebar */}
           {ticket && (
-            <TicketSidebar
-              ticket={ticket}
-              canManage={canManage}
-              actionError={actionError}
-              actionLoading={actionLoading}
-              assignToId={assignToId}
-              setAssignToId={setAssignToId}
-              teamMembers={teamMembers}
-              membersLoading={membersLoading}
-              onAssignMember={() => void handleAssignMember()}
-              onAssignSelf={() => void handleAssignSelf()}
-              nextStatus={nextStatus}
-              setNextStatus={setNextStatus}
-              availableTransitions={availableTransitions}
-              statusSelectRef={statusSelectRef}
-              onTransition={() => void handleTransition()}
-              onTransitionTo={(s) => void transitionTo(s)}
-              quickEscalationTarget={quickEscalationTarget}
-              transferTeamId={transferTeamId}
-              setTransferTeamId={setTransferTeamId}
-              transferAssigneeId={transferAssigneeId}
-              setTransferAssigneeId={setTransferAssigneeId}
-              transferMembers={transferMembers}
-              teamsList={teamsList}
-              onTransfer={() => void handleTransfer()}
-              expandedSections={expandedSections}
-              toggleSection={toggleSection}
-              loadingDetail={loadingDetail}
-              followers={followers}
-              isFollowing={isFollowing}
-              followLoading={followLoading}
-              followError={followError}
-              onFollowToggle={() => void handleFollowToggle()}
-              statusEvents={statusEvents}
-            />
+            <div className="w-80 shrink-0 overflow-y-auto bg-slate-50">
+              <TicketSidebar
+                ticket={ticket}
+                canManage={canManage}
+                actionError={actionError}
+                actionLoading={actionLoading}
+                assignToId={assignToId}
+                setAssignToId={setAssignToId}
+                teamMembers={teamMembers}
+                membersLoading={membersLoading}
+                onAssignMember={() => void handleAssignMember()}
+                onAssignSelf={() => void handleAssignSelf()}
+                nextStatus={nextStatus}
+                setNextStatus={setNextStatus}
+                availableTransitions={availableTransitions}
+                statusSelectRef={statusSelectRef}
+                onTransition={() => void handleTransition()}
+                onTransitionTo={(s) => void transitionTo(s)}
+                quickEscalationTarget={quickEscalationTarget}
+                transferTeamId={transferTeamId}
+                setTransferTeamId={setTransferTeamId}
+                transferAssigneeId={transferAssigneeId}
+                setTransferAssigneeId={setTransferAssigneeId}
+                transferMembers={transferMembers}
+                teamsList={teamsList}
+                onTransfer={() => void handleTransfer()}
+                expandedSections={expandedSections}
+                toggleSection={toggleSection}
+                loadingDetail={loadingDetail}
+                followers={followers}
+                isFollowing={isFollowing}
+                followLoading={followLoading}
+                followError={followError}
+                onFollowToggle={() => void handleFollowToggle()}
+                statusEvents={statusEvents}
+              />
+            </div>
           )}
         </div>
       </div>

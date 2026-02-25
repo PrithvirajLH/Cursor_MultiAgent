@@ -285,7 +285,10 @@ export function CommandPalette({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-slate-900/50 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-slate-900/50 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         ref={dialogRef}
         className="glass-card-strong w-full max-w-2xl overflow-hidden shadow-2xl"
@@ -346,9 +349,8 @@ export function CommandPalette({
                     type="button"
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: 'recent', data: search })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <History className="h-4 w-4 text-slate-400" />
                     <span className="flex-1 text-sm text-slate-700">{search.query}</span>
@@ -377,9 +379,8 @@ export function CommandPalette({
                     type="button"
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: 'action', data: action })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
                       <Icon className="h-4 w-4 text-white" />
@@ -412,9 +413,8 @@ export function CommandPalette({
                     type="button"
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: 'page', data: page })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center">
                       <Icon className="h-4 w-4 text-slate-600" />
@@ -444,9 +444,8 @@ export function CommandPalette({
                     type="button"
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: 'ticket', data: ticket })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center">
                       <Ticket className="h-4 w-4 text-blue-600" />
@@ -485,9 +484,8 @@ export function CommandPalette({
                     type="button"
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: 'user', data: user })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-xs font-semibold">
                       {user.displayName.split(' ').map((n) => n[0]).join('').slice(0, 2)}
@@ -519,9 +517,8 @@ export function CommandPalette({
                     type="button"
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: 'team', data: team })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
-                    }`}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${isSelected ? 'bg-slate-100' : 'hover:bg-slate-50'
+                      }`}
                   >
                     <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center">
                       <Users className="h-4 w-4 text-emerald-600" />

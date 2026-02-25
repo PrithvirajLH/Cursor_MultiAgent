@@ -34,6 +34,7 @@ import {
   type UserRef
 } from '../api/client';
 import { TopBar } from '../components/TopBar';
+import { EmptyState } from '../components/EmptyState';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useToast } from '../hooks/useToast';
@@ -249,7 +250,8 @@ function savedViewDescription(filters: ReportsFilters): string {
   return `${filters.range} · team:${filters.teamId} · priority:${filters.priority}`;
 }
 
-function toneForMetric(value: number, target: number): string {
+function toneForMetric(value: number, target: number, hasData = true): string {
+  if (!hasData || (value === 0 && target > 0)) return 'text-slate-400';
   if (value >= target) return 'text-green-600';
   if (value >= target - 5) return 'text-amber-600';
   return 'text-red-600';
@@ -816,7 +818,7 @@ export function ReportsPage({
         {
           key: 'summary',
           label: 'summary',
-          request: () => fetchReportSummary({ ...reportQuery, groupBy: 'team' }),
+          request: () => fetchReportSummary(reportQuery),
           onSuccess: (value) => {
             const summary = value as Awaited<ReturnType<typeof fetchReportSummary>>;
             setVolumeSeries(summary.ticketVolume.data.map((point) => point.count));
@@ -1284,11 +1286,10 @@ export function ReportsPage({
                   void saveCurrentView();
                 }}
                 disabled={!canSaveViews}
-                className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                  canSaveViews
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-400'
-                }`}
+                className={`rounded-lg px-3 py-2 text-sm font-medium ${canSaveViews
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-400'
+                  }`}
               >
                 Save current
               </button>
@@ -1423,9 +1424,8 @@ export function ReportsPage({
                 key={id}
                 type="button"
                 onClick={() => setTab(id as ReportsTab)}
-                className={`pb-3 text-sm font-medium transition-all ${
-                  tab === id ? 'border-b-2 border-blue-600 text-blue-600' : 'border-b-2 border-transparent text-slate-500 hover:text-slate-700'
-                }`}
+                className={`pb-3 text-sm font-medium transition-all ${tab === id ? 'border-b-2 border-blue-600 text-blue-600' : 'border-b-2 border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
               >
                 {label}
               </button>
@@ -1508,7 +1508,7 @@ export function ReportsPage({
                               <MiniBars points={inboundSeries} />
                             </div>
                           ) : (
-                            <EmptyData label="No inbound data for selected filters." />
+                            <div className="mt-4"><EmptyState title="No inbound data" description="Try adjusting your filters." compact /></div>
                           )}
                           <div className="mt-3 flex items-center justify-between text-xs">
                             <span className="text-slate-500">Avg/day</span>
@@ -1529,16 +1529,16 @@ export function ReportsPage({
                               <MiniBars points={solvedSeriesSafe} />
                             </div>
                           ) : (
-                            <EmptyData label="No solved-series data for selected filters." />
+                            <div className="mt-4"><EmptyState title="No solved data" description="Try adjusting your filters." compact /></div>
                           )}
                           <div className="mt-3 flex items-center justify-between text-xs">
                             <span className="text-slate-500">Avg/day</span>
                             <span className="font-semibold text-slate-700">
                               {hasSolvedSeries
                                 ? Math.round(
-                                    solvedSeriesSafe.reduce((sum, point) => sum + point, 0) /
-                                      solvedSeriesSafe.length
-                                  )
+                                  solvedSeriesSafe.reduce((sum, point) => sum + point, 0) /
+                                  solvedSeriesSafe.length
+                                )
                                 : 0}
                             </span>
                           </div>
@@ -1585,7 +1585,7 @@ export function ReportsPage({
                           ))}
                         </div>
                       ) : (
-                        <EmptyData label="No category data for selected filters." />
+                        <EmptyState title="No categories found" description="Try adjusting your filters." compact />
                       )}
                     </CardShell>
                   </div>
@@ -1606,7 +1606,7 @@ export function ReportsPage({
                       </div>
                     ) : (
                       <div className="mt-3">
-                        <EmptyData label="No trend data." />
+                        <EmptyState title="No trend data" compact />
                       </div>
                     )}
                   </div>
@@ -1620,7 +1620,7 @@ export function ReportsPage({
                       </div>
                     ) : (
                       <div className="mt-3">
-                        <EmptyData label="No trend data." />
+                        <EmptyState title="No trend data" compact />
                       </div>
                     )}
                   </div>
@@ -1670,7 +1670,7 @@ export function ReportsPage({
                       </table>
                     </div>
                   ) : (
-                    <EmptyData label="No SLA breach-detail data available." />
+                    <div className="p-8"><EmptyState title="No SLA breaches found" description="For the selected filters and date range." /></div>
                   )}
                 </CardShell>
               </div>
@@ -1690,7 +1690,7 @@ export function ReportsPage({
                               <MiniBars points={inboundSeries} />
                             </div>
                           ) : (
-                            <EmptyData label="No inbound data." />
+                            <div className="mt-4"><EmptyState title="No inbound data" compact /></div>
                           )}
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1701,7 +1701,7 @@ export function ReportsPage({
                               <MiniBars points={solvedSeriesSafe} />
                             </div>
                           ) : (
-                            <EmptyData label="No solved data." />
+                            <div className="mt-4"><EmptyState title="No solved data" compact /></div>
                           )}
                         </div>
                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -1712,7 +1712,7 @@ export function ReportsPage({
                               <MiniBars points={backlogSeriesSafe} />
                             </div>
                           ) : (
-                            <EmptyData label="No backlog data." />
+                            <div className="mt-4"><EmptyState title="No backlog data" compact /></div>
                           )}
                         </div>
                       </div>
@@ -1736,7 +1736,7 @@ export function ReportsPage({
                           ))}
                         </div>
                       ) : (
-                        <EmptyData label="No channel breakdown data for selected filters." />
+                        <div className="p-4"><EmptyState title="No channel tracking" description="No channels recorded in current scope." compact /></div>
                       )}
                     </CardShell>
 
@@ -1751,7 +1751,7 @@ export function ReportsPage({
                           ))}
                         </div>
                       ) : (
-                        <EmptyData label="No peak-day data." />
+                        <div className="p-4"><EmptyState title="No peak days" description="Not enough volume data to determine peaks." compact /></div>
                       )}
                     </CardShell>
                   </div>
@@ -1976,11 +1976,10 @@ export function ReportsPage({
                           type="button"
                           onClick={() => setShowExportModal(true)}
                           disabled={!canExport}
-                          className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${
-                            canExport
-                              ? 'bg-blue-600 text-white hover:bg-blue-700'
-                              : 'cursor-not-allowed bg-slate-100 text-slate-400'
-                          }`}
+                          className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${canExport
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                            }`}
                         >
                           Open export
                         </button>
@@ -2020,11 +2019,10 @@ export function ReportsPage({
                             }
                           }}
                           disabled={!canSaveViews}
-                          className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${
-                            canSaveViews
-                              ? 'bg-blue-600 text-white hover:bg-blue-700'
-                              : 'cursor-not-allowed bg-slate-100 text-slate-400'
-                          }`}
+                          className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${canSaveViews
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'cursor-not-allowed bg-slate-100 text-slate-400'
+                            }`}
                         >
                           New schedule
                         </button>
@@ -2040,7 +2038,10 @@ export function ReportsPage({
       </div>
 
       {showExportModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowExportModal(false); }}
+        >
           <div
             ref={exportDialogRef}
             role="dialog"

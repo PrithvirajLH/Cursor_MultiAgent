@@ -112,9 +112,8 @@ export function NotificationCard({ notification, onMarkAsRead, onClick }: Notifi
         }
       }}
       aria-label={`${notification.title}${!notification.isRead ? ', unread' : ''}`}
-      className={`group w-full flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 text-left shadow-sm transition hover:shadow-md cursor-pointer ${
-        !notification.isRead ? 'ring-1 ring-blue-100 bg-blue-50/30' : ''
-      }`}
+      className={`group w-full flex items-start gap-4 rounded-[16px] border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:shadow-[0_4px_15px_rgb(0,0,0,0.04)] hover:border-slate-200 cursor-pointer ${!notification.isRead ? 'ring-1 ring-blue-100 bg-blue-50/40 border-blue-100' : ''
+        }`}
     >
       {iconEl}
       <div className="flex-1 min-w-0">
@@ -240,7 +239,7 @@ export function NotificationCenter({
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span 
+          <span
             className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
             aria-live="polite"
             aria-atomic="true"
@@ -254,7 +253,7 @@ export function NotificationCenter({
       {isOpen && (
         <div
           ref={dropdownRef}
-          className="absolute right-0 top-full mt-2 w-96 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white shadow-xl z-50"
+          className="absolute right-0 top-full mt-2 w-[380px] max-w-[calc(100vw-2rem)] rounded-[20px] border border-slate-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.08)] z-50 overflow-hidden"
           role="menu"
         >
           {/* Header */}
@@ -265,7 +264,7 @@ export function NotificationCenter({
                 <button
                   type="button"
                   onClick={onMarkAllAsRead}
-                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700"
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
                   Mark all read
@@ -374,7 +373,7 @@ export function NotificationCenter({
           />
           <div
             ref={drawerRef}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-xl z-[101] flex flex-col animate-in slide-in-from-right duration-200"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-[0_0_40px_rgb(0,0,0,0.1)] z-[101] flex flex-col animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-label="All notifications"
           >

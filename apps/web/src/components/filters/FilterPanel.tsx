@@ -77,7 +77,7 @@ export function FilterPanel({
     return (
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Saved Views</label>
+          <label className="block text-sm font-medium text-slate-700">Saved Views</label>
           <div className="mt-2">
             <SavedViewsDropdown
               currentFilters={filters}
@@ -89,15 +89,15 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Status</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</label>
           <div className="mt-2 space-y-2">
             {STATUS_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
+              <label key={option.value} className="flex items-center gap-2 text-[13px] text-slate-700">
                 <input
                   type="checkbox"
                   checked={filters.statuses.includes(option.value)}
                   onChange={() => setFilters({ statuses: toggleValue(filters.statuses, option.value) })}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="custom-checkbox mt-0.5"
                 />
                 <span>{option.label}</span>
               </label>
@@ -106,15 +106,15 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Priority</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Priority</label>
           <div className="mt-2 space-y-2">
             {PRIORITY_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
+              <label key={option.value} className="flex items-center gap-2 text-[13px] text-slate-700">
                 <input
                   type="checkbox"
                   checked={filters.priorities.includes(option.value)}
                   onChange={() => setFilters({ priorities: toggleValue(filters.priorities, option.value) })}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="custom-checkbox mt-0.5"
                 />
                 <span>{option.label}</span>
               </label>
@@ -124,11 +124,11 @@ export function FilterPanel({
 
         {showTeamFilter ? (
           <div>
-            <label className="block text-sm font-medium text-gray-700">Team</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Team</label>
             <select
               value={filters.teamIds[0] ?? ''}
               onChange={(event) => setFilters({ teamIds: event.target.value ? [event.target.value] : [] })}
-              className="mt-2 h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="custom-select mt-2 w-full"
             >
               <option value="">All Teams</option>
               {teamOptions.map((option) => (
@@ -141,11 +141,11 @@ export function FilterPanel({
         ) : null}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Assignee</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Assignee</label>
           <select
             value={filters.assigneeIds[0] ?? ''}
             onChange={(event) => setFilters({ assigneeIds: event.target.value ? [event.target.value] : [] })}
-            className="mt-2 h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="custom-select mt-2 w-full"
           >
             <option value="">All Assignees</option>
             {assigneeOptions.map((option) => (
@@ -157,11 +157,11 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Requester</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Requester</label>
           <select
             value={filters.requesterIds[0] ?? ''}
             onChange={(event) => setFilters({ requesterIds: event.target.value ? [event.target.value] : [] })}
-            className="mt-2 h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="custom-select mt-2 w-full"
           >
             <option value="">All Requesters</option>
             {requesterSelectOptions.map((option) => (
@@ -173,10 +173,10 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">SLA Status</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">SLA Status</label>
           <div className="mt-2 space-y-2">
             {SLA_STATUS_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-sm text-gray-700">
+              <label key={option.value} className="flex items-center gap-2 text-[13px] text-slate-700">
                 <input
                   type="checkbox"
                   checked={filters.slaStatus.includes(option.value as (typeof filters.slaStatus)[number])}
@@ -185,7 +185,7 @@ export function FilterPanel({
                       slaStatus: toggleValue(filters.slaStatus, option.value) as typeof filters.slaStatus,
                     })
                   }
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="custom-checkbox mt-0.5"
                 />
                 <span>{option.label}</span>
               </label>
@@ -194,7 +194,7 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Created Date</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Created Date</label>
           <div className="mt-2 space-y-2">
             <input
               type="date"
@@ -212,7 +212,7 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Updated Date</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Updated Date</label>
           <div className="mt-2 space-y-2">
             <input
               type="date"
@@ -230,7 +230,7 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Due Date</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Due Date</label>
           <div className="mt-2 space-y-2">
             <input
               type="date"
@@ -248,13 +248,13 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Contains</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Contains</label>
           <input
             type="text"
             value={filters.q}
             onChange={(event) => setFilters({ q: event.target.value })}
             placeholder="Subject or description..."
-            className="mt-2 h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           />
         </div>
       </div>
@@ -262,20 +262,20 @@ export function FilterPanel({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-soft">
+    <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
       <div className="flex flex-wrap items-center gap-2">
         <div>
-          <h4 className="text-sm font-semibold text-foreground">Advanced filters</h4>
-          <p className="text-xs text-muted-foreground">Refine by status, ownership, SLA, and dates.</p>
+          <h4 className="text-[15px] font-semibold text-slate-900 tracking-tight">Advanced filters</h4>
+          <p className="text-[13px] text-slate-500 mt-0.5">Refine by status, ownership, SLA, and dates.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {hasActiveFilters ? (
             <button
               type="button"
               onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted/30 transition-colors"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-4 w-4" />
               Clear all
             </button>
           ) : null}
@@ -283,7 +283,7 @@ export function FilterPanel({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted/30 transition-colors"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
             >
               Close
             </button>

@@ -235,7 +235,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
     ],
     [user.displayName, user.email, user.role],
   );
-  const setCurrentEmail = useCallback(() => {}, []);
+  const setCurrentEmail = useCallback(() => { }, []);
   const sidebar = useSidebarState();
   const {
     notifyTicketAggregatesChanged,
@@ -354,6 +354,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
         case 'dashboard': navigate('/dashboard'); return;
         case 'triage': navigate('/triage'); return;
         case 'manager': navigate('/manager'); return;
+        case 'reports': navigate('/reports'); return;
         case 'team': navigate('/team'); return;
         case 'sla-settings': navigate('/sla-settings'); return;
         case 'admin':
@@ -584,24 +585,26 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
               fallback={(props) => <RouteErrorFallback {...props} />}
             >
               <Suspense fallback={<PageFallback />}>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<DashboardPage role={currentPersona.role} />} />
-                  <Route path="/triage" element={isLeadOrAbove ? <TriageBoardPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/manager" element={isLeadOrAbove ? <ManagerViewsPage teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/reports" element={canViewReports ? <ReportsPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/team" element={isLeadOrAbove ? <TeamPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/sla-settings" element={isLeadOrAbove ? <SlaSettingsPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/admin" element={isAdminOrOwner ? <Navigate to="/sla-settings" replace /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/routing" element={isAdminOrOwner ? <RoutingRulesPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/automation" element={isAdminOrOwner ? <AutomationRulesPage role={currentPersona.role} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/audit-log" element={isAdminOrOwner ? <AuditLogPage /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/categories" element={currentPersona.role === 'OWNER' ? <CategoriesPage /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/custom-fields" element={isAdminOrOwner ? <CustomFieldsAdminPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
-                  <Route path="/tickets/:ticketId" element={<TicketDetailPage currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
+                <div key={location.pathname} className="animate-fade-in">
+                  <Routes>
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<DashboardPage role={currentPersona.role} />} />
+                    <Route path="/triage" element={isLeadOrAbove ? <TriageBoardPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/manager" element={isLeadOrAbove ? <ManagerViewsPage teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/reports" element={canViewReports ? <ReportsPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/team" element={isLeadOrAbove ? <TeamPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/sla-settings" element={isLeadOrAbove ? <SlaSettingsPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/admin" element={isAdminOrOwner ? <Navigate to="/sla-settings" replace /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/routing" element={isAdminOrOwner ? <RoutingRulesPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/automation" element={isAdminOrOwner ? <AutomationRulesPage role={currentPersona.role} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/audit-log" element={isAdminOrOwner ? <AuditLogPage /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/categories" element={currentPersona.role === 'OWNER' ? <CategoriesPage /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/custom-fields" element={isAdminOrOwner ? <CustomFieldsAdminPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
+                    <Route path="/tickets/:ticketId" element={<TicketDetailPage currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </div>
               </Suspense>
             </ErrorBoundary>
           </HeaderProvider>

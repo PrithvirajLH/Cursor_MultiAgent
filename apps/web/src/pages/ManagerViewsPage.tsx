@@ -170,12 +170,12 @@ function PriorityBadge({ priority }: { priority: string }) {
     tone === 'urgent'
       ? 'Urgent'
       : tone === 'high'
-      ? 'High'
-      : tone === 'medium'
-      ? 'Medium'
-      : tone === 'low'
-      ? 'Low'
-      : priority;
+        ? 'High'
+        : tone === 'medium'
+          ? 'Medium'
+          : tone === 'low'
+            ? 'Low'
+            : priority;
   return (
     <span className={`rounded-md px-2 py-1 text-xs font-medium ${priorityBadgeClass(priority)}`}>
       {label}
@@ -224,7 +224,10 @@ function AgentModal({ agent, onClose }: { agent: AgentStats; onClose: () => void
   useModalFocusTrap({ open: true, containerRef: dialogRef, onClose });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -562,16 +565,16 @@ export function ManagerViewsPage({
       const avgFirstResponseHours =
         totalFirstResponses > 0
           ? builtAgents.reduce((sum, item) => {
-              const response = item.avgResponseHours ?? 0;
-              return sum + response * item.firstResponses;
-            }, 0) / totalFirstResponses
+            const response = item.avgResponseHours ?? 0;
+            return sum + response * item.firstResponses;
+          }, 0) / totalFirstResponses
           : null;
       const avgResolutionHours =
         totalResolved > 0
           ? builtAgents.reduce((sum, item) => {
-              const resolution = item.avgResolutionHours ?? 0;
-              return sum + resolution * item.resolvedPeriod;
-            }, 0) / totalResolved
+            const resolution = item.avgResolutionHours ?? 0;
+            return sum + resolution * item.resolvedPeriod;
+          }, 0) / totalResolved
           : null;
 
       const firstResponseTotal = slaRes.data.firstResponseMet + slaRes.data.firstResponseBreached;
@@ -609,9 +612,9 @@ export function ManagerViewsPage({
           .sort((a, b) => (a.avgResponseHours ?? Number.MAX_VALUE) - (b.avgResponseHours ?? Number.MAX_VALUE))
           .slice(0, 8)
           .map((item) => ({
-          name: item.name.split(' ')[0],
-          hours: Number((item.avgResponseHours ?? 0).toFixed(2))
-        }))
+            name: item.name.split(' ')[0],
+            hours: Number((item.avgResponseHours ?? 0).toFixed(2))
+          }))
       );
       setWorkloadData(
         [...builtAgents].sort((a, b) => b.openTickets - a.openTickets).slice(0, 8).map((item) => ({
@@ -778,9 +781,8 @@ export function ManagerViewsPage({
                 key={key}
                 type="button"
                 onClick={() => setActiveTab(key as TabKey)}
-                className={`border-b-2 py-3 text-sm font-medium transition-colors ${
-                  activeTab === key ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
-                }`}
+                className={`border-b-2 py-3 text-sm font-medium transition-colors ${activeTab === key ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
               >
                 {label}
               </button>
@@ -807,9 +809,8 @@ export function ManagerViewsPage({
                         setDateRange(days);
                         setShowDateDropdown(false);
                       }}
-                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
-                        dateRange === days ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
-                      }`}
+                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${dateRange === days ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
+                        }`}
                     >
                       Last {days} days
                     </button>
@@ -841,12 +842,12 @@ export function ManagerViewsPage({
         ) : null}
 
         {!loading && error ? (
-            <EmptyState
-              title="Unable to load manager insights"
-              description={error}
-              secondaryAction={{ label: 'Retry', onClick: () => void loadData() }}
-            />
-          ) : null}
+          <EmptyState
+            title="Unable to load manager insights"
+            description={error}
+            secondaryAction={{ label: 'Retry', onClick: () => void loadData() }}
+          />
+        ) : null}
 
         {!loading && !error && !hasData ? (
           <EmptyState
@@ -858,7 +859,7 @@ export function ManagerViewsPage({
 
         {!loading && !error && hasData && activeTab === 'overview' ? (
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 card-stagger">
               <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">Tickets Created</div><div className="text-3xl font-bold text-slate-900">{metrics?.createdInRange ?? 0}</div><div className="mt-1 text-xs text-slate-500">Last {dateRange} days</div></div>
               <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">Tickets Resolved</div><div className="text-3xl font-bold text-slate-900">{metrics?.resolvedInRange ?? 0}</div><div className="mt-1 text-xs text-slate-500">Last {dateRange} days</div></div>
               <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-sm text-slate-600">Current Open Tickets</div><div className="text-3xl font-bold text-slate-900">{metrics?.currentOpenTickets ?? 0}</div><div className="mt-1 text-xs text-slate-500">Current snapshot</div></div>
@@ -878,7 +879,7 @@ export function ManagerViewsPage({
                         tick={{ fontSize: 11, fill: '#64748b' }}
                         minTickGap={24}
                       />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
                       <Tooltip labelFormatter={(value) => formatUtcTooltipDate(String(value))} />
                       <Line type="monotone" dataKey="newTickets" stroke="#3b82f6" strokeWidth={2.5} dot={false} name="New Tickets" />
                       <Line type="monotone" dataKey="resolved" stroke="#22c55e" strokeWidth={2.5} dot={false} name="Resolved" />
@@ -972,9 +973,8 @@ export function ManagerViewsPage({
                           setSortBy(item.key);
                           setShowSortDropdown(false);
                         }}
-                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
-                          item.key === sortBy ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
-                        }`}
+                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${item.key === sortBy ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
+                          }`}
                       >
                         {item.label}
                       </button>
@@ -984,7 +984,7 @@ export function ManagerViewsPage({
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 card-stagger">
               {sortedAgents.map((agent) => (
                 <button key={agent.id} type="button" onClick={() => setSelectedAgent(agent)} className="rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm">
                   <div className="mb-3 flex items-start justify-between">
@@ -1016,7 +1016,7 @@ export function ManagerViewsPage({
                 <h3 className="mb-4 text-sm font-semibold text-slate-900">Avg First Response Hours by Agent</h3>
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={responseData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} /><Tooltip /><Bar dataKey="hours" fill="#6366f1" radius={[6, 6, 0, 0]} /></BarChart>
+                    <BarChart data={responseData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} /><Tooltip /><Bar dataKey="hours" fill="#6366f1" radius={[6, 6, 0, 0]} /></BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
@@ -1048,7 +1048,7 @@ export function ManagerViewsPage({
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-lg border border-slate-200 bg-white p-6">
                 <h3 className="mb-4 text-sm font-semibold text-slate-900">Current Workload Distribution</h3>
-                <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={workloadData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} /><Tooltip /><Bar dataKey="openTickets" fill="#3b82f6" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
+                <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={workloadData}><CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" /><XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} /><YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} /><Tooltip /><Bar dataKey="openTickets" fill="#3b82f6" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-white p-6">
                 <h3 className="mb-4 text-sm font-semibold text-slate-900">Tickets by Category</h3>

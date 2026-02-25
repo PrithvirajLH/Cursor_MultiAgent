@@ -281,14 +281,12 @@ function ToggleSwitch({
         onChange={(event) => onChange(event.target.checked)}
       />
       <span
-        className={`absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600 ${
-          disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-        }`}
+        className={`absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600 ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+          }`}
       />
       <span
-        className={`absolute left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform peer-checked:translate-x-5 ${
-          disabled ? 'cursor-not-allowed' : 'cursor-pointer'
-        }`}
+        className={`absolute left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform peer-checked:translate-x-5 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+          }`}
       />
     </label>
   );
@@ -307,7 +305,10 @@ function DeleteModal({
   useModalFocusTrap({ open: true, containerRef: dialogRef, onClose: onCancel });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -480,7 +481,10 @@ function PolicyModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -514,9 +518,8 @@ function PolicyModal({
                 disabled={!canEdit}
                 onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
                 placeholder="e.g. Enterprise SLA"
-                className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                  errors.name ? 'border-red-400' : 'border-slate-300'
-                } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${errors.name ? 'border-red-400' : 'border-slate-300'
+                  } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
               />
               {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
             </div>
@@ -527,9 +530,8 @@ function PolicyModal({
                 disabled={!canEdit}
                 onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
                 placeholder="Brief description..."
-                className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                  !canEdit ? 'cursor-not-allowed bg-slate-100' : ''
-                }`}
+                className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''
+                  }`}
               />
             </div>
           </div>
@@ -541,11 +543,10 @@ function PolicyModal({
                   key={section.id}
                   type="button"
                   onClick={() => setActiveSection(section.id)}
-                  className={`pb-3 text-sm font-medium ${
-                    activeSection === section.id
+                  className={`pb-3 text-sm font-medium ${activeSection === section.id
                       ? 'border-b-2 border-blue-600 text-blue-600'
                       : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                    }`}
                 >
                   {section.label}
                 </button>
@@ -594,9 +595,8 @@ function PolicyModal({
                               disabled={!canEdit}
                               value={form.targets[priority].firstResponse}
                               onChange={(event) => updateTarget(priority, 'firstResponse', event.target.value)}
-                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                                errors[`${priority}_fr`] ? 'border-red-400' : 'border-slate-300'
-                              } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${errors[`${priority}_fr`] ? 'border-red-400' : 'border-slate-300'
+                                } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
                             />
                             <span className="text-xs text-slate-400">= {fmtHours(form.targets[priority].firstResponse)}</span>
                           </div>
@@ -611,9 +611,8 @@ function PolicyModal({
                               disabled={!canEdit}
                               value={form.targets[priority].resolution}
                               onChange={(event) => updateTarget(priority, 'resolution', event.target.value)}
-                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                                errors[`${priority}_res`] ? 'border-red-400' : 'border-slate-300'
-                              } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
+                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${errors[`${priority}_res`] ? 'border-red-400' : 'border-slate-300'
+                                } ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''}`}
                             />
                             <span className="text-xs text-slate-400">= {fmtHours(form.targets[priority].resolution)}</span>
                           </div>
@@ -651,11 +650,10 @@ function PolicyModal({
                   {teams.map((team) => (
                     <label
                       key={team.id}
-                      className={`flex cursor-pointer items-center space-x-3 rounded-lg border p-3 transition-all ${
-                        form.appliedTeamIds.includes(team.id)
+                      className={`flex cursor-pointer items-center space-x-3 rounded-lg border p-3 transition-all ${form.appliedTeamIds.includes(team.id)
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-slate-200 bg-white hover:border-slate-300'
-                      } ${!canEdit || teamScopeLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                        } ${!canEdit || teamScopeLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                     >
                       <input
                         type="checkbox"
@@ -731,9 +729,8 @@ function PolicyModal({
                       onChange={(event) =>
                         setForm((prev) => ({ ...prev, escalationAfter: Number(event.target.value) }))
                       }
-                      className={`h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 ${
-                        !canEdit ? 'cursor-not-allowed opacity-70' : ''
-                      }`}
+                      className={`h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 ${!canEdit ? 'cursor-not-allowed opacity-70' : ''
+                        }`}
                     />
                     <span className="w-10 text-right text-sm font-semibold text-blue-600">{form.escalationAfter}%</span>
                   </div>
@@ -819,9 +816,8 @@ function BusinessHoursEditor({
         return (
           <div
             key={day}
-            className={`flex min-w-0 flex-wrap items-center gap-2 rounded-lg border p-3 transition-all sm:flex-nowrap sm:gap-4 ${
-              value.enabled ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-60'
-            }`}
+            className={`flex min-w-0 flex-wrap items-center gap-2 rounded-lg border p-3 transition-all sm:flex-nowrap sm:gap-4 ${value.enabled ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-60'
+              }`}
           >
             <ToggleSwitch checked={value.enabled} disabled={disabled} onChange={() => onToggleDay(day)} />
             <span className="w-24 flex-shrink-0 text-sm font-medium text-slate-700">{day}</span>
@@ -832,9 +828,8 @@ function BusinessHoursEditor({
                   disabled={disabled}
                   value={value.start}
                   onChange={(event) => onUpdateTime(day, 'start', event.target.value)}
-                  className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                    disabled ? 'cursor-not-allowed bg-slate-100' : ''
-                  }`}
+                  className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${disabled ? 'cursor-not-allowed bg-slate-100' : ''
+                    }`}
                 />
                 <span className="text-sm text-slate-400">to</span>
                 <input
@@ -842,9 +837,8 @@ function BusinessHoursEditor({
                   disabled={disabled}
                   value={value.end}
                   onChange={(event) => onUpdateTime(day, 'end', event.target.value)}
-                  className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                    disabled ? 'cursor-not-allowed bg-slate-100' : ''
-                  }`}
+                  className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${disabled ? 'cursor-not-allowed bg-slate-100' : ''
+                    }`}
                 />
                 <span className="text-xs text-slate-400">({duration})</span>
               </div>
@@ -925,18 +919,16 @@ function HolidayManager({
           disabled={disabled}
           onChange={(event) => setNewName(event.target.value)}
           placeholder="Holiday name"
-          className={`min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-            disabled ? 'cursor-not-allowed bg-slate-100' : ''
-          }`}
+          className={`min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${disabled ? 'cursor-not-allowed bg-slate-100' : ''
+            }`}
         />
         <input
           type="date"
           value={newDate}
           disabled={disabled}
           onChange={(event) => setNewDate(event.target.value)}
-          className={`min-w-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-            disabled ? 'cursor-not-allowed bg-slate-100' : ''
-          }`}
+          className={`min-w-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${disabled ? 'cursor-not-allowed bg-slate-100' : ''
+            }`}
         />
         <button
           type="button"
@@ -1331,11 +1323,10 @@ export function SlaSettingsPage({
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id as TabKey)}
-                    className={`-mb-px flex items-center space-x-1.5 border-b-2 pb-3 text-sm font-medium transition-colors ${
-                      activeTab === tab.id
+                    className={`-mb-px flex items-center space-x-1.5 border-b-2 pb-3 text-sm font-medium transition-colors ${activeTab === tab.id
                         ? 'border-blue-600 text-blue-600'
                         : 'border-transparent text-slate-500 hover:text-slate-700'
-                    }`}
+                      }`}
                   >
                     <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
@@ -1457,9 +1448,8 @@ export function SlaSettingsPage({
                   <div
                     key={policy.id}
                     onClick={() => setSelectedPolicyId(policy.id)}
-                    className={`cursor-pointer rounded-lg border-2 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm ${
-                      selectedPolicyId === policy.id ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200'
-                    }`}
+                    className={`cursor-pointer rounded-lg border-2 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm ${selectedPolicyId === policy.id ? 'border-blue-500 bg-blue-50/60' : 'border-slate-200'
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
@@ -1721,28 +1711,29 @@ export function SlaSettingsPage({
                     const total = row.met + row.breached;
                     const metPercent = total > 0 ? Math.round((row.met / total) * 100) : 0;
                     return (
-                    <div key={row.key}>
-                      <div className="mb-1 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className={`h-2.5 w-2.5 rounded-full ${row.color}`} />
-                          <span className="font-medium text-slate-700">{row.label}</span>
+                      <div key={row.key}>
+                        <div className="mb-1 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${row.color}`} />
+                            <span className="font-medium text-slate-700">{row.label}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-slate-500">Met: {row.met}</span>
+                            <span className="text-slate-500">Breached: {row.breached}</span>
+                            <span className={`font-semibold ${metPercent >= 90 ? 'text-green-600' : metPercent >= 75 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {metPercent}% met
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-500">Met: {row.met}</span>
-                          <span className="text-slate-500">Breached: {row.breached}</span>
-                          <span className={`font-semibold ${metPercent >= 90 ? 'text-green-600' : metPercent >= 75 ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {metPercent}% met
-                          </span>
+                        <div className="h-3 w-full rounded-full bg-slate-100">
+                          <div
+                            className={`h-3 rounded-full ${row.color}`}
+                            style={{ width: `${metPercent}%` }}
+                          />
                         </div>
                       </div>
-                      <div className="h-3 w-full rounded-full bg-slate-100">
-                        <div
-                          className={`h-3 rounded-full ${row.color}`}
-                          style={{ width: `${metPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  )})}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -1925,9 +1916,8 @@ export function SlaSettingsPage({
                     value={businessTimezone}
                     disabled={!canEdit}
                     onChange={(event) => setBusinessTimezone(event.target.value)}
-                    className={`mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                      !canEdit ? 'cursor-not-allowed bg-slate-100' : ''
-                    }`}
+                    className={`mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${!canEdit ? 'cursor-not-allowed bg-slate-100' : ''
+                      }`}
                     placeholder="e.g. UTC"
                   />
                 </div>

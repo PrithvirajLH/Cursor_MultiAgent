@@ -1,5 +1,5 @@
-import { memo, type ReactNode, type RefObject } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { memo, type ReactNode, type RefObject, useState, useRef, useEffect } from 'react';
+import { ChevronDown, Check, UserPlus, UserMinus, Clock } from 'lucide-react';
 import type { TicketDetail, TicketEvent, TicketFollower, TeamMember, TeamRef } from '../../api/client';
 import { CustomFieldsDisplay } from '../CustomFieldRenderer';
 import { RelativeTime } from '../RelativeTime';
@@ -18,14 +18,12 @@ export type TicketSidebarProps = {
   canManage: boolean;
   actionError: string | null;
   actionLoading: boolean;
-  // Assignment
   assignToId: string;
   setAssignToId: (id: string) => void;
   teamMembers: TeamMember[];
   membersLoading: boolean;
   onAssignMember: () => void;
   onAssignSelf: () => void;
-  // Status
   nextStatus: string;
   setNextStatus: (status: string) => void;
   availableTransitions: string[];
@@ -33,7 +31,6 @@ export type TicketSidebarProps = {
   onTransition: () => void;
   onTransitionTo: (status: string) => void;
   quickEscalationTarget: string | null;
-  // Transfer
   transferTeamId: string;
   setTransferTeamId: (id: string) => void;
   transferAssigneeId: string;
@@ -41,17 +38,14 @@ export type TicketSidebarProps = {
   transferMembers: TeamMember[];
   teamsList: TeamRef[];
   onTransfer: () => void;
-  // Sidebar sections
   expandedSections: ExpandedSections;
   toggleSection: (section: keyof ExpandedSections) => void;
   loadingDetail: boolean;
-  // Followers
   followers: TicketFollower[];
   isFollowing: boolean;
   followLoading: boolean;
   followError: string | null;
   onFollowToggle: () => void;
-  // Status history
   statusEvents: TicketEvent[];
 };
 
@@ -59,329 +53,426 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
   const {
     ticket, canManage, actionError, actionLoading,
     assignToId, setAssignToId, teamMembers, membersLoading, onAssignMember, onAssignSelf,
-    nextStatus, setNextStatus, availableTransitions, statusSelectRef, onTransition, onTransitionTo, quickEscalationTarget,
-    transferTeamId, setTransferTeamId, transferAssigneeId, setTransferAssigneeId, transferMembers, teamsList, onTransfer,
-    expandedSections, toggleSection, loadingDetail,
+    availableTransitions, onTransitionTo,
+    transferTeamId, setTransferTeamId, teamsList, onTransfer,
     followers, isFollowing, followLoading, followError, onFollowToggle,
     statusEvents,
+    expandedSections, toggleSection,
   } = props;
 
   const firstResponseSla = getFirstResponseSla(ticket, RelativeTime);
   const resolutionSla = getResolutionSla(ticket, RelativeTime);
 
   return (
-    <aside className="space-y-4 xl:sticky xl:top-[160px] xl:col-span-1 xl:h-fit">
-      {/* SLA Overview */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-900">SLA Overview</h3>
-          <span className={`rounded-md px-2 py-1 text-xs font-semibold ${slaBadgeClass(resolutionSla.label)}`}>
-            {resolutionSla.label}
-          </span>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <SlaCard label="First Response" sla={firstResponseSla} />
-          <SlaCard label="Resolution" sla={resolutionSla} />
+    <aside className="flex flex-col text-[13px] text-slate-700 pb-10 min-h-full">
+      {/* Header & Followers */}
+      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-200">
+        <h3 className="font-semibold text-slate-900">Properties</h3>
+        <div className="flex items-center gap-2">
+          {followers.length > 0 && (
+            <div className="flex -space-x-1.5">
+              {followers.slice(0, 3).map((f) => (
+                <div key={f.id} className="h-6 w-6 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold ring-2 ring-slate-50 shadow-sm" title={f.user.displayName}>
+                  {initialsFor(f.user.displayName)}
+                </div>
+              ))}
+              {followers.length > 3 && (
+                <div className="h-6 w-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold ring-2 ring-slate-50 shadow-sm">
+                  +{followers.length - 3}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            onClick={onFollowToggle}
+            disabled={followLoading}
+            className={`flex h-7 w-7 items-center justify-center rounded-full transition-all border ${isFollowing
+                ? 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 group'
+                : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            title={isFollowing ? 'Unfollow' : 'Follow'}
+          >
+            {isFollowing ? (
+              <>
+                <UserPlus className="h-3.5 w-3.5 group-hover:hidden" />
+                <UserMinus className="h-3.5 w-3.5 hidden group-hover:block" />
+              </>
+            ) : (
+              <UserPlus className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      {canManage && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-          <h3 className="text-sm font-semibold text-slate-900">Quick Actions</h3>
-          {actionError && <p className="mt-2 text-xs text-rose-600">{actionError}</p>}
+      {actionError && <div className="mx-5 mt-4 p-2 bg-rose-50 text-rose-600 text-[12px] rounded-lg font-medium">{actionError}</div>}
+      {followError && <div className="mx-5 mt-4 p-2 bg-rose-50 text-rose-600 text-[12px] rounded-lg font-medium">{followError}</div>}
 
-          <div className="mt-3 space-y-3">
-            {/* Assign */}
-            <div>
-              <label id="assign-label" className="mb-1 block text-xs font-semibold text-slate-700">Assign</label>
-              <div className="flex gap-2">
-                <select
-                  aria-labelledby="assign-label"
-                  value={assignToId}
-                  onChange={(e) => setAssignToId(e.target.value)}
-                  disabled={membersLoading || actionLoading || teamMembers.length === 0}
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">{membersLoading ? 'Loading team...' : 'Select assignee'}</option>
-                  {teamMembers.map((m) => (
-                    <option key={m.id} value={m.user.id}>{m.user.displayName}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={onAssignMember}
-                  disabled={!assignToId || actionLoading}
-                  className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  Assign
-                </button>
-              </div>
+      {/* Property List */}
+      <div className="p-2 space-y-0.5 border-b border-slate-200">
+
+        <PropertyRow label="Status">
+          {canManage && availableTransitions.length > 0 ? (
+            <InlineSelect
+              value={ticket.status}
+              placeholder="Status"
+              options={[
+                { value: ticket.status, label: formatStatus(ticket.status) },
+                ...availableTransitions.filter(s => s !== ticket.status).map(s => ({ value: s, label: formatStatus(s) }))
+              ]}
+              onChange={(val) => onTransitionTo(val)}
+              disabled={actionLoading}
+              renderValue={(val) => (
+                <StatusBadge status={val} />
+              )}
+            />
+          ) : (
+            <div className="px-1.5"><StatusBadge status={ticket.status} /></div>
+          )}
+        </PropertyRow>
+
+        <PropertyRow label="Assignee">
+          {canManage ? (
+            <div className="flex items-center gap-1 overflow-hidden w-full group/assign overflow-visible relative">
+              <InlineSelect
+                buttonClassName="flex-1 w-full"
+                value={ticket.assignee?.id ?? ''}
+                placeholder="Unassigned"
+                options={[
+                  ...teamMembers.map(m => ({ value: m.user.id, label: m.user.displayName, avatarString: m.user.displayName }))
+                ]}
+                onChange={(val) => {
+                  setAssignToId(val);
+                }}
+                disabled={actionLoading || membersLoading}
+                renderValue={() => ticket.assignee ? (
+                  <div className="flex items-center gap-1.5 text-slate-900 truncate font-medium">
+                    <Avatar name={ticket.assignee.displayName} />
+                    <span className="truncate">{ticket.assignee.displayName}</span>
+                  </div>
+                ) : <span className="text-slate-400 font-medium">Unassigned</span>}
+              />
+              {assignToId && assignToId !== (ticket.assignee?.id ?? '') && (
+                <button onClick={onAssignMember} disabled={actionLoading} className="h-6 px-2.5 bg-blue-600 text-white rounded text-[11px] font-semibold hover:bg-blue-700 shadow-sm shrink-0">Save</button>
+              )}
               {!ticket.assignee && (
-                <button
-                  type="button"
-                  onClick={onAssignSelf}
-                  disabled={actionLoading}
-                  className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50"
-                >
-                  Assign to me
-                </button>
+                <button onClick={onAssignSelf} disabled={actionLoading} className="hidden group-hover/assign:flex absolute right-0 bg-white shadow-sm ring-1 ring-slate-200 h-6 px-2 text-[11px] font-semibold text-slate-600 items-center rounded-md hover:text-blue-600">Assign to me</button>
               )}
             </div>
-
-            {/* Status */}
-            <div>
-              <label id="status-label" className="mb-1 block text-xs font-semibold text-slate-700">Status</label>
-              <div className="flex gap-2">
-                <select
-                  ref={statusSelectRef}
-                  aria-labelledby="status-label"
-                  value={nextStatus}
-                  onChange={(e) => setNextStatus(e.target.value)}
-                  disabled={actionLoading || availableTransitions.length === 0}
-                  className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {availableTransitions.length === 0 && <option value="">No transitions</option>}
-                  {availableTransitions.map((s) => (
-                    <option key={s} value={s}>{formatStatus(s)}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={onTransition}
-                  disabled={actionLoading || !nextStatus || nextStatus === ticket.status}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  Update
-                </button>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => onTransitionTo('RESOLVED')}
-                  disabled={actionLoading || !availableTransitions.includes('RESOLVED')}
-                  className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  Resolve
-                </button>
-                {quickEscalationTarget ? (
-                  <button
-                    type="button"
-                    onClick={() => onTransitionTo(quickEscalationTarget)}
-                    disabled={actionLoading}
-                    className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
-                  >
-                    {formatStatus(quickEscalationTarget)}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => onTransitionTo('CLOSED')}
-                  disabled={actionLoading || !availableTransitions.includes('CLOSED')}
-                  className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  Close
-                </button>
-              </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-slate-900 truncate px-1.5 font-medium">
+              {ticket.assignee ? <><Avatar name={ticket.assignee.displayName} /><span className="truncate">{ticket.assignee.displayName}</span></> : <span className="text-slate-400">Unassigned</span>}
             </div>
+          )}
+        </PropertyRow>
 
-            {/* Transfer */}
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700">Transfer</label>
-              <div className="space-y-2">
-                <select
-                  aria-label="Transfer to department"
-                  value={transferTeamId}
-                  onChange={(e) => setTransferTeamId(e.target.value)}
-                  disabled={actionLoading}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select department</option>
-                  {teamsList.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Transfer to assignee"
-                  value={transferAssigneeId}
-                  onChange={(e) => setTransferAssigneeId(e.target.value)}
-                  disabled={actionLoading || !transferTeamId}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select assignee</option>
-                  {transferMembers.map((m) => (
-                    <option key={m.id} value={m.user.id}>{m.user.displayName}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={onTransfer}
-                  disabled={actionLoading || !transferTeamId || transferTeamId === ticket.assignedTeam?.id}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                >
-                  Transfer
-                </button>
-                <p className="text-xs text-slate-500">Tip: transferring to the same team is blocked.</p>
-              </div>
+        <PropertyRow label="Department">
+          {canManage ? (
+            <div className="flex items-center gap-1 overflow-hidden w-full">
+              <InlineSelect
+                buttonClassName="flex-1 w-full"
+                value={transferTeamId || (ticket.assignedTeam?.id ?? '')}
+                placeholder="None"
+                options={teamsList.map(t => ({ value: t.id, label: t.name }))}
+                onChange={(val) => setTransferTeamId(val)}
+                disabled={actionLoading}
+                renderValue={(val) => {
+                  const label = teamsList.find(t => t.id === val)?.name || ticket.assignedTeam?.name;
+                  return label ? <span className="text-slate-900 font-medium truncate">{label}</span> : <span className="text-slate-400 font-medium">None</span>;
+                }}
+              />
+              {transferTeamId && transferTeamId !== ticket.assignedTeam?.id && (
+                <button onClick={onTransfer} disabled={actionLoading} className="h-6 px-2.5 bg-blue-600 text-white rounded text-[11px] font-semibold hover:bg-blue-700 shadow-sm shrink-0">Set</button>
+              )}
             </div>
+          ) : (
+            <span className="text-slate-900 truncate px-1.5 font-medium">{ticket.assignedTeam?.name ?? 'None'}</span>
+          )}
+        </PropertyRow>
+
+        <PropertyRow label="Priority">
+          <span className={`inline-flex items-center gap-1.5 font-medium px-1.5
+             ${ticket.priority === 'URGENT' ? 'text-rose-600' :
+              ticket.priority === 'HIGH' ? 'text-amber-600' :
+                'text-slate-700'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${ticket.priority === 'URGENT' ? 'bg-rose-500' : ticket.priority === 'HIGH' ? 'bg-amber-500' : 'bg-slate-400'}`}></span>
+            {ticket.priority.charAt(0) + ticket.priority.slice(1).toLowerCase()}
+          </span>
+        </PropertyRow>
+
+        <PropertyRow label="Category">
+          <span className="text-slate-900 truncate px-1.5 font-medium">{ticket.category?.name ?? 'None'}</span>
+        </PropertyRow>
+      </div>
+
+      {/* SLAs */}
+      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/60">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" /> SLAs
+          </h4>
+          <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wider uppercase border ${slaBadgeClass(resolutionSla.label)}`}>
+            {resolutionSla.label}
+          </span>
+        </div>
+        <div className="grid gap-2">
+          <SlaRow label="First Response" sla={firstResponseSla} />
+          <SlaRow label="Resolution" sla={resolutionSla} />
+        </div>
+      </div>
+
+      {/* Details */}
+      <div className="p-5 border-b border-slate-200">
+        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Details</h4>
+        <div className="space-y-2.5">
+          <DetailText label="Requester" value={ticket.requester?.displayName ?? 'Unknown'} />
+          <DetailText label="Email" value={ticket.requester?.email ?? '—'} />
+          <DetailText label="Reference" value={formatTicketId(ticket)} />
+          <DetailText label="Created" value={<RelativeTime value={ticket.createdAt} />} />
+        </div>
+      </div>
+
+      {/* Custom Fields */}
+      {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
+        <div className="p-5 border-b border-slate-200">
+          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Custom Fields</h4>
+          <div className="space-y-3">
+            <CustomFieldsDisplay values={ticket.customFieldValues} />
           </div>
         </div>
       )}
 
-      {/* Ticket Details */}
-      <CollapsibleSection
-        title="Ticket Details"
-        expanded={expandedSections.edit}
-        onToggle={() => toggleSection('edit')}
-      >
-        {loadingDetail && (
-          <div className="space-y-2">
-            <div className="h-4 w-28 rounded bg-slate-200" />
-            <div className="h-4 w-40 rounded bg-slate-100" />
-          </div>
-        )}
-        {!loadingDetail && (
-          <>
-            <DetailRow label="Requester" value={ticket.requester?.displayName ?? 'Unknown'} />
-            <DetailRow label="Email" value={ticket.requester?.email ?? '—'} />
-            <DetailRow label="Department" value={ticket.assignedTeam?.name ?? 'Unassigned'} />
-            <DetailRow label="Assignee" value={ticket.assignee?.displayName ?? 'Unassigned'} />
-            <DetailRow label="Category" value={ticket.category?.name ?? 'None'} />
-            <DetailRow label="Created" value={<RelativeTime value={ticket.createdAt} />} />
-          </>
-        )}
-      </CollapsibleSection>
-
-      {/* Followers */}
-      <CollapsibleSection
-        title={`Followers (${followers.length})`}
-        expanded={expandedSections.followers}
-        onToggle={() => toggleSection('followers')}
-      >
-        <div className="mb-3 space-y-2">
-          {followers.length === 0 && <p className="text-xs text-slate-500">No followers yet.</p>}
-          {followers.map((f) => (
-            <div key={f.id} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
-                  {initialsFor(f.user.displayName)}
-                </div>
-                <span className="text-sm font-semibold text-slate-900">{f.user.displayName}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* History */}
+      <div className="p-5 space-y-3">
         <button
           type="button"
-          onClick={onFollowToggle}
-          disabled={followLoading}
-          className="w-full rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          onClick={() => toggleSection('history')}
+          className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-slate-50"
         >
-          {isFollowing ? 'Unfollow ticket' : 'Follow ticket'}
-        </button>
-        {followError && <p className="mt-2 text-xs text-rose-600">{followError}</p>}
-      </CollapsibleSection>
-
-      {/* Additional Details */}
-      <CollapsibleSection
-        title="Additional Details"
-        expanded={expandedSections.additional}
-        onToggle={() => toggleSection('additional')}
-      >
-        <DetailRow label="Reference ID" value={formatTicketId(ticket)} />
-        <DetailRow
-          label="First response due"
-          value={ticket.firstResponseDueAt ? <RelativeTime value={ticket.firstResponseDueAt} /> : 'Not set'}
-        />
-        <DetailRow
-          label="Resolution due"
-          value={ticket.dueAt ? <RelativeTime value={ticket.dueAt} /> : 'Not set'}
-        />
-        {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-          <div className="pt-2">
-            <CustomFieldsDisplay values={ticket.customFieldValues} />
+          <div className="flex flex-col gap-0.5">
+            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Status History</h4>
+            {statusEvents.length > 0 && (
+              <span className="text-[11px] text-slate-400">
+                Showing last {statusEvents.length} change{statusEvents.length > 1 ? 's' : ''} • Full history in{' '}
+                <span className="font-semibold text-slate-600">Timeline</span>
+              </span>
+            )}
           </div>
-        )}
-      </CollapsibleSection>
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.history ? 'rotate-180' : ''}`}
+          />
+        </button>
+        {statusEvents.length === 0 ? (
+          <p className="text-xs text-slate-500 italic">No status changes recorded yet.</p>
+        ) : null}
+        {expandedSections.history && statusEvents.length > 0 ? (
+          <div className="space-y-3">
+            {statusEvents.map((event, index) => {
+              const payload = (event.payload ?? {}) as { from?: string; to?: string };
+              const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
+              const fromLabel = payload.from ? formatStatus(payload.from) : 'Unknown';
+              const toStatus = payload.to ?? ticket.status;
+              const isLast = index === statusEvents.length - 1;
+              return (
+                <div key={event.id} className="flex gap-3 text-xs">
+                  <div className="flex flex-col items-center pt-1">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    {!isLast && <div className="mt-1 h-full w-px bg-slate-200" />}
+                  </div>
+                  <div className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                          {fromLabel}
+                        </span>
+                        <span className="text-[10px] text-slate-400">to</span>
+                        <StatusBadge status={toStatus} />
+                      </div>
+                      <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                        <RelativeTime value={event.createdAt} />
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Changed by <span className="font-medium text-slate-700">{actor}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
 
-      {/* Status History */}
-      <CollapsibleSection
-        title="Status History"
-        expanded={expandedSections.history}
-        onToggle={() => toggleSection('history')}
-      >
-        {statusEvents.length === 0 && <p className="text-xs text-slate-500">No status changes recorded yet.</p>}
-        {statusEvents.map((event) => {
-          const payload = (event.payload ?? {}) as { from?: string; to?: string };
-          const actor = event.createdBy?.displayName ?? event.createdBy?.email ?? 'System';
-          return (
-            <div key={event.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="font-semibold text-slate-700">
-                  {payload.from ? formatStatus(payload.from) : 'Unknown'} →{' '}
-                  {payload.to ? formatStatus(payload.to) : formatStatus(ticket.status)}
-                </span>
-                <span className="text-slate-500"><RelativeTime value={event.createdAt} /></span>
-              </div>
-              <p className="text-slate-500">By {actor}</p>
-            </div>
-          );
-        })}
-      </CollapsibleSection>
     </aside>
   );
 });
 
 /* ——— Sub-components ——— */
 
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+function PropertyRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-semibold text-slate-900">{value}</span>
-    </div>
-  );
-}
-
-function SlaCard({ label, sla }: { label: string; sla: { label: string; tone: string; detail: ReactNode } }) {
-  return (
-    <div className={`rounded-xl border p-3 ${sla.tone}`}>
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-xs font-semibold">{label}</span>
-        <span className="text-xs font-bold">{sla.label}</span>
+    <div className="flex items-center px-3 py-1.5 min-h-[36px] group/row rounded-lg hover:bg-slate-100/50 transition-colors">
+      <div className="w-1/3 shrink-0 text-slate-500 font-medium select-none">
+        {label}
       </div>
-      <p className="text-xs">{sla.detail}</p>
+      <div className="w-2/3 min-w-0 flex items-center">
+        {children}
+      </div>
     </div>
   );
 }
 
-function CollapsibleSection({
-  title,
-  expanded,
-  onToggle,
-  children,
-}: {
-  title: string;
-  expanded: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
+function DetailText({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-soft">
+    <div className="flex justify-between items-start gap-4 text-xs">
+      <span className="text-slate-500 font-medium">{label}</span>
+      <span className="text-slate-900 font-medium text-right break-words">{value}</span>
+    </div>
+  );
+}
+
+function SlaRow({ label, sla }: { label: string; sla: { label: string; tone: string; detail: ReactNode } }) {
+  // Translate the old card styling to a cleaner row
+  // tone is typically text-emerald-xxx, text-rose-xxx, etc.
+  // We extract the base color name for the background.
+  const isDanger = sla.tone.includes('rose') || sla.tone.includes('red');
+  const isWarning = sla.tone.includes('amber') || sla.tone.includes('yellow');
+  const isSuccess = sla.tone.includes('emerald') || sla.tone.includes('green');
+
+  let bgClass = 'bg-slate-50 border-slate-200';
+  if (isDanger) bgClass = 'bg-rose-50 border-rose-200';
+  if (isWarning) bgClass = 'bg-amber-50 border-amber-200';
+  if (isSuccess) bgClass = 'bg-emerald-50 border-emerald-200';
+
+  const dotClass = isDanger
+    ? 'bg-rose-500'
+    : isWarning
+      ? 'bg-amber-500'
+      : isSuccess
+        ? 'bg-emerald-500'
+        : 'bg-slate-400';
+
+  return (
+    <div className={`flex items-center justify-between gap-3 p-2.5 rounded-xl border shadow-sm ${bgClass}`}>
+      <div className="flex items-start gap-2">
+        <span className={`mt-1 h-2 w-2 rounded-full ${dotClass}`} />
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+          <span className="text-[11px] text-slate-600 font-medium">{sla.detail}</span>
+        </div>
+      </div>
+      <div className={`text-[12px] font-bold ${sla.tone} bg-white/80 px-2.5 py-1 rounded-md shadow-sm border border-white/60`}>
+        {sla.label}
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const getColors = () => {
+    switch (status) {
+      case 'OPEN': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'IN_PROGRESS': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'RESOLVED': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case 'CLOSED': return 'bg-slate-100 text-slate-600 border-slate-200';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+  return (
+    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide border ${getColors()}`}>
+      {formatStatus(status)}
+    </span>
+  );
+}
+
+function Avatar({ name }: { name: string }) {
+  return (
+    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[9px] font-bold text-white shadow-sm ring-1 ring-slate-100">
+      {initialsFor(name)}
+    </div>
+  );
+}
+
+function InlineSelect({
+  value,
+  onChange,
+  disabled,
+  options,
+  placeholder,
+  renderValue,
+  buttonClassName = ''
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  disabled?: boolean;
+  options: { value: string; label: ReactNode; avatarString?: string }[];
+  placeholder?: string;
+  renderValue: (val: string) => ReactNode;
+  buttonClassName?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleOutsideClick(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isOpen]);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  return (
+    <div className={`relative ${buttonClassName}`} ref={containerRef}>
       <button
         type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className={`flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 ${disabled
+            ? 'pointer-events-none'
+            : 'bg-slate-50 border border-slate-200 hover:bg-white hover:shadow-sm focus:ring-2 focus:ring-blue-500/40'
+          }`}
       >
-        <span className="text-sm font-semibold text-slate-900">{title}</span>
-        <ChevronDown
-          aria-hidden="true"
-          className={`h-5 w-5 text-slate-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
-        />
+        <span className="truncate">
+          {selectedOption ? renderValue(value) : <span className="text-slate-400 font-medium">{placeholder || 'Select...'}</span>}
+        </span>
+        {!disabled && (
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        )}
       </button>
-      {expanded && (
-        <div className="space-y-2 px-4 pb-4 text-sm" role="region" aria-label={title}>{children}</div>
+
+      {isOpen && (
+        <ul className="absolute z-50 left-0 top-full mt-1 max-h-60 w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none">
+          {options.map((option) => (
+            <li
+              key={option.value}
+              onClick={() => {
+                onChange(option.value);
+                setIsOpen(false);
+              }}
+              className={`relative cursor-pointer select-none py-1.5 pl-3 pr-9 text-sm transition-colors ${value === option.value
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-slate-700 hover:bg-slate-50'
+                }`}
+            >
+              <div className="flex items-center gap-2 truncate">
+                {option.avatarString && <Avatar name={option.avatarString} />}
+                <span className={`block truncate ${value === option.value ? 'font-medium' : ''}`}>{option.label}</span>
+              </div>
+              {value === option.value && (
+                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-blue-600">
+                  <Check className="h-4 w-4" aria-hidden="true" />
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

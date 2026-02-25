@@ -30,7 +30,7 @@ function ActivityTooltip({
     return null;
   }
   return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2 text-[11px] shadow-card">
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] shadow-card">
       <div className="text-xs font-semibold text-slate-700">{point.date}</div>
       <div className="mt-2 space-y-1">
         <div className="flex items-center justify-between gap-3">
@@ -75,18 +75,18 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
               <stop offset="100%" stopColor="hsl(var(--status-resolved))" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
           <XAxis
             dataKey="day"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: '#64748b', fontSize: 12 }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
             allowDecimals={false}
-            tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+            tick={{ fill: '#64748b', fontSize: 12 }}
           />
           <Tooltip content={<ActivityTooltip />} />
           <Area
@@ -96,6 +96,9 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
             strokeWidth={2}
             fill="url(#openGradient)"
             dot={{ fill: 'hsl(var(--status-progress))', strokeWidth: 0, r: 4 }}
+            animationBegin={0}
+            animationDuration={800}
+            animationEasing="ease-out"
           />
           <Area
             type="monotone"
@@ -104,6 +107,9 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
             strokeWidth={2}
             fill="url(#resolvedGradient)"
             dot={{ fill: 'hsl(var(--status-resolved))', strokeWidth: 0, r: 4 }}
+            animationBegin={0}
+            animationDuration={800}
+            animationEasing="ease-out"
           />
         </AreaChart>
       </ResponsiveContainer>

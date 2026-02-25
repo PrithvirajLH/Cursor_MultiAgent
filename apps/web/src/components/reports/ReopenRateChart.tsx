@@ -58,7 +58,7 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
             <Tooltip
               formatter={(value: number | undefined) => [value ?? 0, 'Reopens']}
               labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ''}
-              contentStyle={{ fontSize: 12 }}
+              contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)' }}
             />
             <ReferenceLine
               y={avg}
@@ -66,7 +66,7 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
               strokeDasharray="4 4"
               ifOverflow="extendDomain"
             />
-            <Line type="monotone" dataKey="count" stroke="#0f172a" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="count" stroke="#0f172a" strokeWidth={2} dot={{ r: 3 }} animationBegin={0} animationDuration={800} animationEasing="ease-out" />
           </LineChart>
         </ResponsiveContainer>
       </div>

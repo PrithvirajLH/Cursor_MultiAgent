@@ -412,11 +412,10 @@ export function CategoriesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded-md px-2 py-1 text-xs font-medium ${
-                            category.isActive
+                          className={`rounded-md px-2 py-1 text-xs font-medium ${category.isActive
                               ? 'bg-green-100 text-green-700'
                               : 'bg-slate-100 text-slate-600'
-                          }`}
+                            }`}
                         >
                           {category.isActive ? 'Active' : 'Inactive'}
                         </span>
@@ -452,7 +451,10 @@ export function CategoriesPage() {
       </div>
 
       {showEditor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) closeEditor(); }}
+        >
           <div
             ref={editorDialogRef}
             role="dialog"
@@ -566,7 +568,10 @@ export function CategoriesPage() {
       )}
 
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}
+        >
           <div
             ref={deleteDialogRef}
             role="dialog"

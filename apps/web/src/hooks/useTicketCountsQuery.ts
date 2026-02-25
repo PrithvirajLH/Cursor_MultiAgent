@@ -53,7 +53,7 @@ export function useManagerMetricsQuery(params: ManagerMetricsKey) {
 export function useReportsQuery(reportQuery: ReportQuery) {
   return useQuery({
     queryKey: ['reports', reportQuery],
-    queryFn: () => fetchReportSummary({ ...reportQuery, groupBy: 'team' }),
+    queryFn: () => fetchReportSummary(reportQuery),
     // Reports can be moderately heavy; treat them as more static.
     staleTime: 60_000
   });

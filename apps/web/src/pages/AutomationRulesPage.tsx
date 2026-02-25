@@ -203,7 +203,10 @@ function ConfirmDeleteModal({
   useModalFocusTrap({ open: true, containerRef: dialogRef, onClose: onCancel });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -295,7 +298,10 @@ function RuleEditorModal({
   useModalFocusTrap({ open: true, containerRef: dialogRef, onClose });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -1267,9 +1273,8 @@ export function AutomationRulesPage({
               return (
                 <div
                   key={rule.id}
-                  className={`rounded-xl border border-slate-200 bg-white p-5 transition-all duration-200 hover:shadow-md ${
-                    !rule.isActive ? 'opacity-60' : ''
-                  }`}
+                  className={`rounded-xl border border-slate-200 bg-white p-5 transition-all duration-200 hover:shadow-md ${!rule.isActive ? 'opacity-60' : ''
+                    }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex flex-1 items-start space-x-4">
@@ -1313,12 +1318,12 @@ export function AutomationRulesPage({
                               {action.type.replace('_', ' ')}
                               {action.val
                                 ? (() => {
-                                    const displayValue =
-                                      action.type === 'assign_user'
-                                        ? resolveUserName(action.val, allUserOptions)
-                                        : action.val;
-                                    return `: ${displayValue.length > 24 ? `${displayValue.slice(0, 24)}…` : displayValue}`;
-                                  })()
+                                  const displayValue =
+                                    action.type === 'assign_user'
+                                      ? resolveUserName(action.val, allUserOptions)
+                                      : action.val;
+                                  return `: ${displayValue.length > 24 ? `${displayValue.slice(0, 24)}…` : displayValue}`;
+                                })()
                                 : ''}
                             </span>
                           ))}

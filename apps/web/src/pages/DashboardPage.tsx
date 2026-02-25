@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   fetchReportAgentWorkload,
@@ -154,12 +154,6 @@ function incrementTodaySeries(
   return next;
 }
 
-function toRangeLabel(range: '3' | '7' | '30') {
-  if (range === '3') return 'Last 3 days';
-  if (range === '7') return 'Last 7 days';
-  return 'Last 30 days';
-}
-
 function mapActivitySeries(data: TicketActivityPoint[], rangeDays: number): ActivityPoint[] {
   return data.map((point) => {
     const date = new Date(`${point.date}T00:00:00Z`);
@@ -217,49 +211,25 @@ function safePercent(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 100);
 }
 
-function panelClass(): string {
-  return 'rounded-lg border border-slate-200 bg-white p-4';
-}
-
-function kpiToneClass(tone: KpiTone): string {
+function kpiToneClass(tone: KpiTone): { bg: string; text: string; bgTone: string } {
   switch (tone) {
     case 'green':
-      return 'bg-green-50 border-green-200';
+      return { bg: 'bg-green-500', text: 'text-green-600', bgTone: 'bg-green-50' };
     case 'purple':
-      return 'bg-violet-50 border-violet-200';
+      return { bg: 'bg-violet-500', text: 'text-violet-600', bgTone: 'bg-violet-50' };
     case 'orange':
-      return 'bg-orange-50 border-orange-200';
+      return { bg: 'bg-orange-500', text: 'text-orange-600', bgTone: 'bg-orange-50' };
     case 'red':
-      return 'bg-red-50 border-red-200';
+      return { bg: 'bg-red-500', text: 'text-red-600', bgTone: 'bg-red-50' };
     case 'gray':
-      return 'bg-slate-100 border-slate-200';
+      return { bg: 'bg-slate-400', text: 'text-slate-600', bgTone: 'bg-slate-100' };
     case 'blue':
     default:
-      return 'bg-blue-50 border-blue-200';
+      return { bg: 'bg-blue-600', text: 'text-blue-600', bgTone: 'bg-blue-50' };
   }
 }
 
-function Panel({ title, right, children }: { title: string; right?: string; children: ReactNode }) {
-  return (
-    <div className={panelClass()}>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {right ? <span className="text-xs text-slate-500">{right}</span> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
 
-function KpiCard({ item }: { item: KpiItem }) {
-  return (
-    <div className={`rounded-lg border p-4 transition hover:-translate-y-0.5 hover:shadow-sm ${kpiToneClass(item.tone)}`}>
-      <div className="text-sm text-slate-600">{item.label}</div>
-      <div className="mt-1 text-3xl font-bold text-slate-900">{item.value}</div>
-      {item.helper ? <div className="mt-1 text-xs text-slate-500">{item.helper}</div> : null}
-    </div>
-  );
-}
 
 function PriorityBadge({ priority }: { priority?: string | null }) {
   return (
@@ -362,10 +332,10 @@ function PriorityDonutChart({ data }: { data: TicketsByPriorityResponse['data'] 
         item.priority === 'P1'
           ? '#ef4444'
           : item.priority === 'P2'
-          ? '#fb923c'
-          : item.priority === 'P3'
-          ? '#3b82f6'
-          : '#9ca3af',
+            ? '#fb923c'
+            : item.priority === 'P3'
+              ? '#3b82f6'
+              : '#9ca3af',
     }))
     .filter((item) => item.value > 0);
 
@@ -399,18 +369,25 @@ function LeadAgentWorkloadBarChart({ data }: { data: AgentWorkloadResponse['data
   }));
 
   if (points.length === 0) {
-    return <div className="flex h-[250px] items-center justify-center text-sm text-slate-500">No assigned open tickets.</div>;
+    return (
+      <div className="flex h-[250px] w-full items-center justify-center">
+        <EmptyState title="No workload data" description="No assigned open tickets." compact />
+      </div>
+    );
   }
 
   return (
     <div className="h-[250px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={points} margin={{ top: 5, right: 5, left: 0, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="#64748b" />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="#64748b" />
-          <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Open Tickets']} />
-          <Bar dataKey="openTickets" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip
+            formatter={(value: number | undefined) => [value ?? 0, 'Open Tickets']}
+            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+          />
+          <Bar dataKey="openTickets" fill="#3b82f6" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -425,18 +402,25 @@ function LeadSlaBarChart({ data }: { data: { met: number; atRisk: number; breach
   ];
 
   if (points.every((item) => item.value <= 0)) {
-    return <div className="flex h-[250px] items-center justify-center text-sm text-slate-500">No SLA data in range.</div>;
+    return (
+      <div className="flex h-[250px] w-full items-center justify-center">
+        <EmptyState title="No SLA data" description="No SLA events found in this range." compact />
+      </div>
+    );
   }
 
   return (
     <div className="h-[250px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={points} margin={{ top: 5, right: 5, left: 0, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#64748b" />
-          <YAxis allowDecimals={false} tick={{ fontSize: 11 }} stroke="#64748b" />
-          <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Tickets']} />
-          <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip
+            formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
+            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+          />
+          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
             {points.map((entry) => (
               <Cell key={entry.name} fill={entry.color} />
             ))}
@@ -481,7 +465,11 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
 
   const total = points.reduce((sum, item) => sum + item.value, 0);
   if (total <= 0) {
-    return <div className="flex h-[250px] items-center justify-center text-sm text-slate-500">No tickets in range</div>;
+    return (
+      <div className="flex h-[250px] w-full items-center justify-center">
+        <EmptyState title="No status data" description="No tickets matching this range." compact />
+      </div>
+    );
   }
 
   return (
@@ -494,13 +482,41 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Tickets']} />
+            <Tooltip
+              formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
+              contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
       <ChartLegend items={points.map((item) => ({ label: item.name, color: item.color }))} />
     </div>
   );
+}
+
+function ModernTicketCard({ ticket, onClick }: { ticket: TicketRecord, onClick: () => void }) {
+  return (
+    <div onClick={onClick} className="group flex flex-col sm:flex-row gap-5 p-6 bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_12px_rgb(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgb(0,0,0,0.06)] hover:border-blue-200 transition-all cursor-pointer mb-4">
+      <div className="flex-shrink-0">
+        <div className={`w-12 h-12 rounded-full border-2 border-white shadow-sm flex items-center justify-center font-bold text-lg ${priorityClass(ticket.priority)}`}>
+          {ticket.assignee ? (ticket.assignee.displayName?.charAt(0) || ticket.assignee.email?.charAt(0) || '?').toUpperCase() : '?'}
+        </div>
+      </div>
+      <div className="flex-grow">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+          <h3 className="text-[17px] font-bold text-slate-900 group-hover:text-blue-600 transition truncate pr-4">{ticket.subject}</h3>
+          <span className="text-xs font-medium text-slate-400 whitespace-nowrap"><RelativeTime value={ticket.updatedAt} /></span>
+        </div>
+        <p className="text-[14px] text-slate-500 mb-5 line-clamp-1">{activitySummary(ticket)}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-xs font-bold tracking-wider uppercase border border-slate-100">ID: {formatTicketId(ticket)}</span>
+          <PriorityBadge priority={ticket.priority} />
+          <StatusBadge status={ticket.status} />
+          <SlaChip ticket={ticket} />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function DashboardPage({ role }: DashboardPageProps) {
@@ -641,10 +657,10 @@ export function DashboardPage({ role }: DashboardPageProps) {
         knownTicketStateRef.current[ticketId] ??
         (currentTicket
           ? {
-              status: currentTicket.status,
-              priority: currentTicket.priority,
-              assigneeEmail: currentTicket.assignee?.email?.toLowerCase() ?? '',
-            }
+            status: currentTicket.status,
+            priority: currentTicket.priority,
+            assigneeEmail: currentTicket.assignee?.email?.toLowerCase() ?? '',
+          }
           : null);
       if (!previousState && payload.reason !== 'ticket_created') {
         void hydrateRealtimeTicketState(ticketId);
@@ -658,7 +674,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
       const nextAssigneeEmail =
         payload.assignee?.email?.toLowerCase() ??
         (Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
-        payload.assigneeId === null
+          payload.assigneeId === null
           ? ''
           : prevAssigneeEmail);
       const prevIsOpen = isOpenStatus(prevStatus);
@@ -964,13 +980,13 @@ export function DashboardPage({ role }: DashboardPageProps) {
             await Promise.all([
               isAgent
                 ? fetchTickets({
-                    pageSize: RECENT_TICKETS_COUNT,
-                    sort: 'updatedAt',
-                    order,
-                    scope: 'assigned',
-                    updatedFrom,
-                    includeTotal: false,
-                  }).catch(() => EMPTY_TICKETS)
+                  pageSize: RECENT_TICKETS_COUNT,
+                  sort: 'updatedAt',
+                  order,
+                  scope: 'assigned',
+                  updatedFrom,
+                  includeTotal: false,
+                }).catch(() => EMPTY_TICKETS)
                 : Promise.resolve(EMPTY_TICKETS),
               fetchTicketActivity({
                 from: reportFrom,
@@ -979,19 +995,18 @@ export function DashboardPage({ role }: DashboardPageProps) {
               }).catch(() => ({ data: [] })),
               isAgent
                 ? fetchTicketStatusBreakdown({
-                    from: reportFrom,
-                    to: reportTo,
-                    scope: 'assigned',
-                    dateField: 'updatedAt',
-                  }).catch(() => ({ data: [] }))
+                  from: reportFrom,
+                  to: reportTo,
+                  scope: 'assigned',
+                  dateField: 'updatedAt',
+                }).catch(() => ({ data: [] }))
                 : Promise.resolve({ data: [] as TicketStatusPoint[] }),
               isLead || isTeamAdmin || isOwner
                 ? fetchReportSummary({
-                    from: reportFrom,
-                    to: reportTo,
-                    dateField: 'updatedAt',
-                    groupBy: 'team',
-                  }).catch(() => EMPTY_REPORT_SUMMARY)
+                  from: reportFrom,
+                  to: reportTo,
+                  dateField: 'updatedAt',
+                }).catch(() => EMPTY_REPORT_SUMMARY)
                 : Promise.resolve(EMPTY_REPORT_SUMMARY),
               isLead || isTeamAdmin || isOwner
                 ? fetchReportAgentWorkload({ from: reportFrom, to: reportTo }).catch(() => ({ data: [] }))
@@ -1004,11 +1019,11 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 : Promise.resolve({ data: [] }),
               isTeamAdmin
                 ? fetchReportTicketsByCategory({
-                    from: reportFrom,
-                    to: reportTo,
-                    statusGroup: 'open',
-                    dateField: 'updatedAt',
-                  }).catch(() => ({ data: [] }))
+                  from: reportFrom,
+                  to: reportTo,
+                  statusGroup: 'open',
+                  dateField: 'updatedAt',
+                }).catch(() => ({ data: [] }))
                 : Promise.resolve({ data: [] }),
               isOwner
                 ? fetchReportTeamSummary({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
@@ -1076,7 +1091,6 @@ export function DashboardPage({ role }: DashboardPageProps) {
   }, [role, range, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
 
   const roleMeta = ROLE_META[role] ?? ROLE_META.EMPLOYEE;
-  const rangeLabel = toRangeLabel(range);
 
   const activeAgents = useMemo(
     () => agentWorkload.filter((item) => (item.assignedOpen ?? 0) > 0 || (item.inProgress ?? 0) > 0).length,
@@ -1089,7 +1103,6 @@ export function DashboardPage({ role }: DashboardPageProps) {
   );
 
   const reopenRate = safePercent(reopenTotal, stats.resolved);
-  const slaPercent = safePercent(slaCompliance.met, slaCompliance.total);
   const unassignedPercent = safePercent(stats.unassigned, stats.open);
 
   const kpis = useMemo<KpiItem[]>(() => {
@@ -1143,8 +1156,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
   }, [activeAgents, isAgent, isEmployee, isLead, isTeamAdmin, stats, transfers.total, unassignedPercent]);
 
   return (
-    <section className="min-h-full bg-slate-50">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-[#f8fafc]">
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -1157,144 +1170,37 @@ export function DashboardPage({ role }: DashboardPageProps) {
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">{headerCtx.title}</h1>
-                  <p className="text-sm text-slate-500">{headerCtx.subtitle}</p>
-                  {refreshing ? <p className="mt-1 text-xs text-slate-400">Refreshing...</p> : null}
+                  <h1 className="text-xl font-bold tracking-tight text-slate-900">{headerCtx.title}</h1>
+                  <p className="text-sm font-medium text-slate-500">{headerCtx.subtitle}</p>
+                  {refreshing ? <p className="mt-1 text-xs font-semibold text-blue-600">Refreshing data...</p> : null}
                 </div>
               }
             />
           ) : (
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">{roleMeta.title}</h1>
-              <p className="text-sm text-slate-500">{roleMeta.subtitle}</p>
-              {refreshing ? <p className="mt-1 text-xs text-slate-400">Refreshing...</p> : null}
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">{roleMeta.title}</h1>
+              <p className="text-sm font-medium text-slate-500">{roleMeta.subtitle}</p>
+              {refreshing ? <p className="mt-1 text-xs font-semibold text-blue-600">Refreshing data...</p> : null}
             </div>
           )}
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1600px] px-6 py-6">
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <div
-            className={`mb-6 grid gap-4 ${
-              kpis.length === 2 ? 'sm:grid-cols-2' : kpis.length === 4 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-2 xl:grid-cols-5'
-            }`}
-          >
-            {loading && !loadedOnceRef.current
-              ? Array.from({ length: kpis.length }).map((_, idx) => (
-                  <div key={`kpi-skeleton-${idx}`} className="h-28 animate-pulse rounded-lg border border-slate-200 bg-slate-100" />
-                ))
-              : kpis.map((item) => <KpiCard key={item.label} item={item} />)}
-          </div>
+      <div className="mx-auto w-full max-w-[1600px] px-6 py-8">
+        <div className="space-y-8">
           {isEmployee ? (
-            <div>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-slate-900">Recent Activity</h2>
-                <div className="flex items-center gap-3">
-                  <select
-                    value={range}
-                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                    aria-label="Activity range"
-                  >
-                    <option value="3">Last 3 days</option>
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                  </select>
-                  <select
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value as 'recent' | 'oldest')}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                  >
-                    <option value="recent">Most recent</option>
-                    <option value="oldest">Oldest</option>
-                  </select>
-                </div>
-              </div>
-
-              {loading ? (
-                <div className="h-56 animate-pulse rounded-md border border-slate-200 bg-slate-100" />
-              ) : recentTickets.length === 0 ? (
-                <EmptyState title="No recent activity" description={`No recent activity in the ${rangeLabel.toLowerCase()}.`} compact />
-              ) : (
-                <>
-                  <div className="overflow-x-auto rounded-md border border-slate-200">
-                    <table className="w-full min-w-[1100px]">
-                      <thead className="border-b border-slate-200 bg-slate-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">ID</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Subject</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Activity</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Assignee</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Priority</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">SLA</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 bg-white">
-                        {recentTickets.map((ticket) => (
-                          <tr
-                            key={ticket.id}
-                            onClick={() => navigate(`/tickets/${ticket.id}`)}
-                            className="cursor-pointer transition hover:bg-slate-50"
-                          >
-                            <td className="px-4 py-3 text-sm font-semibold text-blue-600">{formatTicketId(ticket)}</td>
-                            <td className="max-w-[330px] truncate px-4 py-3 text-sm text-slate-900">{ticket.subject}</td>
-                            <td className="px-4 py-3 text-sm text-slate-600">{activitySummary(ticket)}</td>
-                            <td className="px-4 py-3 text-sm text-slate-900">
-                              {ticket.assignee?.displayName ?? ticket.assignee?.email ?? 'Unassigned'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <PriorityBadge priority={ticket.priority} />
-                            </td>
-                            <td className="px-4 py-3">
-                              <SlaChip ticket={ticket} />
-                            </td>
-                            <td className="px-4 py-3">
-                              <StatusBadge status={ticket.status} />
-                            </td>
-                            <td className="px-4 py-3 text-sm text-slate-500">
-                              <RelativeTime value={ticket.updatedAt} variant="compact" />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            <div className="grid gap-8 lg:grid-cols-12">
+              <div className="lg:col-span-8">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">My Requests</h2>
+                    <p className="text-sm text-slate-500 mt-1">Track the status of your submitted tickets</p>
                   </div>
-                  <div className="mt-4 text-center">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/tickets?scope=created')}
-                      className="text-sm font-medium text-blue-600 transition hover:text-blue-700"
-                    >
-                      View my tickets →
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {isAgent ? (
-            <div className="grid gap-6 lg:grid-cols-5">
-              <div className="lg:col-span-3">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-slate-900">Recent Activity</h2>
                   <div className="flex items-center gap-2">
-                    <select
-                      value={range}
-                      onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                    >
-                      <option value="3">Last 3 days</option>
-                      <option value="7">Last 7 days</option>
-                      <option value="30">Last 30 days</option>
-                    </select>
                     <select
                       value={sort}
                       onChange={(event) => setSort(event.target.value as 'recent' | 'oldest')}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
                     >
                       <option value="recent">Most recent</option>
                       <option value="oldest">Oldest</option>
@@ -1303,473 +1209,416 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 {loading ? (
-                  <div className="h-56 animate-pulse rounded-md border border-slate-200 bg-slate-100" />
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => <div key={i} className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm" />)}
+                  </div>
                 ) : recentTickets.length === 0 ? (
-                  <EmptyState title="No recent tickets yet" description="Recent tickets will appear here." compact />
+                  <EmptyState title="No recent activity" description={`No recent activity found.`} compact />
                 ) : (
-                  <>
-                    <div className="overflow-x-auto rounded-md border border-slate-200">
-                      <table className="w-full min-w-[760px]">
-                        <thead className="border-b border-slate-200 bg-slate-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">ID</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Subject</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Priority</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Status</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase text-slate-500">Updated</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 bg-white">
-                          {recentTickets.map((ticket) => (
-                            <tr
-                              key={ticket.id}
-                              onClick={() => navigate(`/tickets/${ticket.id}`)}
-                              className="cursor-pointer transition hover:bg-slate-50"
-                            >
-                              <td className="px-4 py-3 text-sm font-semibold text-blue-600">{formatTicketId(ticket)}</td>
-                              <td className="max-w-[340px] truncate px-4 py-3 text-sm text-slate-900">{ticket.subject}</td>
-                              <td className="px-4 py-3">
-                                <PriorityBadge priority={ticket.priority} />
-                              </td>
-                              <td className="px-4 py-3">
-                                <StatusBadge status={ticket.status} />
-                              </td>
-                              <td className="px-4 py-3 text-sm text-slate-500">
-                                <RelativeTime value={ticket.updatedAt} variant="compact" />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="mt-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => navigate('/tickets')}
-                        className="text-sm font-medium text-blue-600 transition hover:text-blue-700"
-                      >
-                        View all tickets →
+                  <div className="space-y-4">
+                    {recentTickets.map((ticket) => (
+                      <ModernTicketCard key={ticket.id} ticket={ticket} onClick={() => navigate(`/tickets/${ticket.id}`)} />
+                    ))}
+                    <div className="pt-4 text-center">
+                      <button type="button" onClick={() => navigate('/tickets?scope=created')} className="text-sm font-semibold text-blue-600 transition hover:text-blue-700">
+                        View my tickets →
                       </button>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
-
-              <div className="grid gap-6 lg:col-span-2 lg:grid-rows-2">
-                <div className="flex min-h-[300px] flex-col">
-                  <Panel title="Ticket Activity" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px] space-y-3">
-                        <TicketActivityChart data={activity} />
-                        <ChartLegend
-                          items={[
-                            { label: 'Open', color: 'hsl(var(--status-progress))' },
-                            { label: 'Resolved', color: 'hsl(var(--status-resolved))' },
-                          ]}
-                        />
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-                <div className="flex min-h-[300px] flex-col">
-                  <Panel title="Tickets by Status" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <StatusDonutChart data={statusBreakdown} />
-                      </div>
-                    )}
-                  </Panel>
+              <div className="space-y-6 lg:col-span-4">
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Quick Stats</h3>
+                  <div className="space-y-5">
+                    {kpis.map((item, idx) => {
+                      const tone = kpiToneClass(item.tone);
+                      return (
+                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                          <div>
+                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
+                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                          </div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
           ) : null}
 
-          {isLead ? (
-            <>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Team Insights</h2>
-                <select
-                  value={range}
-                  onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                >
-                  <option value="3">Last 3 days</option>
-                  <option value="7">Last 7 days</option>
-                  <option value="30">Last 30 days</option>
-                </select>
+          {isAgent ? (
+            <div className="grid gap-8 lg:grid-cols-12">
+              <div className="lg:col-span-8">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Your Action Items</h2>
+                    <p className="text-sm text-slate-500 mt-1">Review and resolve your assigned tickets</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={sort}
+                      onChange={(event) => setSort(event.target.value as 'recent' | 'oldest')}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                    >
+                      <option value="recent">Most recent updates</option>
+                      <option value="oldest">Oldest updates</option>
+                    </select>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => <div key={i} className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm" />)}
+                  </div>
+                ) : recentTickets.length === 0 ? (
+                  <EmptyState title="All caught up!" description="No active tickets require your attention." compact />
+                ) : (
+                  <div className="space-y-4">
+                    {recentTickets.map((ticket) => (
+                      <ModernTicketCard key={ticket.id} ticket={ticket} onClick={() => navigate(`/tickets/${ticket.id}`)} />
+                    ))}
+                    <div className="pt-4 text-center">
+                      <button type="button" onClick={() => navigate('/tickets')} className="text-sm font-semibold text-blue-600 transition hover:text-blue-700">
+                        View all tickets →
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-5 lg:grid-rows-2">
-                <div className="flex min-h-[300px] flex-col lg:col-span-3 lg:row-span-1">
-                  <Panel title="Agent Workload" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <LeadAgentWorkloadBarChart data={agentWorkload} />
-                      </div>
-                    )}
-                  </Panel>
+              <div className="space-y-6 lg:col-span-4">
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Workload Vitals</h3>
+                  <div className="space-y-5">
+                    {kpis.map((item, idx) => {
+                      const tone = kpiToneClass(item.tone);
+                      return (
+                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                          <div>
+                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
+                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                          </div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-2 lg:row-span-1">
-                  <Panel title="SLA Performance" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <LeadSlaBarChart
-                          data={{ met: slaCompliance.met, atRisk: slaCompliance.atRisk, breached: slaCompliance.breached }}
-                        />
-                      </div>
-                    )}
-                  </Panel>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Activity Trend</h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse rounded-xl bg-slate-50" />
+                  ) : (
+                    <div className="flex-1 -mx-4 mt-2">
+                      <TicketActivityChart data={activity} />
+                    </div>
+                  )}
                 </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-3 lg:row-span-1">
-                  <Panel title="Ticket Status Distribution" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <LeadStatusPieChart data={statusBreakdown} />
-                      </div>
-                    )}
-                  </Panel>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Queue Status</h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse rounded-xl bg-slate-50" />
+                  ) : (
+                    <div className="flex-1 -mx-4 mt-2">
+                      <StatusDonutChart data={statusBreakdown} />
+                    </div>
+                  )}
                 </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-2 lg:row-span-1">
-                  <Panel title="Agent Performance">
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : agentPerformance.length === 0 ? (
-                      <p className="min-h-[260px] text-sm text-slate-500">No agent performance data in this range.</p>
-                    ) : (
-                      <div className="min-h-[260px] space-y-3">
-                        {agentPerformance.slice(0, 4).map((agent) => (
-                          <div key={agent.userId} className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-slate-900">{agent.name}</span>
-                            <div className="flex items-center gap-3">
-                              <span>{agent.ticketsResolved} resolved</span>
-                              <span className="font-medium text-green-600">
-                                {agent.ticketsResolved > 0
-                                  ? `${Math.min(100, Math.round((agent.firstResponses / agent.ticketsResolved) * 100))}%`
-                                  : '—'}
+
+              </div>
+            </div>
+          ) : null}
+
+          {isLead ? (
+            <div className="grid gap-8 lg:grid-cols-12">
+              <div className="space-y-6 lg:col-span-8">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Team Insights</h2>
+                    <p className="text-sm text-slate-500 mt-1">Monitor your team's workload and SLA compliance</p>
+                  </div>
+                  <select
+                    value={range}
+                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                  >
+                    <option value="3">Last 3 days</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                  </select>
+                </div>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 min-h-[300px] flex flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Agent Workload</h3>
+                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadAgentWorkloadBarChart data={agentWorkload} /></div>}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Status Distribution</h3>
+                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadStatusPieChart data={statusBreakdown} /></div>}
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Agent Performance</h3>
+                    <div className="flex-1">
+                      {loading ? <div className="animate-pulse bg-slate-50 h-32 rounded-xl" /> : agentPerformance.length === 0 ? <span className="text-sm text-slate-400">No data</span> : (
+                        agentPerformance.slice(0, 4).map((agent) => (
+                          <div key={agent.userId} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+                            <span className="font-semibold text-slate-900 text-[15px]">{agent.name}</span>
+                            <div className="flex gap-2 items-center text-sm">
+                              <span className="text-slate-500">{agent.ticketsResolved} res</span>
+                              <span className="font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">
+                                {agent.ticketsResolved > 0 ? `${Math.min(100, Math.round((agent.firstResponses / agent.ticketsResolved) * 100))}%` : '—'}
                               </span>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </Panel>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </>
+
+              <div className="space-y-6 lg:col-span-4">
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Team Vitals</h3>
+                  <div className="space-y-5">
+                    {kpis.map((item, idx) => {
+                      const tone = kpiToneClass(item.tone);
+                      return (
+                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                          <div>
+                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
+                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                          </div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">SLA Performance</h3>
+                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadSlaBarChart data={{ met: slaCompliance.met, atRisk: slaCompliance.atRisk, breached: slaCompliance.breached }} /></div>}
+                </div>
+              </div>
+            </div>
           ) : null}
 
           {isTeamAdmin ? (
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Queue Operations</h2>
-                <select
-                  value={range}
-                  onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                >
-                  <option value="3">Last 3 days</option>
-                  <option value="7">Last 7 days</option>
-                  <option value="30">Last 30 days</option>
-                </select>
+            <div className="grid gap-8 lg:grid-cols-12">
+              <div className="space-y-6 lg:col-span-8">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Queue Operations</h2>
+                    <p className="text-sm text-slate-500 mt-1">Manage triage configurations and active queue health</p>
+                  </div>
+                  <select
+                    value={range}
+                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                  >
+                    <option value="3">Last 3 days</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                  </select>
+                </div>
+
+                {/* Operational Warnings Bento */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-red-200 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
+                    <h3 className="text-sm font-bold text-slate-700 mb-2">Breached SLA</h3>
+                    <div className="text-4xl font-bold tracking-tight text-red-600 mb-1">{stats.overdue}</div>
+                    <p className="text-[12px] font-semibold text-slate-500">Immediate attention</p>
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-orange-200 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-orange-500" />
+                    <h3 className="text-sm font-bold text-slate-700 mb-2">At Risk</h3>
+                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">{stats.atRisk}</div>
+                    <p className="text-[12px] font-semibold text-slate-500">Approaching breach</p>
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-blue-200 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-blue-500" />
+                    <h3 className="text-sm font-bold text-slate-700 mb-2">Unassigned</h3>
+                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">{stats.unassigned}</div>
+                    <p className="text-[12px] font-semibold text-slate-500">{unassignedPercent}% of open</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Tickets by Age</h3>
+                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4 mt-2"><TicketsByAgeChart data={ageBreakdown} /></div>}
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Reopen Trend</h3>
+                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4 mt-2">{reopenSeries.length > 0 ? <ReopenRateChart data={reopenSeries} /> : <span className="p-4 text-slate-400">No data</span>}</div>}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Routing Exceptions & Categories</h3>
+                  <div className="grid grid-cols-2 gap-8 text-sm">
+                    <div className="space-y-4">
+                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">Emails not parsed</span><span className="font-bold text-red-600">0</span></div>
+                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">Auto-assigned</span><span className="font-bold text-blue-600">{stats.assignedToMe}</span></div>
+                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">Failed webhooks</span><span className="font-bold text-orange-600">0</span></div>
+                    </div>
+                    <div className="space-y-4 border-l border-slate-100 pl-8">
+                      {queueCategories.slice(0, 3).map(c => <div key={c.id} className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">{c.name}</span><span className="font-bold">{c.count}</span></div>)}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="grid gap-6 lg:grid-cols-12">
-                <div className="space-y-4 lg:col-span-4 lg:row-span-1">
-                  <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-red-900">Breached SLA</span>
-                      <span className="text-2xl font-bold text-red-700">{stats.overdue}</span>
-                    </div>
-                    <p className="text-xs text-red-600">Immediate attention required</p>
-                  </div>
-                  <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-orange-900">At Risk</span>
-                      <span className="text-2xl font-bold text-orange-700">{stats.atRisk}</span>
-                    </div>
-                    <p className="text-xs text-orange-600">Due within breach window</p>
-                  </div>
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-blue-900">Unassigned</span>
-                      <span className="text-2xl font-bold text-blue-700">{stats.unassigned}</span>
-                    </div>
-                    <p className="text-xs text-blue-600">{unassignedPercent}% of open tickets</p>
-                  </div>
-                </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-5 lg:row-span-1">
-                  <Panel title="Tickets by Age" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <TicketsByAgeChart data={ageBreakdown} />
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-3 lg:row-span-1">
-                  <Panel title="SLA Compliance">
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <>
-                        <div className="min-h-[220px]">
-                          <LeadSlaBarChart
-                            data={{
-                              met: slaCompliance.met,
-                              atRisk: slaCompliance.atRisk,
-                              breached: slaCompliance.breached,
-                            }}
-                          />
-                        </div>
-                        <div className="mt-3 text-center">
-                          <span className="text-2xl font-bold text-green-600">{slaPercent}%</span>
-                          <p className="text-xs text-slate-500">Overall compliance</p>
-                        </div>
-                      </>
-                    )}
-                  </Panel>
-                </div>
-
-                <div className="flex min-h-[260px] flex-col lg:col-span-4 lg:row-span-1">
-                  <Panel title="Queues by Category">
-                    {loading ? (
-                      <div className="min-h-[220px] animate-pulse rounded-md bg-slate-100" />
-                    ) : queueCategories.length === 0 ? (
-                      <p className="text-sm text-slate-500">No category data in this range.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {queueCategories.map((category) => (
-                          <div key={category.id} className="flex items-center justify-between text-sm">
-                            <span className="text-slate-700">{category.name}</span>
-                            <span className="font-medium text-slate-900">{category.count}</span>
+              <div className="space-y-6 lg:col-span-4">
+                <div className="bg-slate-900 rounded-[24px] p-6 shadow-[0_4px_20px_rgb(0,0,0,0.1)] border border-slate-800">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Admin Summary</h3>
+                  <div className="space-y-5">
+                    {kpis.map((item, idx) => {
+                      return (
+                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-800 last:border-0 last:pb-0">
+                          <div>
+                            <div className="text-[14px] font-medium text-slate-300">{item.label}</div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-                <div className="flex min-h-[260px] flex-col lg:col-span-5 lg:row-span-1">
-                  <Panel title="Routing Exceptions">
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-700">Emails not parsed</span>
-                        <span className="font-medium text-red-600">0</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-700">Auto-assigned</span>
-                        <span className="font-medium text-blue-600">{stats.assignedToMe}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-700">Failed webhooks</span>
-                        <span className="font-medium text-orange-600">0</span>
-                      </div>
-                    </div>
-                  </Panel>
-                </div>
-                <div className="flex min-h-[260px] flex-col lg:col-span-3 lg:row-span-1">
-                  <Panel title="Reopen Rate">
-                    <div className="mb-3 text-center">
-                      <span className="text-3xl font-bold text-orange-600">{reopenRate}%</span>
-                      <p className="text-xs text-slate-500">{rangeLabel}</p>
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      <div className="mb-1 flex justify-between">
-                        <span>Reopened</span>
-                        <span className="font-medium">{reopenTotal}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Total resolved</span>
-                        <span className="font-medium">{stats.resolved}</span>
-                      </div>
-                    </div>
-                  </Panel>
+                          <div className="text-3xl font-bold tracking-tight text-white">{item.value}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="lg:col-span-6">
-                  <Panel title="Admin Controls">
-                    <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => navigate('/routing')}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-left text-sm font-medium text-blue-600 transition hover:bg-slate-50"
-                      >
-                        → Routing rules
-                      </button>
-                      <button
-                        type="button"
-                        disabled
-                        className="w-full cursor-not-allowed rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-400"
-                      >
-                        Business hours (Coming soon)
-                      </button>
-                      <button
-                        type="button"
-                        disabled
-                        className="w-full cursor-not-allowed rounded-md border border-slate-300 px-3 py-2 text-left text-sm text-slate-400"
-                      >
-                        Macros (Coming soon)
-                      </button>
-                    </div>
-                  </Panel>
-                </div>
-                <div className="lg:col-span-6">
-                  <Panel title="Reopen Trend" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[220px] animate-pulse rounded-md bg-slate-100" />
-                    ) : reopenSeries.length > 0 ? (
-                      <div className="min-h-[220px]">
-                        <ReopenRateChart data={reopenSeries} />
-                      </div>
-                    ) : (
-                      <p className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">
-                        No reopen data in this range.
-                      </p>
-                    )}
-                  </Panel>
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Quick Settings</h3>
+                  <div className="space-y-3">
+                    <button onClick={() => navigate('/routing')} className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition">⚙️ Routing Rules Mode</button>
+                    <button disabled className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed">⏱️ Business Hours Config</button>
+                    <button disabled className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed">⚡ Macros Library</button>
+                  </div>
                 </div>
               </div>
             </div>
           ) : null}
 
           {isOwner ? (
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Platform Overview</h2>
-                <select
-                  value={range}
-                  onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-                >
-                  <option value="3">Last 3 days</option>
-                  <option value="7">Last 7 days</option>
-                  <option value="30">Last 30 days</option>
-                </select>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-12 lg:grid-rows-2">
-                <div className="flex min-h-[300px] flex-col lg:col-span-4 lg:row-span-1">
-                  <Panel title="Team Summary">
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : teamSummary.length === 0 ? (
-                      <p className="text-sm text-slate-500">No team summary data in this range.</p>
-                    ) : (
-                      <div className="min-h-[260px] overflow-x-auto">
-                        <table className="w-full min-w-[320px] text-sm">
-                          <thead className="border-b border-slate-200">
-                            <tr>
-                              <th className="py-2 text-left text-xs text-slate-500">Team</th>
-                              <th className="py-2 text-right text-xs text-slate-500">Open</th>
-                              <th className="py-2 text-right text-xs text-slate-500">SLA</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200">
-                            {teamSummary.map((team) => (
-                              <tr key={team.id}>
-                                <td className="py-2 text-slate-900">{team.name}</td>
-                                <td className="py-2 text-right font-medium text-slate-900">{team.open}</td>
-                                <td className="py-2 text-right text-green-600">{safePercent(team.resolved, team.total)}%</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-5 lg:row-span-1">
-                  <Panel title="Platform Activity" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <TicketVolumeChart data={volumeSeries} />
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-3 lg:row-span-1">
-                  <Panel title="SLA Compliance">
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <>
-                        <div className="min-h-[220px]">
-                          <LeadSlaBarChart
-                            data={{
-                              met: slaCompliance.met,
-                              atRisk: slaCompliance.atRisk,
-                              breached: slaCompliance.breached,
-                            }}
-                          />
-                        </div>
-                        <div className="mt-3 text-center">
-                          <span className="text-2xl font-bold text-green-600">{slaPercent}%</span>
-                          <p className="text-xs text-slate-500">Platform-wide</p>
-                        </div>
-                      </>
-                    )}
-                  </Panel>
+            <div className="grid gap-8 lg:grid-cols-12">
+              <div className="space-y-6 lg:col-span-8">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Platform Overview</h2>
+                    <p className="text-sm text-slate-500 mt-1">Cross-team performance and business metrics</p>
+                  </div>
+                  <select
+                    value={range}
+                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                  >
+                    <option value="3">Last 3 days</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                  </select>
                 </div>
 
-                <div className="flex min-h-[300px] flex-col lg:col-span-4 lg:row-span-1">
-                  <Panel title="Tickets by Priority" right={rangeLabel}>
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : (
-                      <div className="min-h-[260px]">
-                        <PriorityDonutChart data={priorityBreakdown} />
-                      </div>
-                    )}
-                  </Panel>
-                </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-5 lg:row-span-1">
-                  <div className="grid min-h-[300px] grid-cols-2 gap-4">
-                    <Panel title="Transfers">
-                      <div className="text-center">
-                        <span className="text-3xl font-bold text-blue-600">{transfers.total}</span>
-                        <p className="text-xs text-slate-500">{rangeLabel}</p>
-                      </div>
-                    </Panel>
-                    <Panel title="Reopen Rate">
-                      <div className="text-center">
-                        <span className="text-3xl font-bold text-orange-600">{reopenRate}%</span>
-                        <p className="text-xs text-slate-500">{rangeLabel}</p>
-                      </div>
-                    </Panel>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-slate-900 rounded-[24px] p-6 shadow-sm border border-slate-800 relative overflow-hidden">
+                    <h3 className="text-sm font-medium text-slate-400 mb-2">Total Open</h3>
+                    <div className="text-4xl font-bold tracking-tight text-white mb-1">{stats.open}</div>
+                    <p className="text-[12px] font-semibold text-blue-400">System wide</p>
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col justify-center items-center">
+                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">{transfers.total}</div>
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total Transfers</h3>
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col justify-center items-center">
+                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">{reopenRate}%</div>
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Reopen Rate</h3>
                   </div>
                 </div>
-                <div className="flex min-h-[300px] flex-col lg:col-span-3 lg:row-span-1">
-                  <Panel title="Top Performers">
-                    {loading ? (
-                      <div className="min-h-[260px] animate-pulse rounded-md bg-slate-100" />
-                    ) : agentPerformance.length === 0 ? (
-                      <p className="min-h-[260px] text-sm text-slate-500">No agent performance data in this range.</p>
-                    ) : (
-                      <div className="min-h-[260px] space-y-2">
-                        {agentPerformance.slice(0, 3).map((agent, idx) => (
-                          <div key={agent.userId} className="flex items-center justify-between text-sm">
-                            <span className="text-slate-900">#{idx + 1} {agent.name}</span>
-                            <span className="font-medium text-green-600">
-                              {agent.avgFirstResponseHours == null ? '—' : `${agent.avgFirstResponseHours.toFixed(1)}h`}
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 min-h-[300px] flex flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Platform Activity</h3>
+                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><TicketVolumeChart data={volumeSeries} /></div>}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Tickets by Priority</h3>
+                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><PriorityDonutChart data={priorityBreakdown} /></div>}
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Top Performers</h3>
+                    <div className="flex-1 space-y-4 pt-2">
+                      {loading ? <div className="animate-pulse bg-slate-50 h-32 rounded-xl" /> : agentPerformance.length === 0 ? <span className="text-sm text-slate-400">No data</span> : (
+                        agentPerformance.slice(0, 4).map((agent, idx) => (
+                          <div key={agent.userId} className="flex justify-between items-center border-b border-slate-50 last:border-0 pb-3">
+                            <span className="font-semibold text-slate-900 text-[15px]">#{idx + 1} {agent.name}</span>
+                            <span className="font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded text-sm">
+                              {agent.avgFirstResponseHours == null ? '—' : `${agent.avgFirstResponseHours.toFixed(1)}h FRT`}
                             </span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </Panel>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6 lg:col-span-4">
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Executive Vitals</h3>
+                  <div className="space-y-5">
+                    {kpis.map((item, idx) => {
+                      const tone = kpiToneClass(item.tone);
+                      return (
+                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                          <div>
+                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
+                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                          </div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">SLA Compliance</h3>
+                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadSlaBarChart data={{ met: slaCompliance.met, atRisk: slaCompliance.atRisk, breached: slaCompliance.breached }} /></div>}
+                </div>
+
+                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Team Summary</h3>
+                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : (
+                    <div className="flex-1 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="border-b border-slate-100">
+                          <tr>
+                            <th className="py-2 text-left font-semibold text-slate-500">Team</th>
+                            <th className="py-2 text-right font-semibold text-slate-500">Open</th>
+                            <th className="py-2 text-right font-semibold text-slate-500">SLA</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {teamSummary.map((team) => (
+                            <tr key={team.id}>
+                              <td className="py-3 font-medium text-slate-900">{team.name}</td>
+                              <td className="py-3 text-right font-bold text-slate-700">{team.open}</td>
+                              <td className="py-3 text-right font-bold text-green-600">{safePercent(team.resolved, team.total)}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

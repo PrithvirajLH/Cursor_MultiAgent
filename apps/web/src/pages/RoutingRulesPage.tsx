@@ -112,10 +112,10 @@ function deriveMetaFromRule(rule: RoutingRule, mode: AssignmentMode): RuleUiMeta
   const conditions =
     rule.keywords.length > 0
       ? rule.keywords.map((keyword) => ({
-          field: 'subject',
-          op: 'contains',
-          val: keyword
-        }))
+        field: 'subject',
+        op: 'contains',
+        val: keyword
+      }))
       : [{ ...DEFAULT_CONDITION }];
 
   const actions: RoutingAction[] = [
@@ -169,7 +169,10 @@ function ConfirmDeleteModal({
   useModalFocusTrap({ open: true, containerRef: dialogRef, onClose: onCancel });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -252,7 +255,10 @@ function RuleEditorModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -364,15 +370,15 @@ function RuleEditorModal({
                     </option>
                     {assignmentMode === 'member'
                       ? memberOptions.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {member.label}
-                          </option>
-                        ))
+                        <option key={member.id} value={member.id}>
+                          {member.label}
+                        </option>
+                      ))
                       : teamsList.map((team) => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
               ))}
@@ -843,9 +849,8 @@ export function RoutingRulesPage({
               return (
                 <div
                   key={rule.id}
-                  className={`rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-md ${
-                    !rule.isActive ? 'opacity-60' : ''
-                  }`}
+                  className={`rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-md ${!rule.isActive ? 'opacity-60' : ''
+                    }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-3">
