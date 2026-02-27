@@ -1,6 +1,6 @@
 # Unified Delivery Status, Performance, and Backlog
 
-Last updated: 2026-02-20
+Last updated: 2026-02-25
 Owner: Engineering
 Scope: Consolidated view of sprint status, current performance findings, verified pending work, and prioritized next-sprint backlog.
 
@@ -12,19 +12,19 @@ Scope: Consolidated view of sprint status, current performance findings, verifie
 |---|---|---|
 | Ticketing core (create, list, detail, assignment, transitions, notes, followers) | Complete | Shipped and working in current codebase. |
 | Routing + audit + admin CRUD (teams/categories/rules) | Mostly complete | Keyword + round-robin implemented; skill/on-call routing still pending. |
-| SLA policy and breach processing | Mostly complete | Core SLA model and breach worker exist; business hours/holiday calendars pending. |
-| Email integration | Partial | Outbound email exists; inbound parsing/threading webhook path not implemented. |
+| SLA policy and breach processing | Mostly complete | Core SLA model and breach worker exist; business-hours calendars are implemented; delayed-job scheduling model is still pending. |
+| Email integration | Mostly complete | Outbound and inbound email ingestion/threading are implemented with webhook secret validation and replay-safe message dedupe. |
 | Attachments security/storage | Partial | Upload/download works, but local disk only and no real malware scanner integration. |
-| Auth and production hardening | Partial | Bearer/JWT and throttling are active; insecure header auth remains dev/test fallback only; production SSO rollout is still pending. |
+| Auth and production hardening | Mostly complete | Bearer/JWT auth and throttling are active; insecure header auth is dev/test-only fallback; production SSO rollout and identity operations hardening are still pending. |
 | CI/CD and rollout readiness | Partial | CI workflow exists for lint/build/integration/e2e; rollout runbooks and deployment cutover remain pending. |
 
 ### Top Immediate Gaps
 
-1. Inbound email ingestion + threading + replay safety.
-2. Production auth migration from header auth to bearer/OIDC path.
-3. Idempotency and rate limiting for write-heavy/webhook endpoints.
-4. Attachment cloud storage and malware scanning state enforcement.
-5. Performance improvements to meet p95 targets for ticket list/detail.
+1. Inbound provider contract documentation (`EMAIL-01`) is not finalized.
+2. Attachment cloud storage/provider abstraction (`ATT-01`) is not implemented.
+3. API summary/count caching (`PERF-02`) is not implemented.
+4. Request correlation ID propagation (`OBS-01`) is not implemented.
+5. Performance regression gate in CI (`PERF-REG-01`) is not implemented.
 
 ## 2. Sprint Status (Baseline as of 2026-02-09)
 
@@ -69,64 +69,62 @@ Legend: COMPLETE / PARTIAL / PENDING
 
 ## 4. Verified Pending Work (Codebase-Validated)
 
-1. Inbound email ingestion and threading are not implemented.
-2. Authentication remains demo header-based (`x-user-email` / `x-user-id`).
-3. Inbound email webhook idempotency/threading is still pending.
-4. API rate limiting is active globally; route-specific policies remain pending.
-5. Attachments are local disk only; uploads start as `PENDING`, scanner callback can set terminal states, and download is blocked unless scan status is `CLEAN`.
-6. SLA business-hours and holiday calendar logic are not implemented.
-7. Search still uses `contains` filters (no FTS/trigram index path).
-8. API-side response caching missing for heavy summary endpoints.
-9. CI/CD baseline exists, but deployment runbook/cutover automation is still pending.
-10. Documentation has drift from implementation state in several files.
+1. Inbound provider contract documentation (`EMAIL-01`) is not finalized (`docs/email-inbound-contract.md` missing).
+2. API throttling baseline is global; route-specific policies for webhook/high-write endpoints remain partial (`RL-01`).
+3. Attachments are still local-disk based with no cloud storage abstraction/provider (`ATT-01`).
+4. API-side response caching is missing for heavy summary endpoints (`PERF-02`).
+5. Request correlation ID propagation in logs/response headers is not implemented (`OBS-01`).
+6. Performance regression gating/report artifact is not integrated in CI (`PERF-REG-01`).
+7. CI baseline exists, but deployment runbook/cutover automation is still pending.
+8. UAT, rollout runbooks, production cutover, and stabilization process are still pending.
+9. Documentation drift remains in some planning/status files.
 
 ## 5. Planned Backlog (Sprints 7-9)
 
 ### Sprint 7 (2026-02-09 to 2026-02-20)
 
-| ID | Priority | Task | Estimate |
-|---|---|---|---|
-| DOC-01 | High | Sync docs to actual implementation status | 1d |
-| EMAIL-01 | High | Define inbound provider contract + payload map | 0.5d |
-| EMAIL-02 | High | Implement inbound webhook + signature validation | 2d |
-| EMAIL-03 | High | Implement threading + reopen-on-reply behavior | 2d |
-| EMAIL-04 | High | Add inbound webhook idempotency handling | 1d |
-| QA-EMAIL-01 | High | Add integration/e2e coverage for inbound flows | 1.5d |
-| IDEMP-01 | High | Add generic `Idempotency-Key` support | 2d |
-| RL-01 | Medium | Add API rate limiting for webhook/high-write routes | 1d |
+| ID | Status | Priority | Task | Estimate |
+|---|---|---|---|---|
+| DOC-01 | Completed | High | Sync docs to actual implementation status | 1d |
+| EMAIL-01 | Pending | High | Define inbound provider contract + payload map | 0.5d |
+| EMAIL-02 | Completed | High | Implement inbound webhook + signature validation | 2d |
+| EMAIL-03 | Completed | High | Implement threading + reopen-on-reply behavior | 2d |
+| EMAIL-04 | Completed | High | Add inbound webhook idempotency handling | 1d |
+| QA-EMAIL-01 | Completed | High | Add integration/e2e coverage for inbound flows | 1.5d |
+| IDEMP-01 | Completed | High | Add generic `Idempotency-Key` support | 2d |
+| RL-01 | Partial | Medium | Add API rate limiting for webhook/high-write routes | 1d |
 
 ### Sprint 8 (2026-02-23 to 2026-03-06)
 
-| ID | Priority | Task | Estimate |
-|---|---|---|---|
-| AUTH-01 | High | Implement Azure AD/Entra bearer token auth guard | 2d |
-| AUTH-02 | High | Restrict header auth to dev/e2e only | 1d |
-| ATT-01 | High | Add attachment storage abstraction + cloud provider | 2d |
-| ATT-02 | High | Integrate malware scan workflow + enforce scan states | 2d |
-| SLA-01 | Medium | Add business-hours and holiday calendar data model/APIs | 2d |
-| SLA-02 | Medium | Make SLA engine business-hours aware | 2d |
+| ID | Status | Priority | Task | Estimate |
+|---|---|---|---|---|
+| AUTH-01 | Completed | High | Implement Azure AD/Entra bearer token auth guard | 2d |
+| AUTH-02 | Completed | High | Restrict header auth to dev/e2e only | 1d |
+| ATT-01 | Pending | High | Add attachment storage abstraction + cloud provider | 2d |
+| ATT-02 | Completed | High | Integrate malware scan workflow + enforce scan states | 2d |
+| SLA-01 | Completed | Medium | Add business-hours and holiday calendar data model/APIs | 2d |
+| SLA-02 | Completed | Medium | Make SLA engine business-hours aware | 2d |
 
 ### Sprint 9 (2026-03-09 to 2026-03-20)
 
-| ID | Priority | Task | Estimate |
-|---|---|---|---|
-| PERF-01 | High | Add PostgreSQL FTS/trigram search path + indexes | 2d |
-| PERF-02 | Medium | Add short-lived cache for summary/count endpoints | 1.5d |
-| PERF-03 | Medium | Add `includeTotal=false` optimization on list APIs | 1d |
-| OBS-01 | Medium | Add request correlation ID propagation in logs | 1d |
-| CI-01 | High | Add CI workflow for build + integration + e2e smoke | 1.5d |
-| PERF-REG-01 | Medium | Add performance regression gate and report artifact | 1d |
+| ID | Status | Priority | Task | Estimate |
+|---|---|---|---|---|
+| PERF-01 | Completed | High | Add PostgreSQL FTS/trigram search path + indexes | 2d |
+| PERF-02 | Pending | Medium | Add short-lived cache for summary/count endpoints | 1.5d |
+| PERF-03 | Completed | Medium | Add `includeTotal=false` optimization on list APIs | 1d |
+| OBS-01 | Pending | Medium | Add request correlation ID propagation in logs | 1d |
+| CI-01 | Completed | High | Add CI workflow for build + integration + e2e smoke | 1.5d |
+| PERF-REG-01 | Pending | Medium | Add performance regression gate and report artifact | 1d |
 
 ## 6. Recommended Execution Sequence
 
-1. Finish `DOC-01` so docs become reliable source of truth.
-2. Deliver inbound email baseline (`EMAIL-01`, `EMAIL-02`, `EMAIL-03`).
-3. Complete replay safety and shared idempotency (`EMAIL-04`, `IDEMP-01`).
-4. Add route protection (`RL-01`) before provider retry/high-volume rollout.
-5. Migrate auth (`AUTH-01`, `AUTH-02`) and remove production header-auth path.
-6. Close attachment compliance/security gaps (`ATT-01`, `ATT-02`).
-7. Implement SLA business-hours/calendar behavior (`SLA-01`, `SLA-02`).
-8. Run performance and CI hardening stream (`PERF-*`, `OBS-01`, `CI-01`).
+1. Complete `EMAIL-01` (formal inbound provider contract + payload map).
+2. Complete `ATT-01` (attachment storage abstraction + cloud provider).
+3. Complete route-specific throttling policy layer on top of global throttling (`RL-01`).
+4. Deliver API summary/count caching (`PERF-02`).
+5. Add request correlation IDs (`OBS-01`).
+6. Add performance regression gate + artifact in CI (`PERF-REG-01`).
+7. Finish rollout/UAT/cutover runbooks and stabilization planning.
 
 ## 7. Risks and Dependencies
 
@@ -138,10 +136,9 @@ Legend: COMPLETE / PARTIAL / PENDING
 
 ## 8. Strategic Gaps Not Yet Scheduled in Sprints 7-9
 
-1. Realtime updates via WebSocket/SSE to reduce polling.
-2. SLA delayed-job model replacing interval scanning.
-3. Extended observability (metrics/tracing) beyond correlation IDs.
-4. Optional product items: first-class tags, multi-tenancy (if business requires).
+1. SLA delayed-job model replacing interval scanning.
+2. Extended observability (metrics/tracing) beyond correlation IDs.
+3. Optional product items: first-class tags, multi-tenancy (if business requires).
 
 ## 9. Source Documents
 

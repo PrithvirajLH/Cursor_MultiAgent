@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent }
 import { createPortal } from 'react-dom';
 import {
   ArrowLeftRight,
+  ChevronDown,
   ChevronRight,
   Eye,
   MoreVertical,
   Search,
   Tag,
-  User,
   UserPlus
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -32,8 +32,8 @@ import {
   type RealtimeTicketChangedEventPayload,
 } from '../realtime/events';
 import type { Role } from '../types';
-import { formatStatus, formatTicketId, getSlaTone } from '../utils/format';
-import { getPriorityTone, priorityBadgeClass } from '../utils/statusColors';
+import { formatStatus, formatTicketId, getSlaTone, initialsFor } from '../utils/format';
+import { priorityBadgeClass, statusBadgeClass } from '../utils/statusColors';
 import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationContext';
 
 const TRIAGE_COLUMNS = [
@@ -48,11 +48,12 @@ const TRIAGE_COLUMNS = [
 const TRIAGE_COLUMN_KEYS = TRIAGE_COLUMNS.map((column) => column.key);
 
 const PRIORITY_OPTIONS = [
-  { label: 'Urgent', value: 'P1' },
-  { label: 'High', value: 'P2' },
-  { label: 'Medium', value: 'P3' },
-  { label: 'Low', value: 'P4' }
+  { label: 'P1', value: 'P1' },
+  { label: 'P2', value: 'P2' },
+  { label: 'P3', value: 'P3' },
+  { label: 'P4', value: 'P4' }
 ];
+
 const CARD_MENU_WIDTH = 208;
 const CARD_MENU_MARGIN = 8;
 const CARD_MENU_APPROX_HEIGHT = 220;
@@ -718,16 +719,15 @@ export function TriageBoardPage({
 
   function getPriorityBadge(priority: string) {
     const normalized = priority.toUpperCase();
-    const tone = getPriorityTone(normalized);
     const label =
-      tone === 'urgent'
-        ? 'Urgent'
-        : tone === 'high'
-        ? 'High'
-        : tone === 'medium'
-        ? 'Medium'
-        : tone === 'low'
-        ? 'Low'
+      normalized === 'P1' || normalized === 'URGENT'
+        ? 'P1'
+        : normalized === 'P2' || normalized === 'HIGH'
+        ? 'P2'
+        : normalized === 'P3' || normalized === 'MEDIUM'
+        ? 'P3'
+        : normalized === 'P4' || normalized === 'LOW'
+        ? 'P4'
         : priority;
     return { label, className: priorityBadgeClass(priority) };
   }
@@ -923,6 +923,7 @@ export function TriageBoardPage({
                           });
                           const tags = [ticket.category?.name, ticket.channel].filter(Boolean) as string[];
                           const possibleMoves = getPossibleMoves(ticket);
+                          const assigneeName = ticket.assignee?.displayName ?? ticket.assignee?.email ?? '';
 
                           return (
                             <div
@@ -931,97 +932,131 @@ export function TriageBoardPage({
                               onDragStart={(event) => handleDragStart(event, ticket)}
                               onDragEnd={handleDragEnd}
                               onClick={() => handleCardClick(ticket.id)}
-                              className={`mb-3 cursor-grab rounded-lg border border-slate-200 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
+                              className={`mb-2 cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
                                 draggingTicketId === ticket.id ? 'opacity-50' : ''
                               }`}
                             >
-                              <div className="mb-2 flex items-start justify-between">
-                                <div className="flex items-center space-x-2">
-                                  <span className="text-sm font-semibold text-blue-600">{formatTicketId(ticket)}</span>
-                                  <span
-                                    className={`whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium ${priority.className}`}
-                                  >
-                                    {priority.label}
-                                  </span>
+                              <div className="mb-1 flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="mb-1 flex items-center gap-2">
+                                    <span className="truncate text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                      {formatTicketId(ticket)}
+                                    </span>
+                                    <span
+                                      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${priority.className}`}
+                                    >
+                                      {priority.label}
+                                    </span>
+                                    <span
+                                      className={`ml-auto whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] ${getSlaChipClass(sla.label)}`}
+                                    >
+                                      {sla.label}
+                                    </span>
+                                  </div>
+                                  <h3 className="truncate text-sm font-medium text-slate-900">
+                                    {ticket.subject}
+                                  </h3>
                                 </div>
-                                <div className="relative" data-card-menu>
+                                <div className="relative flex-shrink-0 pl-1" data-card-menu>
                                   <button
                                     type="button"
                                     onClick={(event) => toggleCardMenu(event, ticket.id)}
-                                    className="p-1 text-slate-400 hover:text-slate-600"
+                                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                                     aria-label="Ticket actions"
                                   >
-                                    <MoreVertical className="h-5 w-5" />
+                                    <MoreVertical className="h-4 w-4" />
                                   </button>
                                 </div>
                               </div>
 
-                              <h3 className="mb-2 text-sm font-medium text-slate-900">{ticket.subject}</h3>
-
-                              <div className="mb-3 flex items-center text-xs text-slate-600">
-                                <User className="mr-1 h-4 w-4" />
-                                <span>{ticket.requester?.displayName ?? 'Requester unknown'}</span>
-                              </div>
-
-                              <div className="mb-3 flex items-center justify-between text-xs">
-                                <span className="text-slate-600">{ticket.assignedTeam?.name ?? 'Unassigned team'}</span>
-                                <span
-                                  className={`rounded px-2 py-1 text-xs ${getSlaChipClass(sla.label)}`}
-                                >
-                                  {sla.label}
+                              <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600">
+                                <span className="truncate">
+                                  {ticket.requester?.displayName ?? 'Requester unknown'}
                                 </span>
+                                <span className="text-slate-400">•</span>
+                                <span className="truncate">
+                                  {ticket.assignedTeam?.name ?? 'Unassigned team'}
+                                </span>
+                                <span className="text-slate-400">•</span>
+                                {ticket.assignee ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => event.stopPropagation()}
+                                    className="group inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-200"
+                                    title={assigneeName}
+                                  >
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[9px] font-bold text-white shadow-sm ring-1 ring-slate-100">
+                                      {initialsFor(assigneeName || 'U')}
+                                    </span>
+                                    <span className="hidden sm:inline truncate max-w-[100px] group-hover:inline">
+                                      {assigneeName}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <span className="text-slate-400">Unassigned</span>
+                                )}
                               </div>
-
-                              {ticket.assignee && (
-                                <div className="mb-3 flex items-center text-xs text-slate-600">
-                                  <UserPlus className="mr-1 h-4 w-4 text-slate-400" />
-                                  <span>Assigned to {ticket.assignee.displayName}</span>
-                                </div>
-                              )}
 
                               {tags.length > 0 && (
-                                <div className="flex flex-wrap gap-1">
+                                <div className="mb-1 flex flex-wrap gap-1">
                                   {tags.map((tag) => (
-                                    <span key={tag} className="inline-flex items-center rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                                    <span
+                                      key={tag}
+                                      className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700"
+                                    >
                                       {tag}
                                     </span>
                                   ))}
                                 </div>
                               )}
 
-                              {possibleMoves.length > 0 && (
-                                <div
-                                  className="mt-3"
-                                  onClick={(event) => event.stopPropagation()}
-                                  onKeyDown={(event) => event.stopPropagation()}
-                                >
-                                  <label htmlFor={`triage-move-${ticket.id}`} className="mb-1 block text-xs text-slate-500">
-                                    Move ticket (keyboard accessible)
-                                  </label>
-                                  <select
-                                    id={`triage-move-${ticket.id}`}
-                                    defaultValue=""
-                                    disabled={isTicketActionInProgress(ticket.id)}
-                                    onChange={(event) => {
-                                      const nextStatus = event.target.value;
-                                      if (!nextStatus) return;
-                                      void handleTransition(ticket.id, nextStatus);
-                                      event.target.value = '';
-                                    }}
-                                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                                {possibleMoves.length > 0 && (
+                                  <div
+                                    className="relative flex-1"
+                                    onClick={(event) => event.stopPropagation()}
+                                    onKeyDown={(event) => event.stopPropagation()}
                                   >
-                                    <option value="">Select next status…</option>
-                                    {possibleMoves.map((status) => (
-                                      <option key={status} value={status}>
-                                        {formatStatus(status)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              )}
+                                    <button
+                                      type="button"
+                                      className="flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 bg-slate-50 border border-slate-200 hover:bg-white hover:shadow-sm focus:ring-2 focus:ring-blue-500/40"
+                                    >
+                                      <span className="truncate">
+                                        <span
+                                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide border ${statusBadgeClass(ticket.status)}`}
+                                        >
+                                          {formatStatus(ticket.status)}
+                                        </span>
+                                      </span>
+                                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform" />
+                                    </button>
+                                    <select
+                                      id={`triage-move-${ticket.id}`}
+                                      defaultValue=""
+                                      disabled={isTicketActionInProgress(ticket.id)}
+                                      onChange={(event) => {
+                                        const nextStatus = event.target.value;
+                                        if (!nextStatus || nextStatus === ticket.status) {
+                                          return;
+                                        }
+                                        void handleTransition(ticket.id, nextStatus);
+                                        event.target.value = '';
+                                      }}
+                                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                    >
+                                      <option value="">{formatStatus(ticket.status)}</option>
+                                      {possibleMoves.map((status) => (
+                                        <option key={status} value={status}>
+                                          {formatStatus(status)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
 
-                              <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                                Updated <RelativeTime value={ticket.updatedAt} />
+                                <span className="whitespace-nowrap text-right">
+                                  Updated <RelativeTime value={ticket.updatedAt} />
+                                </span>
                               </div>
                             </div>
                           );

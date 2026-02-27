@@ -1398,13 +1398,7 @@ export function ReportsPage({
                 ))}
               </select>
             </div>
-            <div className="ml-auto flex items-center space-x-2">
-              <Toggle
-                checked={filters.compare}
-                onChange={(next) => setFilters((prev) => ({ ...prev, compare: next }))}
-              />
-              <span className="text-sm text-slate-700">Compare</span>
-            </div>
+            {/* Compare toggle removed (flag still supported internally if needed) */}
           </div>
 
         </div>

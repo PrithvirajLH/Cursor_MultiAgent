@@ -148,10 +148,12 @@ export class TicketsService {
     ],
     [TicketStatus.WAITING_ON_REQUESTER]: [
       TicketStatus.IN_PROGRESS,
+      TicketStatus.WAITING_ON_VENDOR,
       TicketStatus.RESOLVED,
     ],
     [TicketStatus.WAITING_ON_VENDOR]: [
       TicketStatus.IN_PROGRESS,
+      TicketStatus.WAITING_ON_REQUESTER,
       TicketStatus.RESOLVED,
     ],
     [TicketStatus.RESOLVED]: [TicketStatus.REOPENED, TicketStatus.CLOSED],
@@ -1856,7 +1858,13 @@ export class TicketsService {
     // Queue automation with retry via BullMQ instead of fire-and-forget
     void this.automationQueue.enqueue(ticketId, 'STATUS_CHANGED');
 
-    return updated;
+    return {
+      ...updated,
+      allowedTransitions: this.getAvailableTransitionsForTicket(
+        updated.status,
+        updated.assigneeId,
+      ),
+    };
   }
 
   async applyStatusTransitionInTx(

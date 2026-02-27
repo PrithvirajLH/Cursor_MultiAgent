@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -88,13 +89,14 @@ const adminItems: AdminSidebarItem[] = [
 ];
 
 function isItemActive(route: AdminRoute, pathname: string): boolean {
-  if (route === '/sla-settings') return pathname.startsWith('/sla-settings');
-  if (route === '/routing') return pathname.startsWith('/routing');
-  if (route === '/automation') return pathname.startsWith('/automation');
-  if (route === '/custom-fields') return pathname.startsWith('/custom-fields');
-  if (route === '/audit-log') return pathname.startsWith('/audit-log');
-  if (route === '/reports') return pathname.startsWith('/reports');
-  return pathname.startsWith('/categories');
+  const effectivePathname = pathname.startsWith('/admin') ? '/sla-settings' : pathname;
+  if (route === '/sla-settings') return effectivePathname.startsWith('/sla-settings');
+  if (route === '/routing') return effectivePathname.startsWith('/routing');
+  if (route === '/automation') return effectivePathname.startsWith('/automation');
+  if (route === '/custom-fields') return effectivePathname.startsWith('/custom-fields');
+  if (route === '/audit-log') return effectivePathname.startsWith('/audit-log');
+  if (route === '/reports') return effectivePathname.startsWith('/reports');
+  return effectivePathname.startsWith('/categories');
 }
 
 export function AdminSidebar({
@@ -113,6 +115,34 @@ export function AdminSidebar({
   className?: string;
 }) {
   const items = adminItems.filter((item) => item.roles.includes(role));
+  const navRef = useRef<HTMLElement | null>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState({ top: 0, height: 0, opacity: 0 });
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!navRef.current || !visible) {
+        return;
+      }
+
+      const activeEl = navRef.current.querySelector('[data-active="true"]') as HTMLElement | null;
+
+      if (activeEl) {
+        const topOffset = activeEl.offsetTop;
+        const pHeight = parseInt(activeEl.getAttribute('data-indicator-height') || '24', 10);
+        const pTopPadding = parseInt(activeEl.getAttribute('data-indicator-padding') || '8', 10);
+
+        setIndicatorStyle({
+          top: topOffset + pTopPadding,
+          height: pHeight,
+          opacity: 1
+        });
+      } else {
+        setIndicatorStyle((prev) => ({ ...prev, opacity: 0 }));
+      }
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [items, pathname, visible]);
 
   return (
     <aside
@@ -132,7 +162,19 @@ export function AdminSidebar({
           </button>
         </div>
 
-        <nav className="mt-6 flex-1 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
+        <nav
+          ref={navRef}
+          className="mt-6 flex-1 space-y-1 overflow-y-auto overflow-x-visible pr-1 custom-scrollbar relative"
+        >
+          <div
+            className="absolute left-0 w-1 rounded-r-full bg-blue-500 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] z-10"
+            style={{
+              top: indicatorStyle.top,
+              height: indicatorStyle.height,
+              opacity: indicatorStyle.opacity
+            }}
+            aria-hidden="true"
+          />
           {items.map((item) => {
             const Icon = item.icon;
             const active = isItemActive(item.route, pathname);
@@ -140,18 +182,15 @@ export function AdminSidebar({
               <button
                 key={item.key}
                 type="button"
+                data-active={active}
+                data-indicator-height="24"
+                data-indicator-padding="8"
                 onClick={() => onNavigate(item.route)}
                 className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${active
                     ? 'bg-slate-800 text-white shadow-sm'
                     : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
                   }`}
               >
-                {active && (
-                  <span
-                    className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-blue-500"
-                    aria-hidden
-                  />
-                )}
                 <Icon className={`h-5 w-5 flex-shrink-0 transition-colors ${active ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
                 <span className="truncate text-left">{item.label}</span>
               </button>

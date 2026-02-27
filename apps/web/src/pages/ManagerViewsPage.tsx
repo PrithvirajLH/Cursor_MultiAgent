@@ -165,16 +165,16 @@ function downloadCsv(filename: string, rows: Array<Array<string | number | boole
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const tone = getPriorityTone(priority);
+  const normalized = priority.toUpperCase();
   const label =
-    tone === 'urgent'
-      ? 'Urgent'
-      : tone === 'high'
-        ? 'High'
-        : tone === 'medium'
-          ? 'Medium'
-          : tone === 'low'
-            ? 'Low'
+    normalized === 'P1' || normalized === 'URGENT'
+      ? 'P1'
+      : normalized === 'P2' || normalized === 'HIGH'
+        ? 'P2'
+        : normalized === 'P3' || normalized === 'MEDIUM'
+          ? 'P3'
+          : normalized === 'P4' || normalized === 'LOW'
+            ? 'P4'
             : priority;
   return (
     <span className={`rounded-md px-2 py-1 text-xs font-medium ${priorityBadgeClass(priority)}`}>

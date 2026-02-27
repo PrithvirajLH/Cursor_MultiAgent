@@ -67,10 +67,10 @@ const PRIORITY_META: Record<
   PriorityKey,
   { label: string; color: string; dot: string }
 > = {
-  critical: { label: 'Critical', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
-  high: { label: 'High', color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
-  medium: { label: 'Medium', color: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-500' },
-  low: { label: 'Low', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' }
+  critical: { label: 'P1', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+  high: { label: 'P2', color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
+  medium: { label: 'P3', color: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-500' },
+  low: { label: 'P4', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' }
 };
 
 const API_TO_UI_PRIORITY: Record<string, PriorityKey> = {

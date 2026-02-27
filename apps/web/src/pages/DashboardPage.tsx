@@ -166,17 +166,12 @@ function mapActivitySeries(data: TicketActivityPoint[], rangeDays: number): Acti
 }
 
 function priorityLabel(priority?: string | null): string {
-  switch (priority) {
-    case 'P1':
-      return 'Urgent';
-    case 'P2':
-      return 'High';
-    case 'P3':
-      return 'Medium';
-    case 'P4':
-    default:
-      return 'Low';
-  }
+  const v = (priority ?? '').toUpperCase();
+  if (v === 'P1' || v === 'URGENT') return 'P1';
+  if (v === 'P2' || v === 'HIGH') return 'P2';
+  if (v === 'P3' || v === 'MEDIUM') return 'P3';
+  if (v === 'P4' || v === 'LOW') return 'P4';
+  return priority ?? '—';
 }
 
 function priorityClass(priority?: string | null): string {

@@ -4,7 +4,7 @@ import type { TicketDetail, TicketEvent, TicketFollower, TeamMember, TeamRef } f
 import { CustomFieldsDisplay } from '../CustomFieldRenderer';
 import { RelativeTime } from '../RelativeTime';
 import { formatStatus, formatTicketId, initialsFor } from '../../utils/format';
-import { getFirstResponseSla, getResolutionSla, slaBadgeClass } from './utils';
+import { formatPriority, getFirstResponseSla, getResolutionSla, priorityBadgeClass, slaBadgeClass } from './utils';
 
 export type ExpandedSections = {
   edit: boolean;
@@ -190,12 +190,8 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
         </PropertyRow>
 
         <PropertyRow label="Priority">
-          <span className={`inline-flex items-center gap-1.5 font-medium px-1.5
-             ${ticket.priority === 'URGENT' ? 'text-rose-600' :
-              ticket.priority === 'HIGH' ? 'text-amber-600' :
-                'text-slate-700'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${ticket.priority === 'URGENT' ? 'bg-rose-500' : ticket.priority === 'HIGH' ? 'bg-amber-500' : 'bg-slate-400'}`}></span>
-            {ticket.priority.charAt(0) + ticket.priority.slice(1).toLowerCase()}
+          <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${priorityBadgeClass(ticket.priority)}`}>
+            {formatPriority(ticket.priority)}
           </span>
         </PropertyRow>
 
