@@ -11,6 +11,7 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
+import { BlobServiceClient } from '@azure/storage-blob';
 import {
   AccessLevel,
   AttachmentScanStatus,
@@ -65,6 +66,24 @@ export type StatusTransitionTicketSnapshot = {
   resolvedAt: Date | null;
   closedAt: Date | null;
   completedAt: Date | null;
+};
+
+export type TeamTransferTicketSnapshot = {
+  id: string;
+  createdAt: Date;
+  status: TicketStatus;
+  priority: TicketPriority;
+  assignedTeamId: string | null;
+  assigneeId: string | null;
+  firstResponseDueAt: Date | null;
+  dueAt: Date | null;
+};
+
+export type TeamAssignmentTicketSnapshot = {
+  id: string;
+  status: TicketStatus;
+  assignedTeamId: string | null;
+  assigneeId: string | null;
 };
 
 type BusinessWeekDay =
@@ -1004,6 +1023,39 @@ export class TicketsService {
     const routedAssigneeId = routedTarget?.assigneeId ?? null;
 
     const updatedTicket = await this.prisma.$transaction(async (tx) => {
+      if (payload.assigneeId) {
+        if (!routedTeamId) {
+          throw new BadRequestException(
+            'Cannot assign a ticket without a target team',
+          );
+        }
+        if (
+          !this.canAssignTicket(
+            user,
+            { assignedTeamId: routedTeamId, assigneeId: null },
+            payload.assigneeId,
+          )
+        ) {
+          throw new ForbiddenException(
+            'Not allowed to assign this ticket on creation',
+          );
+        }
+        const membership = await tx.teamMember.findUnique({
+          where: {
+            teamId_userId: {
+              teamId: routedTeamId,
+              userId: payload.assigneeId,
+            },
+          },
+          select: { id: true },
+        });
+        if (!membership) {
+          throw new BadRequestException(
+            'Assignee must belong to the ticket team',
+          );
+        }
+      }
+
       let resolvedAssigneeId = payload.assigneeId ?? routedAssigneeId;
       if (!payload.assigneeId && !resolvedAssigneeId) {
         resolvedAssigneeId = await this.resolveAssignee(routedTeamId, tx);
@@ -1550,7 +1602,6 @@ export class TicketsService {
   async assign(ticketId: string, payload: AssignTicketDto, user: AuthUser) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
-      include: { assignedTeam: true },
     });
 
     if (!ticket) {
@@ -1562,74 +1613,31 @@ export class TicketsService {
     }
 
     const assigneeId = payload.assigneeId ?? user.id;
-    if (ticket.assignedTeamId) {
-      const membership = await this.prisma.teamMember.findUnique({
-        where: {
-          teamId_userId: {
-            teamId: ticket.assignedTeamId,
-            userId: assigneeId,
-          },
-        },
-      });
-      if (!membership) {
-        throw new BadRequestException(
-          'Assignee must belong to the ticket team',
-        );
-      }
-    }
-
-    const assignStatusPromote: TicketStatus[] = [
-      TicketStatus.NEW,
-      TicketStatus.TRIAGED,
-      TicketStatus.REOPENED,
-    ];
-    const shouldSetAssignedStatus = assignStatusPromote.includes(ticket.status);
-    const nextStatus = shouldSetAssignedStatus
-      ? TicketStatus.ASSIGNED
-      : ticket.status;
-
     const updated = await this.prisma.$transaction(async (tx) => {
-      const updatedTicket = await tx.ticket.update({
-        where: { id: ticketId },
-        data: {
-          assigneeId,
-          status: nextStatus,
+      await this.applyAssigneeInTx(
+        tx,
+        {
+          id: ticket.id,
+          status: ticket.status,
+          assignedTeamId: ticket.assignedTeamId,
+          assigneeId: ticket.assigneeId,
         },
+        { assigneeId },
+        user.id,
+      );
+
+      const updatedTicket = await tx.ticket.findUnique({
+        where: { id: ticketId },
         include: {
           requester: true,
           assignee: true,
           assignedTeam: true,
         },
       });
-
-      await tx.ticketEvent.create({
-        data: {
-          ticketId: ticket.id,
-          type: 'TICKET_ASSIGNED',
-          payload: {
-            assigneeId,
-            assigneeName: updatedTicket.assignee?.displayName ?? null,
-            assigneeEmail: updatedTicket.assignee?.email ?? null,
-          },
-          createdById: user.id,
-        },
-      });
-
-      if (nextStatus !== ticket.status) {
-        await tx.ticketEvent.create({
-          data: {
-            ticketId: ticket.id,
-            type: 'TICKET_STATUS_CHANGED',
-            payload: {
-              from: ticket.status,
-              to: nextStatus,
-            },
-            createdById: user.id,
-          },
-        });
+      if (!updatedTicket) {
+        throw new NotFoundException('Ticket not found');
       }
 
-      await this.ensureFollower(ticketId, assigneeId, tx);
       return updatedTicket;
     });
     await this.safeNotify(() =>
@@ -1644,6 +1652,95 @@ export class TicketsService {
     );
 
     return updated;
+  }
+
+  async applyAssigneeInTx(
+    tx: Prisma.TransactionClient,
+    ticket: TeamAssignmentTicketSnapshot,
+    payload: { assigneeId: string },
+    actorId: string,
+  ) {
+    const assignee = await tx.user.findUnique({
+      where: { id: payload.assigneeId },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+      },
+    });
+    if (!assignee) {
+      throw new BadRequestException('Assignee not found');
+    }
+
+    if (ticket.assignedTeamId) {
+      const membership = await tx.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: ticket.assignedTeamId,
+            userId: payload.assigneeId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!membership) {
+        throw new BadRequestException(
+          'Assignee must belong to the ticket team',
+        );
+      }
+    }
+
+    const assignStatusPromote: TicketStatus[] = [
+      TicketStatus.NEW,
+      TicketStatus.TRIAGED,
+      TicketStatus.REOPENED,
+    ];
+    const nextStatus = assignStatusPromote.includes(ticket.status)
+      ? TicketStatus.ASSIGNED
+      : ticket.status;
+
+    await tx.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        assigneeId: payload.assigneeId,
+        status: nextStatus,
+      },
+    });
+
+    await tx.ticketEvent.create({
+      data: {
+        ticketId: ticket.id,
+        type: 'TICKET_ASSIGNED',
+        payload: {
+          assigneeId: payload.assigneeId,
+          assigneeName: assignee.displayName,
+          assigneeEmail: assignee.email,
+        },
+        createdById: actorId,
+      },
+    });
+
+    const statusChanged = nextStatus !== ticket.status;
+    if (statusChanged) {
+      await tx.ticketEvent.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'TICKET_STATUS_CHANGED',
+          payload: {
+            from: ticket.status,
+            to: nextStatus,
+          },
+          createdById: actorId,
+        },
+      });
+    }
+
+    await this.ensureFollower(ticket.id, payload.assigneeId, tx);
+
+    return {
+      assigneeId: payload.assigneeId,
+      nextStatus,
+      statusChanged,
+    };
   }
 
   async transfer(ticketId: string, payload: TransferTicketDto, user: AuthUser) {
@@ -1663,145 +1760,49 @@ export class TicketsService {
       throw new ForbiddenException('No write access to transfer this ticket');
     }
 
-    if (ticket.assignedTeamId && ticket.assignedTeamId === payload.newTeamId) {
-      throw new BadRequestException('Ticket is already assigned to that team');
-    }
-
-    const targetTeam = await this.prisma.team.findUnique({
-      where: { id: payload.newTeamId },
-    });
-    if (!targetTeam) {
-      throw new BadRequestException('Target team not found');
-    }
-
-    if (payload.assigneeId) {
-      const membership = await this.prisma.teamMember.findUnique({
-        where: {
-          teamId_userId: {
-            teamId: payload.newTeamId,
-            userId: payload.assigneeId,
-          },
+    const transfer = await this.prisma.$transaction(async (tx) => {
+      const result = await this.applyTeamTransferInTx(
+        tx,
+        {
+          id: ticket.id,
+          createdAt: ticket.createdAt,
+          status: ticket.status,
+          priority: ticket.priority,
+          assignedTeamId: ticket.assignedTeamId,
+          assigneeId: ticket.assigneeId,
+          firstResponseDueAt: ticket.firstResponseDueAt,
+          dueAt: ticket.dueAt,
+        },
+        {
+          newTeamId: payload.newTeamId,
+          assigneeId: payload.assigneeId,
+        },
+        user.id,
+      );
+      const updatedTicket = await tx.ticket.findUnique({
+        where: { id: ticketId },
+        include: {
+          requester: true,
+          assignee: true,
+          assignedTeam: true,
         },
       });
-      if (!membership) {
-        throw new BadRequestException(
-          'Assignee must belong to the target team',
-        );
+      if (!updatedTicket) {
+        throw new NotFoundException('Ticket not found');
       }
-    }
 
-    const priorTeamId = ticket.assignedTeamId;
-    const oldSla = await this.getSlaConfig(ticket.priority, priorTeamId);
-    const newSla = await this.getSlaConfig(ticket.priority, payload.newTeamId);
-
-    const firstStart = ticket.firstResponseDueAt
-      ? await this.subtractSlaHours(
-          ticket.firstResponseDueAt,
-          oldSla.firstResponseHours,
-          oldSla.businessHoursOnly,
-        )
-      : ticket.createdAt;
-    const resolutionStart = ticket.dueAt
-      ? await this.subtractSlaHours(
-          ticket.dueAt,
-          oldSla.resolutionHours,
-          oldSla.businessHoursOnly,
-        )
-      : ticket.createdAt;
-
-    const firstResponseDueAt = await this.addSlaHours(
-      firstStart,
-      newSla.firstResponseHours,
-      newSla.businessHoursOnly,
-    );
-    const dueAt = await this.addSlaHours(
-      resolutionStart,
-      newSla.resolutionHours,
-      newSla.businessHoursOnly,
-    );
-    const assigneeId = payload.assigneeId ?? null;
-    const nextStatus = this.normalizeStatusAfterTransfer(
-      ticket.status,
-      assigneeId,
-    );
-
-    const updated = await this.prisma.ticket.update({
-      where: { id: ticketId },
-      data: {
-        assignedTeamId: payload.newTeamId,
-        assigneeId,
-        status: nextStatus,
-        firstResponseDueAt,
-        dueAt,
-      },
-      include: {
-        requester: true,
-        assignee: true,
-        assignedTeam: true,
-      },
+      return { updatedTicket, result };
     });
+    const updated = transfer.updatedTicket;
 
-    if (priorTeamId && priorTeamId !== payload.newTeamId) {
-      await this.prisma.ticketAccess.upsert({
-        where: {
-          ticketId_teamId: {
-            ticketId,
-            teamId: priorTeamId,
-          },
-        },
-        update: { accessLevel: AccessLevel.READ },
-        create: {
-          ticketId,
-          teamId: priorTeamId,
-          accessLevel: AccessLevel.READ,
-        },
-      });
-
-      await this.prisma.ticketAccess.deleteMany({
-        where: {
-          ticketId,
-          teamId: payload.newTeamId,
-        },
-      });
-    }
-
-    await this.prisma.ticketEvent.create({
-      data: {
-        ticketId: ticket.id,
-        type: 'TICKET_TRANSFERRED',
-        payload: {
-          fromTeamId: priorTeamId,
-          toTeamId: payload.newTeamId,
-          toTeamName: updated.assignedTeam?.name ?? null,
-          assigneeId,
-        },
-        createdById: user.id,
-      },
-    });
-    if (nextStatus !== ticket.status) {
-      await this.prisma.ticketEvent.create({
-        data: {
-          ticketId: ticket.id,
-          type: 'TICKET_STATUS_CHANGED',
-          payload: {
-            from: ticket.status,
-            to: nextStatus,
-          },
-          createdById: user.id,
-        },
-      });
-    }
-
-    if (assigneeId) {
-      await this.ensureFollower(ticketId, assigneeId);
-    }
-    await this.slaEngine.syncFromTicket(ticketId, {
-      policyConfigId: newSla.policyConfigId ?? null,
-    });
     await this.safeNotify(() =>
-      this.notifications.ticketTransferred(updated, user, priorTeamId),
+      this.notifications.ticketTransferred(
+        updated,
+        user,
+        transfer.result.priorTeamId,
+      ),
     );
-    if (nextStatus !== ticket.status) {
+    if (transfer.result.statusChanged) {
       await this.safeNotify(() =>
         this.notifications.ticketStatusChanged(updated, ticket.status, user),
       );
@@ -1811,11 +1812,183 @@ export class TicketsService {
         ticketId: updated.id,
         reason: 'transferred',
         actorId: user.id,
-        extraTeamIds: [priorTeamId],
+        extraTeamIds: [transfer.result.priorTeamId],
       }),
     );
 
     return updated;
+  }
+
+  async applyTeamTransferInTx(
+    tx: Prisma.TransactionClient,
+    ticket: TeamTransferTicketSnapshot,
+    payload: { newTeamId: string; assigneeId?: string | null },
+    actorId: string,
+    options?: { rejectSameTeam?: boolean },
+  ) {
+    const rejectSameTeam = options?.rejectSameTeam ?? true;
+    if (ticket.assignedTeamId && ticket.assignedTeamId === payload.newTeamId) {
+      if (rejectSameTeam) {
+        throw new BadRequestException(
+          'Ticket is already assigned to that team',
+        );
+      }
+      return {
+        priorTeamId: ticket.assignedTeamId,
+        nextStatus: ticket.status,
+        assigneeId: ticket.assigneeId,
+        statusChanged: false,
+      };
+    }
+
+    const targetTeam = await tx.team.findUnique({
+      where: { id: payload.newTeamId },
+      select: { id: true, name: true },
+    });
+    if (!targetTeam) {
+      throw new BadRequestException('Target team not found');
+    }
+
+    if (payload.assigneeId) {
+      const membership = await tx.teamMember.findUnique({
+        where: {
+          teamId_userId: {
+            teamId: payload.newTeamId,
+            userId: payload.assigneeId,
+          },
+        },
+        select: { id: true },
+      });
+      if (!membership) {
+        throw new BadRequestException(
+          'Assignee must belong to the target team',
+        );
+      }
+    }
+
+    const priorTeamId = ticket.assignedTeamId;
+    const oldSla = await this.getSlaConfig(ticket.priority, priorTeamId, tx);
+    const newSla = await this.getSlaConfig(
+      ticket.priority,
+      payload.newTeamId,
+      tx,
+    );
+
+    const firstStart = ticket.firstResponseDueAt
+      ? await this.subtractSlaHours(
+          ticket.firstResponseDueAt,
+          oldSla.firstResponseHours,
+          oldSla.businessHoursOnly,
+          tx,
+        )
+      : ticket.createdAt;
+    const resolutionStart = ticket.dueAt
+      ? await this.subtractSlaHours(
+          ticket.dueAt,
+          oldSla.resolutionHours,
+          oldSla.businessHoursOnly,
+          tx,
+        )
+      : ticket.createdAt;
+
+    const firstResponseDueAt = await this.addSlaHours(
+      firstStart,
+      newSla.firstResponseHours,
+      newSla.businessHoursOnly,
+      tx,
+    );
+    const dueAt = await this.addSlaHours(
+      resolutionStart,
+      newSla.resolutionHours,
+      newSla.businessHoursOnly,
+      tx,
+    );
+    const assigneeId = payload.assigneeId ?? null;
+    const nextStatus = this.normalizeStatusAfterTransfer(
+      ticket.status,
+      assigneeId,
+    );
+
+    await tx.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        assignedTeamId: payload.newTeamId,
+        assigneeId,
+        status: nextStatus,
+        firstResponseDueAt,
+        dueAt,
+      },
+    });
+
+    if (priorTeamId && priorTeamId !== payload.newTeamId) {
+      await tx.ticketAccess.upsert({
+        where: {
+          ticketId_teamId: {
+            ticketId: ticket.id,
+            teamId: priorTeamId,
+          },
+        },
+        update: { accessLevel: AccessLevel.READ },
+        create: {
+          ticketId: ticket.id,
+          teamId: priorTeamId,
+          accessLevel: AccessLevel.READ,
+        },
+      });
+
+      await tx.ticketAccess.deleteMany({
+        where: {
+          ticketId: ticket.id,
+          teamId: payload.newTeamId,
+        },
+      });
+    }
+
+    await tx.ticketEvent.create({
+      data: {
+        ticketId: ticket.id,
+        type: 'TICKET_TRANSFERRED',
+        payload: {
+          fromTeamId: priorTeamId,
+          toTeamId: payload.newTeamId,
+          toTeamName: targetTeam.name,
+          assigneeId,
+        },
+        createdById: actorId,
+      },
+    });
+
+    const statusChanged = nextStatus !== ticket.status;
+    if (statusChanged) {
+      await tx.ticketEvent.create({
+        data: {
+          ticketId: ticket.id,
+          type: 'TICKET_STATUS_CHANGED',
+          payload: {
+            from: ticket.status,
+            to: nextStatus,
+          },
+          createdById: actorId,
+        },
+      });
+    }
+
+    if (assigneeId) {
+      await this.ensureFollower(ticket.id, assigneeId, tx);
+    }
+
+    await this.slaEngine.syncFromTicket(
+      ticket.id,
+      { policyConfigId: newSla.policyConfigId ?? null },
+      tx,
+    );
+
+    return {
+      priorTeamId,
+      nextStatus,
+      assigneeId,
+      statusChanged,
+    };
   }
 
   async transition(
@@ -2283,7 +2456,11 @@ export class TicketsService {
     const storageKey = path.posix.join(ticketId, `${attachmentId}-${safeName}`);
     await this.saveAttachmentFile(storageKey, file.buffer, file.mimetype);
 
-    // Bypass scanner for now: mark as CLEAN so downloads work without a scanner callback.
+    const bypassAttachmentScan =
+      this.config.get<string>('ATTACHMENT_SCAN_BYPASS') === 'true';
+    const scanStatus = bypassAttachmentScan
+      ? AttachmentScanStatus.CLEAN
+      : AttachmentScanStatus.PENDING;
     const attachment = await this.prisma.attachment.create({
       data: {
         id: attachmentId,
@@ -2293,8 +2470,8 @@ export class TicketsService {
         contentType: file.mimetype,
         sizeBytes: file.size,
         storageKey,
-        scanStatus: AttachmentScanStatus.CLEAN,
-        scanCheckedAt: new Date(),
+        scanStatus,
+        scanCheckedAt: bypassAttachmentScan ? new Date() : null,
       },
       include: { uploadedBy: true },
     });
@@ -2324,23 +2501,6 @@ export class TicketsService {
   }
 
   async getAttachmentFile(attachmentId: string, user: AuthUser) {
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/6a1f3111-6cf9-40cd-acd5-d937fa5a14be', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'e8c120',
-      },
-      body: JSON.stringify({
-        sessionId: 'e8c120',
-        location: 'tickets.service.ts:getAttachmentFile',
-        message: 'getAttachmentFile entry',
-        data: { attachmentId },
-        timestamp: Date.now(),
-        hypothesisId: 'H4',
-      }),
-    }).catch(() => {});
-    // #endregion
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: attachmentId },
       include: {
@@ -2360,42 +2520,7 @@ export class TicketsService {
 
     this.assertAttachmentDownloadAllowed(attachment.scanStatus);
 
-    // #region agent log
-    const isAzure = this.isAzureBlobStorageEnabled();
-    fetch('http://127.0.0.1:7686/ingest/6a1f3111-6cf9-40cd-acd5-d937fa5a14be', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'e8c120',
-      },
-      body: JSON.stringify({
-        sessionId: 'e8c120',
-        location: 'tickets.service.ts:getAttachmentFile',
-        message: 'before getAttachmentReadStream',
-        data: { storageKey: attachment.storageKey, isAzure },
-        timestamp: Date.now(),
-        hypothesisId: 'H1_H5',
-      }),
-    }).catch(() => {});
-    // #endregion
     const stream = await this.getAttachmentReadStream(attachment.storageKey);
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/6a1f3111-6cf9-40cd-acd5-d937fa5a14be', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'e8c120',
-      },
-      body: JSON.stringify({
-        sessionId: 'e8c120',
-        location: 'tickets.service.ts:getAttachmentFile',
-        message: 'after getAttachmentReadStream',
-        data: {},
-        timestamp: Date.now(),
-        hypothesisId: 'H2_H3',
-      }),
-    }).catch(() => {});
-    // #endregion
     return { attachment, stream };
   }
 
@@ -3697,7 +3822,6 @@ export class TicketsService {
       throw new Error('Azure Blob Storage is not configured');
     }
 
-    const { BlobServiceClient } = require('@azure/storage-blob');
     const blobServiceClient =
       BlobServiceClient.fromConnectionString(connectionString);
     const containerClient = blobServiceClient.getContainerClient(containerName);
@@ -3719,7 +3843,6 @@ export class TicketsService {
       throw new Error('Azure Blob Storage is not configured');
     }
 
-    const { BlobServiceClient } = require('@azure/storage-blob');
     const blobServiceClient =
       BlobServiceClient.fromConnectionString(connectionString);
     const containerClient = blobServiceClient.getContainerClient(containerName);
@@ -3729,47 +3852,39 @@ export class TicketsService {
       throw new NotFoundException('Attachment file missing');
     }
     const response = await blobClient.download();
-    if (!response.readableStreamBody) {
+    const responseBody = response.readableStreamBody;
+    if (!responseBody) {
       throw new NotFoundException('Attachment file missing');
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/6a1f3111-6cf9-40cd-acd5-d937fa5a14be', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'e8c120',
-      },
-      body: JSON.stringify({
-        sessionId: 'e8c120',
-        location: 'tickets.service.ts:getAttachmentReadStreamFromAzureBlob',
-        message: 'before Readable.fromWeb',
-        data: { storageKey },
-        timestamp: Date.now(),
-        hypothesisId: 'H2',
-      }),
-    }).catch(() => {});
-    // #endregion
-    const nodeStream = Readable.fromWeb(
-      response.readableStreamBody as import('stream/web').ReadableStream,
+
+    if (this.isNodeReadableStream(responseBody)) {
+      return responseBody;
+    }
+
+    if (this.isWebReadableStream(responseBody)) {
+      return Readable.fromWeb(responseBody);
+    }
+
+    throw new Error('Unsupported Azure Blob response stream type');
+  }
+
+  private isNodeReadableStream(value: unknown): value is Readable {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof (value as NodeJS.ReadableStream).pipe === 'function'
     );
-    // #region agent log
-    fetch('http://127.0.0.1:7686/ingest/6a1f3111-6cf9-40cd-acd5-d937fa5a14be', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': 'e8c120',
-      },
-      body: JSON.stringify({
-        sessionId: 'e8c120',
-        location: 'tickets.service.ts:getAttachmentReadStreamFromAzureBlob',
-        message: 'after Readable.fromWeb',
-        data: {},
-        timestamp: Date.now(),
-        hypothesisId: 'H2',
-      }),
-    }).catch(() => {});
-    // #endregion
-    return nodeStream;
+  }
+
+  private isWebReadableStream(
+    value: unknown,
+  ): value is import('stream/web').ReadableStream {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof (value as import('stream/web').ReadableStream).getReader ===
+        'function'
+    );
   }
 
   private assertAttachmentScannerSecret(scannerSecret: string | undefined) {

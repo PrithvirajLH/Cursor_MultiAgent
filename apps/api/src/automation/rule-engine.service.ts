@@ -134,15 +134,12 @@ export class RuleEngineService {
   }
 
   /**
-   * Run all active automation rules for the given trigger and ticket.
+   * Run the first matching active automation rule for the given trigger and ticket.
+   * Matching uses rule priority (lower number first, then oldest).
    * Each rule run is atomic: all ticket updates, events, messages, and AutomationExecution
    * are performed inside a single transaction; on failure nothing is persisted and we
    * record a failed AutomationExecution outside the transaction.
-   * Rules are ordered by priority (lower number first).
    * For SLA_APPROACHING/SLA_BREACHED, skips if this rule already ran for this ticket in the last 24h.
-   * Note: Automation does not call TicketsService flows (e.g. standard assignee/transfer
-   * notifications). For parity with manual actions, consider calling notification service
-   * after commit or refactoring to shared domain operations.
    */
   async runForTicket(
     ticketId: string,
@@ -248,6 +245,9 @@ export class RuleEngineService {
           },
         });
       }
+
+      // UI and workflow docs define first-match execution semantics.
+      break;
     }
 
     return { executed, errors };
@@ -404,20 +404,24 @@ export class RuleEngineService {
       switch (action.type) {
         case 'assign_team':
           if (action.teamId) {
-            const priorTeamId = current.assignedTeamId;
-            await tx.ticket.update({
-              where: { id: ticketId },
-              data: { assignedTeamId: action.teamId, assigneeId: null },
-            });
-            await tx.ticketEvent.create({
-              data: {
-                ticketId,
-                type: 'TICKET_TRANSFERRED',
-                payload: { fromTeamId: priorTeamId, toTeamId: action.teamId },
-                createdById: ruleCreatedById,
+            await this.ticketsService.applyTeamTransferInTx(
+              tx,
+              {
+                id: current.id,
+                createdAt: current.createdAt,
+                status: current.status,
+                priority: current.priority,
+                assignedTeamId: current.assignedTeamId,
+                assigneeId: current.assigneeId,
+                firstResponseDueAt: current.firstResponseDueAt,
+                dueAt: current.dueAt,
               },
-            });
-            await this.slaEngine.syncFromTicket(ticketId, undefined, tx);
+              {
+                newTeamId: action.teamId,
+              },
+              ruleCreatedById,
+              { rejectSameTeam: false },
+            );
             current = await this.getTicketForActions(tx, ticketId);
           }
           break;
@@ -428,33 +432,17 @@ export class RuleEngineService {
                 'assign_user requires the ticket to be assigned to a team first',
               );
             }
-            const membership = await tx.teamMember.findUnique({
-              where: {
-                teamId_userId: {
-                  teamId: current.assignedTeamId,
-                  userId: action.userId,
-                },
+            await this.ticketsService.applyAssigneeInTx(
+              tx,
+              {
+                id: current.id,
+                status: current.status,
+                assignedTeamId: current.assignedTeamId,
+                assigneeId: current.assigneeId,
               },
-              select: { id: true },
-            });
-            if (!membership) {
-              throw new Error(
-                `User ${action.userId} is not a member of team ${current.assignedTeamId}`,
-              );
-            }
-            await tx.ticket.update({
-              where: { id: ticketId },
-              data: { assigneeId: action.userId },
-            });
-            await tx.ticketEvent.create({
-              data: {
-                ticketId,
-                type: 'TICKET_ASSIGNED',
-                payload: { assigneeId: action.userId },
-                createdById: ruleCreatedById,
-              },
-            });
-            await this.slaEngine.syncFromTicket(ticketId, undefined, tx);
+              { assigneeId: action.userId },
+              ruleCreatedById,
+            );
             current = await this.getTicketForActions(tx, ticketId);
           }
           break;

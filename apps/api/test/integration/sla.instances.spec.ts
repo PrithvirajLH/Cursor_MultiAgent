@@ -121,6 +121,12 @@ describe('SLA instances and breaches', () => {
     const ticket = await createTicket(server);
 
     await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({})
+      .expect(201);
+
+    await request(server)
       .post(`/api/tickets/${ticket.id}/transition`)
       .set(authHeader(fixtureEmails.agent))
       .send({ status: 'WAITING_ON_REQUESTER' })

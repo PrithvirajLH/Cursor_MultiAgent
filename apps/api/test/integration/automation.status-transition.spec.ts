@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
-import { fixtureEmails, fixtureTeamIds } from '../utils/fixtures';
+import {
+  fixtureEmails,
+  fixtureTeamIds,
+  fixtureUserIds,
+} from '../utils/fixtures';
 import { resetTestDb } from '../utils/reset-test-db';
 import { createTestApp } from '../utils/test-app';
 
@@ -78,6 +82,14 @@ async function createItTicket(server: SupertestApp, subject: string) {
   return response.body as CreatedTicket;
 }
 
+async function assignItTicketToAgent(server: SupertestApp, ticketId: string) {
+  await request(server)
+    .post(`/api/tickets/${ticketId}/assign`)
+    .set(authHeader(fixtureEmails.admin))
+    .send({ assigneeId: fixtureUserIds.agent })
+    .expect(201);
+}
+
 async function waitForTicketStatus(
   server: SupertestApp,
   ticketId: string,
@@ -148,20 +160,19 @@ describe('Automation set_status transitions', () => {
     const rule = await createTeamRule(server, {
       name: `Auto close ${Date.now()}`,
       trigger: 'STATUS_CHANGED',
-      conditions: [
-        { field: 'status', operator: 'equals', value: 'IN_PROGRESS' },
-      ],
+      conditions: [{ field: 'status', operator: 'equals', value: 'RESOLVED' }],
       actions: [{ type: 'set_status', status: 'CLOSED' }],
     });
     const created = await createItTicket(
       server,
       `Auto-close ticket ${Date.now()}`,
     );
+    await assignItTicketToAgent(server, created.id);
 
     await request(server)
       .post(`/api/tickets/${created.id}/transition`)
       .set(authHeader(fixtureEmails.admin))
-      .send({ status: 'IN_PROGRESS' })
+      .send({ status: 'RESOLVED' })
       .expect(201);
 
     const execution = await waitForExecution(server, rule.id, created.id);
@@ -193,19 +204,20 @@ describe('Automation set_status transitions', () => {
       name: `Auto invalid transition ${Date.now()}`,
       trigger: 'STATUS_CHANGED',
       conditions: [
-        { field: 'status', operator: 'equals', value: 'WAITING_ON_REQUESTER' },
+        { field: 'status', operator: 'equals', value: 'IN_PROGRESS' },
       ],
-      actions: [{ type: 'set_status', status: 'WAITING_ON_VENDOR' }],
+      actions: [{ type: 'set_status', status: 'ASSIGNED' }],
     });
     const created = await createItTicket(
       server,
       `Auto-invalid-transition ${Date.now()}`,
     );
+    await assignItTicketToAgent(server, created.id);
 
     await request(server)
       .post(`/api/tickets/${created.id}/transition`)
       .set(authHeader(fixtureEmails.admin))
-      .send({ status: 'WAITING_ON_REQUESTER' })
+      .send({ status: 'IN_PROGRESS' })
       .expect(201);
 
     const execution = await waitForExecution(server, rule.id, created.id);
@@ -217,6 +229,6 @@ describe('Automation set_status transitions', () => {
       .set(authHeader(fixtureEmails.admin))
       .expect(200);
     const ticket = response.body as CreatedTicket;
-    expect(ticket.status).toBe('WAITING_ON_REQUESTER');
+    expect(ticket.status).toBe('IN_PROGRESS');
   });
 });
