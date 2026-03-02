@@ -41,6 +41,11 @@ import { useToast } from './hooks/useToast';
 import { useTicketCountsQuery } from './hooks/useTicketCountsQuery';
 import { useTicketDataInvalidation } from './contexts/TicketDataInvalidationContext';
 import type { Role, StatusFilter, TicketScope } from './types';
+import { NewTicketPage } from './pages/NewTicketPage';
+import { NewRoutingRulePage } from './pages/NewRoutingRulePage';
+import { NewAutomationRulePage } from './pages/NewAutomationRulePage';
+import { NewCustomFieldPage } from './pages/NewCustomFieldPage';
+import { NewCategoryPage } from './pages/NewCategoryPage';
 
 // Lazy-loaded page components for code splitting – each page is a separate chunk
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
@@ -125,16 +130,17 @@ function isAdminRoutePath(pathname: string): boolean {
 
 function isShellLayoutPath(pathname: string): boolean {
   if (pathname === '/tickets' || pathname.startsWith('/tickets/')) return true;
+  if (pathname === '/routing' || pathname.startsWith('/routing/')) return true;
+  if (pathname === '/automation' || pathname.startsWith('/automation/')) return true;
+  if (pathname === '/custom-fields' || pathname.startsWith('/custom-fields/')) return true;
+  if (pathname === '/categories' || pathname.startsWith('/categories/')) return true;
   return (
     pathname === '/dashboard' ||
     pathname === '/triage' ||
     pathname === '/manager' ||
     pathname === '/team' ||
     pathname === '/sla-settings' ||
-    pathname === '/routing' ||
-    pathname === '/automation' ||
     pathname === '/audit-log' ||
-    pathname === '/custom-fields' ||
     pathname === '/categories' ||
     pathname === '/reports'
   );
@@ -489,7 +495,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
           activeKey={navKey}
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
-          onCreateTicket={createTicketForm.openModal}
+          onCreateTicket={() => navigate('/tickets/new')}
           className="z-40 hidden lg:flex"
           showAdminSidebarTrigger={adminMenuEnabled && !showAdminSidebar}
           onOpenAdminSidebar={() => {
@@ -528,7 +534,10 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
           activeKey={navKey}
           onSelect={(key) => handleNavSelect(key as NavKey)}
           currentRole={currentPersona.role}
-          onCreateTicket={createTicketForm.openModal}
+          onCreateTicket={() => {
+            sidebar.setMobileSidebarOpen(false);
+            navigate('/tickets/new');
+          }}
           className={`z-50 lg:hidden ${sidebar.mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'}`}
           showAdminSidebarTrigger={adminMenuEnabled && !sidebar.mobileAdminSidebarOpen}
           onOpenAdminSidebar={() => {
@@ -596,11 +605,16 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
                     <Route path="/sla-settings" element={isLeadOrAbove ? <SlaSettingsPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                     <Route path="/admin" element={isAdminOrOwner ? <Navigate to="/sla-settings" replace /> : <Navigate to="/dashboard" replace />} />
                     <Route path="/routing" element={isAdminOrOwner ? <RoutingRulesPage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/routing/new" element={isAdminOrOwner ? <NewRoutingRulePage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                     <Route path="/automation" element={isAdminOrOwner ? <AutomationRulesPage role={currentPersona.role} teamsList={teamsList} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/automation/new" element={isAdminOrOwner ? <NewAutomationRulePage teamsList={teamsList} role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
                     <Route path="/audit-log" element={isAdminOrOwner ? <AuditLogPage /> : <Navigate to="/dashboard" replace />} />
                     <Route path="/categories" element={currentPersona.role === 'OWNER' ? <CategoriesPage /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/categories/new" element={currentPersona.role === 'OWNER' ? <NewCategoryPage /> : <Navigate to="/dashboard" replace />} />
                     <Route path="/custom-fields" element={isAdminOrOwner ? <CustomFieldsAdminPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
-                    <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} teamsList={teamsList} onCreateTicket={createTicketForm.openModal} />} />
+                    <Route path="/custom-fields/new" element={isAdminOrOwner ? <NewCustomFieldPage role={currentPersona.role} /> : <Navigate to="/dashboard" replace />} />
+                    <Route path="/tickets" element={<TicketsPage role={currentPersona.role} currentEmail={currentEmail} presetStatus={ticketPresetStatus} presetScope={ticketPresetScope} teamsList={teamsList} onCreateTicket={() => navigate('/tickets/new')} />} />
+                    <Route path="/tickets/new" element={<NewTicketPage role={currentPersona.role} teamsList={teamsList} />} />
                     <Route path="/tickets/:ticketId" element={<TicketDetailPage currentEmail={currentEmail} role={currentPersona.role} teamsList={teamsList} />} />
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
@@ -617,7 +631,7 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
         recentSearches={commandPalette.recentSearches}
         onSearch={commandPalette.addRecentSearch}
         onClearRecent={commandPalette.clearRecentSearches}
-        onCreateTicket={createTicketForm.openModal}
+        onCreateTicket={() => navigate('/tickets/new')}
         currentRole={currentPersona.role}
       />
 
@@ -628,17 +642,17 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
       />
 
       <CreateTicketModal
-        open={createTicketForm.showModal}
-        onClose={createTicketForm.closeModal}
-        onSubmit={createTicketForm.handleSubmit}
-        error={createTicketForm.error}
+        open={false}
+        onClose={() => {}}
+        onSubmit={() => {}}
+        error={null}
         teams={teamsList}
-        categories={createTicketForm.categories}
-        customFields={createTicketForm.customFields}
-        customFieldValues={createTicketForm.customFieldValues}
-        onCustomFieldChange={createTicketForm.onCustomFieldChange}
-        onTeamChange={createTicketForm.setSelectedTeamId}
-        onCategoryChange={createTicketForm.setSelectedCategoryId}
+        categories={[]}
+        customFields={[]}
+        customFieldValues={{}}
+        onCustomFieldChange={() => {}}
+        onTeamChange={() => {}}
+        onCategoryChange={() => {}}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   createCategory,
   deleteCategory,
@@ -47,6 +48,7 @@ function emptyForm(): CategoryForm {
 
 export function CategoriesPage() {
   const headerCtx = useHeaderContext();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<CategoryRef[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -134,10 +136,7 @@ export function CategoriesPage() {
   }, [categories, search, statusFilter]);
 
   function startCreate() {
-    setError(null);
-    setNotice(null);
-    setForm(emptyForm());
-    setShowEditor(true);
+    navigate('/categories/new');
   }
 
   function startEdit(category: CategoryRef) {
@@ -450,7 +449,7 @@ export function CategoriesPage() {
         </div>
       </div>
 
-      {showEditor && (
+      {showEditor && form.id && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) closeEditor(); }}

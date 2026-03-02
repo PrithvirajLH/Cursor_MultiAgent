@@ -88,16 +88,22 @@ const adminItems: AdminSidebarItem[] = [
   }
 ];
 
-function isItemActive(route: AdminRoute, pathname: string): boolean {
-  const effectivePathname = pathname.startsWith('/admin') ? '/sla-settings' : pathname;
-  if (route === '/sla-settings') return effectivePathname.startsWith('/sla-settings');
-  if (route === '/routing') return effectivePathname.startsWith('/routing');
-  if (route === '/automation') return effectivePathname.startsWith('/automation');
-  if (route === '/custom-fields') return effectivePathname.startsWith('/custom-fields');
-  if (route === '/audit-log') return effectivePathname.startsWith('/audit-log');
-  if (route === '/reports') return effectivePathname.startsWith('/reports');
-  return effectivePathname.startsWith('/categories');
-}
+ function isItemActive(route: AdminRoute, pathname: string): boolean {
+   let effectivePathname = pathname;
+
+   if (pathname.startsWith('/admin')) {
+     const withoutAdmin = pathname.slice('/admin'.length) || '/sla-settings';
+     effectivePathname = withoutAdmin.startsWith('/') ? withoutAdmin : `/${withoutAdmin}`;
+   }
+
+   if (route === '/sla-settings') return effectivePathname.startsWith('/sla-settings');
+   if (route === '/routing') return effectivePathname.startsWith('/routing');
+   if (route === '/automation') return effectivePathname.startsWith('/automation');
+   if (route === '/custom-fields') return effectivePathname.startsWith('/custom-fields');
+   if (route === '/audit-log') return effectivePathname.startsWith('/audit-log');
+   if (route === '/reports') return effectivePathname.startsWith('/reports');
+   return effectivePathname.startsWith('/categories');
+ }
 
 export function AdminSidebar({
   visible,

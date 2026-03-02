@@ -1,4 +1,7 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
   TicketChannel,
@@ -10,9 +13,31 @@ import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportQueryDto, ResolutionTimeQueryDto } from './dto/report-query.dto';
 
+const CACHE_SUMMARY_TTL_MS_DEFAULT = 45_000;
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Build a stable cache key from report query (PERF-02). */
+function summaryCacheKey(userId: string, query: ReportQueryDto): string {
+  const o = { ...query };
+  const keys = Object.keys(o).sort() as (keyof ReportQueryDto)[];
+  const normalized = keys.reduce(
+    (acc, k) => ({ ...acc, [k]: (o as Record<string, unknown>)[k] }),
+    {},
+  );
+  return `reports:summary:${userId}:${JSON.stringify(normalized)}`;
+}
+
 @Injectable()
 export class ReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    private readonly config: ConfigService,
+  ) {}
 
   private readonly priorities: TicketPriority[] = [
     TicketPriority.P1,
@@ -241,7 +266,25 @@ export class ReportsService {
     `;
   }
 
+  /** Returns report summary; result is cached briefly (PERF-02, see CACHE_SUMMARY_TTL_MS). */
   async getSummary(query: ReportQueryDto, user: AuthUser) {
+    const ttlMs = parsePositiveInt(
+      this.config.get<string>('CACHE_SUMMARY_TTL_MS'),
+      CACHE_SUMMARY_TTL_MS_DEFAULT,
+    );
+    const key = summaryCacheKey(user.id, query);
+    const cached =
+      await this.cache.get<
+        Awaited<ReturnType<ReportsService['getSummaryUncached']>>
+      >(key);
+    if (cached != null) return cached;
+
+    const result = await this.getSummaryUncached(query, user);
+    await this.cache.set(key, result, ttlMs);
+    return result;
+  }
+
+  private async getSummaryUncached(query: ReportQueryDto, user: AuthUser) {
     // Note: keep the response "shaped" for the frontend so it can hydrate multiple charts with one request.
     const resolutionQuery: ResolutionTimeQueryDto = {
       ...query,

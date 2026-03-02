@@ -30,6 +30,7 @@
     "concurrently": "^9.2.1"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.31.0",
     "cypress": "^15.9.0"
   }
 }

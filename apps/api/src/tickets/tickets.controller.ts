@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
+import { ThrottlePolicy } from '../common/throttle-policy.decorator';
 import { Public } from '../auth/public.decorator';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
@@ -83,6 +84,7 @@ export class TicketsController {
   }
 
   @Post()
+  @ThrottlePolicy('highWrite')
   async create(
     @Body() payload: CreateTicketDto,
     @CurrentUser() user: AuthUser,
@@ -92,6 +94,7 @@ export class TicketsController {
 
   @Post('inbound-email')
   @Public()
+  @ThrottlePolicy('webhook')
   async ingestInboundEmail(
     @Body() payload: IngestInboundEmailDto,
     @Headers('x-inbound-email-secret') inboundSecret: string | undefined,
@@ -100,6 +103,7 @@ export class TicketsController {
   }
 
   @Post('bulk/assign')
+  @ThrottlePolicy('highWrite')
   async bulkAssign(
     @Body() payload: BulkAssignDto,
     @CurrentUser() user: AuthUser,
@@ -108,6 +112,7 @@ export class TicketsController {
   }
 
   @Post('bulk/transfer')
+  @ThrottlePolicy('highWrite')
   async bulkTransfer(
     @Body() payload: BulkTransferDto,
     @CurrentUser() user: AuthUser,
@@ -116,6 +121,7 @@ export class TicketsController {
   }
 
   @Post('bulk/status')
+  @ThrottlePolicy('highWrite')
   async bulkStatus(
     @Body() payload: BulkStatusDto,
     @CurrentUser() user: AuthUser,
@@ -124,6 +130,7 @@ export class TicketsController {
   }
 
   @Post('bulk/priority')
+  @ThrottlePolicy('highWrite')
   async bulkPriority(
     @Body() payload: BulkPriorityDto,
     @CurrentUser() user: AuthUser,
@@ -141,6 +148,7 @@ export class TicketsController {
   }
 
   @Post(':id/messages')
+  @ThrottlePolicy('highWrite')
   async addMessage(
     @Param('id') id: string,
     @Body() payload: AddTicketMessageDto,
@@ -159,6 +167,7 @@ export class TicketsController {
   }
 
   @Post(':id/attachments')
+  @ThrottlePolicy('highWrite')
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: ATTACHMENTS_MAX_BYTES },
@@ -173,6 +182,7 @@ export class TicketsController {
   }
 
   @Post(':id/assign')
+  @ThrottlePolicy('highWrite')
   async assign(
     @Param('id') id: string,
     @Body() payload: AssignTicketDto,
@@ -182,6 +192,7 @@ export class TicketsController {
   }
 
   @Post(':id/transfer')
+  @ThrottlePolicy('highWrite')
   async transfer(
     @Param('id') id: string,
     @Body() payload: TransferTicketDto,
@@ -191,6 +202,7 @@ export class TicketsController {
   }
 
   @Post(':id/transition')
+  @ThrottlePolicy('highWrite')
   async transition(
     @Param('id') id: string,
     @Body() payload: TransitionTicketDto,
@@ -214,6 +226,7 @@ export class TicketsController {
   }
 
   @Post(':id/followers')
+  @ThrottlePolicy('highWrite')
   async follow(
     @Param('id') id: string,
     @Body() payload: FollowTicketDto,

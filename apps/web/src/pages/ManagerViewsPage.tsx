@@ -38,7 +38,7 @@ import {
   type RealtimeTicketChangedEventPayload,
 } from '../realtime/events';
 import { formatStatus, formatTicketId } from '../utils/format';
-import { getPriorityTone, priorityBadgeClass } from '../utils/statusColors';
+import { priorityBadgeClass } from '../utils/statusColors';
 
 type TabKey = 'overview' | 'agents' | 'performance' | 'workload';
 type SortKey = 'workload' | 'resolved' | 'response' | 'resolution';

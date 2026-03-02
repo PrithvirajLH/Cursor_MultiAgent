@@ -625,7 +625,10 @@ export class SlasService {
       scope: 'sla_policy',
       action: 'deleted',
       entityId: policyId,
-      teamId: existing.assignments.length === 1 ? existing.assignments[0].teamId : null,
+      teamId:
+        existing.assignments.length === 1
+          ? existing.assignments[0].teamId
+          : null,
       actorId: user.id,
     });
     return { id: policyId };

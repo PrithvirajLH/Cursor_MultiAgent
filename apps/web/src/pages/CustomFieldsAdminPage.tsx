@@ -11,6 +11,7 @@ import {
   Type,
   Users
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   fetchCategories,
   createCustomField,
@@ -135,6 +136,7 @@ export function CustomFieldsAdminPage({
 }: {
   role?: Role;
 }) {
+  const navigate = useNavigate();
   const headerCtx = useHeaderContext();
   const canEdit = role ? role === 'TEAM_ADMIN' || role === 'OWNER' : true;
   const isTeamAdmin = role === 'TEAM_ADMIN';
@@ -230,10 +232,7 @@ export function CustomFieldsAdminPage({
   }
 
   function openCreate() {
-    setError(null);
-    setNotice(null);
-    setForm(createEmptyForm(resolvedTeamAdminTeamId));
-    setShowEditor(true);
+    navigate('/custom-fields/new');
   }
 
   function openEdit(field: CustomFieldRecord) {
@@ -548,7 +547,7 @@ export function CustomFieldsAdminPage({
         </div>
       </div>
 
-      {showEditor && (
+      {showEditor && form.id && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) closeEditor(); }}

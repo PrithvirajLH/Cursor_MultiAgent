@@ -61,3 +61,105 @@ describe('Security rate limiting', () => {
       .expect(429);
   });
 });
+
+describe('Route-specific throttling (RL-01)', () => {
+  let app: INestApplication;
+  let server: SupertestApp;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  beforeAll(async () => {
+    savedEnv.RATE_LIMIT_LIMIT = process.env.RATE_LIMIT_LIMIT;
+    savedEnv.RATE_LIMIT_WEBHOOK_LIMIT = process.env.RATE_LIMIT_WEBHOOK_LIMIT;
+    savedEnv.RATE_LIMIT_WEBHOOK_TTL_MS = process.env.RATE_LIMIT_WEBHOOK_TTL_MS;
+    savedEnv.RATE_LIMIT_HIGH_WRITE_LIMIT =
+      process.env.RATE_LIMIT_HIGH_WRITE_LIMIT;
+    savedEnv.RATE_LIMIT_HIGH_WRITE_TTL_MS =
+      process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS;
+    savedEnv.INBOUND_EMAIL_WEBHOOK_SECRET =
+      process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
+    process.env.RATE_LIMIT_LIMIT = '1000';
+    process.env.RATE_LIMIT_TTL_MS = '60000';
+    process.env.RATE_LIMIT_WEBHOOK_LIMIT = '2';
+    process.env.RATE_LIMIT_WEBHOOK_TTL_MS = '60000';
+    process.env.RATE_LIMIT_HIGH_WRITE_LIMIT = '2';
+    process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS = '60000';
+    process.env.INBOUND_EMAIL_WEBHOOK_SECRET = 'test-webhook-secret';
+
+    resetTestDb();
+    app = await createTestApp();
+    server = app.getHttpServer() as SupertestApp;
+  });
+
+  afterAll(async () => {
+    if (savedEnv.RATE_LIMIT_LIMIT != null)
+      process.env.RATE_LIMIT_LIMIT = savedEnv.RATE_LIMIT_LIMIT;
+    else delete process.env.RATE_LIMIT_LIMIT;
+    if (savedEnv.RATE_LIMIT_WEBHOOK_LIMIT != null)
+      process.env.RATE_LIMIT_WEBHOOK_LIMIT = savedEnv.RATE_LIMIT_WEBHOOK_LIMIT;
+    else delete process.env.RATE_LIMIT_WEBHOOK_LIMIT;
+    if (savedEnv.RATE_LIMIT_WEBHOOK_TTL_MS != null)
+      process.env.RATE_LIMIT_WEBHOOK_TTL_MS =
+        savedEnv.RATE_LIMIT_WEBHOOK_TTL_MS;
+    else delete process.env.RATE_LIMIT_WEBHOOK_TTL_MS;
+    if (savedEnv.RATE_LIMIT_HIGH_WRITE_LIMIT != null)
+      process.env.RATE_LIMIT_HIGH_WRITE_LIMIT =
+        savedEnv.RATE_LIMIT_HIGH_WRITE_LIMIT;
+    else delete process.env.RATE_LIMIT_HIGH_WRITE_LIMIT;
+    if (savedEnv.RATE_LIMIT_HIGH_WRITE_TTL_MS != null)
+      process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS =
+        savedEnv.RATE_LIMIT_HIGH_WRITE_TTL_MS;
+    else delete process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS;
+    if (savedEnv.INBOUND_EMAIL_WEBHOOK_SECRET != null)
+      process.env.INBOUND_EMAIL_WEBHOOK_SECRET =
+        savedEnv.INBOUND_EMAIL_WEBHOOK_SECRET;
+    else delete process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
+    if (app) await app.close();
+  });
+
+  function webhookSecretHeader() {
+    return { 'x-inbound-email-secret': 'test-webhook-secret' };
+  }
+
+  it('applies webhook limit to POST /tickets/inbound-email and returns 429 when exceeded', async () => {
+    const body = {
+      fromEmail: 'test@example.com',
+      subject: 'Test',
+      body: 'Body',
+      messageId: 'msg-1',
+    };
+    await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(webhookSecretHeader())
+      .send(body)
+      .expect(201);
+    await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(webhookSecretHeader())
+      .send({ ...body, messageId: 'msg-2' })
+      .expect(201);
+    await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(webhookSecretHeader())
+      .send({ ...body, messageId: 'msg-3' })
+      .expect(429);
+  });
+
+  it('applies highWrite limit to POST /tickets and returns 429 when exceeded', async () => {
+    const body = { subject: 'Test', description: 'Description' };
+    await request(server)
+      .post('/api/tickets')
+      .set(authHeader(fixtureEmails.agent))
+      .send(body)
+      .expect(201);
+    await request(server)
+      .post('/api/tickets')
+      .set(authHeader(fixtureEmails.agent))
+      .send({ ...body, subject: 'Test 2' })
+      .expect(201);
+    await request(server)
+      .post('/api/tickets')
+      .set(authHeader(fixtureEmails.agent))
+      .send({ ...body, subject: 'Test 3' })
+      .expect(429);
+  });
+});

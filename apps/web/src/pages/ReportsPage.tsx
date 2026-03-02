@@ -257,21 +257,6 @@ function toneForMetric(value: number, target: number, hasData = true): string {
   return 'text-red-600';
 }
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
-  return (
-    <label className="relative inline-flex h-[22px] w-10 items-center">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="peer sr-only"
-      />
-      <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600" />
-      <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
-    </label>
-  );
-}
-
 function StatCard({
   label,
   value,

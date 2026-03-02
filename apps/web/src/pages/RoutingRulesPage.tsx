@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   createRoutingRule,
   deleteRoutingRule,
@@ -423,6 +424,7 @@ export function RoutingRulesPage({
 }) {
   const headerCtx = useHeaderContext();
   const toast = useToast();
+  const navigate = useNavigate();
   const [rules, setRules] = useState<RoutingRule[]>([]);
   const [uiMetaById, setUiMetaById] = useState<Record<string, RuleUiMeta>>({});
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
@@ -572,23 +574,7 @@ export function RoutingRulesPage({
   }, [rules]);
 
   function openCreateModal() {
-    const nextPriority =
-      sortedRules.length > 0
-        ? Math.max(...sortedRules.map((rule) => rule.priority)) + 1
-        : 1;
-    const defaultActionValue =
-      assignmentMode === 'member'
-        ? memberOptions[0]?.id ?? ''
-        : teamsList[0]?.id ?? '';
-    setForm({
-      id: null,
-      name: '',
-      enabled: true,
-      priority: nextPriority,
-      conditions: [{ ...DEFAULT_CONDITION }],
-      actions: [{ type: actionType, val: defaultActionValue }]
-    });
-    setShowEditor(true);
+    navigate('/routing/new');
   }
 
   function openEditModal(rule: RoutingRule) {
@@ -952,10 +938,10 @@ export function RoutingRulesPage({
         )}
       </div>
 
-      {showEditor && (
+      {showEditor && form.id && (
         <RuleEditorModal
           form={form}
-          isNew={!form.id}
+          isNew={false}
           loading={saving}
           teamsList={teamsList}
           assignmentMode={assignmentMode}

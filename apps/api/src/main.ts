@@ -7,6 +7,7 @@ import { join } from 'path';
 import type { Request, Response } from 'express';
 import express from 'express';
 import { AppModule } from './app.module';
+import { correlationIdMiddleware } from './common/correlation-id.middleware';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -19,7 +20,16 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
-  app.use(helmet());
+  app.use(correlationIdMiddleware);
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          'connect-src': ["'self'", 'https:', 'wss:'],
+        },
+      },
+    }),
+  );
   const corsOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',')
         .map((o) => o.trim())

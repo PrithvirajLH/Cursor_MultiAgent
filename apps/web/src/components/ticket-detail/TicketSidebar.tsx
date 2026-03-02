@@ -63,6 +63,13 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
   const firstResponseSla = getFirstResponseSla(ticket, RelativeTime);
   const resolutionSla = getResolutionSla(ticket, RelativeTime);
 
+  const facility = (() => {
+    const firstLine = (ticket.description ?? '').split('\n')[0] ?? '';
+    const prefix = 'Facility:';
+    if (!firstLine.startsWith(prefix)) return null;
+    return firstLine.slice(prefix.length).trim() || null;
+  })();
+
   return (
     <aside className="flex flex-col text-[13px] text-slate-700 pb-10 min-h-full">
       {/* Header & Followers */}
@@ -223,6 +230,7 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
           <DetailText label="Requester" value={ticket.requester?.displayName ?? 'Unknown'} />
           <DetailText label="Email" value={ticket.requester?.email ?? '—'} />
           <DetailText label="Reference" value={formatTicketId(ticket)} />
+          {facility && <DetailText label="Facility" value={facility} />}
           <DetailText label="Created" value={<RelativeTime value={ticket.createdAt} />} />
         </div>
       </div>

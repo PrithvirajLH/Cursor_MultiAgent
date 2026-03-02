@@ -65,14 +65,14 @@ export function useCreateTicketForm(opts: {
     setCustomFieldValues((prev) => ({ ...prev, [fieldId]: value }));
   }
 
-  async function handleSubmit(data: CreateTicketFormData) {
+  async function handleSubmit(data: CreateTicketFormData): Promise<boolean> {
     setError(null);
 
     // Keep track of selections for custom field filtering
     setSelectedTeamId(data.assignedTeamId);
     setSelectedCategoryId(data.categoryId ?? '');
 
-    const missingRequired = customFields.filter(
+      const missingRequired = customFields.filter(
       (f) => f.isRequired && !(customFieldValues[f.id]?.trim?.() ?? ''),
     );
     if (missingRequired.length > 0) {
@@ -80,7 +80,7 @@ export function useCreateTicketForm(opts: {
       const msg = `Required field(s) must be filled: ${names}`;
       setError(msg);
       opts.toastError(msg);
-      return;
+      return false;
     }
 
     try {
@@ -110,10 +110,12 @@ export function useCreateTicketForm(opts: {
       setShowModal(false);
       opts.onSuccess();
       opts.toastSuccess('Ticket created successfully.');
+      return true;
     } catch (err: unknown) {
       const display = handleApiError(err);
       setError(display);
       opts.toastError(display);
+      return false;
     }
   }
 

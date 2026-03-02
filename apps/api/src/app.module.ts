@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule } from '@nestjs/config';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import path from 'path';
 import { AppController } from './app.controller';
+import { RouteThrottlerGuard } from './common/route-throttler.guard';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { AutomationModule } from './automation/automation.module';
@@ -42,6 +44,7 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
       inject: [ConfigService],
       useFactory: (config: ConfigService) => [
         {
+          name: 'default',
           ttl: parsePositiveInt(
             config.get<string>('RATE_LIMIT_TTL_MS'),
             60_000,
@@ -50,6 +53,17 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
           setHeaders: true,
         },
       ],
+    }),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const ttl = parsePositiveInt(
+          config.get<string>('CACHE_SUMMARY_TTL_MS'),
+          45_000,
+        );
+        return { ttl };
+      },
     }),
     AuthModule,
     AuditModule,
@@ -73,7 +87,7 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: RouteThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,

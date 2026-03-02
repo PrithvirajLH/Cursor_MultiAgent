@@ -62,7 +62,7 @@ export function SignInLandingPage({ onSignIn, error }: SignInLandingPageProps) {
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <span className="text-sm font-bold tracking-widest text-slate-800 uppercase">
-                Codex Systems
+                Ticketing Systems
               </span>
             </div>
 
@@ -103,7 +103,7 @@ export function SignInLandingPage({ onSignIn, error }: SignInLandingPageProps) {
               <div className="flex items-center justify-center w-12 h-12 mb-4 rounded-lg bg-blue-600 text-white shadow-sm">
                 <ShieldCheck className="w-6 h-6" />
               </div>
-              <h1 className="text-2xl font-bold text-slate-900">Codex Systems</h1>
+              <h1 className="text-2xl font-bold text-slate-900">Ticketing Systems</h1>
             </div>
 
             <div className="text-center lg:text-left">

@@ -310,7 +310,9 @@ export class RealtimeService {
       });
       return teams.map((team) => team.id);
     } catch (error) {
-      this.logger.warn('Failed to resolve active teams for admin.changed publish.');
+      this.logger.warn(
+        'Failed to resolve active teams for admin.changed publish.',
+      );
       this.logger.debug((error as Error).stack);
       return [] as string[];
     }

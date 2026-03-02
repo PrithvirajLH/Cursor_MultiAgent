@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import {
   createAutomationRule,
   deleteAutomationRule,
@@ -721,6 +722,7 @@ export function AutomationRulesPage({
   teamsList: TeamRef[];
 }) {
   const headerCtx = useHeaderContext();
+  const navigate = useNavigate();
   const toast = useToast();
   const canEdit = role === 'TEAM_ADMIN' || role === 'OWNER';
   const teamAdminScopeTeamId = useMemo(
@@ -946,21 +948,7 @@ export function AutomationRulesPage({
   );
 
   function openCreateModal() {
-    const scopedTeamId = role === 'TEAM_ADMIN' ? teamAdminScopeTeamId : '';
-    setForm({
-      id: null,
-      name: '',
-      description: '',
-      enabled: true,
-      trigger: 'TICKET_CREATED',
-      conditions: [{ ...EMPTY_CONDITION }],
-      actions: [{ ...EMPTY_ACTION }],
-      priority: sortedRules.length > 0 ? Math.max(...sortedRules.map((rule) => rule.priority)) + 1 : 1,
-      teamId: scopedTeamId,
-      sourceConditions: null,
-      conditionTreeLocked: false,
-    });
-    setShowEditor(true);
+    navigate('/automation/new');
   }
 
   function openEditModal(rule: AutomationRule) {
@@ -1387,10 +1375,10 @@ export function AutomationRulesPage({
         )}
       </div>
 
-      {showEditor && (
+      {showEditor && form.id && (
         <RuleEditorModal
           form={form}
-          isNew={!form.id}
+          isNew={false}
           loading={saving}
           role={role}
           teamsList={teamsList}
