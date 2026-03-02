@@ -78,7 +78,8 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
   const currentUser = headerCtx?.currentUser ?? null;
   const initialFacility =
     currentUser?.graphProfile?.officeLocation?.trim() ?? '';
-  const [facility] = useState(initialFacility);
+  const hasProfileFacility = initialFacility.length > 0;
+  const [facility, setFacility] = useState(initialFacility);
 
   async function onSubmit(data: CreateTicketFormData) {
     const nextDescription =
@@ -206,10 +207,17 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 </label>
                 <input
                   id="new-ticket-facility"
-                  className={`${inputBase} ${inputNormal} bg-slate-100 cursor-not-allowed`}
+                  className={`${inputBase} ${inputNormal} ${
+                    hasProfileFacility ? 'bg-slate-100 cursor-not-allowed' : ''
+                  }`}
                   placeholder="e.g. HQ – 3rd Floor – East Wing"
                   value={facility}
-                  readOnly
+                  readOnly={hasProfileFacility}
+                  onChange={
+                    hasProfileFacility
+                      ? undefined
+                      : (event) => setFacility(event.target.value)
+                  }
                 />
               </div>
 
@@ -304,29 +312,6 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                   {errors.priority && (
                     <p className="mt-1 text-sm text-red-600">
                       {errors.priority.message}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label
-                    htmlFor="new-ticket-channel"
-                    className="mb-1.5 block text-sm font-medium text-slate-700"
-                  >
-                    Channel
-                  </label>
-                  <select
-                    id="new-ticket-channel"
-                    className={`${inputBase} ${
-                      errors.channel ? inputError : inputNormal
-                    }`}
-                    {...register('channel')}
-                  >
-                    <option value="PORTAL">Portal</option>
-                    <option value="EMAIL">Email</option>
-                  </select>
-                  {errors.channel && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.channel.message}
                     </p>
                   )}
                 </div>
