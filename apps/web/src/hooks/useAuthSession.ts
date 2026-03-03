@@ -128,6 +128,10 @@ function buildEasyAuthLoginUrl() {
   const postLoginRedirectUri = encodeURIComponent(window.location.href);
   return `/.auth/login/aad?post_login_redirect_uri=${postLoginRedirectUri}`;
 }
+function buildEasyAuthLogoutUrl() {
+  const postLogoutRedirectUri = encodeURIComponent(logoutRedirectUri);
+  return `/.auth/logout?post_logout_redirect_uri=${postLogoutRedirectUri}`;
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object';
 }
@@ -406,16 +410,29 @@ export function useAuthSession() {
       setState({ loading: false, user: null, error: null });
       return;
     }
-    const client = getMsalClient();
     setAuthToken(null);
     setDemoUserEmail('');
-    if (!client) {
-      setState({ loading: false, user: null, error: null });
+    setState({ loading: false, user: null, error: null });
+
+    // In deployed App Service EasyAuth mode, logout must clear the EasyAuth cookie.
+    if (!isLocalhost && easyAuthEndpointAvailable) {
+      window.location.assign(buildEasyAuthLogoutUrl());
       return;
     }
-    await client.logoutRedirect({
-      postLogoutRedirectUri: logoutRedirectUri,
-    });
+
+    const client = getMsalClient();
+    if (!client) {
+      return;
+    }
+    try {
+      await client.initialize();
+      await client.logoutRedirect({
+        account: client.getActiveAccount() ?? client.getAllAccounts()[0],
+        postLogoutRedirectUri: logoutRedirectUri,
+      });
+    } catch {
+      window.location.assign(logoutRedirectUri);
+    }
   }, []);
 
   useEffect(() => {

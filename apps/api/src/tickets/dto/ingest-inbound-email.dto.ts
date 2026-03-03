@@ -1,12 +1,47 @@
+import { Type } from 'class-transformer';
 import { TicketPriority } from '@prisma/client';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
+  Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+export class InboundEmailAttachmentDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  fileName!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  contentType!: string;
+
+  @IsInt()
+  @Min(1)
+  sizeBytes!: number;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  contentBase64?: string;
+
+  @IsOptional()
+  @IsUrl({
+    protocols: ['https'],
+    require_protocol: true,
+  })
+  contentUrl?: string;
+}
 
 export class IngestInboundEmailDto {
   @IsEmail()
@@ -35,4 +70,11 @@ export class IngestInboundEmailDto {
   @IsOptional()
   @IsEnum(TicketPriority)
   priority?: TicketPriority;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(25)
+  @ValidateNested({ each: true })
+  @Type(() => InboundEmailAttachmentDto)
+  attachments?: InboundEmailAttachmentDto[];
 }

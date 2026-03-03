@@ -14,6 +14,7 @@ function authHeader(email: string) {
 }
 
 const inboundSecretHeader = { 'x-inbound-email-secret': 'test-inbound-secret' };
+const scanSecretHeader = { 'x-attachment-scan-secret': 'test-scan-secret' };
 
 type TicketResponse = {
   id: string;
@@ -22,6 +23,10 @@ type TicketResponse = {
   status?: string | null;
   channel?: string | null;
   requester?: { email?: string | null } | null;
+  attachments?: Array<{
+    id: string;
+    fileName: string;
+  }>;
 };
 
 type InboundEmailResponse = {
@@ -114,6 +119,60 @@ describe('Inbound email ingestion', () => {
     expect(body.ticket.requester?.email).toBe(inboundEmail.toLowerCase());
   });
 
+  it('ingests inbound attachments for a newly created EMAIL ticket', async () => {
+    const subject = `Inbound attachment create ${Date.now()}`;
+    const attachmentBody = `log line ${Date.now()}`;
+    const attachmentBase64 = Buffer.from(attachmentBody, 'utf8').toString(
+      'base64',
+    );
+
+    const response = await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(inboundSecretHeader)
+      .send({
+        fromEmail: `attachment.create.${Date.now()}@example.com`,
+        fromName: 'Attachment Requester',
+        subject,
+        body: 'Please review the attached file.',
+        messageId: `attachment-create-${Date.now()}@mail.example`,
+        attachments: [
+          {
+            fileName: 'inbound-log.txt',
+            contentType: 'text/plain',
+            sizeBytes: Buffer.byteLength(attachmentBody, 'utf8'),
+            contentBase64: attachmentBase64,
+          },
+        ],
+      })
+      .expect(201);
+
+    const body = response.body as InboundEmailResponse;
+    const detail = await request(server)
+      .get(`/api/tickets/${body.ticket.id}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const detailBody = detail.body as TicketResponse;
+    expect(detailBody.attachments?.length).toBe(1);
+
+    const attachment = detailBody.attachments?.[0];
+    expect(attachment?.fileName).toBe('inbound-log.txt');
+    if (!attachment) {
+      throw new Error('Expected inbound attachment to be present');
+    }
+
+    await request(server)
+      .post(`/api/attachments/${attachment.id}/scan-status`)
+      .set(scanSecretHeader)
+      .send({ status: 'CLEAN' })
+      .expect(201);
+
+    const download = await request(server)
+      .get(`/api/attachments/${attachment.id}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    expect(download.text).toContain(attachmentBody);
+  });
+
   it('threads by display id and reopens a closed ticket', async () => {
     const created = await createTicket(server, `Inbound thread ${Date.now()}`);
     expect(created.displayId).toBeTruthy();
@@ -143,6 +202,7 @@ describe('Inbound email ingestion', () => {
       .expect(201);
 
     const inboundBody = `Follow-up ${Date.now()}: issue persists`;
+    const threadedAttachment = `thread-attachment-${Date.now()}`;
     const threadedResponse = await request(server)
       .post('/api/tickets/inbound-email')
       .set(inboundSecretHeader)
@@ -152,6 +212,16 @@ describe('Inbound email ingestion', () => {
         subject: `Re: ${created.displayId} update`,
         body: inboundBody,
         messageId: `thread-${Date.now()}@mail.example`,
+        attachments: [
+          {
+            fileName: 'thread-reply.txt',
+            contentType: 'text/plain',
+            sizeBytes: Buffer.byteLength(threadedAttachment, 'utf8'),
+            contentBase64: Buffer.from(threadedAttachment, 'utf8').toString(
+              'base64',
+            ),
+          },
+        ],
       })
       .expect(201);
 
@@ -168,6 +238,17 @@ describe('Inbound email ingestion', () => {
     expect(
       messagesBody.data.some((message) => message.body === inboundBody),
     ).toBe(true);
+
+    const detail = await request(server)
+      .get(`/api/tickets/${created.id}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const detailBody = detail.body as TicketResponse;
+    expect(
+      detailBody.attachments?.some(
+        (attachment) => attachment.fileName === 'thread-reply.txt',
+      ),
+    ).toBe(true);
   });
 
   it('deduplicates webhook retries by messageId', async () => {
@@ -180,6 +261,14 @@ describe('Inbound email ingestion', () => {
       subject,
       body: 'Please help with printer access.',
       messageId,
+      attachments: [
+        {
+          fileName: 'retry.txt',
+          contentType: 'text/plain',
+          sizeBytes: Buffer.byteLength('retry file', 'utf8'),
+          contentBase64: Buffer.from('retry file', 'utf8').toString('base64'),
+        },
+      ],
     };
 
     const first = await request(server)
@@ -207,5 +296,14 @@ describe('Inbound email ingestion', () => {
     const listBody = list.body as TicketListResponse;
     const matches = listBody.data.filter((item) => item.subject === subject);
     expect(matches).toHaveLength(1);
+
+    const detail = await request(server)
+      .get(`/api/tickets/${firstBody.ticket.id}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const detailBody = detail.body as TicketResponse;
+    expect(
+      detailBody.attachments?.filter((a) => a.fileName === 'retry.txt'),
+    ).toHaveLength(1);
   });
 });

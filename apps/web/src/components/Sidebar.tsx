@@ -77,7 +77,7 @@ export const Sidebar = memo(function Sidebar({
 
       <nav ref={navRef} className="mt-6 flex-1 space-y-1 relative">
         <div
-          className="absolute left-[-20px] w-1 rounded-r-full bg-blue-500 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] z-10"
+          className="absolute left-[-20px] w-1 rounded-r-full bg-blue-500 transition-all duration-300 [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] z-10"
           style={{
             top: indicatorStyle.top,
             height: indicatorStyle.height,

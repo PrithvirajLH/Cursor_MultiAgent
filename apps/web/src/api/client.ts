@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as string | undefined;
 let authToken: string | null = null;
 

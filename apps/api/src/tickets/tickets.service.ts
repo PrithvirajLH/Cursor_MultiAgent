@@ -47,7 +47,10 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
-import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
+import {
+  InboundEmailAttachmentDto,
+  IngestInboundEmailDto,
+} from './dto/ingest-inbound-email.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
@@ -111,6 +114,13 @@ type BusinessHoursSettings = {
 type InboundEmailReceiptReservation =
   | { mode: 'reserved'; id: string }
   | { mode: 'replay'; ticketId: string; threaded: boolean };
+
+type NormalizedInboundAttachment = {
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  buffer: Buffer;
+};
 
 type TicketRealtimeReason =
   | 'ticket_created'
@@ -1250,6 +1260,9 @@ export class TicketsService {
     }
 
     try {
+      const inboundAttachments = await this.normalizeInboundEmailAttachments(
+        payload.attachments,
+      );
       const requester = await this.findOrCreateInboundRequester(
         payload.fromEmail,
         payload.fromName,
@@ -1301,6 +1314,11 @@ export class TicketsService {
             { body: payload.body, type: MessageType.PUBLIC },
             requesterAuth,
           );
+          await this.attachInboundEmailAttachments(
+            existing.id,
+            inboundAttachments,
+            requester.id,
+          );
 
           await this.prisma.ticketEvent.create({
             data: {
@@ -1311,6 +1329,7 @@ export class TicketsService {
                 messageId,
                 subject: payload.subject,
                 threadedByDisplayId: displayId,
+                attachmentCount: inboundAttachments.length,
               },
               createdById: requester.id,
             },
@@ -1339,6 +1358,11 @@ export class TicketsService {
         },
         requesterAuth,
       );
+      await this.attachInboundEmailAttachments(
+        created.id,
+        inboundAttachments,
+        requester.id,
+      );
 
       await this.prisma.ticketEvent.create({
         data: {
@@ -1349,6 +1373,7 @@ export class TicketsService {
             messageId,
             subject: payload.subject,
             threadedByDisplayId: null,
+            attachmentCount: inboundAttachments.length,
           },
           createdById: requester.id,
         },
@@ -2442,53 +2467,15 @@ export class TicketsService {
       throw new ForbiddenException('No write access to this ticket');
     }
 
-    // ——— Validate file type before anything else (4.1 fix) ———
-    this.validateFileUpload(file);
-
-    const maxMb = Number(this.config.get<string>('ATTACHMENTS_MAX_MB') ?? '10');
-    const maxBytes = maxMb * 1024 * 1024;
-    if (Number.isFinite(maxBytes) && file.size > maxBytes) {
-      throw new BadRequestException(`Attachment exceeds ${maxMb}MB limit`);
-    }
-
-    const attachmentId = randomUUID();
-    const safeName = this.sanitizeFileName(file.originalname);
-    const storageKey = path.posix.join(ticketId, `${attachmentId}-${safeName}`);
-    await this.saveAttachmentFile(storageKey, file.buffer, file.mimetype);
-
-    const bypassAttachmentScan =
-      this.config.get<string>('ATTACHMENT_SCAN_BYPASS') === 'true';
-    const scanStatus = bypassAttachmentScan
-      ? AttachmentScanStatus.CLEAN
-      : AttachmentScanStatus.PENDING;
-    const attachment = await this.prisma.attachment.create({
-      data: {
-        id: attachmentId,
-        ticketId,
-        uploadedById: user.id,
-        fileName: file.originalname,
+    const attachment = await this.createTicketAttachmentFromBuffer(
+      ticketId,
+      {
+        originalName: file.originalname,
         contentType: file.mimetype,
-        sizeBytes: file.size,
-        storageKey,
-        scanStatus,
-        scanCheckedAt: bypassAttachmentScan ? new Date() : null,
+        buffer: file.buffer,
       },
-      include: { uploadedBy: true },
-    });
-
-    await this.prisma.ticketEvent.create({
-      data: {
-        ticketId,
-        type: 'ATTACHMENT_ADDED',
-        payload: {
-          attachmentId: attachment.id,
-          fileName: attachment.fileName,
-          sizeBytes: attachment.sizeBytes,
-          contentType: attachment.contentType,
-        },
-        createdById: user.id,
-      },
-    });
+      user.id,
+    );
     await this.safeRealtime(() =>
       this.emitTicketRealtimeEvent({
         ticketId,
@@ -2498,6 +2485,305 @@ export class TicketsService {
     );
 
     return attachment;
+  }
+
+  private async createTicketAttachmentFromBuffer(
+    ticketId: string,
+    file: {
+      originalName: string;
+      contentType: string;
+      buffer: Buffer;
+    },
+    actorId: string,
+  ) {
+    const mimeType = file.contentType.trim().toLowerCase();
+    const sizeBytes = file.buffer.length;
+    const uploadCandidate = {
+      originalname: file.originalName,
+      mimetype: mimeType,
+      size: sizeBytes,
+      buffer: file.buffer,
+    } as Express.Multer.File;
+
+    this.validateFileUpload(uploadCandidate);
+    this.assertAttachmentWithinSizeLimit(sizeBytes);
+
+    const attachmentId = randomUUID();
+    const safeName = this.sanitizeFileName(file.originalName);
+    const storageKey = path.posix.join(ticketId, `${attachmentId}-${safeName}`);
+    await this.saveAttachmentFile(storageKey, file.buffer, mimeType);
+
+    const { scanStatus, scanCheckedAt } = this.getDefaultAttachmentScanState();
+    const attachment = await this.prisma.$transaction(async (tx) => {
+      const createdAttachment = await tx.attachment.create({
+        data: {
+          id: attachmentId,
+          ticketId,
+          uploadedById: actorId,
+          fileName: file.originalName,
+          contentType: mimeType,
+          sizeBytes,
+          storageKey,
+          scanStatus,
+          scanCheckedAt,
+        },
+        include: { uploadedBy: true },
+      });
+
+      await tx.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'ATTACHMENT_ADDED',
+          payload: {
+            attachmentId: createdAttachment.id,
+            fileName: createdAttachment.fileName,
+            sizeBytes: createdAttachment.sizeBytes,
+            contentType: createdAttachment.contentType,
+          },
+          createdById: actorId,
+        },
+      });
+
+      return createdAttachment;
+    });
+
+    return attachment;
+  }
+
+  private async attachInboundEmailAttachments(
+    ticketId: string,
+    attachments: NormalizedInboundAttachment[],
+    actorId: string,
+  ) {
+    if (attachments.length === 0) {
+      return [];
+    }
+
+    const created = await Promise.all(
+      attachments.map((attachment) =>
+        this.createTicketAttachmentFromBuffer(
+          ticketId,
+          {
+            originalName: attachment.fileName,
+            contentType: attachment.contentType,
+            buffer: attachment.buffer,
+          },
+          actorId,
+        ),
+      ),
+    );
+
+    await this.safeRealtime(() =>
+      this.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'attachment_added',
+        actorId,
+      }),
+    );
+
+    return created;
+  }
+
+  private async normalizeInboundEmailAttachments(
+    attachments: InboundEmailAttachmentDto[] | undefined,
+  ): Promise<NormalizedInboundAttachment[]> {
+    if (!attachments || attachments.length === 0) {
+      return [];
+    }
+
+    const maxCount = this.parsePositiveIntEnv(
+      this.config.get<string>('INBOUND_EMAIL_MAX_ATTACHMENTS'),
+      10,
+    );
+    if (attachments.length > maxCount) {
+      throw new BadRequestException(
+        `Inbound email includes ${attachments.length} attachments, which exceeds the limit of ${maxCount}`,
+      );
+    }
+
+    const maxBytes = this.getAttachmentMaxBytes();
+    const maxAggregateBytes = maxBytes * maxCount;
+    let totalBytes = 0;
+
+    const normalized: NormalizedInboundAttachment[] = [];
+    for (const [index, attachment] of attachments.entries()) {
+      const fileName = attachment.fileName.trim();
+      const contentType = attachment.contentType.trim().toLowerCase();
+      const declaredSize = attachment.sizeBytes;
+      const hasBase64 = Boolean(attachment.contentBase64?.trim());
+      const hasContentUrl = Boolean(attachment.contentUrl?.trim());
+
+      if (hasBase64 === hasContentUrl) {
+        throw new BadRequestException(
+          `Inbound attachment ${index + 1} must include exactly one of contentBase64 or contentUrl`,
+        );
+      }
+
+      const buffer = hasBase64
+        ? this.decodeInboundAttachmentBase64(
+            attachment.contentBase64 ?? '',
+            fileName,
+          )
+        : await this.downloadInboundAttachmentBuffer(
+            attachment.contentUrl ?? '',
+            fileName,
+            declaredSize,
+          );
+
+      if (buffer.length !== declaredSize) {
+        throw new BadRequestException(
+          `Inbound attachment "${fileName}" size mismatch: expected ${declaredSize} bytes, got ${buffer.length}`,
+        );
+      }
+
+      this.assertAttachmentWithinSizeLimit(buffer.length);
+      totalBytes += buffer.length;
+      if (totalBytes > maxAggregateBytes) {
+        throw new BadRequestException(
+          `Inbound email attachments exceed the aggregate limit of ${maxAggregateBytes} bytes`,
+        );
+      }
+
+      normalized.push({
+        fileName,
+        contentType,
+        sizeBytes: buffer.length,
+        buffer,
+      });
+    }
+
+    return normalized;
+  }
+
+  private decodeInboundAttachmentBase64(rawBase64: string, fileName: string) {
+    const normalizedInput = rawBase64
+      .trim()
+      .replace(/^data:[^;]+;base64,/, '')
+      .replace(/\s+/g, '');
+    if (!normalizedInput) {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" contentBase64 is empty`,
+      );
+    }
+    if (
+      normalizedInput.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(normalizedInput)
+    ) {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" contentBase64 is not valid base64`,
+      );
+    }
+
+    const buffer = Buffer.from(normalizedInput, 'base64');
+    if (buffer.length === 0) {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" decoded to empty content`,
+      );
+    }
+    return buffer;
+  }
+
+  private async downloadInboundAttachmentBuffer(
+    contentUrl: string,
+    fileName: string,
+    declaredSize: number,
+  ) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(contentUrl);
+    } catch {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" has an invalid contentUrl`,
+      );
+    }
+
+    if (parsedUrl.protocol !== 'https:') {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" contentUrl must use https`,
+      );
+    }
+
+    const allowedHosts = this.getInboundAttachmentAllowedHosts();
+    if (
+      allowedHosts.size > 0 &&
+      !allowedHosts.has(parsedUrl.hostname.toLowerCase())
+    ) {
+      throw new BadRequestException(
+        `Inbound attachment host "${parsedUrl.hostname}" is not allowed`,
+      );
+    }
+
+    const maxBytes = this.getAttachmentMaxBytes();
+    if (declaredSize > maxBytes) {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" exceeds size limit`,
+      );
+    }
+
+    const timeoutMs = this.parsePositiveIntEnv(
+      this.config.get<string>('INBOUND_EMAIL_ATTACHMENT_FETCH_TIMEOUT_MS'),
+      15_000,
+    );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(parsedUrl.toString(), {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new BadRequestException(
+          `Inbound attachment "${fileName}" contentUrl returned ${response.status}`,
+        );
+      }
+
+      const contentLengthRaw = response.headers.get('content-length');
+      if (contentLengthRaw) {
+        const contentLength = Number.parseInt(contentLengthRaw, 10);
+        if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+          throw new BadRequestException(
+            `Inbound attachment "${fileName}" exceeds size limit`,
+          );
+        }
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length === 0) {
+        throw new BadRequestException(
+          `Inbound attachment "${fileName}" fetched empty content`,
+        );
+      }
+      if (buffer.length > maxBytes) {
+        throw new BadRequestException(
+          `Inbound attachment "${fileName}" exceeds size limit`,
+        );
+      }
+
+      return buffer;
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(
+        `Unable to download inbound attachment "${fileName}"`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private getInboundAttachmentAllowedHosts() {
+    const raw = this.config.get<string>(
+      'INBOUND_EMAIL_ATTACHMENT_ALLOWED_HOSTS',
+    );
+    if (!raw) {
+      return new Set<string>();
+    }
+    return new Set(
+      raw
+        .split(',')
+        .map((host) => host.trim().toLowerCase())
+        .filter(Boolean),
+    );
   }
 
   async getAttachmentFile(attachmentId: string, user: AuthUser) {
@@ -3932,6 +4218,33 @@ export class TicketsService {
     throw new ForbiddenException(
       'Attachment scan failed; download is blocked until the file is rescanned',
     );
+  }
+
+  private getAttachmentMaxBytes() {
+    const maxMb = this.parsePositiveIntEnv(
+      this.config.get<string>('ATTACHMENTS_MAX_MB'),
+      10,
+    );
+    return maxMb * 1024 * 1024;
+  }
+
+  private assertAttachmentWithinSizeLimit(sizeBytes: number) {
+    const maxBytes = this.getAttachmentMaxBytes();
+    if (sizeBytes > maxBytes) {
+      const maxMb = Math.floor(maxBytes / (1024 * 1024));
+      throw new BadRequestException(`Attachment exceeds ${maxMb}MB limit`);
+    }
+  }
+
+  private getDefaultAttachmentScanState() {
+    const bypassAttachmentScan =
+      this.config.get<string>('ATTACHMENT_SCAN_BYPASS') === 'true';
+    return {
+      scanStatus: bypassAttachmentScan
+        ? AttachmentScanStatus.CLEAN
+        : AttachmentScanStatus.PENDING,
+      scanCheckedAt: bypassAttachmentScan ? new Date() : null,
+    };
   }
 
   private sanitizeFileName(fileName: string) {
