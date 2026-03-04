@@ -116,7 +116,8 @@
   }
 
   .skeleton-shimmer {
-    @apply relative overflow-hidden bg-slate-200;
+    @apply relative overflow-hidden bg-slate-100;
+    box-shadow: inset 0 0 0 1px rgb(226 232 240 / 0.75);
   }
 
   .skeleton-shimmer::after {
@@ -124,8 +125,8 @@
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
-    animation: shimmer 1.6s infinite;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.92), transparent);
+    animation: shimmer 1.35s ease-in-out infinite;
   }
 
   /* ——— Typography tokens (7.3 fix) ———

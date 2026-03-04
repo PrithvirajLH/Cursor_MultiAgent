@@ -2,6 +2,23 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as string | undefined;
 let authToken: string | null = null;
 
+type ApiGetCacheEntry = {
+  data: unknown;
+  cachedAt: number;
+  etag: string | null;
+  lastModified: string | null;
+};
+
+const HOT_GET_CACHE_TTL_MS = 15 * 1000;
+const MAX_GET_CACHE_ENTRIES = 300;
+const apiGetCache = new Map<string, ApiGetCacheEntry>();
+const apiGetInflight = new Map<string, Promise<unknown>>();
+
+function clearApiGetCache() {
+  apiGetCache.clear();
+  apiGetInflight.clear();
+}
+
 /** Thrown by apiFetch when response is not ok; includes status for UI (e.g. 403). */
 export class ApiError extends Error {
   readonly status: number;
@@ -307,18 +324,24 @@ export function setDemoUserEmail(email: string) {
   }
   if (!email) {
     window.localStorage.removeItem('demoUserEmail');
+    clearApiGetCache();
     clearSearchCache();
     return;
   }
   const currentEmail = window.localStorage.getItem('demoUserEmail');
   if (currentEmail !== email) {
     // Clear search cache when persona changes to prevent leaking privileged data
+    clearApiGetCache();
     clearSearchCache();
   }
   window.localStorage.setItem('demoUserEmail', email);
 }
 
 export function setAuthToken(token: string | null) {
+  if (authToken !== token) {
+    clearApiGetCache();
+    clearSearchCache();
+  }
   authToken = token;
 }
 
@@ -331,22 +354,124 @@ function authHeaders(): Record<string, string> {
   return email ? { 'x-user-email': email } : {};
 }
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(),
-      ...(options?.headers ?? {})
-    }
-  });
+function cacheScopeKey() {
+  if (authToken) {
+    return 'authenticated';
+  }
+  return `demo:${getDemoUserEmail().trim().toLowerCase()}`;
+}
 
-  if (!response.ok) {
-    const message = await response.text();
-    throw new ApiError(message || 'Request failed', response.status);
+function getApiCacheKey(path: string) {
+  return `${cacheScopeKey()}:${path}`;
+}
+
+function setApiCacheEntry(cacheKey: string, entry: ApiGetCacheEntry) {
+  if (apiGetCache.size >= MAX_GET_CACHE_ENTRIES && !apiGetCache.has(cacheKey)) {
+    const oldestKey = apiGetCache.keys().next().value;
+    if (oldestKey) {
+      apiGetCache.delete(oldestKey);
+    }
+  }
+  apiGetCache.set(cacheKey, entry);
+}
+
+function requestMethod(options?: RequestInit) {
+  return (options?.method ?? 'GET').toUpperCase();
+}
+
+function buildRequestHeaders(optionsHeaders?: HeadersInit): Headers {
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json');
+  for (const [key, value] of Object.entries(authHeaders())) {
+    headers.set(key, value);
+  }
+  if (optionsHeaders) {
+    const providedHeaders = new Headers(optionsHeaders);
+    providedHeaders.forEach((value, key) => headers.set(key, value));
+  }
+  return headers;
+}
+
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const method = requestMethod(options);
+  const isGetRequest = method === 'GET';
+  const cacheableGet = isGetRequest && options?.cache !== 'no-store';
+  const requestHeaders = buildRequestHeaders(options?.headers);
+  const requestInit: RequestInit = {
+    ...options,
+    method,
+    headers: requestHeaders,
+  };
+
+  if (!cacheableGet) {
+    const response = await fetch(`${API_BASE}${path}`, requestInit);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new ApiError(message || 'Request failed', response.status);
+    }
+    const payload = (await response.json()) as T;
+    if (!isGetRequest) {
+      clearApiGetCache();
+    }
+    return payload;
   }
 
-  return (await response.json()) as T;
+  const cacheKey = getApiCacheKey(path);
+  const cached = apiGetCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now - cached.cachedAt <= HOT_GET_CACHE_TTL_MS) {
+    return cached.data as T;
+  }
+
+  const inflight = apiGetInflight.get(cacheKey);
+  if (inflight) {
+    return inflight as Promise<T>;
+  }
+
+  const conditionalHeaders = new Headers(requestHeaders);
+  if (cached?.etag) {
+    conditionalHeaders.set('If-None-Match', cached.etag);
+  }
+  if (cached?.lastModified) {
+    conditionalHeaders.set('If-Modified-Since', cached.lastModified);
+  }
+
+  const requestPromise = (async () => {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...requestInit,
+      headers: conditionalHeaders,
+    });
+
+    if (response.status === 304 && cached) {
+      const refreshedCacheEntry: ApiGetCacheEntry = {
+        ...cached,
+        cachedAt: Date.now(),
+      };
+      setApiCacheEntry(cacheKey, refreshedCacheEntry);
+      return refreshedCacheEntry.data as T;
+    }
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new ApiError(message || 'Request failed', response.status);
+    }
+
+    const payload = (await response.json()) as T;
+    setApiCacheEntry(cacheKey, {
+      data: payload,
+      cachedAt: Date.now(),
+      etag: response.headers.get('etag'),
+      lastModified: response.headers.get('last-modified'),
+    });
+    return payload;
+  })();
+
+  apiGetInflight.set(cacheKey, requestPromise as Promise<unknown>);
+  try {
+    return await requestPromise;
+  } finally {
+    apiGetInflight.delete(cacheKey);
+  }
 }
 
 type DataEnvelope<T> = { data: T };
@@ -643,7 +768,9 @@ export async function uploadTicketAttachment(ticketId: string, file: File) {
     throw new Error(message || 'Attachment upload failed');
   }
 
-  return (await response.json()) as Attachment;
+  const attachment = (await response.json()) as Attachment;
+  clearApiGetCache();
+  return attachment;
 }
 
 export async function downloadAttachment(attachmentId: string) {

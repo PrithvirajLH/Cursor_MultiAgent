@@ -20,6 +20,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { FilterPanel } from '../components/filters/FilterPanel';
 import { TicketTableView } from '../components/TicketTableView';
+import { TicketsTableSkeleton } from '../components/skeletons';
 import { useFilters } from '../hooks/useFilters';
 import { useFocusSearchOnShortcut } from '../hooks/useKeyboardShortcuts';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
@@ -632,8 +633,12 @@ export function TicketsPage({
     setUsersLoading(true);
     fetchUsers()
       .then((res) => {
-        setAssignableUsers(res.data);
-        setRequesterOptions(res.data);
+        const allUsers = res.data;
+        const assignable = allUsers.filter((user) =>
+          ['AGENT', 'LEAD', 'TEAM_ADMIN', 'OWNER'].includes((user.role ?? '').toUpperCase()),
+        );
+        setAssignableUsers(assignable);
+        setRequesterOptions(allUsers);
       })
       .catch(() => {
         setAssignableUsers([]);
@@ -1030,7 +1035,7 @@ export function TicketsPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] p-6">
+      <div className="mx-auto max-w-[1600px] p-6 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto">
         <p className="text-sm text-slate-600">{countLabel}</p>
 
         {selection.isSomeSelected && role !== 'EMPLOYEE' ? (
@@ -1064,14 +1069,11 @@ export function TicketsPage({
         ) : null}
 
         {loadingTickets ? (
-          <div className="mt-4 space-y-2 rounded-lg border border-slate-200 bg-white p-4">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <div
-                key={`ticket-row-skeleton-${index}`}
-                className="h-14 rounded-md border border-slate-200 bg-slate-100 skeleton-shimmer"
-              />
-            ))}
-          </div>
+          <TicketsTableSkeleton
+            className="mt-4"
+            rowCount={8}
+            showCheckbox={role !== 'EMPLOYEE'}
+          />
         ) : null}
 
         {!loadingTickets && !ticketError && tickets.length === 0 ? (
@@ -1164,7 +1166,7 @@ export function TicketsPage({
 
       {showAdvancedFilters && role !== 'EMPLOYEE' ? (
         <div
-          className="fixed inset-0 z-50 flex justify-end bg-black/50"
+          className="fixed inset-y-0 right-0 left-0 lg:-left-64 z-50 flex justify-end bg-black/50"
           onClick={closeAdvancedFilters}
         >
           <div

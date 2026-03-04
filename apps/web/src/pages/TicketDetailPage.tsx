@@ -40,7 +40,6 @@ import { handleApiError } from '../utils/handleApiError';
 import type { Role } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
 import { formatStatus, formatTicketId } from '../utils/format';
-import { RelativeTime } from '../components/RelativeTime';
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   REALTIME_TICKET_TYPING_EVENT,
@@ -1227,8 +1226,8 @@ export function TicketDetailPage({
   const attachmentsCount = ticket?.attachments.length ?? 0;
 
   useEffect(() => {
-    const container = tabsContainerRef.current;
-    if (!container) {
+    const currentContainer = tabsContainerRef.current;
+    if (!currentContainer) {
       return;
     }
 
@@ -1244,7 +1243,7 @@ export function TicketDetailPage({
       if (!target) {
         return;
       }
-      const containerRect = container.getBoundingClientRect();
+      const containerRect = currentContainer!.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       setTabIndicator({
         left: targetRect.left - containerRect.left,
@@ -1468,9 +1467,7 @@ export function TicketDetailPage({
               {/* Tab content with smooth cross-fade motion */}
               <div className="relative flex flex-1 min-h-0 bg-[#fafafa]">
                 {loadingDetail && !ticket ? (
-                  <div className="p-6">
-                    <TicketDetailSkeleton count={4} />
-                  </div>
+                  <TicketDetailSkeleton count={5} className="flex-1" />
                 ) : null}
                 {!loadingDetail && !ticket && !accessDenied ? (
                   <p className="p-6 text-sm text-slate-500">Ticket not found.</p>
