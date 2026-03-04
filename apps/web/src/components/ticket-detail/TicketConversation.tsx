@@ -1,10 +1,9 @@
 import { memo, type ChangeEvent, type KeyboardEvent, type RefObject } from 'react';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, Send, Shield } from 'lucide-react';
 import type { TicketDetail, TicketMessage } from '../../api/client';
 import { MessageBody } from '../MessageBody';
-import { RelativeTime } from '../RelativeTime';
-import { initialsFor } from '../../utils/format';
-import { formatFileSize } from './utils';
+import { initialsFor, formatDate } from '../../utils/format';
+import { AnimatedList } from '../ui/animated-list';
 
 function isSameDay(leftIso: string, rightIso: string) {
   const left = new Date(leftIso);
@@ -43,42 +42,9 @@ function formatConversationDay(iso: string) {
   });
 }
 
-function getAttachmentScanBadge(scanStatus?: string) {
-  if (scanStatus === 'CLEAN') {
-    return {
-      label: 'Clean',
-      tone: 'bg-emerald-100 text-emerald-700',
-      canDownload: true,
-      blockedReason: null,
-    };
-  }
-  if (scanStatus === 'INFECTED') {
-    return {
-      label: 'Infected',
-      tone: 'bg-rose-100 text-rose-700',
-      canDownload: false,
-      blockedReason: 'Blocked: file was flagged as infected.',
-    };
-  }
-  if (scanStatus === 'FAILED') {
-    return {
-      label: 'Scan failed',
-      tone: 'bg-amber-100 text-amber-700',
-      canDownload: false,
-      blockedReason: 'Blocked: attachment scan failed.',
-    };
-  }
-  return {
-    label: 'Scan pending',
-    tone: 'bg-slate-100 text-slate-700',
-    canDownload: false,
-    blockedReason: 'Blocked: attachment scan is still pending.',
-  };
-}
-
 export type TicketConversationProps = {
   ticket: TicketDetail;
-  messages: TicketMessage[];
+  messages: Array<TicketMessage & { localStatus?: 'sending' | 'sent' | 'failed' }>;
   messagesHasMore: boolean;
   messagesLoading: boolean;
   currentEmail: string;
@@ -87,7 +53,6 @@ export type TicketConversationProps = {
   messageBody: string;
   onMessageBodyChange: (body: string) => void;
   onMessageInputBlur: () => void;
-  messageSending: boolean;
   canManage: boolean;
   canUpload: boolean;
   onReply: () => void;
@@ -120,7 +85,6 @@ export const TicketConversation = memo(function TicketConversation({
   messageBody,
   onMessageBodyChange,
   onMessageInputBlur,
-  messageSending,
   canManage,
   canUpload,
   onReply,
@@ -137,12 +101,15 @@ export const TicketConversation = memo(function TicketConversation({
   attachmentInputRef,
   conversationListRef,
 }: TicketConversationProps) {
+  void ticket;
+  void onAttachmentDownload;
+  void onAttachmentView;
   const handleMessageInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) {
       return;
     }
     event.preventDefault();
-    if (!messageBody.trim() || messageSending) {
+    if (!messageBody.trim()) {
       return;
     }
     onReply();
@@ -189,17 +156,24 @@ export const TicketConversation = memo(function TicketConversation({
 
       <div
         ref={conversationListRef}
-        className="flex-1 space-y-1 overflow-y-auto px-4 py-5 sm:px-6"
+        className="relative flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 px-4 py-5 sm:px-6"
       >
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-slate-100/80 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-8 bg-gradient-to-t from-slate-200/80 to-transparent" />
         {messages.length === 0 && !messagesLoading ? (
-          <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-            No messages yet.
+          <div className="relative mx-auto max-w-xl rounded-xl border border-dashed border-slate-300 bg-white/90 px-4 py-5 text-left text-sm text-slate-600 shadow-sm">
+            <p className="font-semibold text-slate-800">Start the conversation</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Your first reply will show up here and notify the requester.
+            </p>
           </div>
         ) : null}
 
+        <AnimatedList className="relative w-full items-stretch gap-1">
         {messages.map((message, index) => {
           const isCurrentUser = message.author?.email === currentEmail;
           const isInternal = message.type === 'INTERNAL';
+          const localStatus = message.localStatus;
           const initials = initialsFor(
             message.author?.displayName ?? message.author?.email ?? 'U',
           );
@@ -211,12 +185,12 @@ export const TicketConversation = memo(function TicketConversation({
             (previousMessage.author?.email ?? null) ===
             (message.author?.email ?? null) &&
             previousMessage.type === message.type &&
-            isWithinMinutes(previousMessage.createdAt, message.createdAt, 10);
+            isWithinMinutes(previousMessage.createdAt, message.createdAt, 5);
           const nextIsSameSender =
             nextMessage != null &&
             (nextMessage.author?.email ?? null) === (message.author?.email ?? null) &&
             nextMessage.type === message.type &&
-            isWithinMinutes(message.createdAt, nextMessage.createdAt, 10);
+            isWithinMinutes(message.createdAt, nextMessage.createdAt, 5);
 
           const isGroupStart = !previousIsSameSender;
           const isGroupEnd = !nextIsSameSender;
@@ -225,7 +199,7 @@ export const TicketConversation = memo(function TicketConversation({
             !isSameDay(previousMessage.createdAt, message.createdAt);
 
           return (
-            <div key={message.id} className="animate-fade-in">
+            <div key={message.id}>
               {shouldShowDateDivider ? (
                 <div className="my-4 flex items-center justify-center">
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
@@ -247,7 +221,7 @@ export const TicketConversation = memo(function TicketConversation({
                 ) : null}
 
                 <div
-                  className={`max-w-[82%] sm:max-w-[70%] ${isCurrentUser ? 'text-right' : 'text-left'}`}
+                  className={`max-w-[82%] sm:max-w-[70%] min-w-0 ${isCurrentUser ? 'text-right' : 'text-left'}`}
                 >
                   {isGroupStart ? (
                     <div
@@ -265,21 +239,24 @@ export const TicketConversation = memo(function TicketConversation({
                           Internal
                         </span>
                       ) : null}
-                      <span className="text-[11px] text-slate-500">
-                        <RelativeTime value={message.createdAt} />
+                      <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        {formatDate(message.createdAt)}
+                        {isCurrentUser && localStatus === 'sending' ? (
+                          <span className="text-slate-400">…</span>
+                        ) : null}
+                        {isCurrentUser && localStatus === 'sent' ? (
+                          <span className="text-xs text-slate-400">✓</span>
+                        ) : null}
+                        {isCurrentUser && localStatus === 'failed' ? (
+                          <span className="text-xs text-rose-500">!</span>
+                        ) : null}
                       </span>
                     </div>
-                  ) : (
-                    <div
-                      className={`mb-1 text-[11px] text-slate-400 ${isCurrentUser ? 'text-right' : 'text-left'}`}
-                    >
-                      <RelativeTime value={message.createdAt} />
-                    </div>
-                  )}
+                  ) : null}
 
                   <div
-                    className={`inline-block max-w-full border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${isCurrentUser
-                      ? 'border-blue-600 bg-blue-600 text-white'
+                    className={`inline-flex min-h-[32px] items-center max-w-full break-words break-all whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${isCurrentUser
+                      ? 'border-slate-700 bg-slate-700 text-slate-50'
                       : isInternal
                         ? 'border-amber-200 bg-amber-50 text-slate-900'
                         : 'border-slate-200 bg-white text-slate-900'
@@ -288,23 +265,34 @@ export const TicketConversation = memo(function TicketConversation({
                         : `${isGroupStart ? 'rounded-tl-[20px]' : 'rounded-tl-md'} ${isGroupEnd ? 'rounded-bl-[20px]' : 'rounded-bl-md'} rounded-tr-[20px] rounded-br-[20px]`
                       }`}
                   >
-                    <MessageBody body={message.body} invert={isCurrentUser} />
+                    {message.body.includes('\n') ? (
+                      <pre className="w-full whitespace-pre-wrap break-words break-all text-sm">
+                        {message.body}
+                      </pre>
+                    ) : (
+                      <MessageBody
+                        body={message.body}
+                        invert={isCurrentUser}
+                        className="flex w-full items-center"
+                      />
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           );
         })}
+        </AnimatedList>
 
         {typingText ? (
-          <div className="animate-fade-in">
-            <div className="flex items-end gap-2 py-1">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm">
+          <div className="mt-2 flex animate-fade-in justify-start px-4 sm:px-6">
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-slate-50">
                 {typingLeadInitials}
               </div>
-              <div className="max-w-[82%] text-left sm:max-w-[70%]">
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-700">
+              <div className="max-w-[260px] text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate text-xs font-semibold text-slate-800">
                     {typingLeadLabel}
                   </span>
                   {typingUsers.length > 1 ? (
@@ -313,10 +301,13 @@ export const TicketConversation = memo(function TicketConversation({
                     </span>
                   ) : null}
                 </div>
-                <div className="inline-flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-2 shadow-sm">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-duration:900ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:140ms] [animation-duration:900ms]" />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-slate-400 [animation-delay:280ms] [animation-duration:900ms]" />
+                <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-1">
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-slate-500" />
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-slate-400 [animation-delay:120ms]" />
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-slate-300 [animation-delay:240ms]" />
+                  <span className="text-[11px] font-medium text-slate-500">
+                    typing…
+                  </span>
                 </div>
               </div>
             </div>
@@ -325,136 +316,100 @@ export const TicketConversation = memo(function TicketConversation({
       </div>
 
       {showJumpToLatest ? (
-        <div className="absolute bottom-[200px] left-1/2 -translate-x-1/2">
+        <div className="absolute bottom-28 left-1/2 -translate-x-1/2">
           <button
             type="button"
             onClick={onScrollToLatest}
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-soft hover:bg-slate-800"
+            className="rounded-full border border-slate-200 bg-gradient-to-r from-sky-50 via-white to-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:from-sky-100 hover:to-slate-100"
           >
             Jump to latest ↓
           </button>
         </div>
       ) : null}
 
-      <div className="shrink-0 border-t border-slate-200 bg-white p-4 sm:p-6 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-        <div className="flex items-center justify-between gap-3">
-          {canManage ? (
-            <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
-              <button
-                type="button"
-                onClick={() => setMessageType('PUBLIC')}
-                className={`rounded-xl px-3 py-1.5 text-[13px] font-semibold ${messageType === 'PUBLIC'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-              >
-                Public
-              </button>
-              <button
-                type="button"
-                onClick={() => setMessageType('INTERNAL')}
-                className={`rounded-xl px-3 py-1.5 text-[13px] font-semibold ${messageType === 'INTERNAL'
-                  ? 'bg-amber-600 text-white'
-                  : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-              >
-                Internal
-              </button>
-            </div>
-          ) : (
-            <div />
-          )}
+      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-6 sm:px-6 sm:py-7">
+        <div className="mx-auto w-full max-w-4xl">
+          <div className="flex w-full items-end gap-4">
+            <div className="flex max-h-72 flex-1 items-end gap-3 overflow-y-auto rounded-full border border-slate-200 bg-white px-4 py-3 focus-within:border-slate-300">
+              <textarea
+                ref={messageInputRef}
+                value={messageBody}
+                onChange={(event) => onMessageBodyChange(event.target.value)}
+                onBlur={onMessageInputBlur}
+                onKeyDown={handleMessageInputKeyDown}
+                placeholder="Type a message…"
+                rows={1}
+                className="min-h-[44px] flex-1 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-2 text-[14px] text-slate-900 leading-relaxed outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
+              />
 
-          <div className="flex items-center gap-2">
-            {canUpload ? (
-              <>
+              <div className="flex items-center gap-1.5 text-slate-500">
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMessageType(messageType === 'PUBLIC' ? 'INTERNAL' : 'PUBLIC')
+                    }
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      messageType === 'PUBLIC'
+                        ? 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100'
+                        : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                    }`}
+                    title={
+                      messageType === 'PUBLIC'
+                        ? 'Messages are visible to the requester'
+                        : 'Messages are internal and only visible to your team'
+                    }
+                    aria-label={
+                      messageType === 'PUBLIC'
+                        ? 'Sending public replies'
+                        : 'Sending internal notes'
+                    }
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    <span>{messageType === 'PUBLIC' ? 'Public' : 'Internal'}</span>
+                  </button>
+                ) : null}
+
+                {canUpload ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => attachmentInputRef.current?.click()}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-slate-100"
+                      title="Attach file"
+                      aria-label="Attach file"
+                    >
+                      <Paperclip className="h-5 w-5" />
+                    </button>
+                    <input
+                      ref={attachmentInputRef}
+                      type="file"
+                      multiple
+                      className="sr-only"
+                      onChange={onAttachmentUpload}
+                      disabled={attachmentUploading}
+                    />
+                  </>
+                ) : null}
+
                 <button
                   type="button"
-                  onClick={() => attachmentInputRef.current?.click()}
-                  className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  title="Attach file"
-                  aria-label="Attach file"
+                  onClick={onReply}
+                  disabled={!messageBody.trim()}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Send"
+                  aria-label="Send message"
                 >
-                  <Paperclip className="h-5 w-5" />
+                  <Send className="h-5 w-5" />
                 </button>
-                <input
-                  ref={attachmentInputRef}
-                  type="file"
-                  multiple
-                  className="sr-only"
-                  onChange={onAttachmentUpload}
-                  disabled={attachmentUploading}
-                />
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={onReply}
-              disabled={!messageBody.trim() || messageSending}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 focus:ring-2 focus:ring-blue-500/50"
-            >
-              {messageSending ? 'Sending...' : 'Send'}
-            </button>
+              </div>
+            </div>
           </div>
+
+          {attachmentError ? (
+            <p className="mt-2 text-xs text-rose-300">{attachmentError}</p>
+          ) : null}
         </div>
-
-        <textarea
-          ref={messageInputRef}
-          value={messageBody}
-          onChange={(event) => onMessageBodyChange(event.target.value)}
-          onBlur={onMessageInputBlur}
-          onKeyDown={handleMessageInputKeyDown}
-          placeholder={messageType === 'INTERNAL' ? 'Add an internal note...' : 'Write a reply...'}
-          rows={4}
-          className="mt-3 w-full resize-none rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-900 leading-relaxed outline-none transition focus:bg-white focus:ring-2 focus:ring-blue-500/30 shadow-sm"
-        />
-
-        {ticket.attachments.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {ticket.attachments.map((attachment) => {
-              const badge = getAttachmentScanBadge(attachment.scanStatus);
-              return (
-                <div
-                  key={attachment.id}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700"
-                >
-                  <Paperclip className="h-4 w-4 text-slate-500" />
-                  <span className="font-semibold">{attachment.fileName}</span>
-                  <span className="text-slate-400">•</span>
-                  <span className="text-slate-500">{formatFileSize(attachment.sizeBytes)}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.tone}`}>
-                    {badge.label}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onAttachmentView(attachment.id)}
-                    disabled={!badge.canDownload}
-                    title={badge.blockedReason ?? 'Open attachment'}
-                    className={`rounded-full p-1 ${badge.canDownload
-                      ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
-                      : 'cursor-not-allowed text-slate-400'
-                      }`}
-                  >
-                    View
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onAttachmentDownload(attachment.id, attachment.fileName)}
-                    disabled={!badge.canDownload}
-                    title={badge.blockedReason ?? 'Download attachment'}
-                    className={`rounded-full p-1 ${badge.canDownload
-                      ? 'text-blue-600 hover:bg-slate-100 hover:text-blue-700'
-                      : 'cursor-not-allowed text-slate-400'
-                      }`}
-                  >
-                    Download
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        {attachmentError ? <p className="mt-2 text-xs text-rose-600">{attachmentError}</p> : null}
       </div>
     </div>
   );

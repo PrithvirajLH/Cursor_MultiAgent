@@ -71,51 +71,65 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
   })();
 
   return (
-    <aside className="flex flex-col text-[13px] text-slate-700 pb-10 min-h-full">
-      {/* Header & Followers */}
-      <div className="px-5 py-4 flex items-center justify-between border-b border-slate-200">
-        <h3 className="font-semibold text-slate-900">Properties</h3>
-        <div className="flex items-center gap-2">
-          {followers.length > 0 && (
-            <div className="flex -space-x-1.5">
-              {followers.slice(0, 3).map((f) => (
-                <div key={f.id} className="h-6 w-6 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] font-bold ring-2 ring-slate-50 shadow-sm" title={f.user.displayName}>
-                  {initialsFor(f.user.displayName)}
-                </div>
-              ))}
-              {followers.length > 3 && (
-                <div className="h-6 w-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold ring-2 ring-slate-50 shadow-sm">
-                  +{followers.length - 3}
-                </div>
-              )}
-            </div>
-          )}
-          <button
-            onClick={onFollowToggle}
-            disabled={followLoading}
-            className={`flex h-7 w-7 items-center justify-center rounded-full transition-all border ${isFollowing
-                ? 'bg-blue-50 border-blue-200 text-blue-600 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 group'
-                : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300'
-              }`}
-            title={isFollowing ? 'Unfollow' : 'Follow'}
-          >
-            {isFollowing ? (
-              <>
-                <UserPlus className="h-3.5 w-3.5 group-hover:hidden" />
-                <UserMinus className="h-3.5 w-3.5 hidden group-hover:block" />
-              </>
-            ) : (
-              <UserPlus className="h-3.5 w-3.5" />
+    <aside className="flex h-full flex-col gap-3 bg-slate-50/70 px-3 pt-3 pb-6 text-[13px] text-slate-700">
+      {/* Properties card */}
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h3 className="text-[13px] font-semibold text-slate-900">Properties</h3>
+          <div className="flex items-center gap-2">
+            {followers.length > 0 && (
+              <div className="flex -space-x-1.5">
+                {followers.slice(0, 3).map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white ring-2 ring-slate-50 shadow-sm"
+                    title={f.user.displayName}
+                  >
+                    {initialsFor(f.user.displayName)}
+                  </div>
+                ))}
+                {followers.length > 3 && (
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700 ring-2 ring-slate-50 shadow-sm">
+                    +{followers.length - 3}
+                  </div>
+                )}
+              </div>
             )}
-          </button>
+            <button
+              onClick={onFollowToggle}
+              disabled={followLoading}
+              className={`flex h-7 w-7 items-center justify-center rounded-full border text-slate-500 transition-all ${
+                isFollowing
+                  ? 'border-blue-200 bg-blue-50 text-blue-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group'
+                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700'
+              }`}
+              title={isFollowing ? 'Unfollow' : 'Follow'}
+            >
+              {isFollowing ? (
+                <>
+                  <UserPlus className="h-3.5 w-3.5 group-hover:hidden" />
+                  <UserMinus className="hidden h-3.5 w-3.5 group-hover:block" />
+                </>
+              ) : (
+                <UserPlus className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {actionError && <div className="mx-5 mt-4 p-2 bg-rose-50 text-rose-600 text-[12px] rounded-lg font-medium">{actionError}</div>}
-      {followError && <div className="mx-5 mt-4 p-2 bg-rose-50 text-rose-600 text-[12px] rounded-lg font-medium">{followError}</div>}
+        {actionError && (
+          <div className="mx-5 mt-3 rounded-lg bg-rose-50 p-2 text-[12px] font-medium text-rose-600">
+            {actionError}
+          </div>
+        )}
+        {followError && (
+          <div className="mx-5 mt-2 rounded-lg bg-rose-50 p-2 text-[12px] font-medium text-rose-600">
+            {followError}
+          </div>
+        )}
 
-      {/* Property List */}
-      <div className="p-2 space-y-0.5 border-b border-slate-200">
+        {/* Property List */}
+        <div className="mt-3 space-y-0.5 border-t border-slate-100 bg-slate-50/60 p-2">
 
         <PropertyRow label="Status">
           {canManage && availableTransitions.length > 0 ? (
@@ -205,10 +219,11 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
         <PropertyRow label="Category">
           <span className="text-slate-900 truncate px-1.5 font-medium">{ticket.category?.name ?? 'None'}</span>
         </PropertyRow>
+        </div>
       </div>
 
       {/* SLAs */}
-      <div className="px-5 py-4 border-b border-slate-200 bg-slate-50/60">
+      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" /> SLAs
@@ -224,8 +239,10 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
       </div>
 
       {/* Details */}
-      <div className="p-5 border-b border-slate-200">
-        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Details</h4>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          Details
+        </h4>
         <div className="space-y-2.5">
           <DetailText label="Requester" value={ticket.requester?.displayName ?? 'Unknown'} />
           <DetailText label="Email" value={ticket.requester?.email ?? '—'} />
@@ -237,8 +254,10 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
 
       {/* Custom Fields */}
       {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-        <div className="p-5 border-b border-slate-200">
-          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Custom Fields</h4>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Custom Fields
+          </h4>
           <div className="space-y-3">
             <CustomFieldsDisplay values={ticket.customFieldValues} />
           </div>
@@ -246,7 +265,7 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
       )}
 
       {/* History */}
-      <div className="p-5 space-y-3">
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <button
           type="button"
           onClick={() => toggleSection('history')}

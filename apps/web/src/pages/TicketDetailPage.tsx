@@ -24,6 +24,7 @@ import {
 } from '../api/client';
 import { TicketConversation } from '../components/ticket-detail/TicketConversation';
 import { TicketTimeline } from '../components/ticket-detail/TicketTimeline';
+import { TicketAttachments } from '../components/ticket-detail/TicketAttachments';
 import { TicketSidebar, type ExpandedSections } from '../components/ticket-detail/TicketSidebar';
 import {
   formatChannel,
@@ -55,6 +56,10 @@ type TypingUserEntry = {
   expiresAt: number;
 };
 
+type ConversationMessage = TicketMessage & {
+  localStatus?: 'sending' | 'sent' | 'failed';
+};
+
 export function TicketDetailPage({
   currentEmail,
   role,
@@ -72,7 +77,7 @@ export function TicketDetailPage({
   /* ——— State ——— */
 
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
-  const [messages, setMessages] = useState<TicketMessage[]>([]);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [messagesHasMore, setMessagesHasMore] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -84,10 +89,9 @@ export function TicketDetailPage({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'conversation' | 'timeline'>('conversation');
+  const [activeTab, setActiveTab] = useState<'conversation' | 'timeline' | 'attachments'>('conversation');
   const [messageType, setMessageType] = useState<'PUBLIC' | 'INTERNAL'>('PUBLIC');
   const [messageBody, setMessageBody] = useState('');
-  const [messageSending, setMessageSending] = useState(false);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -133,6 +137,11 @@ export function TicketDetailPage({
   const seenRealtimeMessageIdsRef = useRef<Set<string>>(new Set());
   const seenRealtimeEventIdsRef = useRef<Set<string>>(new Set());
   const lastTypingOccurredAtByActorRef = useRef<Record<string, number>>({});
+  const hasInitialConversationScrollRef = useRef(false);
+  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
+  const conversationTabRef = useRef<HTMLButtonElement | null>(null);
+  const timelineTabRef = useRef<HTMLButtonElement | null>(null);
+  const attachmentsTabRef = useRef<HTMLButtonElement | null>(null);
 
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
 
@@ -189,6 +198,8 @@ export function TicketDetailPage({
   const headerTitle = headerCtx?.title ?? 'Ticket details';
   const currentUserId = headerCtx?.currentUser?.id ?? null;
 
+  const [tabIndicator, setTabIndicator] = useState<{ left: number; width: number } | null>(null);
+
   useEffect(() => {
     ticketSnapshotRef.current = ticket;
     if (!ticket?.updatedAt) {
@@ -211,7 +222,7 @@ export function TicketDetailPage({
   }, [location.state, navigate]);
 
   const toTicketMessage = useCallback(
-    (payload: RealtimeTicketMessagePayload): TicketMessage => ({
+    (payload: RealtimeTicketMessagePayload): ConversationMessage => ({
       id: payload.id,
       body: payload.body,
       type: payload.type,
@@ -889,14 +900,24 @@ export function TicketDetailPage({
   useEffect(() => {
     if (activeTab !== 'conversation') return;
     const el = conversationListRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      hasInitialConversationScrollRef.current = true;
+    }
   }, [ticket?.id, activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'conversation') return;
     const el = conversationListRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 180) el.scrollTop = el.scrollHeight;
+    if (!hasInitialConversationScrollRef.current) {
+      el.scrollTop = el.scrollHeight;
+      hasInitialConversationScrollRef.current = true;
+      return;
+    }
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 180) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages.length, activeTab]);
 
   useEffect(() => {
@@ -912,6 +933,7 @@ export function TicketDetailPage({
     seenRealtimeEventIdsRef.current.clear();
     lastTicketUpdateAtMsRef.current = 0;
     lastTypingOccurredAtByActorRef.current = {};
+    hasInitialConversationScrollRef.current = false;
   }, [ticketId]);
 
   useEffect(() => {
@@ -999,6 +1021,15 @@ export function TicketDetailPage({
   const handleMessageBodyChange = useCallback(
     (nextBody: string) => {
       setMessageBody(nextBody);
+
+      const el = messageInputRef.current;
+      if (el) {
+        const maxHeight = 180;
+        el.style.height = 'auto';
+        const nextHeight = Math.min(el.scrollHeight, maxHeight);
+        el.style.height = `${nextHeight}px`;
+      }
+
       if (!ticketId) {
         return;
       }
@@ -1017,22 +1048,38 @@ export function TicketDetailPage({
 
   const handleReply = useCallback(async () => {
     const body = messageBody.trim();
-    if (!ticketId || !ticket || !body || messageSending) return;
+    if (!ticketId || !ticket || !body) return;
     setTicketError(null);
     stopTyping();
-    setMessageSending(true);
 
     const optimisticId = `opt-${Date.now()}`;
-    const optimisticMessage: TicketMessage = {
-      id: optimisticId, body, type: messageType, createdAt: new Date().toISOString(),
-      author: { id: 'pending', email: currentEmail, displayName: currentEmail.split('@')[0] || 'You' },
+    const optimisticMessage: ConversationMessage = {
+      id: optimisticId,
+      body,
+      type: messageType,
+      createdAt: new Date().toISOString(),
+      author: {
+        id: 'pending',
+        email: currentEmail,
+        displayName: currentEmail.split('@')[0] || 'You',
+      },
+      localStatus: 'sending',
     };
     setMessages((prev) => [...prev, optimisticMessage]);
     setMessageBody('');
+    if (messageInputRef.current) {
+      messageInputRef.current.style.height = '';
+    }
 
     try {
       const serverMessage = await addTicketMessage(ticketId, { body, type: messageType });
-      setMessages((prev) => prev.map((m) => (m.id === optimisticId ? serverMessage : m)));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === optimisticId
+            ? { ...m, localStatus: 'sent' }
+            : m,
+        ),
+      );
       appendRealtimeEvent({
         id: `rt:msg:${serverMessage.id}`,
         type: 'MESSAGE_ADDED',
@@ -1048,10 +1095,8 @@ export function TicketDetailPage({
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setTicketError('Unable to send message.');
       setCopyToast({ message: 'Unable to send message.', type: 'error' });
-    } finally {
-      setMessageSending(false);
     }
-  }, [messageBody, ticketId, ticket, messageSending, messageType, currentEmail, appendRealtimeEvent, stopTyping]);
+  }, [messageBody, ticketId, ticket, messageType, currentEmail, appendRealtimeEvent, stopTyping]);
 
   const handleAssignSelf = useCallback(async () => {
     if (!ticket) return;
@@ -1179,6 +1224,42 @@ export function TicketDetailPage({
 
   const conversationCount = messages.length;
   const timelineCount = events.length;
+  const attachmentsCount = ticket?.attachments.length ?? 0;
+
+  useEffect(() => {
+    const container = tabsContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    function updateIndicator() {
+      let target: HTMLButtonElement | null = null;
+      if (activeTab === 'conversation') {
+        target = conversationTabRef.current;
+      } else if (activeTab === 'timeline') {
+        target = timelineTabRef.current;
+      } else if (activeTab === 'attachments') {
+        target = attachmentsTabRef.current;
+      }
+      if (!target) {
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      setTabIndicator({
+        left: targetRect.left - containerRect.left,
+        width: targetRect.width,
+      });
+    }
+
+    updateIndicator();
+
+    const handleResize = () => {
+      updateIndicator();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeTab]);
 
   /* ——— Render ——— */
 
@@ -1209,8 +1290,14 @@ export function TicketDetailPage({
             onOpenSearch={headerCtx?.onOpenSearch}
             notificationProps={headerCtx?.notificationProps}
             leftAction={
-              <button type="button" onClick={navigateBack} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900">
-                <ArrowLeft className="h-4 w-4" /> Back
+              <button
+                type="button"
+                onClick={navigateBack}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Back"
+                title="Back"
+              >
+                <ArrowLeft className="h-4 w-4" />
               </button>
             }
             leftContent={
@@ -1248,88 +1335,223 @@ export function TicketDetailPage({
             <div className="flex flex-1 flex-col min-h-0">
               {/* Integrated Subject Header */}
               {ticket && (
-                <div className="px-6 pt-6 pb-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <h1 className="text-xl font-bold text-slate-900 tracking-tight sm:text-2xl">{ticket.subject}</h1>
-                      {ticket.description ? (
-                        <p className="mt-2 text-[14px] leading-relaxed text-slate-600">{ticket.description}</p>
-                      ) : (
-                        <p className="mt-2 text-[14px] leading-relaxed text-slate-500 italic">No description provided.</p>
-                      )}
-                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] font-medium text-slate-500">
-                        <span>Created <RelativeTime value={ticket.createdAt} /></span>
-                        <span className="text-slate-300">•</span>
-                        <span>Requester: <span className="font-semibold text-slate-800">{ticket.requester?.displayName ?? ticket.requester?.email ?? 'Unknown'}</span></span>
-                        <span className="text-slate-300">•</span>
-                        <span>Assignee: <span className="font-semibold text-slate-800">{ticket.assignee?.displayName ?? 'Unassigned'}</span></span>
+                <div className="px-6 pt-6 pb-0">
+                  <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50 px-5 py-4 shadow-sm sm:px-7 sm:py-5">
+                    <div className="pointer-events-none absolute inset-y-0 right-[-80px] hidden w-64 rounded-full bg-gradient-to-l from-sky-200/40 to-transparent blur-3xl sm:block" />
+                    <div className="flex items-start justify-between gap-6">
+                      <div className="min-w-0">
+                        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+                          {ticket.subject}
+                        </h1>
+                        {ticket.description ? (
+                          <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                            {ticket.description}
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-[14px] leading-relaxed italic text-slate-500">
+                            No description provided.
+                          </p>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button type="button" onClick={() => void handleCopyLink()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-50 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30">
-                        <Copy className="h-4 w-4 text-slate-400" /> Copy link
-                      </button>
+                      <div className="flex shrink-0 items-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyLink()}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                          title="Copy ticket link"
+                          aria-label="Copy ticket link"
+                        >
+                          <Copy className="h-4 w-4 text-slate-500" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Tab bar */}
+              {/* Tab bar – Aceternity-style segmented tabs with sliding indicator */}
               <div className="shrink-0 flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-3">
-                <div className="flex items-center gap-2" role="tablist" aria-label="Ticket views">
-                  <button type="button" role="tab" aria-selected={activeTab === 'conversation'} aria-controls="panel-conversation" onClick={() => setActiveTab('conversation')} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${activeTab === 'conversation' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-                    Conversation <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${activeTab === 'conversation' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{conversationCount}</span>
+                <div
+                  ref={tabsContainerRef}
+                  className="relative inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100/70 p-1 text-xs shadow-sm"
+                  role="tablist"
+                  aria-label="Ticket views"
+                >
+                  {tabIndicator ? (
+                    <div
+                      className="absolute inset-y-1 rounded-full bg-slate-900 shadow-sm transition-all duration-300 ease-out"
+                      style={{
+                        transform: `translateX(${tabIndicator.left}px)`,
+                        width: tabIndicator.width,
+                      }}
+                    />
+                  ) : null}
+
+                  <button
+                    ref={conversationTabRef}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'conversation'}
+                    aria-controls="panel-conversation"
+                    onClick={() => setActiveTab('conversation')}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                      activeTab === 'conversation'
+                        ? 'text-slate-50'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Conversation</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        activeTab === 'conversation'
+                          ? 'bg-slate-800 text-slate-100'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {conversationCount}
+                    </span>
                   </button>
-                  <button type="button" role="tab" aria-selected={activeTab === 'timeline'} aria-controls="panel-timeline" onClick={() => setActiveTab('timeline')} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${activeTab === 'timeline' ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-                    Timeline <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${activeTab === 'timeline' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{timelineCount}</span>
+
+                  <button
+                    ref={attachmentsTabRef}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'attachments'}
+                    aria-controls="panel-attachments"
+                    onClick={() => setActiveTab('attachments')}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                      activeTab === 'attachments'
+                        ? 'text-slate-50'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Attachments</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        activeTab === 'attachments'
+                          ? 'bg-slate-800 text-slate-100'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {attachmentsCount}
+                    </span>
+                  </button>
+
+                  <button
+                    ref={timelineTabRef}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'timeline'}
+                    aria-controls="panel-timeline"
+                    onClick={() => setActiveTab('timeline')}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                      activeTab === 'timeline'
+                        ? 'text-slate-50'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Timeline</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        activeTab === 'timeline'
+                          ? 'bg-slate-800 text-slate-100'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {timelineCount}
+                    </span>
                   </button>
                 </div>
                 <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex" />
               </div>
 
-              {/* Tab content */}
-              <div className="relative flex flex-1 flex-col min-h-0 bg-[#fafafa]">
-                {loadingDetail && !ticket ? <div className="p-6"><TicketDetailSkeleton count={4} /></div> : null}
-                {!loadingDetail && !ticket && !accessDenied ? <p className="p-6 text-sm text-slate-500">Ticket not found.</p> : null}
-
-                {ticket && activeTab === 'conversation' ? (
-                  <TicketConversation
-                    ticket={ticket}
-                    messages={messages}
-                    messagesHasMore={messagesHasMore}
-                    messagesLoading={messagesLoading}
-                    currentEmail={currentEmail}
-                    messageType={messageType}
-                    setMessageType={setMessageType}
-                    messageBody={messageBody}
-                    onMessageBodyChange={handleMessageBodyChange}
-                    onMessageInputBlur={handleMessageInputBlur}
-                    messageSending={messageSending}
-                    canManage={canManage}
-                    canUpload={canUpload}
-                    onReply={() => void handleReply()}
-                    onLoadMore={() => ticketId && void loadMessagesPage(ticketId)}
-                    onAttachmentUpload={handleAttachmentUpload}
-                    onAttachmentDownload={(id, name) => void handleAttachmentDownload(id, name)}
-                    onAttachmentView={(id) => void handleAttachmentView(id)}
-                    attachmentUploading={attachmentUploading}
-                    attachmentError={attachmentError}
-                    typingUsers={typingUsers}
-                    showJumpToLatest={showJumpToLatest}
-                    onScrollToLatest={scrollToLatest}
-                    messageInputRef={messageInputRef}
-                    attachmentInputRef={attachmentInputRef}
-                    conversationListRef={conversationListRef}
-                  />
+              {/* Tab content with smooth cross-fade motion */}
+              <div className="relative flex flex-1 min-h-0 bg-[#fafafa]">
+                {loadingDetail && !ticket ? (
+                  <div className="p-6">
+                    <TicketDetailSkeleton count={4} />
+                  </div>
+                ) : null}
+                {!loadingDetail && !ticket && !accessDenied ? (
+                  <p className="p-6 text-sm text-slate-500">Ticket not found.</p>
                 ) : null}
 
-                {ticket && activeTab === 'timeline' ? (
-                  <TicketTimeline
-                    events={events}
-                    eventsHasMore={eventsHasMore}
-                    eventsLoading={eventsLoading}
-                    onLoadMore={() => ticketId && void loadEventsPage(ticketId)}
-                  />
+                {ticket ? (
+                  <>
+                    <div
+                      id="panel-conversation"
+                      role="tabpanel"
+                      aria-hidden={activeTab !== 'conversation'}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
+                        activeTab === 'conversation'
+                          ? 'opacity-100 translate-y-0 pointer-events-auto'
+                          : 'opacity-0 translate-y-2 pointer-events-none'
+                      }`}
+                    >
+                      <TicketConversation
+                        ticket={ticket}
+                        messages={messages}
+                        messagesHasMore={messagesHasMore}
+                        messagesLoading={messagesLoading}
+                        currentEmail={currentEmail}
+                        messageType={messageType}
+                        setMessageType={setMessageType}
+                        messageBody={messageBody}
+                        onMessageBodyChange={handleMessageBodyChange}
+                        onMessageInputBlur={handleMessageInputBlur}
+                        canManage={canManage}
+                        canUpload={canUpload}
+                        onReply={() => void handleReply()}
+                        onLoadMore={() => ticketId && void loadMessagesPage(ticketId)}
+                        onAttachmentUpload={handleAttachmentUpload}
+                        onAttachmentDownload={(id, name) => void handleAttachmentDownload(id, name)}
+                        onAttachmentView={(id) => void handleAttachmentView(id)}
+                        attachmentUploading={attachmentUploading}
+                        attachmentError={attachmentError}
+                        typingUsers={typingUsers}
+                        showJumpToLatest={showJumpToLatest}
+                        onScrollToLatest={scrollToLatest}
+                        messageInputRef={messageInputRef}
+                        attachmentInputRef={attachmentInputRef}
+                        conversationListRef={conversationListRef}
+                      />
+                    </div>
+
+                    <div
+                      id="panel-attachments"
+                      role="tabpanel"
+                      aria-hidden={activeTab !== 'attachments'}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
+                        activeTab === 'attachments'
+                          ? 'opacity-100 translate-y-0 pointer-events-auto'
+                          : 'opacity-0 translate-y-2 pointer-events-none'
+                      }`}
+                    >
+                      <TicketAttachments
+                        ticket={ticket}
+                        onDownloadAttachment={(id, name) => void handleAttachmentDownload(id, name)}
+                        attachmentError={attachmentError}
+                      />
+                    </div>
+
+                    <div
+                      id="panel-timeline"
+                      role="tabpanel"
+                      aria-hidden={activeTab !== 'timeline'}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
+                        activeTab === 'timeline'
+                          ? 'opacity-100 translate-y-0 pointer-events-auto'
+                          : 'opacity-0 translate-y-2 pointer-events-none'
+                      }`}
+                    >
+                      <TicketTimeline
+                        events={events}
+                        eventsHasMore={eventsHasMore}
+                        eventsLoading={eventsLoading}
+                        onLoadMore={() => ticketId && void loadEventsPage(ticketId)}
+                      />
+                    </div>
+                  </>
                 ) : null}
               </div>
             </div>
