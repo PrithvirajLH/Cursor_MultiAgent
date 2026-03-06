@@ -11,10 +11,8 @@ import {
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
-import { BlobServiceClient } from '@azure/storage-blob';
 import {
   AccessLevel,
-  AttachmentScanStatus,
   MessageType,
   Prisma,
   TeamAssignmentStrategy,
@@ -23,23 +21,20 @@ import {
   TicketStatus,
   UserRole,
 } from '@prisma/client';
-import { randomUUID, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import type { Express } from 'express';
-import { createReadStream, promises as fs } from 'fs';
-import { DateTime } from 'luxon';
-import path from 'path';
-import { Readable } from 'stream';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  RealtimeService,
-  type TicketChangedPayload,
-} from '../realtime/realtime.service';
+import { TicketAttachmentService } from './ticket-attachment.service';
+import { TicketRealtimeService } from './ticket-realtime.service';
+import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
+import { InboundEmailService } from './inbound-email.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
+import { parsePositiveInt } from '../common/config.utils';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
 import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
@@ -47,16 +42,12 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
-import {
-  InboundEmailAttachmentDto,
-  IngestInboundEmailDto,
-} from './dto/ingest-inbound-email.dto';
+import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
-import { UpdateAttachmentScanDto } from './dto/update-attachment-scan.dto';
 
 export type StatusTransitionTicketSnapshot = {
   id: string;
@@ -89,51 +80,6 @@ export type TeamAssignmentTicketSnapshot = {
   assigneeId: string | null;
 };
 
-type BusinessWeekDay =
-  | 'Monday'
-  | 'Tuesday'
-  | 'Wednesday'
-  | 'Thursday'
-  | 'Friday'
-  | 'Saturday'
-  | 'Sunday';
-
-type BusinessDaySchedule = {
-  day: BusinessWeekDay;
-  enabled: boolean;
-  start: string;
-  end: string;
-};
-
-type BusinessHoursSettings = {
-  timezone: string;
-  schedule: BusinessDaySchedule[];
-  holidays: Array<{ name: string; date: string }>;
-};
-
-type InboundEmailReceiptReservation =
-  | { mode: 'reserved'; id: string }
-  | { mode: 'replay'; ticketId: string; threaded: boolean };
-
-type NormalizedInboundAttachment = {
-  fileName: string;
-  contentType: string;
-  sizeBytes: number;
-  buffer: Buffer;
-};
-
-type TicketRealtimeReason =
-  | 'ticket_created'
-  | 'message_added'
-  | 'assigned'
-  | 'transferred'
-  | 'status_changed'
-  | 'priority_changed'
-  | 'followers_changed'
-  | 'attachment_added'
-  | 'attachment_scan_status_changed'
-  | 'automation_rule_executed';
-
 @Injectable()
 export class TicketsService {
   private readonly logger = new Logger(TicketsService.name);
@@ -144,22 +90,16 @@ export class TicketsService {
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
     private readonly customFieldsService: CustomFieldsService,
-    private readonly realtime: RealtimeService,
     @Inject(forwardRef(() => AutomationQueueService))
     private readonly automationQueue: AutomationQueueService,
     private readonly accessControl: AccessControlService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
-  ) {}
-
-  private defaultSlaConfig: Record<
-    TicketPriority,
-    { firstResponseHours: number; resolutionHours: number }
-  > = {
-    [TicketPriority.P1]: { firstResponseHours: 1, resolutionHours: 4 },
-    [TicketPriority.P2]: { firstResponseHours: 4, resolutionHours: 24 },
-    [TicketPriority.P3]: { firstResponseHours: 8, resolutionHours: 72 },
-    [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
-  };
+    private readonly attachmentService: TicketAttachmentService,
+    private readonly ticketRealtime: TicketRealtimeService,
+    private readonly slaCalc: TicketSlaCalculationService,
+    @Inject(forwardRef(() => InboundEmailService))
+    private readonly inboundEmailService: InboundEmailService,
+  ) { }
 
   private readonly WAITING_STATUSES = [
     TicketStatus.WAITING_ON_REQUESTER,
@@ -201,122 +141,16 @@ export class TicketsService {
     ],
   };
 
+  private readonly schemaCheckCacheTtlMs = (() => {
+    const parsed = Number.parseInt(process.env.SCHEMA_CHECK_CACHE_TTL_MS ?? '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
+  })();
   private defaultActivityDays = 7;
   private routingAssigneeColumnCache: {
     exists: boolean;
     checkedAtMs: number;
   } | null = null;
-  private businessHoursSettingsCache: {
-    value: BusinessHoursSettings;
-    checkedAtMs: number;
-  } | null = null;
-  private readonly schemaCheckCacheTtlMs = this.parsePositiveIntEnv(
-    process.env.SCHEMA_CHECK_CACHE_TTL_MS,
-    300_000,
-  );
-  private readonly businessDaysOrder: BusinessWeekDay[] = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-  ];
-  private readonly defaultBusinessSchedule: BusinessDaySchedule[] = [
-    { day: 'Monday', enabled: true, start: '09:00', end: '18:00' },
-    { day: 'Tuesday', enabled: true, start: '09:00', end: '18:00' },
-    { day: 'Wednesday', enabled: true, start: '09:00', end: '18:00' },
-    { day: 'Thursday', enabled: true, start: '09:00', end: '18:00' },
-    { day: 'Friday', enabled: true, start: '09:00', end: '17:00' },
-    { day: 'Saturday', enabled: false, start: '10:00', end: '14:00' },
-    { day: 'Sunday', enabled: false, start: '10:00', end: '14:00' },
-  ];
 
-  // ——— File upload security (4.1 fix) ———
-
-  /** Allowed file extensions for attachments. */
-  private static readonly ALLOWED_EXTENSIONS = new Set([
-    '.pdf',
-    '.doc',
-    '.docx',
-    '.xls',
-    '.xlsx',
-    '.ppt',
-    '.pptx',
-    '.txt',
-    '.csv',
-    '.rtf',
-    '.odt',
-    '.ods',
-    '.odp',
-    '.png',
-    '.jpg',
-    '.jpeg',
-    '.gif',
-    '.bmp',
-    '.svg',
-    '.webp',
-    '.ico',
-    '.zip',
-    '.rar',
-    '.7z',
-    '.tar',
-    '.gz',
-    '.eml',
-    '.msg',
-    '.json',
-    '.xml',
-    '.yaml',
-    '.yml',
-    '.mp4',
-    '.mp3',
-    '.wav',
-    '.avi',
-    '.mov',
-    '.webm',
-    '.log',
-  ]);
-
-  /** Map common MIME types to their expected file extensions. */
-  private static readonly MIME_TO_EXTENSIONS: Record<string, string[]> = {
-    'application/pdf': ['.pdf'],
-    'application/msword': ['.doc'],
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [
-      '.docx',
-    ],
-    'application/vnd.ms-excel': ['.xls'],
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [
-      '.xlsx',
-    ],
-    'application/vnd.ms-powerpoint': ['.ppt'],
-    'application/vnd.openxmlformats-officedocument.presentationml.presentation':
-      ['.pptx'],
-    'text/plain': ['.txt', '.csv', '.log', '.yaml', '.yml'],
-    'text/csv': ['.csv'],
-    'text/xml': ['.xml'],
-    'application/json': ['.json'],
-    'application/xml': ['.xml'],
-    'image/png': ['.png'],
-    'image/jpeg': ['.jpg', '.jpeg'],
-    'image/gif': ['.gif'],
-    'image/bmp': ['.bmp'],
-    'image/svg+xml': ['.svg'],
-    'image/webp': ['.webp'],
-    'image/x-icon': ['.ico'],
-    'application/zip': ['.zip'],
-    'application/x-rar-compressed': ['.rar'],
-    'application/x-7z-compressed': ['.7z'],
-    'application/gzip': ['.gz'],
-    'application/x-tar': ['.tar'],
-    'video/mp4': ['.mp4'],
-    'audio/mpeg': ['.mp3'],
-    'audio/wav': ['.wav'],
-    'video/x-msvideo': ['.avi'],
-    'video/quicktime': ['.mov'],
-    'video/webm': ['.webm'],
-    'application/octet-stream': [], // generic fallback – allow if extension is whitelisted
-  };
 
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
   private toEndExclusive(dateStr: string): Date {
@@ -612,7 +446,7 @@ export class TicketsService {
     atRisk: number;
     overdue: number;
   }> {
-    const ttlMs = this.parsePositiveIntEnv(
+    const ttlMs = parsePositiveInt(
       process.env.CACHE_SUMMARY_TTL_MS,
       45_000,
     );
@@ -639,7 +473,7 @@ export class TicketsService {
     overdue: number;
   }> {
     const now = new Date();
-    const atRiskThresholdMinutes = this.parsePositiveIntEnv(
+    const atRiskThresholdMinutes = parsePositiveInt(
       process.env.SLA_AT_RISK_THRESHOLD_MINUTES,
       120,
     );
@@ -990,13 +824,13 @@ export class TicketsService {
       ticketId,
       ...(user.role === UserRole.EMPLOYEE
         ? {
-            NOT: {
-              AND: [
-                { type: 'MESSAGE_ADDED' },
-                { payload: { path: ['type'], equals: MessageType.INTERNAL } },
-              ],
-            },
-          }
+          NOT: {
+            AND: [
+              { type: 'MESSAGE_ADDED' },
+              { payload: { path: ['type'], equals: MessageType.INTERNAL } },
+            ],
+          },
+        }
         : {}),
     };
     const events = await this.prisma.ticketEvent.findMany({
@@ -1106,26 +940,26 @@ export class TicketsService {
         ticket.createdAt,
         ticket.number,
       );
-      const sla = await this.getSlaConfig(
+      const sla = await this.slaCalc.getSlaConfig(
         ticket.priority,
         ticket.assignedTeamId,
         tx,
       );
       const firstResponseDueAt = sla
-        ? await this.addSlaHours(
-            ticket.createdAt,
-            sla.firstResponseHours,
-            sla.businessHoursOnly,
-            tx,
-          )
+        ? await this.slaCalc.addSlaHours(
+          ticket.createdAt,
+          sla.firstResponseHours,
+          sla.businessHoursOnly,
+          tx,
+        )
         : null;
       const resolutionDueAt = sla
-        ? await this.addSlaHours(
-            ticket.createdAt,
-            sla.resolutionHours,
-            sla.businessHoursOnly,
-            tx,
-          )
+        ? await this.slaCalc.addSlaHours(
+          ticket.createdAt,
+          sla.resolutionHours,
+          sla.businessHoursOnly,
+          tx,
+        )
         : null;
 
       const updated = await tx.ticket.update({
@@ -1178,13 +1012,13 @@ export class TicketsService {
         });
       }
 
-      for (const item of validatedCustomValues) {
-        await tx.customFieldValue.create({
-          data: {
+      if (validatedCustomValues.length > 0) {
+        await tx.customFieldValue.createMany({
+          data: validatedCustomValues.map((item) => ({
             ticketId: ticket.id,
             customFieldId: item.customFieldId,
             value: item.value,
-          },
+          })),
         });
       }
 
@@ -1217,8 +1051,8 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.ticketCreated(updatedTicket, user),
     );
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId: updatedTicket.id,
         reason: 'ticket_created',
         actorId: user.id,
@@ -1226,7 +1060,8 @@ export class TicketsService {
     );
 
     // Queue automation with retry via BullMQ instead of fire-and-forget
-    void this.automationQueue.enqueue(updatedTicket.id, 'TICKET_CREATED');
+    this.automationQueue.enqueue(updatedTicket.id, 'TICKET_CREATED')
+      .catch((err) => this.logger.error(`Failed to enqueue automation for ticket ${updatedTicket.id}: ${(err as Error).message}`));
 
     const result = await this.prisma.ticket.findUnique({
       where: { id: updatedTicket.id },
@@ -1239,155 +1074,6 @@ export class TicketsService {
       },
     });
     return result ?? updatedTicket;
-  }
-
-  async ingestInboundEmail(
-    payload: IngestInboundEmailDto,
-    inboundSecret: string | undefined,
-  ) {
-    this.assertInboundEmailWebhookSecret(inboundSecret);
-    const messageId = payload.messageId.trim();
-    const reservation = await this.reserveInboundEmailReceipt(
-      messageId,
-      payload.fromEmail,
-      payload.subject,
-    );
-    if (reservation.mode === 'replay') {
-      return this.buildInboundEmailReplayResponse(
-        reservation.ticketId,
-        reservation.threaded,
-      );
-    }
-
-    try {
-      const inboundAttachments = await this.normalizeInboundEmailAttachments(
-        payload.attachments,
-      );
-      const requester = await this.findOrCreateInboundRequester(
-        payload.fromEmail,
-        payload.fromName,
-      );
-      const requesterAuth = this.toInboundRequesterAuthUser(requester);
-      const displayId = this.extractDisplayIdFromSubject(payload.subject);
-
-      if (displayId) {
-        const existing = await this.prisma.ticket.findFirst({
-          where: { displayId: { equals: displayId, mode: 'insensitive' } },
-          select: {
-            id: true,
-            status: true,
-            priority: true,
-            assignedTeamId: true,
-            assigneeId: true,
-            dueAt: true,
-            slaPausedAt: true,
-            resolvedAt: true,
-            closedAt: true,
-            completedAt: true,
-          },
-        });
-
-        if (existing) {
-          if (
-            existing.status === TicketStatus.RESOLVED ||
-            existing.status === TicketStatus.CLOSED
-          ) {
-            await this.prisma.$transaction(async (tx) => {
-              await this.applyStatusTransitionInTx(
-                tx,
-                existing,
-                TicketStatus.REOPENED,
-                requester.id,
-              );
-            });
-            await this.safeRealtime(() =>
-              this.emitTicketRealtimeEvent({
-                ticketId: existing.id,
-                reason: 'status_changed',
-                actorId: requester.id,
-              }),
-            );
-          }
-
-          await this.addMessage(
-            existing.id,
-            { body: payload.body, type: MessageType.PUBLIC },
-            requesterAuth,
-          );
-          await this.attachInboundEmailAttachments(
-            existing.id,
-            inboundAttachments,
-            requester.id,
-          );
-
-          await this.prisma.ticketEvent.create({
-            data: {
-              ticketId: existing.id,
-              type: 'INBOUND_EMAIL_RECEIVED',
-              payload: {
-                fromEmail: requester.email,
-                messageId,
-                subject: payload.subject,
-                threadedByDisplayId: displayId,
-                attachmentCount: inboundAttachments.length,
-              },
-              createdById: requester.id,
-            },
-          });
-
-          await this.completeInboundEmailReceipt(
-            reservation.id,
-            existing.id,
-            true,
-          );
-          const ticket = await this.getTicketForMutationResponse(existing.id);
-          return {
-            threaded: true,
-            ticket,
-          };
-        }
-      }
-
-      const created = await this.create(
-        {
-          subject: payload.subject,
-          description: payload.body,
-          priority: payload.priority ?? TicketPriority.P3,
-          channel: TicketChannel.EMAIL,
-          requesterId: requester.id,
-        },
-        requesterAuth,
-      );
-      await this.attachInboundEmailAttachments(
-        created.id,
-        inboundAttachments,
-        requester.id,
-      );
-
-      await this.prisma.ticketEvent.create({
-        data: {
-          ticketId: created.id,
-          type: 'INBOUND_EMAIL_RECEIVED',
-          payload: {
-            fromEmail: requester.email,
-            messageId,
-            subject: payload.subject,
-            threadedByDisplayId: null,
-            attachmentCount: inboundAttachments.length,
-          },
-          createdById: requester.id,
-        },
-      });
-
-      await this.completeInboundEmailReceipt(reservation.id, created.id, false);
-      return {
-        threaded: false,
-        ticket: created,
-      };
-    } catch (error) {
-      await this.releaseInboundEmailReceipt(reservation.id);
-      throw error;
-    }
   }
 
   async addMessage(
@@ -1506,27 +1192,27 @@ export class TicketsService {
           const canView =
             teamIds.length > 0
               ? teamIds.some((teamId) =>
-                  this.canViewTicket(
-                    {
-                      id: u.id,
-                      email: u.email,
-                      displayName: u.displayName,
-                      role: u.role,
-                      teamId,
-                    },
-                    ticketForView,
-                  ),
-                )
-              : this.canViewTicket(
+                this.canViewTicket(
                   {
                     id: u.id,
                     email: u.email,
                     displayName: u.displayName,
                     role: u.role,
-                    teamId: null,
+                    teamId,
                   },
                   ticketForView,
-                );
+                ),
+              )
+              : this.canViewTicket(
+                {
+                  id: u.id,
+                  email: u.email,
+                  displayName: u.displayName,
+                  role: u.role,
+                  teamId: null,
+                },
+                ticketForView,
+              );
           if (canView) {
             allowedMentionedIds.push(u.id);
           }
@@ -1556,15 +1242,15 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.messageAdded(ticketId, message, user),
     );
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId,
         reason: 'message_added',
         actorId: user.id,
         extraUserIds: allowedMentionedIds,
         message:
           message.type === MessageType.PUBLIC
-            ? this.toRealtimeMessagePayload(message)
+            ? this.ticketRealtime.toRealtimeMessagePayload(message)
             : null,
       }),
     );
@@ -1598,8 +1284,8 @@ export class TicketsService {
       throw new ForbiddenException('No write access to this ticket');
     }
 
-    await this.safeRealtime(() =>
-      this.realtime.publishTicketTyping(
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.publishTicketTyping(
         {
           ticketId: ticket.id,
           actorId: user.id,
@@ -1668,8 +1354,8 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.ticketAssigned(updated, user),
     );
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId: updated.id,
         reason: 'assigned',
         actorId: user.id,
@@ -1832,8 +1518,8 @@ export class TicketsService {
         this.notifications.ticketStatusChanged(updated, ticket.status, user),
       );
     }
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId: updated.id,
         reason: 'transferred',
         actorId: user.id,
@@ -1892,37 +1578,37 @@ export class TicketsService {
     }
 
     const priorTeamId = ticket.assignedTeamId;
-    const oldSla = await this.getSlaConfig(ticket.priority, priorTeamId, tx);
-    const newSla = await this.getSlaConfig(
+    const oldSla = await this.slaCalc.getSlaConfig(ticket.priority, priorTeamId, tx);
+    const newSla = await this.slaCalc.getSlaConfig(
       ticket.priority,
       payload.newTeamId,
       tx,
     );
 
     const firstStart = ticket.firstResponseDueAt
-      ? await this.subtractSlaHours(
-          ticket.firstResponseDueAt,
-          oldSla.firstResponseHours,
-          oldSla.businessHoursOnly,
-          tx,
-        )
+      ? await this.slaCalc.subtractSlaHours(
+        ticket.firstResponseDueAt,
+        oldSla.firstResponseHours,
+        oldSla.businessHoursOnly,
+        tx,
+      )
       : ticket.createdAt;
     const resolutionStart = ticket.dueAt
-      ? await this.subtractSlaHours(
-          ticket.dueAt,
-          oldSla.resolutionHours,
-          oldSla.businessHoursOnly,
-          tx,
-        )
+      ? await this.slaCalc.subtractSlaHours(
+        ticket.dueAt,
+        oldSla.resolutionHours,
+        oldSla.businessHoursOnly,
+        tx,
+      )
       : ticket.createdAt;
 
-    const firstResponseDueAt = await this.addSlaHours(
+    const firstResponseDueAt = await this.slaCalc.addSlaHours(
       firstStart,
       newSla.firstResponseHours,
       newSla.businessHoursOnly,
       tx,
     );
-    const dueAt = await this.addSlaHours(
+    const dueAt = await this.slaCalc.addSlaHours(
       resolutionStart,
       newSla.resolutionHours,
       newSla.businessHoursOnly,
@@ -2076,8 +1762,8 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.ticketStatusChanged(updated, ticket.status, user),
     );
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId: updated.id,
         reason: 'status_changed',
         actorId: user.id,
@@ -2085,7 +1771,8 @@ export class TicketsService {
     );
 
     // Queue automation with retry via BullMQ instead of fire-and-forget
-    void this.automationQueue.enqueue(ticketId, 'STATUS_CHANGED');
+    this.automationQueue.enqueue(ticketId, 'STATUS_CHANGED')
+      .catch((err) => this.logger.error(`Failed to enqueue automation for ticket ${ticketId}: ${(err as Error).message}`));
 
     return {
       ...updated,
@@ -2157,12 +1844,12 @@ export class TicketsService {
 
     const resetResolutionSla = newStatus === TicketStatus.REOPENED;
     if (resetResolutionSla) {
-      const sla = await this.getSlaConfig(
+      const sla = await this.slaCalc.getSlaConfig(
         ticket.priority,
         ticket.assignedTeamId,
         tx,
       );
-      updateData.dueAt = await this.addSlaHours(
+      updateData.dueAt = await this.slaCalc.addSlaHours(
         now,
         sla.resolutionHours,
         sla.businessHoursOnly,
@@ -2199,6 +1886,9 @@ export class TicketsService {
     items: string[],
     operation: (ticketId: string) => Promise<T>,
   ) {
+    // Deduplicate to prevent concurrent mutations on the same ticket (TICKET-005)
+    const uniqueItems = [...new Set(items)];
+
     const results = {
       success: 0,
       failed: 0,
@@ -2208,7 +1898,7 @@ export class TicketsService {
     };
     const executing = new Set<Promise<void>>();
 
-    for (const ticketId of items) {
+    for (const ticketId of uniqueItems) {
       const task = (async () => {
         try {
           await operation(ticketId);
@@ -2276,37 +1966,37 @@ export class TicketsService {
         throw new Error('No write access');
       }
       // getSlaConfig always returns a config object (team policy or default); never null
-      const oldSla = await this.getSlaConfig(
+      const oldSla = await this.slaCalc.getSlaConfig(
         ticket.priority,
         ticket.assignedTeamId,
       );
-      const newSla = await this.getSlaConfig(
+      const newSla = await this.slaCalc.getSlaConfig(
         payload.priority,
         ticket.assignedTeamId,
       );
 
       // Derive SLA start from current cycle so reopened/paused tickets and due dates are preserved
       const firstStart = ticket.firstResponseDueAt
-        ? await this.subtractSlaHours(
-            ticket.firstResponseDueAt,
-            oldSla.firstResponseHours,
-            oldSla.businessHoursOnly,
-          )
+        ? await this.slaCalc.subtractSlaHours(
+          ticket.firstResponseDueAt,
+          oldSla.firstResponseHours,
+          oldSla.businessHoursOnly,
+        )
         : ticket.createdAt;
       const resolutionStart = ticket.dueAt
-        ? await this.subtractSlaHours(
-            ticket.dueAt,
-            oldSla.resolutionHours,
-            oldSla.businessHoursOnly,
-          )
+        ? await this.slaCalc.subtractSlaHours(
+          ticket.dueAt,
+          oldSla.resolutionHours,
+          oldSla.businessHoursOnly,
+        )
         : ticket.createdAt;
 
-      const firstResponseDueAt = await this.addSlaHours(
+      const firstResponseDueAt = await this.slaCalc.addSlaHours(
         firstStart,
         newSla.firstResponseHours,
         newSla.businessHoursOnly,
       );
-      const dueAt = await this.addSlaHours(
+      const dueAt = await this.slaCalc.addSlaHours(
         resolutionStart,
         newSla.resolutionHours,
         newSla.businessHoursOnly,
@@ -2335,8 +2025,8 @@ export class TicketsService {
           tx,
         );
       });
-      await this.safeRealtime(() =>
-        this.emitTicketRealtimeEvent({
+      await this.ticketRealtime.safeRealtime(() =>
+        this.ticketRealtime.emitTicketRealtimeEvent({
           ticketId,
           reason: 'priority_changed',
           actorId: user.id,
@@ -2395,8 +2085,8 @@ export class TicketsService {
     }
 
     await this.ensureFollower(ticketId, targetUserId);
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId,
         reason: 'followers_changed',
         actorId: user.id,
@@ -2433,8 +2123,8 @@ export class TicketsService {
     await this.prisma.ticketFollower.deleteMany({
       where: { ticketId, userId: targetUserId },
     });
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId,
         reason: 'followers_changed',
         actorId: user.id,
@@ -2443,438 +2133,6 @@ export class TicketsService {
     );
 
     return { id: targetUserId };
-  }
-
-  async addAttachment(
-    ticketId: string,
-    file: Express.Multer.File | undefined,
-    user: AuthUser,
-  ) {
-    if (!file) {
-      throw new BadRequestException('Attachment file is required');
-    }
-
-    const ticket = await this.prisma.ticket.findUnique({
-      where: { id: ticketId },
-      include: { accessGrants: true },
-    });
-
-    if (!ticket) {
-      throw new NotFoundException('Ticket not found');
-    }
-
-    if (!this.canWriteTicket(user, ticket)) {
-      throw new ForbiddenException('No write access to this ticket');
-    }
-
-    const attachment = await this.createTicketAttachmentFromBuffer(
-      ticketId,
-      {
-        originalName: file.originalname,
-        contentType: file.mimetype,
-        buffer: file.buffer,
-      },
-      user.id,
-    );
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
-        ticketId,
-        reason: 'attachment_added',
-        actorId: user.id,
-      }),
-    );
-
-    return attachment;
-  }
-
-  private async createTicketAttachmentFromBuffer(
-    ticketId: string,
-    file: {
-      originalName: string;
-      contentType: string;
-      buffer: Buffer;
-    },
-    actorId: string,
-  ) {
-    const mimeType = file.contentType.trim().toLowerCase();
-    const sizeBytes = file.buffer.length;
-    const uploadCandidate = {
-      originalname: file.originalName,
-      mimetype: mimeType,
-      size: sizeBytes,
-      buffer: file.buffer,
-    } as Express.Multer.File;
-
-    this.validateFileUpload(uploadCandidate);
-    this.assertAttachmentWithinSizeLimit(sizeBytes);
-
-    const attachmentId = randomUUID();
-    const safeName = this.sanitizeFileName(file.originalName);
-    const storageKey = path.posix.join(ticketId, `${attachmentId}-${safeName}`);
-    await this.saveAttachmentFile(storageKey, file.buffer, mimeType);
-
-    const { scanStatus, scanCheckedAt } = this.getDefaultAttachmentScanState();
-    const attachment = await this.prisma.$transaction(async (tx) => {
-      const createdAttachment = await tx.attachment.create({
-        data: {
-          id: attachmentId,
-          ticketId,
-          uploadedById: actorId,
-          fileName: file.originalName,
-          contentType: mimeType,
-          sizeBytes,
-          storageKey,
-          scanStatus,
-          scanCheckedAt,
-        },
-        include: { uploadedBy: true },
-      });
-
-      await tx.ticketEvent.create({
-        data: {
-          ticketId,
-          type: 'ATTACHMENT_ADDED',
-          payload: {
-            attachmentId: createdAttachment.id,
-            fileName: createdAttachment.fileName,
-            sizeBytes: createdAttachment.sizeBytes,
-            contentType: createdAttachment.contentType,
-          },
-          createdById: actorId,
-        },
-      });
-
-      return createdAttachment;
-    });
-
-    return attachment;
-  }
-
-  private async attachInboundEmailAttachments(
-    ticketId: string,
-    attachments: NormalizedInboundAttachment[],
-    actorId: string,
-  ) {
-    if (attachments.length === 0) {
-      return [];
-    }
-
-    const created = await Promise.all(
-      attachments.map((attachment) =>
-        this.createTicketAttachmentFromBuffer(
-          ticketId,
-          {
-            originalName: attachment.fileName,
-            contentType: attachment.contentType,
-            buffer: attachment.buffer,
-          },
-          actorId,
-        ),
-      ),
-    );
-
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
-        ticketId,
-        reason: 'attachment_added',
-        actorId,
-      }),
-    );
-
-    return created;
-  }
-
-  private async normalizeInboundEmailAttachments(
-    attachments: InboundEmailAttachmentDto[] | undefined,
-  ): Promise<NormalizedInboundAttachment[]> {
-    if (!attachments || attachments.length === 0) {
-      return [];
-    }
-
-    const maxCount = this.parsePositiveIntEnv(
-      this.config.get<string>('INBOUND_EMAIL_MAX_ATTACHMENTS'),
-      10,
-    );
-    if (attachments.length > maxCount) {
-      throw new BadRequestException(
-        `Inbound email includes ${attachments.length} attachments, which exceeds the limit of ${maxCount}`,
-      );
-    }
-
-    const maxBytes = this.getAttachmentMaxBytes();
-    const maxAggregateBytes = maxBytes * maxCount;
-    let totalBytes = 0;
-
-    const normalized: NormalizedInboundAttachment[] = [];
-    for (const [index, attachment] of attachments.entries()) {
-      const fileName = attachment.fileName.trim();
-      const contentType = attachment.contentType.trim().toLowerCase();
-      const declaredSize = attachment.sizeBytes;
-      const hasBase64 = Boolean(attachment.contentBase64?.trim());
-      const hasContentUrl = Boolean(attachment.contentUrl?.trim());
-
-      if (hasBase64 === hasContentUrl) {
-        throw new BadRequestException(
-          `Inbound attachment ${index + 1} must include exactly one of contentBase64 or contentUrl`,
-        );
-      }
-
-      const buffer = hasBase64
-        ? this.decodeInboundAttachmentBase64(
-            attachment.contentBase64 ?? '',
-            fileName,
-          )
-        : await this.downloadInboundAttachmentBuffer(
-            attachment.contentUrl ?? '',
-            fileName,
-            declaredSize,
-          );
-
-      if (buffer.length !== declaredSize) {
-        throw new BadRequestException(
-          `Inbound attachment "${fileName}" size mismatch: expected ${declaredSize} bytes, got ${buffer.length}`,
-        );
-      }
-
-      this.assertAttachmentWithinSizeLimit(buffer.length);
-      totalBytes += buffer.length;
-      if (totalBytes > maxAggregateBytes) {
-        throw new BadRequestException(
-          `Inbound email attachments exceed the aggregate limit of ${maxAggregateBytes} bytes`,
-        );
-      }
-
-      normalized.push({
-        fileName,
-        contentType,
-        sizeBytes: buffer.length,
-        buffer,
-      });
-    }
-
-    return normalized;
-  }
-
-  private decodeInboundAttachmentBase64(rawBase64: string, fileName: string) {
-    const normalizedInput = rawBase64
-      .trim()
-      .replace(/^data:[^;]+;base64,/, '')
-      .replace(/\s+/g, '');
-    if (!normalizedInput) {
-      throw new BadRequestException(
-        `Inbound attachment "${fileName}" contentBase64 is empty`,
-      );
-    }
-    if (
-      normalizedInput.length % 4 !== 0 ||
-      !/^[A-Za-z0-9+/]*={0,2}$/.test(normalizedInput)
-    ) {
-      throw new BadRequestException(
-        `Inbound attachment "${fileName}" contentBase64 is not valid base64`,
-      );
-    }
-
-    const buffer = Buffer.from(normalizedInput, 'base64');
-    if (buffer.length === 0) {
-      throw new BadRequestException(
-        `Inbound attachment "${fileName}" decoded to empty content`,
-      );
-    }
-    return buffer;
-  }
-
-  private async downloadInboundAttachmentBuffer(
-    contentUrl: string,
-    fileName: string,
-    declaredSize: number,
-  ) {
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(contentUrl);
-    } catch {
-      throw new BadRequestException(
-        `Inbound attachment "${fileName}" has an invalid contentUrl`,
-      );
-    }
-
-    if (parsedUrl.protocol !== 'https:') {
-      throw new BadRequestException(
-        `Inbound attachment "${fileName}" contentUrl must use https`,
-      );
-    }
-
-    const allowedHosts = this.getInboundAttachmentAllowedHosts();
-    if (
-      allowedHosts.size > 0 &&
-      !allowedHosts.has(parsedUrl.hostname.toLowerCase())
-    ) {
-      throw new BadRequestException(
-        `Inbound attachment host "${parsedUrl.hostname}" is not allowed`,
-      );
-    }
-
-    const maxBytes = this.getAttachmentMaxBytes();
-    if (declaredSize > maxBytes) {
-      throw new BadRequestException(
-        `Inbound attachment "${fileName}" exceeds size limit`,
-      );
-    }
-
-    const timeoutMs = this.parsePositiveIntEnv(
-      this.config.get<string>('INBOUND_EMAIL_ATTACHMENT_FETCH_TIMEOUT_MS'),
-      15_000,
-    );
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(parsedUrl.toString(), {
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        throw new BadRequestException(
-          `Inbound attachment "${fileName}" contentUrl returned ${response.status}`,
-        );
-      }
-
-      const contentLengthRaw = response.headers.get('content-length');
-      if (contentLengthRaw) {
-        const contentLength = Number.parseInt(contentLengthRaw, 10);
-        if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-          throw new BadRequestException(
-            `Inbound attachment "${fileName}" exceeds size limit`,
-          );
-        }
-      }
-
-      const buffer = Buffer.from(await response.arrayBuffer());
-      if (buffer.length === 0) {
-        throw new BadRequestException(
-          `Inbound attachment "${fileName}" fetched empty content`,
-        );
-      }
-      if (buffer.length > maxBytes) {
-        throw new BadRequestException(
-          `Inbound attachment "${fileName}" exceeds size limit`,
-        );
-      }
-
-      return buffer;
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException(
-        `Unable to download inbound attachment "${fileName}"`,
-      );
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  private getInboundAttachmentAllowedHosts() {
-    const raw = this.config.get<string>(
-      'INBOUND_EMAIL_ATTACHMENT_ALLOWED_HOSTS',
-    );
-    if (!raw) {
-      return new Set<string>();
-    }
-    return new Set(
-      raw
-        .split(',')
-        .map((host) => host.trim().toLowerCase())
-        .filter(Boolean),
-    );
-  }
-
-  async getAttachmentFile(attachmentId: string, user: AuthUser) {
-    const attachment = await this.prisma.attachment.findUnique({
-      where: { id: attachmentId },
-      include: {
-        ticket: {
-          include: { accessGrants: true },
-        },
-      },
-    });
-
-    if (!attachment) {
-      throw new NotFoundException('Attachment not found');
-    }
-
-    if (!this.canViewTicket(user, attachment.ticket)) {
-      throw new ForbiddenException('No access to this attachment');
-    }
-
-    this.assertAttachmentDownloadAllowed(attachment.scanStatus);
-
-    const stream = await this.getAttachmentReadStream(attachment.storageKey);
-    return { attachment, stream };
-  }
-
-  async updateAttachmentScanStatus(
-    attachmentId: string,
-    payload: UpdateAttachmentScanDto,
-    scannerSecret: string | undefined,
-  ) {
-    this.assertAttachmentScannerSecret(scannerSecret);
-
-    if (payload.status === AttachmentScanStatus.PENDING) {
-      throw new BadRequestException(
-        'Scanner callback must set attachment status to CLEAN, INFECTED, or FAILED',
-      );
-    }
-
-    const attachment = await this.prisma.attachment.findUnique({
-      where: { id: attachmentId },
-      select: { id: true, ticketId: true },
-    });
-    if (!attachment) {
-      throw new NotFoundException('Attachment not found');
-    }
-
-    const scanCheckedAt = new Date();
-    const scanError =
-      payload.status === AttachmentScanStatus.CLEAN
-        ? null
-        : payload.error?.trim() ||
-          (payload.status === AttachmentScanStatus.INFECTED
-            ? 'Attachment marked as infected'
-            : 'Attachment scan failed');
-
-    const updatedAttachment = await this.prisma.$transaction(async (tx) => {
-      const updatedAttachment = await tx.attachment.update({
-        where: { id: attachmentId },
-        data: {
-          scanStatus: payload.status,
-          scanCheckedAt,
-          scanError,
-        },
-      });
-
-      await tx.ticketEvent.create({
-        data: {
-          ticketId: attachment.ticketId,
-          type: 'ATTACHMENT_SCAN_STATUS_CHANGED',
-          payload: {
-            attachmentId: attachment.id,
-            status: payload.status,
-            error: scanError,
-            scannedAt: scanCheckedAt.toISOString(),
-          },
-          createdById: null,
-        },
-      });
-
-      return updatedAttachment;
-    });
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
-        ticketId: attachment.ticketId,
-        reason: 'attachment_scan_status_changed',
-        actorId: null,
-      }),
-    );
-
-    return updatedAttachment;
   }
 
   /** Delegates to shared AccessControlService */
@@ -2958,6 +2216,7 @@ export class TicketsService {
     });
   }
 
+
   private async safeNotify(task: () => Promise<void>) {
     try {
       await task();
@@ -2968,146 +2227,6 @@ export class TicketsService {
       );
     }
   }
-
-  private async safeRealtime(task: () => Promise<void>) {
-    try {
-      await task();
-    } catch (error) {
-      this.logger.error(
-        `Realtime publish failed: ${(error as Error).message}`,
-        (error as Error).stack,
-      );
-    }
-  }
-
-  private async emitTicketRealtimeEvent(params: {
-    ticketId: string;
-    reason: TicketRealtimeReason;
-    actorId: string | null;
-    extraTeamIds?: Array<string | null | undefined>;
-    extraUserIds?: Array<string | null | undefined>;
-    message?: TicketChangedPayload['message'];
-  }) {
-    if (!this.realtime.isEnabled()) {
-      return;
-    }
-
-    const ticket = await this.prisma.ticket.findUnique({
-      where: { id: params.ticketId },
-      select: {
-        id: true,
-        status: true,
-        priority: true,
-        updatedAt: true,
-        assignedTeamId: true,
-        assignedTeam: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        requesterId: true,
-        assigneeId: true,
-        assignee: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true,
-          },
-        },
-        followers: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-    });
-
-    if (!ticket) {
-      return;
-    }
-
-    const actor =
-      params.actorId == null
-        ? null
-        : await this.prisma.user.findUnique({
-            where: { id: params.actorId },
-            select: {
-              id: true,
-              email: true,
-              displayName: true,
-            },
-          });
-
-    const teamIds = [
-      ticket.assignedTeamId,
-      ...(params.extraTeamIds ?? []),
-    ].filter((teamId): teamId is string => Boolean(teamId));
-    const userIds = [
-      ticket.requesterId,
-      ticket.assigneeId,
-      params.actorId,
-      ...ticket.followers.map((follower) => follower.userId),
-      ...(params.extraUserIds ?? []),
-    ].filter((userId): userId is string => Boolean(userId));
-
-    await this.realtime.publishTicketChanged(
-      {
-        ticketId: ticket.id,
-        reason: params.reason,
-        actorId: params.actorId,
-        status: ticket.status,
-        priority: ticket.priority,
-        updatedAt: ticket.updatedAt.toISOString(),
-        assignedTeamId: ticket.assignedTeamId,
-        assignedTeam: ticket.assignedTeam,
-        assigneeId: ticket.assigneeId,
-        assignee: ticket.assignee,
-        followerCount: ticket.followers.length,
-        actor,
-        message: params.message,
-      },
-      { teamIds, userIds },
-    );
-  }
-
-  private toRealtimeMessagePayload(message: {
-    id: string;
-    body: string;
-    type: MessageType;
-    createdAt: Date;
-    author: {
-      id: string;
-      email: string;
-      displayName: string;
-    };
-  }): NonNullable<TicketChangedPayload['message']> {
-    return {
-      id: message.id,
-      body: message.body,
-      type: message.type,
-      createdAt: message.createdAt.toISOString(),
-      author: {
-        id: message.author.id,
-        email: message.author.email,
-        displayName: message.author.displayName,
-      },
-    };
-  }
-
-  async publishAutomationRealtimeUpdate(
-    ticketId: string,
-    actorId: string | null,
-  ) {
-    await this.safeRealtime(() =>
-      this.emitTicketRealtimeEvent({
-        ticketId,
-        reason: 'automation_rule_executed',
-        actorId,
-      }),
-    );
-  }
-
   private isValidTransition(from: TicketStatus, to: TicketStatus) {
     if (from === to) {
       return true;
@@ -3161,530 +2280,6 @@ export class TicketsService {
     );
   }
 
-  private async getSlaConfig(
-    priority: TicketPriority,
-    teamId: string | null,
-    tx?: Prisma.TransactionClient,
-  ) {
-    const client = tx ?? this.prisma;
-    if (teamId) {
-      const assignedRows = await client.$queryRaw<
-        Array<{
-          policyConfigId: string;
-          firstResponseHours: number;
-          resolutionHours: number;
-          businessHoursOnly: boolean;
-        }>
-      >`
-        SELECT
-          p."id" AS "policyConfigId",
-          t."firstResponseHours" AS "firstResponseHours",
-          t."resolutionHours" AS "resolutionHours",
-          p."businessHoursOnly" AS "businessHoursOnly"
-        FROM "SlaPolicyAssignment" a
-        INNER JOIN "SlaPolicyConfig" p ON p."id" = a."policyConfigId"
-        INNER JOIN "SlaPolicyConfigTarget" t
-          ON t."policyConfigId" = p."id"
-         AND t."priority" = ${priority}::"TicketPriority"
-        WHERE a."teamId" = ${teamId}
-          AND p."enabled" = true
-        ORDER BY a."updatedAt" DESC
-        LIMIT 1
-      `;
-      if (assignedRows[0]) {
-        return assignedRows[0];
-      }
-    }
-
-    const defaultRows = await client.$queryRaw<
-      Array<{
-        policyConfigId: string;
-        firstResponseHours: number;
-        resolutionHours: number;
-        businessHoursOnly: boolean;
-      }>
-    >`
-      SELECT
-        p."id" AS "policyConfigId",
-        t."firstResponseHours" AS "firstResponseHours",
-        t."resolutionHours" AS "resolutionHours",
-        p."businessHoursOnly" AS "businessHoursOnly"
-      FROM "SlaPolicyConfig" p
-      INNER JOIN "SlaPolicyConfigTarget" t
-        ON t."policyConfigId" = p."id"
-       AND t."priority" = ${priority}::"TicketPriority"
-      WHERE p."isDefault" = true
-        AND p."enabled" = true
-      ORDER BY p."updatedAt" DESC
-      LIMIT 1
-    `;
-    if (defaultRows[0]) {
-      return defaultRows[0];
-    }
-
-    return {
-      policyConfigId: null,
-      ...this.defaultSlaConfig[priority],
-      businessHoursOnly: true,
-    };
-  }
-
-  private async addSlaHours(
-    startAt: Date,
-    hours: number,
-    businessHoursOnly: boolean,
-    tx?: Prisma.TransactionClient,
-  ) {
-    if (!businessHoursOnly) {
-      return this.addHours(startAt, hours);
-    }
-    const settings = await this.getBusinessHoursSettings(tx);
-    return this.addBusinessHours(startAt, hours, settings);
-  }
-
-  private async subtractSlaHours(
-    endAt: Date,
-    hours: number,
-    businessHoursOnly: boolean,
-    tx?: Prisma.TransactionClient,
-  ) {
-    if (!businessHoursOnly) {
-      return this.addHours(endAt, -hours);
-    }
-    const settings = await this.getBusinessHoursSettings(tx);
-    return this.subtractBusinessHours(endAt, hours, settings);
-  }
-
-  private async getBusinessHoursSettings(tx?: Prisma.TransactionClient) {
-    const now = Date.now();
-    if (
-      !tx &&
-      this.businessHoursSettingsCache &&
-      now - this.businessHoursSettingsCache.checkedAtMs <=
-        this.schemaCheckCacheTtlMs
-    ) {
-      return this.businessHoursSettingsCache.value;
-    }
-
-    const client = tx ?? this.prisma;
-    const row = await client.slaBusinessHoursSetting.findUnique({
-      where: { id: 'global' },
-      select: { timezone: true, schedule: true, holidays: true },
-    });
-    const value = row
-      ? this.normalizeBusinessHoursSettings(
-          row.timezone,
-          row.schedule,
-          row.holidays,
-        )
-      : {
-          timezone: 'UTC',
-          schedule: [...this.defaultBusinessSchedule],
-          holidays: [],
-        };
-
-    if (!tx) {
-      this.businessHoursSettingsCache = {
-        value,
-        checkedAtMs: now,
-      };
-    }
-
-    return value;
-  }
-
-  private normalizeBusinessHoursSettings(
-    timezoneRaw: string,
-    scheduleRaw: Prisma.JsonValue,
-    holidaysRaw: Prisma.JsonValue,
-  ): BusinessHoursSettings {
-    const timezone = this.normalizeTimeZone(timezoneRaw);
-    const schedule = this.normalizeBusinessSchedule(scheduleRaw);
-    const holidays = this.normalizeBusinessHolidays(holidaysRaw);
-    return { timezone, schedule, holidays };
-  }
-
-  private normalizeTimeZone(timezoneRaw: string) {
-    const candidate = (timezoneRaw ?? '').trim() || 'UTC';
-    return DateTime.now().setZone(candidate).isValid ? candidate : 'UTC';
-  }
-
-  private readTrimmedPrimitive(value: unknown) {
-    if (typeof value === 'string') {
-      return value.trim();
-    }
-    if (
-      typeof value === 'number' ||
-      typeof value === 'boolean' ||
-      typeof value === 'bigint'
-    ) {
-      return String(value).trim();
-    }
-    return '';
-  }
-
-  private normalizeBusinessSchedule(raw: Prisma.JsonValue) {
-    const source = Array.isArray(raw) ? raw : [];
-    const map = new Map<BusinessWeekDay, BusinessDaySchedule>();
-
-    for (const value of source) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        continue;
-      }
-      const dayValue = (value as { day?: unknown }).day;
-      if (
-        typeof dayValue !== 'string' ||
-        !this.businessDaysOrder.includes(dayValue as BusinessWeekDay)
-      ) {
-        continue;
-      }
-
-      const startRaw = this.readTrimmedPrimitive(
-        (value as { start?: unknown }).start,
-      );
-      const endRaw = this.readTrimmedPrimitive(
-        (value as { end?: unknown }).end,
-      );
-      const startMinutes = this.timeToMinutes(startRaw);
-      const endMinutes = this.timeToMinutes(endRaw);
-      if (
-        startMinutes == null ||
-        endMinutes == null ||
-        startMinutes >= endMinutes
-      ) {
-        continue;
-      }
-
-      map.set(dayValue as BusinessWeekDay, {
-        day: dayValue as BusinessWeekDay,
-        enabled: Boolean((value as { enabled?: unknown }).enabled ?? true),
-        start: startRaw,
-        end: endRaw,
-      });
-    }
-
-    return this.businessDaysOrder.map((day, index) => {
-      const existing = map.get(day);
-      if (existing) {
-        return existing;
-      }
-      const fallback = this.defaultBusinessSchedule[index];
-      return {
-        day,
-        enabled: fallback.enabled,
-        start: fallback.start,
-        end: fallback.end,
-      };
-    });
-  }
-
-  private normalizeBusinessHolidays(raw: Prisma.JsonValue) {
-    if (!Array.isArray(raw)) {
-      return [] as Array<{ name: string; date: string }>;
-    }
-    const validDate = /^\d{4}-\d{2}-\d{2}$/;
-    const dedup = new Map<string, { name: string; date: string }>();
-    for (const value of raw) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        continue;
-      }
-      const name = this.readTrimmedPrimitive(
-        (value as { name?: unknown }).name,
-      );
-      const date = this.readTrimmedPrimitive(
-        (value as { date?: unknown }).date,
-      );
-      if (!name || !validDate.test(date)) {
-        continue;
-      }
-      dedup.set(date, { name, date });
-    }
-    return [...dedup.values()];
-  }
-
-  private addBusinessHours(
-    startAt: Date,
-    hours: number,
-    settings: BusinessHoursSettings,
-  ) {
-    const remainingMinutesStart = Math.max(0, Math.round(hours * 60));
-    if (remainingMinutesStart === 0) {
-      return new Date(startAt.getTime());
-    }
-
-    let remainingMinutes = remainingMinutesStart;
-    let cursor = DateTime.fromJSDate(startAt, { zone: 'utc' })
-      .setZone(settings.timezone)
-      .set({ second: 0, millisecond: 0 });
-
-    // Guardrail to avoid infinite loops when settings are malformed.
-    for (let i = 0; i < 20_000 && remainingMinutes > 0; i++) {
-      cursor = this.alignToBusinessWindow(cursor, settings);
-
-      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
-      const day = settings.schedule.find((item) => item.day === dayName);
-      if (!day || !day.enabled) {
-        cursor = cursor.plus({ days: 1 }).startOf('day');
-        continue;
-      }
-
-      const endMinutes = this.timeToMinutes(day.end);
-      if (endMinutes == null) {
-        cursor = cursor.plus({ days: 1 }).startOf('day');
-        continue;
-      }
-
-      const windowEnd = cursor.set({
-        hour: Math.floor(endMinutes / 60),
-        minute: endMinutes % 60,
-        second: 0,
-        millisecond: 0,
-      });
-      const available = Math.max(
-        0,
-        Math.floor(windowEnd.diff(cursor, 'minutes').minutes),
-      );
-
-      if (available === 0) {
-        cursor = cursor.plus({ days: 1 }).startOf('day');
-        continue;
-      }
-
-      if (remainingMinutes <= available) {
-        cursor = cursor.plus({ minutes: remainingMinutes });
-        remainingMinutes = 0;
-        break;
-      }
-
-      remainingMinutes -= available;
-      cursor = windowEnd.plus({ minutes: 1 });
-    }
-
-    if (remainingMinutes > 0) {
-      this.logger.warn(
-        'Business-hours due date calculation hit safety limit; falling back to raw hour addition',
-      );
-      return this.addHours(startAt, hours);
-    }
-
-    return cursor.toUTC().toJSDate();
-  }
-
-  private subtractBusinessHours(
-    endAt: Date,
-    hours: number,
-    settings: BusinessHoursSettings,
-  ) {
-    const remainingMinutesStart = Math.max(0, Math.round(hours * 60));
-    if (remainingMinutesStart === 0) {
-      return new Date(endAt.getTime());
-    }
-
-    let remainingMinutes = remainingMinutesStart;
-    let cursor = DateTime.fromJSDate(endAt, { zone: 'utc' })
-      .setZone(settings.timezone)
-      .set({ second: 0, millisecond: 0 });
-
-    // Guardrail to avoid infinite loops when settings are malformed.
-    for (let i = 0; i < 20_000 && remainingMinutes > 0; i++) {
-      cursor = this.alignBackwardToBusinessWindow(cursor, settings);
-
-      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
-      const day = settings.schedule.find((item) => item.day === dayName);
-      if (!day || !day.enabled) {
-        cursor = cursor
-          .minus({ days: 1 })
-          .endOf('day')
-          .set({ second: 0, millisecond: 0 });
-        continue;
-      }
-
-      const startMinutes = this.timeToMinutes(day.start);
-      if (startMinutes == null) {
-        cursor = cursor
-          .minus({ days: 1 })
-          .endOf('day')
-          .set({ second: 0, millisecond: 0 });
-        continue;
-      }
-
-      const windowStart = cursor.set({
-        hour: Math.floor(startMinutes / 60),
-        minute: startMinutes % 60,
-        second: 0,
-        millisecond: 0,
-      });
-      const available = Math.max(
-        0,
-        Math.floor(cursor.diff(windowStart, 'minutes').minutes),
-      );
-
-      if (available === 0) {
-        cursor = windowStart.minus({ minutes: 1 });
-        continue;
-      }
-
-      if (remainingMinutes <= available) {
-        cursor = cursor.minus({ minutes: remainingMinutes });
-        remainingMinutes = 0;
-        break;
-      }
-
-      remainingMinutes -= available;
-      cursor = windowStart.minus({ minutes: 1 });
-    }
-
-    if (remainingMinutes > 0) {
-      this.logger.warn(
-        'Business-hours reverse due date calculation hit safety limit; falling back to raw hour subtraction',
-      );
-      return this.addHours(endAt, -hours);
-    }
-
-    return cursor.toUTC().toJSDate();
-  }
-
-  private alignToBusinessWindow(
-    start: DateTime,
-    settings: BusinessHoursSettings,
-  ): DateTime {
-    let cursor = start.set({ second: 0, millisecond: 0 });
-
-    for (let i = 0; i < 14; i++) {
-      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
-      const localDate = cursor.toFormat('yyyy-LL-dd');
-      const day = settings.schedule.find((item) => item.day === dayName);
-      const isHoliday = settings.holidays.some(
-        (holiday) => holiday.date === localDate,
-      );
-
-      if (!day || !day.enabled || isHoliday) {
-        cursor = cursor.plus({ days: 1 }).startOf('day');
-        continue;
-      }
-
-      const startMinutes = this.timeToMinutes(day.start);
-      const endMinutes = this.timeToMinutes(day.end);
-      if (
-        startMinutes == null ||
-        endMinutes == null ||
-        startMinutes >= endMinutes
-      ) {
-        cursor = cursor.plus({ days: 1 }).startOf('day');
-        continue;
-      }
-
-      const windowStart = cursor.set({
-        hour: Math.floor(startMinutes / 60),
-        minute: startMinutes % 60,
-        second: 0,
-        millisecond: 0,
-      });
-      const windowEnd = cursor.set({
-        hour: Math.floor(endMinutes / 60),
-        minute: endMinutes % 60,
-        second: 0,
-        millisecond: 0,
-      });
-
-      const cursorMs = cursor.toMillis();
-      const startMs = windowStart.toMillis();
-      const endMs = windowEnd.toMillis();
-      if (cursorMs < startMs) {
-        return windowStart;
-      }
-      if (cursorMs >= endMs) {
-        cursor = cursor.plus({ days: 1 }).startOf('day');
-        continue;
-      }
-      return cursor;
-    }
-
-    return start;
-  }
-
-  private alignBackwardToBusinessWindow(
-    end: DateTime,
-    settings: BusinessHoursSettings,
-  ): DateTime {
-    let cursor = end.set({ second: 0, millisecond: 0 });
-
-    for (let i = 0; i < 14; i++) {
-      const dayName = cursor.toFormat('cccc') as BusinessWeekDay;
-      const localDate = cursor.toFormat('yyyy-LL-dd');
-      const day = settings.schedule.find((item) => item.day === dayName);
-      const isHoliday = settings.holidays.some(
-        (holiday) => holiday.date === localDate,
-      );
-
-      if (!day || !day.enabled || isHoliday) {
-        cursor = cursor
-          .minus({ days: 1 })
-          .endOf('day')
-          .set({ second: 0, millisecond: 0 });
-        continue;
-      }
-
-      const startMinutes = this.timeToMinutes(day.start);
-      const endMinutes = this.timeToMinutes(day.end);
-      if (
-        startMinutes == null ||
-        endMinutes == null ||
-        startMinutes >= endMinutes
-      ) {
-        cursor = cursor
-          .minus({ days: 1 })
-          .endOf('day')
-          .set({ second: 0, millisecond: 0 });
-        continue;
-      }
-
-      const windowStart = cursor.set({
-        hour: Math.floor(startMinutes / 60),
-        minute: startMinutes % 60,
-        second: 0,
-        millisecond: 0,
-      });
-      const windowEnd = cursor.set({
-        hour: Math.floor(endMinutes / 60),
-        minute: endMinutes % 60,
-        second: 0,
-        millisecond: 0,
-      });
-
-      const cursorMs = cursor.toMillis();
-      const startMs = windowStart.toMillis();
-      const endMs = windowEnd.toMillis();
-      if (cursorMs > endMs) {
-        return windowEnd;
-      }
-      if (cursorMs <= startMs) {
-        cursor = cursor
-          .minus({ days: 1 })
-          .endOf('day')
-          .set({ second: 0, millisecond: 0 });
-        continue;
-      }
-      return cursor;
-    }
-
-    return end;
-  }
-
-  private timeToMinutes(time: string): number | null {
-    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);
-    if (!match) {
-      return null;
-    }
-    const hours = Number(match[1]);
-    const minutes = Number(match[2]);
-    return hours * 60 + minutes;
-  }
-
-  private addHours(date: Date, hours: number) {
-    return new Date(date.getTime() + hours * 60 * 60 * 1000);
-  }
-
   private buildDisplayId(
     teamName: string | null,
     createdAt: Date,
@@ -3721,26 +2316,26 @@ export class TicketsService {
     const includeAssignee = await this.hasRoutingAssigneeColumn();
     const rules = includeAssignee
       ? await this.prisma.$queryRaw<
-          Array<{
-            teamId: string;
-            assigneeId: string | null;
-            name: string;
-            keywords: string[];
-          }>
-        >`
+        Array<{
+          teamId: string;
+          assigneeId: string | null;
+          name: string;
+          keywords: string[];
+        }>
+      >`
           SELECT "teamId", "assigneeId", "name", "keywords"
           FROM "RoutingRule"
           WHERE "isActive" = true
           ORDER BY "priority" ASC, "name" ASC
         `
       : await this.prisma.$queryRaw<
-          Array<{
-            teamId: string;
-            assigneeId: string | null;
-            name: string;
-            keywords: string[];
-          }>
-        >`
+        Array<{
+          teamId: string;
+          assigneeId: string | null;
+          name: string;
+          keywords: string[];
+        }>
+      >`
           SELECT "teamId", NULL::text AS "assigneeId", "name", "keywords"
           FROM "RoutingRule"
           WHERE "isActive" = true
@@ -3840,529 +2435,12 @@ export class TicketsService {
     );
   }
 
-  private assertInboundEmailWebhookSecret(inboundSecret: string | undefined) {
-    const configuredSecret =
-      this.config.get<string>('INBOUND_EMAIL_WEBHOOK_SECRET') ??
-      this.config.get<string>('M365_INBOUND_WEBHOOK_SECRET');
-
-    if (!configuredSecret) {
-      throw new ForbiddenException(
-        'Inbound email webhook secret is not configured',
-      );
-    }
-
-    if (!inboundSecret) {
-      throw new ForbiddenException('Missing inbound email webhook secret');
-    }
-
-    const expected = Buffer.from(configuredSecret, 'utf8');
-    const received = Buffer.from(inboundSecret, 'utf8');
-    if (
-      expected.length !== received.length ||
-      !timingSafeEqual(expected, received)
-    ) {
-      throw new ForbiddenException('Invalid inbound email webhook secret');
-    }
-  }
-
-  private async findOrCreateInboundRequester(email: string, name?: string) {
-    const normalizedEmail = email.trim().toLowerCase();
-    const existing = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        role: true,
-        primaryTeamId: true,
-      },
-    });
-    if (existing) {
-      return existing;
-    }
-
-    const fallbackDisplayName =
-      name?.trim() || normalizedEmail.split('@')[0] || 'Requester';
-    try {
-      return await this.prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          displayName: fallbackDisplayName,
-          role: UserRole.EMPLOYEE,
-        },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          role: true,
-          primaryTeamId: true,
-        },
-      });
-    } catch {
-      const concurrentCreate = await this.prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          role: true,
-          primaryTeamId: true,
-        },
-      });
-      if (!concurrentCreate) {
-        throw new BadRequestException(
-          'Unable to resolve inbound email requester',
-        );
-      }
-      return concurrentCreate;
-    }
-  }
-
-  private toInboundRequesterAuthUser(requester: {
-    id: string;
-    email: string;
-    displayName: string;
-    role: UserRole;
-    primaryTeamId: string | null;
-  }): AuthUser {
-    return {
-      id: requester.id,
-      email: requester.email,
-      displayName: requester.displayName,
-      role: requester.role,
-      primaryTeamId: requester.primaryTeamId,
-      teamId: requester.primaryTeamId,
-    };
-  }
-
-  private extractDisplayIdFromSubject(subject: string) {
-    const match = subject.trim().match(/\b([A-Za-z0-9]{2,12}_\d{8}_\d{3,})\b/);
-    return match?.[1]?.toUpperCase() ?? null;
-  }
-
-  private async reserveInboundEmailReceipt(
-    messageIdRaw: string,
-    fromEmailRaw: string,
-    subjectRaw: string,
-  ): Promise<InboundEmailReceiptReservation> {
-    const messageId = messageIdRaw.trim();
-    if (!messageId) {
-      throw new BadRequestException('Inbound email messageId is required');
-    }
-
-    const fromEmail = fromEmailRaw.trim().toLowerCase();
-    const subject = subjectRaw.trim();
-    const reservationId = randomUUID();
-    const inserted = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      INSERT INTO "InboundEmailReceipt" ("id", "messageId", "fromEmail", "subject", "createdAt", "updatedAt")
-      VALUES (${reservationId}, ${messageId}, ${fromEmail}, ${subject}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      ON CONFLICT ("messageId") DO NOTHING
-      RETURNING "id"
-    `;
-    if (inserted[0]?.id) {
-      return { mode: 'reserved', id: inserted[0].id };
-    }
-
-    const existing = await this.prisma.$queryRaw<
-      Array<{
-        fromEmail: string;
-        ticketId: string | null;
-        threaded: boolean | null;
-      }>
-    >`
-      SELECT "fromEmail", "ticketId", "threaded"
-      FROM "InboundEmailReceipt"
-      WHERE "messageId" = ${messageId}
-      LIMIT 1
-    `;
-    if (!existing[0]) {
-      throw new ConflictException(
-        'Inbound email receipt conflicted and could not be resolved',
-      );
-    }
-
-    if (existing[0].fromEmail !== fromEmail) {
-      throw new ConflictException(
-        'Inbound email messageId already exists for another sender',
-      );
-    }
-
-    if (!existing[0].ticketId) {
-      throw new ConflictException(
-        'Inbound email with this messageId is still processing',
-      );
-    }
-
-    return {
-      mode: 'replay',
-      ticketId: existing[0].ticketId,
-      threaded: existing[0].threaded ?? false,
-    };
-  }
-
-  private async completeInboundEmailReceipt(
-    receiptId: string,
-    ticketId: string,
-    threaded: boolean,
-  ) {
-    await this.prisma.$executeRaw`
-      UPDATE "InboundEmailReceipt"
-      SET "ticketId" = ${ticketId},
-          "threaded" = ${threaded},
-          "updatedAt" = CURRENT_TIMESTAMP
-      WHERE "id" = ${receiptId}
-    `;
-  }
-
-  private async releaseInboundEmailReceipt(receiptId: string) {
-    await this.prisma.$executeRaw`
-      DELETE FROM "InboundEmailReceipt"
-      WHERE "id" = ${receiptId}
-    `.catch(() => {
-      // no-op: if already finalized or removed, retries can proceed.
-    });
-  }
-
-  private async buildInboundEmailReplayResponse(
-    ticketId: string,
-    threaded: boolean,
-  ) {
-    const ticket = await this.getTicketForMutationResponse(ticketId);
-    return {
-      threaded,
-      ticket,
-    };
-  }
-
-  private async getTicketForMutationResponse(ticketId: string) {
-    const result = await this.prisma.ticket.findUnique({
-      where: { id: ticketId },
-      include: {
-        requester: true,
-        assignee: true,
-        assignedTeam: true,
-        category: true,
-        customFieldValues: { include: { customField: true } },
-      },
-    });
-    if (!result) {
-      throw new NotFoundException('Ticket not found');
-    }
-    return result;
-  }
-
-  private resolveAttachmentPath(storageKey: string) {
-    const baseDir =
-      this.config.get<string>('ATTACHMENTS_DIR') ??
-      path.join(process.cwd(), 'uploads');
-    return path.join(baseDir, storageKey);
-  }
-
-  private isAzureBlobStorageEnabled(): boolean {
-    const connectionString = this.config.get<string>(
-      'AZURE_STORAGE_CONNECTION_STRING',
-    );
-    const containerName = this.config.get<string>('AZURE_STORAGE_CONTAINER');
-    return Boolean(connectionString && containerName);
-  }
-
-  private async saveAttachmentFile(
-    storageKey: string,
-    buffer: Buffer,
-    contentType: string,
-  ): Promise<void> {
-    if (this.isAzureBlobStorageEnabled()) {
-      await this.saveAttachmentFileToAzureBlob(storageKey, buffer, contentType);
-      return;
-    }
-
-    const filePath = this.resolveAttachmentPath(storageKey);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, buffer);
-  }
-
-  private async getAttachmentReadStream(storageKey: string): Promise<Readable> {
-    if (this.isAzureBlobStorageEnabled()) {
-      return this.getAttachmentReadStreamFromAzureBlob(storageKey);
-    }
-
-    const filePath = this.resolveAttachmentPath(storageKey);
-    try {
-      await fs.access(filePath);
-    } catch {
-      throw new NotFoundException('Attachment file missing');
-    }
-    return createReadStream(filePath);
-  }
-
-  private async saveAttachmentFileToAzureBlob(
-    storageKey: string,
-    buffer: Buffer,
-    contentType: string,
-  ): Promise<void> {
-    const connectionString = this.config.get<string>(
-      'AZURE_STORAGE_CONNECTION_STRING',
-    );
-    const containerName = this.config.get<string>('AZURE_STORAGE_CONTAINER');
-    if (!connectionString || !containerName) {
-      throw new Error('Azure Blob Storage is not configured');
-    }
-
-    const blobServiceClient =
-      BlobServiceClient.fromConnectionString(connectionString);
-    const containerClient = blobServiceClient.getContainerClient(containerName);
-    await containerClient.createIfNotExists();
-    const blockBlobClient = containerClient.getBlockBlobClient(storageKey);
-    await blockBlobClient.uploadData(buffer, {
-      blobHTTPHeaders: { blobContentType: contentType },
-    });
-  }
-
-  private async getAttachmentReadStreamFromAzureBlob(
-    storageKey: string,
-  ): Promise<Readable> {
-    const connectionString = this.config.get<string>(
-      'AZURE_STORAGE_CONNECTION_STRING',
-    );
-    const containerName = this.config.get<string>('AZURE_STORAGE_CONTAINER');
-    if (!connectionString || !containerName) {
-      throw new Error('Azure Blob Storage is not configured');
-    }
-
-    const blobServiceClient =
-      BlobServiceClient.fromConnectionString(connectionString);
-    const containerClient = blobServiceClient.getContainerClient(containerName);
-    const blobClient = containerClient.getBlobClient(storageKey);
-    const exists = await blobClient.exists();
-    if (!exists) {
-      throw new NotFoundException('Attachment file missing');
-    }
-    const response = await blobClient.download();
-    const responseBody = response.readableStreamBody;
-    if (!responseBody) {
-      throw new NotFoundException('Attachment file missing');
-    }
-
-    if (this.isNodeReadableStream(responseBody)) {
-      return responseBody;
-    }
-
-    if (this.isWebReadableStream(responseBody)) {
-      return Readable.fromWeb(responseBody);
-    }
-
-    throw new Error('Unsupported Azure Blob response stream type');
-  }
-
-  private isNodeReadableStream(value: unknown): value is Readable {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      typeof (value as NodeJS.ReadableStream).pipe === 'function'
-    );
-  }
-
-  private isWebReadableStream(
-    value: unknown,
-  ): value is import('stream/web').ReadableStream {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      typeof (value as import('stream/web').ReadableStream).getReader ===
-        'function'
-    );
-  }
-
-  private assertAttachmentScannerSecret(scannerSecret: string | undefined) {
-    const configuredSecret = this.config.get<string>(
-      'ATTACHMENT_SCAN_WEBHOOK_SECRET',
-    );
-
-    if (!configuredSecret) {
-      throw new ForbiddenException(
-        'Attachment scanner webhook secret is not configured',
-      );
-    }
-
-    if (!scannerSecret) {
-      throw new ForbiddenException('Missing attachment scanner webhook secret');
-    }
-
-    const expected = Buffer.from(configuredSecret, 'utf8');
-    const received = Buffer.from(scannerSecret, 'utf8');
-    if (
-      expected.length !== received.length ||
-      !timingSafeEqual(expected, received)
-    ) {
-      throw new ForbiddenException('Invalid attachment scanner webhook secret');
-    }
-  }
-
-  private assertAttachmentDownloadAllowed(scanStatus: AttachmentScanStatus) {
-    if (scanStatus === AttachmentScanStatus.CLEAN) {
-      return;
-    }
-
-    if (scanStatus === AttachmentScanStatus.PENDING) {
-      throw new ForbiddenException(
-        'Attachment scan is still pending; download is blocked',
-      );
-    }
-
-    if (scanStatus === AttachmentScanStatus.INFECTED) {
-      throw new ForbiddenException(
-        'Attachment was flagged as infected and cannot be downloaded',
-      );
-    }
-
-    throw new ForbiddenException(
-      'Attachment scan failed; download is blocked until the file is rescanned',
-    );
-  }
-
-  private getAttachmentMaxBytes() {
-    const maxMb = this.parsePositiveIntEnv(
-      this.config.get<string>('ATTACHMENTS_MAX_MB'),
-      10,
-    );
-    return maxMb * 1024 * 1024;
-  }
-
-  private assertAttachmentWithinSizeLimit(sizeBytes: number) {
-    const maxBytes = this.getAttachmentMaxBytes();
-    if (sizeBytes > maxBytes) {
-      const maxMb = Math.floor(maxBytes / (1024 * 1024));
-      throw new BadRequestException(`Attachment exceeds ${maxMb}MB limit`);
-    }
-  }
-
-  private getDefaultAttachmentScanState() {
-    const bypassAttachmentScan =
-      this.config.get<string>('ATTACHMENT_SCAN_BYPASS') === 'true';
-    return {
-      scanStatus: bypassAttachmentScan
-        ? AttachmentScanStatus.CLEAN
-        : AttachmentScanStatus.PENDING,
-      scanCheckedAt: bypassAttachmentScan ? new Date() : null,
-    };
-  }
-
-  private sanitizeFileName(fileName: string) {
-    return fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  }
-
-  /**
-   * Validate the uploaded file's extension against the whitelist and ensure
-   * the claimed MIME type is consistent with the file extension.
-   * Throws BadRequestException on any mismatch.
-   */
-  private validateFileUpload(file: Express.Multer.File): void {
-    const ext = path.extname(file.originalname).toLowerCase();
-
-    // 1. Extension whitelist
-    if (!ext || !TicketsService.ALLOWED_EXTENSIONS.has(ext)) {
-      throw new BadRequestException(
-        `File type "${ext || '(none)'}" is not allowed. Accepted extensions: ${[...TicketsService.ALLOWED_EXTENSIONS].join(', ')}`,
-      );
-    }
-
-    // 2. MIME ↔ extension consistency
-    const mime = (file.mimetype ?? '').toLowerCase();
-    const allowed = TicketsService.MIME_TO_EXTENSIONS[mime];
-    if (allowed && allowed.length > 0 && !allowed.includes(ext)) {
-      throw new BadRequestException(
-        `MIME type "${mime}" does not match file extension "${ext}". Possible extension mismatch or spoofed file.`,
-      );
-    }
-
-    this.assertFileSignatureMatchesExtension(file, ext);
-
-    // 3. Block dangerous MIME types regardless of extension
-    const blockedMimes = [
-      'application/x-msdownload',
-      'application/x-executable',
-      'application/x-dosexec',
-      'application/x-msdos-program',
-    ];
-    if (blockedMimes.includes(mime)) {
-      throw new BadRequestException(
-        `Files with MIME type "${mime}" are not allowed.`,
-      );
-    }
-  }
-
-  private assertFileSignatureMatchesExtension(
-    file: Express.Multer.File,
-    extension: string,
-  ) {
-    const signatureMap: Record<string, number[][]> = {
-      '.pdf': [[0x25, 0x50, 0x44, 0x46]], // %PDF
-      '.png': [[0x89, 0x50, 0x4e, 0x47]],
-      '.jpg': [[0xff, 0xd8, 0xff]],
-      '.jpeg': [[0xff, 0xd8, 0xff]],
-      '.gif': [[0x47, 0x49, 0x46, 0x38]],
-      '.zip': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-      '.docx': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-      '.xlsx': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-      '.pptx': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-      '.odt': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-      '.ods': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-      '.odp': [
-        [0x50, 0x4b, 0x03, 0x04],
-        [0x50, 0x4b, 0x05, 0x06],
-        [0x50, 0x4b, 0x07, 0x08],
-      ],
-    };
-    const signatures = signatureMap[extension];
-    if (!signatures) {
-      return;
-    }
-
-    const header = file.buffer?.subarray(0, 8);
-    if (!header || header.length < 4) {
-      throw new BadRequestException('Unable to validate attachment signature');
-    }
-
-    const isMatch = signatures.some((signature) =>
-      signature.every((byte, index) => header[index] === byte),
-    );
-    if (!isMatch) {
-      throw new BadRequestException(
-        `File content signature does not match extension "${extension}"`,
-      );
-    }
-  }
-
   private async hasRoutingAssigneeColumn() {
     const now = Date.now();
     if (
       this.routingAssigneeColumnCache &&
       now - this.routingAssigneeColumnCache.checkedAtMs <=
-        this.schemaCheckCacheTtlMs
+      this.schemaCheckCacheTtlMs
     ) {
       return this.routingAssigneeColumnCache.exists;
     }
@@ -4384,11 +2462,39 @@ export class TicketsService {
     return this.routingAssigneeColumnCache.exists;
   }
 
-  private parsePositiveIntEnv(
-    raw: string | undefined,
-    fallback: number,
-  ): number {
-    const parsed = Number.parseInt(raw ?? '', 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // ——— Delegations to extracted services ———
+
+  async addAttachment(
+    ticketId: string,
+    file: Express.Multer.File | undefined,
+    user: AuthUser,
+  ) {
+    return this.attachmentService.addAttachment(ticketId, file, user);
+  }
+
+  async getAttachmentFile(attachmentId: string, user: AuthUser) {
+    return this.attachmentService.getAttachmentFile(attachmentId, user);
+  }
+
+  async updateAttachmentScanStatus(
+    attachmentId: string,
+    payload: any,
+    scannerSecret: string | undefined,
+  ) {
+    return this.attachmentService.updateAttachmentScanStatus(attachmentId, payload, scannerSecret);
+  }
+
+  async publishAutomationRealtimeUpdate(
+    ticketId: string,
+    actorId: string | null,
+  ) {
+    return this.ticketRealtime.publishAutomationRealtimeUpdate(ticketId, actorId);
+  }
+
+  async ingestInboundEmail(
+    payload: IngestInboundEmailDto,
+    inboundSecret: string | undefined,
+  ) {
+    return this.inboundEmailService.ingestInboundEmail(payload, inboundSecret);
   }
 }

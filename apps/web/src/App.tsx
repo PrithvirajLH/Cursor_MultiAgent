@@ -16,7 +16,6 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { ErrorBoundary, RouteErrorFallback } from './components/ErrorBoundary';
 import { fetchTeams, type CurrentUserSession, type TeamRef } from './api/client';
 import { CommandPalette } from './components/CommandPalette';
-import { CreateTicketModal } from './components/CreateTicketModal';
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp';
 import { AdminSidebar } from './components/AdminSidebar';
 import { SignInLandingPage } from './components/auth/SignInLandingPage';
@@ -639,20 +638,6 @@ function AuthenticatedShell({ user, onSignOut }: { user: CurrentUserSession; onS
         open={keyboardShortcuts.showHelp}
         onClose={keyboardShortcuts.closeHelp}
         context={shortcutContext}
-      />
-
-      <CreateTicketModal
-        open={false}
-        onClose={() => {}}
-        onSubmit={() => {}}
-        error={null}
-        teams={teamsList}
-        categories={[]}
-        customFields={[]}
-        customFieldValues={{}}
-        onCustomFieldChange={() => {}}
-        onTeamChange={() => {}}
-        onCategoryChange={() => {}}
       />
     </div>
   );

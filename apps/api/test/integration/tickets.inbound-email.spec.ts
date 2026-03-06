@@ -1,6 +1,8 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
+import { PrismaService } from '../../src/prisma/prisma.service';
+import { buildOutboundMessageId } from '../../src/notifications/email-threading.util';
 import {
   fixtureEmails,
   fixtureTeamIds,
@@ -42,6 +44,20 @@ type TicketListResponse = {
   data: Array<{ subject: string }>;
 };
 
+function getOutboxHtml(payload: unknown): string | null {
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
+    return null;
+  }
+
+  const content = (payload as { content?: unknown }).content;
+  if (!content || Array.isArray(content) || typeof content !== 'object') {
+    return null;
+  }
+
+  const html = (content as { html?: unknown }).html;
+  return typeof html === 'string' ? html : null;
+}
+
 async function createTicket(
   server: SupertestApp,
   subject: string,
@@ -63,11 +79,13 @@ async function createTicket(
 describe('Inbound email ingestion', () => {
   let app: INestApplication;
   let server: SupertestApp;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
     resetTestDb();
     app = await createTestApp();
     server = app.getHttpServer() as SupertestApp;
+    prisma = app.get(PrismaService);
   });
 
   afterAll(async () => {
@@ -117,6 +135,44 @@ describe('Inbound email ingestion', () => {
     expect(body.ticket.subject).toBe(subject);
     expect(body.ticket.channel).toBe('EMAIL');
     expect(body.ticket.requester?.email).toBe(inboundEmail.toLowerCase());
+  });
+
+  it('acknowledges new inbound tickets with the ticket id and reply instructions', async () => {
+    const inboundEmail = `ack.inbound.${Date.now()}@example.com`;
+    const subject = `Need help ${Date.now()}`;
+    const response = await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(inboundSecretHeader)
+      .send({
+        fromEmail: inboundEmail,
+        fromName: 'Ack Requester',
+        subject,
+        body: 'Please confirm you received this request.',
+        messageId: `ack-${Date.now()}@mail.example`,
+      })
+      .expect(201);
+
+    const body = response.body as InboundEmailResponse;
+    const outbox = await prisma.notificationOutbox.findMany({
+      where: {
+        ticketId: body.ticket.id,
+        toEmail: inboundEmail.toLowerCase(),
+        eventType: 'INBOUND_EMAIL_ACKNOWLEDGED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]?.subject).toBe(
+      `${subject} [${body.ticket.displayId ?? body.ticket.id}]`,
+    );
+    expect(outbox[0]?.body).toContain('Hello Ack Requester,');
+    expect(outbox[0]?.body).toContain('What happens next');
+    expect(outbox[0]?.body).toContain('Status: New');
+    const html = getOutboxHtml(outbox[0]?.payload);
+    expect(html).toContain('Request received');
+    expect(html).toContain('What happens next');
+    expect(html).toContain('View Ticket');
   });
 
   it('ingests inbound attachments for a newly created EMAIL ticket', async () => {
@@ -248,6 +304,74 @@ describe('Inbound email ingestion', () => {
       detailBody.attachments?.some(
         (attachment) => attachment.fileName === 'thread-reply.txt',
       ),
+    ).toBe(true);
+  });
+
+  it('threads replies by outbound email headers even when the subject changes', async () => {
+    const created = await createTicket(server, `Header thread ${Date.now()}`);
+    const agentReply = [
+      `Agent follow-up ${Date.now()}: please restart your VPN client.`,
+      'If the issue continues, send a screenshot.',
+      'We will keep the ticket open while you test.',
+    ].join('\n');
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/messages`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({ body: agentReply, type: 'PUBLIC' })
+      .expect(201);
+
+    const outbox = await prisma.notificationOutbox.findFirst({
+      where: {
+        ticketId: created.id,
+        toEmail: fixtureEmails.requester,
+        eventType: 'MESSAGE_ADDED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(outbox).toBeTruthy();
+    expect(outbox?.subject).toBe(
+      `${created.subject} [${created.displayId ?? created.id}]`,
+    );
+    expect(outbox?.body).toContain(agentReply);
+    expect(outbox?.body).toContain('Reply to this email');
+    const html = getOutboxHtml(outbox?.payload);
+    expect(html).toContain('Update on your request');
+    expect(html).toContain('Ticket details');
+    expect(html).toContain('background:#f8fafc');
+    expect(html).toContain('View Ticket');
+
+    const threadedReply = `Reply from inbox ${Date.now()}: the restart worked.`;
+    const outboundMessageId = buildOutboundMessageId(
+      outbox!.id,
+      process.env.SMTP_REPLY_TO ?? process.env.SMTP_FROM ?? undefined,
+    );
+
+    const threadedResponse = await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(inboundSecretHeader)
+      .send({
+        fromEmail: fixtureEmails.requester,
+        fromName: 'Existing Requester',
+        subject: `Re: follow-up ${Date.now()}`,
+        body: threadedReply,
+        messageId: `header-thread-${Date.now()}@mail.example`,
+        inReplyTo: outboundMessageId,
+      })
+      .expect(201);
+
+    const threaded = threadedResponse.body as InboundEmailResponse;
+    expect(threaded.threaded).toBe(true);
+    expect(threaded.ticket.id).toBe(created.id);
+
+    const messagesResponse = await request(server)
+      .get(`/api/tickets/${created.id}/messages`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const messagesBody = messagesResponse.body as TicketMessagesResponse;
+    expect(
+      messagesBody.data.some((message) => message.body === threadedReply),
     ).toBe(true);
   });
 

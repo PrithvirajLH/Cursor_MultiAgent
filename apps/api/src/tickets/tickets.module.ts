@@ -4,6 +4,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SlasModule } from '../slas/slas.module';
 import { AttachmentsController } from './attachments.controller';
+import { InboundEmailService } from './inbound-email.service';
+import { TicketAttachmentService } from './ticket-attachment.service';
+import { TicketRealtimeService } from './ticket-realtime.service';
+import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { TicketsController } from './tickets.controller';
 import { TicketsService } from './tickets.service';
 
@@ -15,7 +19,13 @@ import { TicketsService } from './tickets.service';
     SlasModule,
   ],
   controllers: [TicketsController, AttachmentsController],
-  providers: [TicketsService],
+  providers: [
+    TicketsService,
+    TicketAttachmentService,
+    TicketRealtimeService,
+    TicketSlaCalculationService,
+    InboundEmailService,
+  ],
   exports: [TicketsService],
 })
-export class TicketsModule {}
+export class TicketsModule { }

@@ -7,10 +7,7 @@ import {
   type ThrottlePolicyName,
 } from './throttle-policy.decorator';
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
+import { parsePositiveInt } from './config.utils';
 
 const DEFAULT_WEBHOOK_LIMIT = 30;
 const DEFAULT_WEBHOOK_TTL_MS = 60_000;

@@ -29,10 +29,7 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 // Resolve env file from cwd (apps/api) to work in both dev and production builds
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
+import { parsePositiveInt } from './common/config.utils';
 
 @Module({
   imports: [
@@ -95,4 +92,4 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

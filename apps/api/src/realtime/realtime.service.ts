@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { WebPubSubServiceClient } from '@azure/web-pubsub';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { parsePositiveInt } from '../common/config.utils';
 
 type RealtimeEnvelope<Payload extends Record<string, unknown>> = {
   event: string;
@@ -89,7 +90,7 @@ export class RealtimeService {
   ) {
     this.hubName =
       this.config.get<string>('AZURE_WEB_PUBSUB_HUB') || 'ticketing';
-    this.tokenLifetimeMinutes = this.parsePositiveInt(
+    this.tokenLifetimeMinutes = parsePositiveInt(
       this.config.get<string>('AZURE_WEB_PUBSUB_TOKEN_LIFETIME_MINUTES'),
       60,
     );
@@ -297,10 +298,7 @@ export class RealtimeService {
     }
   }
 
-  private parsePositiveInt(value: string | undefined, fallback: number) {
-    const parsed = Number.parseInt(value ?? '', 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
+
 
   private async resolveActiveTeamIds() {
     try {

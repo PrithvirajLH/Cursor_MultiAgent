@@ -51,7 +51,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
     private readonly automationQueue: AutomationQueueService,
-  ) {}
+  ) { }
 
   onModuleInit() {
     this.enabled =
@@ -151,7 +151,8 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       for (const intent of notificationIntents) {
         const trigger =
           intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_APPROACHING';
-        void this.automationQueue.enqueue(intent.ticketId, trigger);
+        this.automationQueue.enqueue(intent.ticketId, trigger)
+          .catch((err) => this.logger.error(`Failed to enqueue automation for ticket ${intent.ticketId}: ${(err as Error).message}`));
       }
     } finally {
       this.running = false;
@@ -282,7 +283,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         !!instance.firstResponseDueAt &&
         instance.firstResponseDueAt > now &&
         instance.firstResponseDueAt.getTime() - now.getTime() <=
-          atRiskThresholdMs;
+        atRiskThresholdMs;
 
       if (shouldNotifyFirstResponseAtRisk) {
         await this.handleAtRisk(

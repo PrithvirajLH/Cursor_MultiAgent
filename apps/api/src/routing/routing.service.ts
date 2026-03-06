@@ -10,6 +10,7 @@ import { AuthUser } from '../auth/current-user.decorator';
 import { Prisma, TeamAssignmentStrategy, UserRole } from '@prisma/client';
 import { CreateRoutingRuleDto } from './dto/create-routing-rule.dto';
 import { UpdateRoutingRuleDto } from './dto/update-routing-rule.dto';
+import { parsePositiveInt } from '../common/config.utils';
 
 type RoutingRuleRow = {
   id: string;
@@ -33,12 +34,12 @@ export class RoutingRulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
-  ) {}
+  ) { }
   private routingAssigneeColumnCache: {
     exists: boolean;
     checkedAtMs: number;
   } | null = null;
-  private readonly schemaCheckCacheTtlMs = this.parsePositiveIntEnv(
+  private readonly schemaCheckCacheTtlMs = parsePositiveInt(
     process.env.SCHEMA_CHECK_CACHE_TTL_MS,
     300_000,
   );
@@ -348,11 +349,11 @@ export class RoutingRulesService {
       },
       assignee: row.assigneeId
         ? {
-            id: row.assigneeId,
-            email: row.assigneeEmail ?? '',
-            displayName: row.assigneeDisplayName ?? row.assigneeEmail ?? '',
-            role: row.assigneeRole ?? undefined,
-          }
+          id: row.assigneeId,
+          email: row.assigneeEmail ?? '',
+          displayName: row.assigneeDisplayName ?? row.assigneeEmail ?? '',
+          role: row.assigneeRole ?? undefined,
+        }
         : null,
     };
   }
@@ -468,7 +469,7 @@ export class RoutingRulesService {
     if (
       this.routingAssigneeColumnCache &&
       now - this.routingAssigneeColumnCache.checkedAtMs <=
-        this.schemaCheckCacheTtlMs
+      this.schemaCheckCacheTtlMs
     ) {
       return this.routingAssigneeColumnCache.exists;
     }
@@ -490,13 +491,7 @@ export class RoutingRulesService {
     return this.routingAssigneeColumnCache.exists;
   }
 
-  private parsePositiveIntEnv(
-    raw: string | undefined,
-    fallback: number,
-  ): number {
-    const parsed = Number.parseInt(raw ?? '', 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
+
 
   private async safePublishAdminChanged(payload: {
     scope: string;

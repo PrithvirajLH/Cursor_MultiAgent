@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { TicketPriority } from '@prisma/client';
 import {
   ArrayMaxSize,
@@ -66,6 +66,21 @@ export class IngestInboundEmailDto {
   @MinLength(1)
   @MaxLength(255)
   messageId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(998)
+  inReplyTo?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string').join(' ')
+      : value,
+  )
+  @IsString()
+  @MaxLength(4000)
+  references?: string;
 
   @IsOptional()
   @IsEnum(TicketPriority)

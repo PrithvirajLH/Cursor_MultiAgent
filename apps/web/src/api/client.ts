@@ -19,6 +19,39 @@ function clearApiGetCache() {
   apiGetInflight.clear();
 }
 
+/**
+ * Invalidate cached GET entries whose path shares the same resource root as
+ * the mutated path.  For example, a POST to `/tickets/abc/messages` will
+ * clear caches for `/tickets`, `/tickets/abc`, `/tickets/abc/messages`, and
+ * also `/tickets/counts` — but will NOT clear `/teams` or `/categories`.
+ *
+ * Falls back to a full clear if the path doesn't start with '/'.
+ */
+function invalidateApiCacheByPath(mutatedPath: string) {
+  // Extract the resource root: '/tickets/abc/messages' → '/tickets'
+  const segments = mutatedPath.split('/').filter(Boolean);
+  if (segments.length === 0) {
+    clearApiGetCache();
+    return;
+  }
+  const resourceRoot = `/${segments[0]}`;
+  const scope = cacheScopeKey();
+  const prefix = `${scope}:${resourceRoot}`;
+
+  for (const key of apiGetCache.keys()) {
+    if (key.startsWith(prefix)) {
+      apiGetCache.delete(key);
+    }
+  }
+  // Also invalidate /counts since it aggregates across resources
+  const countsPrefix = `${scope}:/counts`;
+  for (const key of apiGetCache.keys()) {
+    if (key.startsWith(countsPrefix)) {
+      apiGetCache.delete(key);
+    }
+  }
+}
+
 /** Thrown by apiFetch when response is not ok; includes status for UI (e.g. 403). */
 export class ApiError extends Error {
   readonly status: number;
@@ -411,7 +444,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     }
     const payload = (await response.json()) as T;
     if (!isGetRequest) {
-      clearApiGetCache();
+      invalidateApiCacheByPath(path);
     }
     return payload;
   }
@@ -769,7 +802,7 @@ export async function uploadTicketAttachment(ticketId: string, file: File) {
   }
 
   const attachment = (await response.json()) as Attachment;
-  clearApiGetCache();
+  invalidateApiCacheByPath('/tickets');
   return attachment;
 }
 
@@ -1281,7 +1314,7 @@ export async function searchAll(
 
   // Filter users and teams client-side based on query
   const loweredQuery = query.toLowerCase();
-  
+
   const filteredUsers = users.filter(
     (user) =>
       user.displayName.toLowerCase().includes(loweredQuery) ||

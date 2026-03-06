@@ -193,7 +193,8 @@ export function TicketAttachments({
                   <img
                     src={previewUrl}
                     alt={expandedAttachment.fileName}
-                    className="max-h-[360px] w-full max-w-full object-contain"
+                    className="max-h-[360px] w-full max-w-full cursor-zoom-in object-contain"
+                    onClick={() => setIsFullscreenPreview(true)}
                   />
                 ) : (
                   <p className="text-xs text-slate-400">

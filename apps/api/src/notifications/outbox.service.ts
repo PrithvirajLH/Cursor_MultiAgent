@@ -2,6 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { NotificationChannel, OutboxStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
+export type EmailOutboxMetadata = {
+  inReplyTo?: string | null;
+  references?: string[] | null;
+};
+
+export type EmailOutboxContent = {
+  html?: string | null;
+};
+
 @Injectable()
 export class OutboxService {
   constructor(private readonly prisma: PrismaService) {}
@@ -14,6 +23,8 @@ export class OutboxService {
     body: string;
     eventType: string;
     payload?: Prisma.InputJsonValue | null;
+    emailMetadata?: EmailOutboxMetadata | null;
+    emailContent?: EmailOutboxContent | null;
   }) {
     return this.prisma.notificationOutbox.create({
       data: {
@@ -25,7 +36,11 @@ export class OutboxService {
         ticketId: payload.ticketId ?? null,
         subject: payload.subject,
         body: payload.body,
-        payload: payload.payload ?? undefined,
+        payload: this.buildPayloadEnvelope(
+          payload.payload ?? null,
+          payload.emailMetadata ?? null,
+          payload.emailContent ?? null,
+        ),
       },
     });
   }
@@ -63,5 +78,42 @@ export class OutboxService {
         lastError: error,
       },
     });
+  }
+
+  private buildPayloadEnvelope(
+    eventPayload: Prisma.InputJsonValue | null,
+    emailMetadata: EmailOutboxMetadata | null,
+    emailContent: EmailOutboxContent | null,
+  ) {
+    const envelope: Record<string, Prisma.InputJsonValue> = {};
+
+    if (eventPayload !== null) {
+      envelope.event = eventPayload;
+    }
+
+    if (emailMetadata) {
+      const email: Record<string, Prisma.InputJsonValue> = {};
+      if (emailMetadata.inReplyTo) {
+        email.inReplyTo = emailMetadata.inReplyTo;
+      }
+
+      const references =
+        emailMetadata.references?.filter(Boolean).slice(0, 20) ?? [];
+      if (references.length > 0) {
+        email.references = references;
+      }
+
+      if (Object.keys(email).length > 0) {
+        envelope.email = email;
+      }
+    }
+
+    if (emailContent?.html) {
+      envelope.content = {
+        html: emailContent.html,
+      };
+    }
+
+    return Object.keys(envelope).length > 0 ? envelope : undefined;
   }
 }

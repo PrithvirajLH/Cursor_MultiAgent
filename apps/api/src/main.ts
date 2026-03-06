@@ -10,10 +10,7 @@ import { AppModule } from './app.module';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(value ?? '', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
+import { parsePositiveInt } from './common/config.utils';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -32,8 +29,8 @@ async function bootstrap() {
   );
   const corsOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',')
-        .map((o) => o.trim())
-        .filter(Boolean)
+      .map((o) => o.trim())
+      .filter(Boolean)
     : [];
   app.enableCors({
     origin: corsOrigins.length
