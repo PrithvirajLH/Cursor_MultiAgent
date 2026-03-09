@@ -19,6 +19,7 @@ import { timingSafeEqual, randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { extractOutboxIdsFromThreadHeaders } from '../notifications/email-threading.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
@@ -37,6 +38,7 @@ export type NormalizedInboundAttachment = {
 
 type InboundThreadTarget = {
     ticketId: string;
+    threadedByReplyToken: string | null;
     threadedByDisplayId: string | null;
     threadedByOutboxId: string | null;
 };
@@ -65,6 +67,7 @@ export class InboundEmailService {
         private readonly attachmentService: TicketAttachmentService,
         private readonly ticketRealtime: TicketRealtimeService,
         private readonly notifications: NotificationsService,
+        private readonly ticketEmailThreads: TicketEmailThreadService,
         @Inject(forwardRef(() => require('./tickets.service').TicketsService))
         private readonly ticketsService: any,
     ) { }
@@ -97,6 +100,7 @@ export class InboundEmailService {
             );
             const requesterAuth = this.toInboundRequesterAuthUser(requester);
             const threadTarget = await this.resolveThreadTarget(
+                payload.toEmail,
                 payload.subject,
                 payload.inReplyTo,
                 payload.references,
@@ -160,12 +164,18 @@ export class InboundEmailService {
                                 fromEmail: requester.email,
                                 messageId,
                                 subject: payload.subject,
+                                threadedByReplyToken: threadTarget.threadedByReplyToken,
                                 threadedByDisplayId: threadTarget.threadedByDisplayId,
                                 threadedByOutboxId: threadTarget.threadedByOutboxId,
                                 attachmentCount: inboundAttachments.length,
                             },
                             createdById: requester.id,
                         },
+                    });
+                    await this.ticketEmailThreads.recordInboundEmail({
+                        ticketId: existing.id,
+                        ticketSubject: payload.subject,
+                        messageId,
                     });
 
                     await this.completeInboundEmailReceipt(
@@ -191,6 +201,11 @@ export class InboundEmailService {
                 },
                 requesterAuth,
             );
+            await this.ticketEmailThreads.recordInboundEmail({
+                ticketId: created.id,
+                ticketSubject: created.subject ?? payload.subject,
+                messageId,
+            });
             await this.attachInboundEmailAttachments(
                 created.id,
                 inboundAttachments,
@@ -205,6 +220,7 @@ export class InboundEmailService {
                         fromEmail: requester.email,
                         messageId,
                         subject: payload.subject,
+                        threadedByReplyToken: null,
                         threadedByDisplayId: null,
                         attachmentCount: inboundAttachments.length,
                     },
@@ -219,6 +235,7 @@ export class InboundEmailService {
                     toEmail: requester.email,
                     requesterName: requester.displayName,
                     ticketDisplayId: created.displayId ?? null,
+                    ticketNumber: created.number ?? 0,
                     ticketSubject: created.subject ?? payload.subject,
                     inboundMessageId: messageId,
                 })
@@ -575,10 +592,27 @@ export class InboundEmailService {
     }
 
     async resolveThreadTarget(
+        toEmail: string | undefined,
         subject: string,
         inReplyTo?: string,
         references?: string,
     ): Promise<InboundThreadTarget | null> {
+        const replyToken = this.ticketEmailThreads.extractReplyToken(toEmail);
+        if (replyToken) {
+            const ticketId =
+                await this.ticketEmailThreads.resolveTicketIdByReplyAddress(
+                    toEmail,
+                );
+            if (ticketId) {
+                return {
+                    ticketId,
+                    threadedByReplyToken: replyToken,
+                    threadedByDisplayId: null,
+                    threadedByOutboxId: null,
+                };
+            }
+        }
+
         const outboxIds = extractOutboxIdsFromThreadHeaders(inReplyTo, references);
         if (outboxIds.length > 0) {
             const outboxes = await this.prisma.notificationOutbox.findMany({
@@ -605,6 +639,7 @@ export class InboundEmailService {
                 if (ticketId) {
                     return {
                         ticketId,
+                        threadedByReplyToken: null,
                         threadedByDisplayId: null,
                         threadedByOutboxId: outboxId,
                     };
@@ -627,6 +662,7 @@ export class InboundEmailService {
 
         return {
             ticketId: ticket.id,
+            threadedByReplyToken: null,
             threadedByDisplayId: displayId,
             threadedByOutboxId: null,
         };

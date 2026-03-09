@@ -2186,12 +2186,8 @@ export class TicketsService {
       return true;
     }
 
-    const isSelfAssign = !assigneeId || assigneeId === user.id;
-
-    if (!isSelfAssign) {
-      return false;
-    }
-
+    // Agents can assign within their own team only when the ticket is in their
+    // direct write scope: unassigned or currently assigned to them.
     return ticket.assigneeId === null || ticket.assigneeId === user.id;
   }
 

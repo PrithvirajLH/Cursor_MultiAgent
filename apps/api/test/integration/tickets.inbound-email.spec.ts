@@ -58,6 +58,51 @@ function getOutboxHtml(payload: unknown): string | null {
   return typeof html === 'string' ? html : null;
 }
 
+function getOutboxEmailMetadata(payload: unknown): {
+  replyTo?: string;
+  inReplyTo?: string;
+  references?: string[];
+} {
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
+    return {};
+  }
+
+  const email = (payload as { email?: unknown }).email;
+  if (!email || Array.isArray(email) || typeof email !== 'object') {
+    return {};
+  }
+
+  return {
+    replyTo:
+      typeof (email as { replyTo?: unknown }).replyTo === 'string'
+        ? ((email as { replyTo?: string }).replyTo ?? undefined)
+        : undefined,
+    inReplyTo:
+      typeof (email as { inReplyTo?: unknown }).inReplyTo === 'string'
+        ? ((email as { inReplyTo?: string }).inReplyTo ?? undefined)
+        : undefined,
+    references: Array.isArray((email as { references?: unknown }).references)
+      ? ((email as { references?: string[] }).references ?? [])
+      : undefined,
+  };
+}
+
+function expectedReplyToPattern() {
+  const base =
+    process.env.SMTP_REPLY_TO ?? process.env.SMTP_FROM ?? 'no-reply@localhost';
+  const match = base.match(/<([^<>]+)>/);
+  const email = (match?.[1] ?? base).trim().toLowerCase();
+  const atIndex = email.lastIndexOf('@');
+  const localPart = atIndex > 0 ? email.slice(0, atIndex) : 'no-reply';
+  const domain = atIndex > 0 ? email.slice(atIndex + 1) : 'localhost';
+  const escapedLocal = localPart.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedDomain = domain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `^${escapedLocal}\\+ticket-[A-Za-z0-9_-]+@${escapedDomain}$`,
+    'i',
+  );
+}
+
 async function createTicket(
   server: SupertestApp,
   subject: string,
@@ -140,6 +185,7 @@ describe('Inbound email ingestion', () => {
   it('acknowledges new inbound tickets with the ticket id and reply instructions', async () => {
     const inboundEmail = `ack.inbound.${Date.now()}@example.com`;
     const subject = `Need help ${Date.now()}`;
+    const inboundMessageId = `ack-${Date.now()}@mail.example`;
     const response = await request(server)
       .post('/api/tickets/inbound-email')
       .set(inboundSecretHeader)
@@ -148,7 +194,7 @@ describe('Inbound email ingestion', () => {
         fromName: 'Ack Requester',
         subject,
         body: 'Please confirm you received this request.',
-        messageId: `ack-${Date.now()}@mail.example`,
+        messageId: inboundMessageId,
       })
       .expect(201);
 
@@ -170,9 +216,21 @@ describe('Inbound email ingestion', () => {
     expect(outbox[0]?.body).toContain('What happens next');
     expect(outbox[0]?.body).toContain('Status: New');
     const html = getOutboxHtml(outbox[0]?.payload);
+    const emailMetadata = getOutboxEmailMetadata(outbox[0]?.payload);
     expect(html).toContain('Request received');
     expect(html).toContain('What happens next');
     expect(html).toContain('View Ticket');
+    expect(emailMetadata.replyTo).toMatch(expectedReplyToPattern());
+    expect(emailMetadata.inReplyTo).toBe(inboundMessageId);
+    expect(emailMetadata.references).toContain(inboundMessageId);
+
+    const thread = await prisma.ticketEmailThread.findUnique({
+      where: { ticketId: body.ticket.id },
+    });
+    expect(thread).toBeTruthy();
+    expect(thread?.canonicalSubject).toBe(subject);
+    expect(thread?.rootInboundMessageId).toBe(inboundMessageId);
+    expect(thread?.lastInboundMessageId).toBe(inboundMessageId);
   });
 
   it('ingests inbound attachments for a newly created EMAIL ticket', async () => {
@@ -337,12 +395,15 @@ describe('Inbound email ingestion', () => {
     expect(outbox?.body).toContain(agentReply);
     expect(outbox?.body).toContain('Reply to this email');
     const html = getOutboxHtml(outbox?.payload);
+    const emailMetadata = getOutboxEmailMetadata(outbox?.payload);
     expect(html).toContain('Update on your request');
     expect(html).toContain('Ticket details');
     expect(html).toContain('background:#f8fafc');
     expect(html).toContain('View Ticket');
+    expect(emailMetadata.replyTo).toMatch(expectedReplyToPattern());
 
     const threadedReply = `Reply from inbox ${Date.now()}: the restart worked.`;
+    const inboundMessageId = `header-thread-${Date.now()}@mail.example`;
     const outboundMessageId = buildOutboundMessageId(
       outbox!.id,
       process.env.SMTP_REPLY_TO ?? process.env.SMTP_FROM ?? undefined,
@@ -356,7 +417,7 @@ describe('Inbound email ingestion', () => {
         fromName: 'Existing Requester',
         subject: `Re: follow-up ${Date.now()}`,
         body: threadedReply,
-        messageId: `header-thread-${Date.now()}@mail.example`,
+        messageId: inboundMessageId,
         inReplyTo: outboundMessageId,
       })
       .expect(201);
@@ -373,6 +434,87 @@ describe('Inbound email ingestion', () => {
     expect(
       messagesBody.data.some((message) => message.body === threadedReply),
     ).toBe(true);
+
+    const thread = await prisma.ticketEmailThread.findUnique({
+      where: { ticketId: created.id },
+    });
+    expect(thread?.lastInboundMessageId).toBe(inboundMessageId);
+  });
+
+  it('threads replies by tokenized reply-to even without matching subject or headers', async () => {
+    const created = await createTicket(server, `Token thread ${Date.now()}`);
+    const agentReply = `Token routing ${Date.now()}: sending a follow-up.`;
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/messages`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({ body: agentReply, type: 'PUBLIC' })
+      .expect(201);
+
+    const outbox = await prisma.notificationOutbox.findFirst({
+      where: {
+        ticketId: created.id,
+        toEmail: fixtureEmails.requester,
+        eventType: 'MESSAGE_ADDED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const emailMetadata = getOutboxEmailMetadata(outbox?.payload);
+    expect(emailMetadata.replyTo).toBeTruthy();
+
+    const inboundReply = `Token reply ${Date.now()}: here are more details.`;
+    const threadedResponse = await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(inboundSecretHeader)
+      .send({
+        fromEmail: fixtureEmails.requester,
+        fromName: 'Existing Requester',
+        toEmail: emailMetadata.replyTo,
+        subject: `Completely different subject ${Date.now()}`,
+        body: inboundReply,
+        messageId: `token-thread-${Date.now()}@mail.example`,
+      })
+      .expect(201);
+
+    const threaded = threadedResponse.body as InboundEmailResponse;
+    expect(threaded.threaded).toBe(true);
+    expect(threaded.ticket.id).toBe(created.id);
+
+    const messagesResponse = await request(server)
+      .get(`/api/tickets/${created.id}/messages`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const messagesBody = messagesResponse.body as TicketMessagesResponse;
+    expect(
+      messagesBody.data.some((message) => message.body === inboundReply),
+    ).toBe(true);
+  });
+
+  it('creates a new ticket for the same requester when no thread token or headers are present', async () => {
+    const created = await createTicket(server, `Same requester ${Date.now()}`);
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/messages`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({ body: 'Initial outbound email context', type: 'PUBLIC' })
+      .expect(201);
+
+    const response = await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(inboundSecretHeader)
+      .send({
+        fromEmail: fixtureEmails.requester,
+        fromName: 'Existing Requester',
+        subject: `Fresh issue ${Date.now()}`,
+        body: 'This should be treated as a new request.',
+        messageId: `same-requester-new-ticket-${Date.now()}@mail.example`,
+      })
+      .expect(201);
+
+    const body = response.body as InboundEmailResponse;
+    expect(body.threaded).toBe(false);
+    expect(body.ticket.id).not.toBe(created.id);
   });
 
   it('deduplicates webhook retries by messageId', async () => {

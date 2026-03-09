@@ -141,6 +141,55 @@ describe('Ticket access control', () => {
     expect(body.assignee?.email).toBe(fixtureEmails.agent);
   });
 
+  it('allows agents to assign unassigned team tickets to another team member', async () => {
+    const list = await request(server)
+      .get('/api/tickets')
+      .set(authHeader(fixtureEmails.agent))
+      .expect(200);
+    const listBody = list.body as TicketListResponse;
+    const ticket = listBody.data.find(
+      (item) => item.subject === 'Laptop provisioning',
+    );
+    if (!ticket) {
+      throw new Error('Missing fixture ticket: Laptop provisioning');
+    }
+
+    const response = await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({ assigneeId: fixtureUserIds.lead })
+      .expect(201);
+
+    const body = response.body as TicketResponse;
+    expect(body.assignee?.email).toBe(fixtureEmails.lead);
+  });
+
+  it('does not allow agents to reassign tickets already owned by another teammate', async () => {
+    const list = await request(server)
+      .get('/api/tickets')
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const listBody = list.body as TicketListResponse;
+    const ticket = listBody.data.find(
+      (item) => item.subject === 'VPN access request',
+    );
+    if (!ticket) {
+      throw new Error('Missing fixture ticket: VPN access request');
+    }
+
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ assigneeId: fixtureUserIds.lead })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({ assigneeId: fixtureUserIds.agent })
+      .expect(403);
+  });
+
   it('keeps read-only history for the prior department on transfer', async () => {
     const list = await request(server)
       .get('/api/tickets')

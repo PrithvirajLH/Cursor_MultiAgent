@@ -5,13 +5,13 @@ import type { TicketMessage, User } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from './email-queue.service';
-import { buildOutboundMessageId } from './email-threading.util';
 import { InAppNotificationsService } from './in-app-notifications.service';
 import {
   type EmailOutboxContent,
   type EmailOutboxMetadata,
   OutboxService,
 } from './outbox.service';
+import { TicketEmailThreadService } from './ticket-email-thread.service';
 
 type RecipientOptions = {
   includeRequester?: boolean;
@@ -41,6 +41,7 @@ export class NotificationsService {
     private readonly emailQueue: EmailQueueService,
     private readonly config: ConfigService,
     private readonly inAppNotifications: InAppNotificationsService,
+    private readonly ticketEmailThreads: TicketEmailThreadService,
   ) {}
 
   async ticketCreated(ticket: { id: string }, actor: AuthUser) {
@@ -56,7 +57,7 @@ export class NotificationsService {
       excludeUserId: actor.id,
     });
 
-    const subject = this.ticketEmailSubject(fullTicket);
+    const emailContext = await this.buildTicketEmailContext(fullTicket);
     const body = [
       'A new ticket has been created.',
       `Subject: ${fullTicket.subject}`,
@@ -66,18 +67,16 @@ export class NotificationsService {
       '',
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
-    const emailMetadata = await this.buildTicketEmailMetadata(fullTicket.id);
-
     await this.queueEmails(recipients, {
       eventType: 'TICKET_CREATED',
-      subject,
+      subject: emailContext.subject,
       body,
       ticketId: fullTicket.id,
       payload: {
         priority: fullTicket.priority,
         status: fullTicket.status,
       },
-      emailMetadata,
+      emailMetadata: emailContext.emailMetadata,
     });
   }
 
@@ -100,9 +99,10 @@ export class NotificationsService {
       excludeEmployees: isInternal,
     });
 
+    const emailContext = await this.buildTicketEmailContext(fullTicket);
     const subject = isInternal
       ? `[Ticket ${this.ticketLabel(fullTicket)}] Internal note`
-      : this.ticketEmailSubject(fullTicket);
+      : emailContext.subject;
     const body = isInternal
       ? [
           `${actor.email} added an internal note.`,
@@ -117,8 +117,6 @@ export class NotificationsService {
       : {
           html: this.buildPublicReplyHtmlBody(fullTicket, actor, message.body),
         };
-    const emailMetadata = await this.buildTicketEmailMetadata(fullTicket.id);
-
     // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'MESSAGE_ADDED',
@@ -129,7 +127,7 @@ export class NotificationsService {
         messageId: message.id,
         type: message.type,
       },
-      emailMetadata,
+      emailMetadata: emailContext.emailMetadata,
       emailContent,
     });
 
@@ -180,25 +178,24 @@ export class NotificationsService {
     });
 
     const assigneeName = fullTicket.assignee?.displayName ?? 'Unassigned';
-    const subject = this.ticketEmailSubject(fullTicket);
+    const emailContext = await this.buildTicketEmailContext(fullTicket);
     const body = [
       `Ticket assigned to ${assigneeName}.`,
       `Status: ${fullTicket.status}`,
       '',
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
-    const emailMetadata = await this.buildTicketEmailMetadata(fullTicket.id);
 
     // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'TICKET_ASSIGNED',
-      subject,
+      subject: emailContext.subject,
       body,
       ticketId: fullTicket.id,
       payload: {
         assigneeId: fullTicket.assigneeId,
       },
-      emailMetadata,
+      emailMetadata: emailContext.emailMetadata,
     });
 
     // Create in-app notification for assignee
@@ -239,25 +236,24 @@ export class NotificationsService {
     const priorTeam = priorTeamId
       ? await this.prisma.team.findUnique({ where: { id: priorTeamId } })
       : null;
-    const subject = this.ticketEmailSubject(fullTicket);
+    const emailContext = await this.buildTicketEmailContext(fullTicket);
     const body = [
       `Ticket transferred from ${priorTeam?.name ?? 'Unassigned'} to ${fullTicket.assignedTeam?.name ?? 'Unassigned'}.`,
       '',
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
-    const emailMetadata = await this.buildTicketEmailMetadata(fullTicket.id);
 
     // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'TICKET_TRANSFERRED',
-      subject,
+      subject: emailContext.subject,
       body,
       ticketId: fullTicket.id,
       payload: {
         fromTeamId: priorTeamId,
         toTeamId: fullTicket.assignedTeamId,
       },
-      emailMetadata,
+      emailMetadata: emailContext.emailMetadata,
     });
 
     // Create in-app notifications
@@ -295,7 +291,7 @@ export class NotificationsService {
       excludeUserId: actor.id,
     });
 
-    const subject = this.ticketEmailSubject(fullTicket);
+    const emailContext = await this.buildTicketEmailContext(fullTicket);
     const body = [
       `Status changed from ${previousStatus} to ${fullTicket.status}.`,
       '',
@@ -303,19 +299,17 @@ export class NotificationsService {
       '',
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
-    const emailMetadata = await this.buildTicketEmailMetadata(fullTicket.id);
-
     // Queue email notifications
     await this.queueEmails(recipients, {
       eventType: 'TICKET_STATUS_CHANGED',
-      subject,
+      subject: emailContext.subject,
       body,
       ticketId: fullTicket.id,
       payload: {
         from: previousStatus,
         to: fullTicket.status,
       },
-      emailMetadata,
+      emailMetadata: emailContext.emailMetadata,
     });
 
     // Create in-app notifications for resolved tickets
@@ -345,13 +339,17 @@ export class NotificationsService {
     toEmail: string;
     requesterName?: string | null;
     ticketDisplayId: string | null;
+    ticketNumber: number;
     ticketSubject: string;
     inboundMessageId: string;
   }) {
-    const subject = this.ticketEmailSubject({
-      displayId: details.ticketDisplayId,
-      number: 0,
-      subject: details.ticketSubject,
+    const emailContext = await this.ticketEmailThreads.buildOutboundEmailContext({
+      ticketId: details.ticketId,
+      ticketSubject: details.ticketSubject,
+      ticketDisplayId: details.ticketDisplayId,
+      ticketNumber: details.ticketNumber,
+      preferredInReplyTo: details.inboundMessageId,
+      additionalReferences: [details.inboundMessageId],
     });
     const body = this.buildInboundAcknowledgementTextBody(details);
     const emailContent = {
@@ -360,16 +358,13 @@ export class NotificationsService {
 
     await this.notifyAddresses([details.toEmail], {
       eventType: 'INBOUND_EMAIL_ACKNOWLEDGED',
-      subject,
+      subject: emailContext.subject,
       body,
       ticketId: details.ticketId,
       payload: {
         inboundMessageId: details.inboundMessageId,
       },
-      emailMetadata: {
-        inReplyTo: details.inboundMessageId,
-        references: [details.inboundMessageId],
-      },
+      emailMetadata: emailContext.emailMetadata,
       emailContent,
     });
   }
@@ -500,87 +495,18 @@ export class NotificationsService {
     await this.emailQueue.enqueue(outbox.id);
   }
 
-  private async buildTicketEmailMetadata(
-    ticketId: string,
-    preferredInReplyTo?: string | null,
-  ) {
-    const latestInbound = await this.prisma.ticketEvent.findFirst({
-      where: {
-        ticketId,
-        type: 'INBOUND_EMAIL_RECEIVED',
-      },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        createdAt: true,
-        payload: true,
-      },
+  private buildTicketEmailContext(ticket: {
+    id: string;
+    displayId: string | null;
+    number: number;
+    subject: string;
+  }) {
+    return this.ticketEmailThreads.buildOutboundEmailContext({
+      ticketId: ticket.id,
+      ticketSubject: ticket.subject,
+      ticketDisplayId: ticket.displayId,
+      ticketNumber: ticket.number,
     });
-    const latestInboundMessageId = this.extractStringFromPayload(
-      latestInbound?.payload,
-      'messageId',
-    );
-
-    const latestOutbound = await this.prisma.notificationOutbox.findFirst({
-      where: {
-        ticketId,
-        sentAt: { not: null },
-      },
-      orderBy: { sentAt: 'desc' },
-      select: {
-        id: true,
-        sentAt: true,
-      },
-    });
-    const latestOutboundMessageId = latestOutbound
-      ? buildOutboundMessageId(latestOutbound.id, this.getReplyToAddress())
-      : null;
-
-    const inboundAt = latestInbound?.createdAt?.getTime() ?? 0;
-    const outboundAt = latestOutbound?.sentAt?.getTime() ?? 0;
-    const fallbackInReplyTo =
-      inboundAt >= outboundAt
-        ? latestInboundMessageId ?? latestOutboundMessageId
-        : latestOutboundMessageId ?? latestInboundMessageId;
-
-    const references = Array.from(
-      new Set(
-        [
-          preferredInReplyTo ?? undefined,
-          latestInboundMessageId ?? undefined,
-          latestOutboundMessageId ?? undefined,
-        ].filter((value): value is string => Boolean(value)),
-      ),
-    );
-
-    const inReplyTo = preferredInReplyTo ?? fallbackInReplyTo ?? undefined;
-    if (!inReplyTo && references.length === 0) {
-      return undefined;
-    }
-
-    return {
-      inReplyTo,
-      references,
-    } satisfies EmailOutboxMetadata;
-  }
-
-  private extractStringFromPayload(
-    payload: Prisma.JsonValue | null | undefined,
-    key: string,
-  ) {
-    if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
-      return null;
-    }
-
-    const value = (payload as Prisma.JsonObject)[key];
-    return typeof value === 'string' ? value : null;
-  }
-
-  private getReplyToAddress() {
-    return (
-      this.config.get<string>('SMTP_REPLY_TO') ??
-      this.config.get<string>('SMTP_FROM') ??
-      'no-reply@localhost'
-    );
   }
 
   private buildPublicReplyTextBody(
@@ -792,7 +718,7 @@ export class NotificationsService {
       return configured;
     }
 
-    const address = this.getReplyToAddress();
+    const address = this.ticketEmailThreads.getBaseReplyToAddress();
     const domain = address.split('@')[1]?.split('.')[0]?.trim();
     if (domain) {
       return domain.toUpperCase();
@@ -808,22 +734,6 @@ export class NotificationsService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-  }
-
-  private ticketEmailSubject(ticket: {
-    displayId: string | null;
-    number: number;
-    subject: string;
-  }) {
-    const normalizedSubject = ticket.subject.trim() || 'Ticket update';
-    const label =
-      ticket.displayId ?? (ticket.number > 0 ? `#${ticket.number}` : null);
-
-    if (!label) {
-      return normalizedSubject;
-    }
-
-    return `${normalizedSubject} [${label}]`;
   }
 
   private ticketLabel(ticket: { displayId: string | null; number: number }) {

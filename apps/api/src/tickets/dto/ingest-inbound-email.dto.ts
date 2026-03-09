@@ -48,6 +48,10 @@ export class IngestInboundEmailDto {
   fromEmail!: string;
 
   @IsOptional()
+  @IsEmail()
+  toEmail?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(160)
   fromName?: string;

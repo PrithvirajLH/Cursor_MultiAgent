@@ -229,6 +229,7 @@ model Ticket {
   followers      TicketFollower[]
   attachments    Attachment[]
   inboundEmailReceipts InboundEmailReceipt[]
+  emailThread     TicketEmailThread?
   notificationOutbox NotificationOutbox[]
   slaInstance    SlaInstance?
   notifications  Notification[]
@@ -245,6 +246,26 @@ model Ticket {
   @@index([priority])
   @@index([createdAt])
   @@index([firstResponseDueAt])
+}
+
+model TicketEmailThread {
+  id                    String   @id @default(uuid())
+  ticketId              String   @unique
+  replyToken            String   @unique @db.VarChar(128)
+  canonicalSubject      String   @db.VarChar(200)
+  rootInboundMessageId  String?  @db.VarChar(255)
+  lastInboundMessageId  String?  @db.VarChar(255)
+  lastInboundAt         DateTime?
+  lastOutboundMessageId String?  @db.VarChar(255)
+  lastOutboundAt        DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  ticket                Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([replyToken])
+  @@index([lastInboundAt])
+  @@index([lastOutboundAt])
 }
 
 model InboundEmailReceipt {

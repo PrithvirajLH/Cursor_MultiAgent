@@ -8,6 +8,7 @@ import { InAppNotificationsController } from './in-app-notifications.controller'
 import { InAppNotificationsService } from './in-app-notifications.service';
 import { NotificationsService } from './notifications.service';
 import { OutboxService } from './outbox.service';
+import { TicketEmailThreadService } from './ticket-email-thread.service';
 
 @Module({
   imports: [ConfigModule, RealtimeModule],
@@ -16,10 +17,15 @@ import { OutboxService } from './outbox.service';
     NotificationsService,
     InAppNotificationsService,
     OutboxService,
+    TicketEmailThreadService,
     EmailService,
     EmailProcessorService,
     EmailQueueService,
   ],
-  exports: [NotificationsService, InAppNotificationsService],
+  exports: [
+    NotificationsService,
+    InAppNotificationsService,
+    TicketEmailThreadService,
+  ],
 })
 export class NotificationsModule {}

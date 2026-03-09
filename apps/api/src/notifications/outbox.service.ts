@@ -3,6 +3,7 @@ import { NotificationChannel, OutboxStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type EmailOutboxMetadata = {
+  replyTo?: string | null;
   inReplyTo?: string | null;
   references?: string[] | null;
 };
@@ -93,6 +94,10 @@ export class OutboxService {
 
     if (emailMetadata) {
       const email: Record<string, Prisma.InputJsonValue> = {};
+      if (emailMetadata.replyTo) {
+        email.replyTo = emailMetadata.replyTo;
+      }
+
       if (emailMetadata.inReplyTo) {
         email.inReplyTo = emailMetadata.inReplyTo;
       }

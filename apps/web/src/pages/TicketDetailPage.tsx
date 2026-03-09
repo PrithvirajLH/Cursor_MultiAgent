@@ -48,6 +48,16 @@ import {
   type RealtimeTicketMessagePayload,
 } from '../realtime/events';
 
+/** Strips "Facility: ..." prefix from description so only the message is shown. */
+function stripFacilityFromDescription(description: string): string {
+  const lines = description.split('\n');
+  const firstLine = lines[0] ?? '';
+  if (firstLine.startsWith('Facility:')) {
+    return lines.slice(2).join('\n').trim();
+  }
+  return description;
+}
+
 type TypingUserEntry = {
   id: string;
   displayName: string;
@@ -1344,7 +1354,7 @@ export function TicketDetailPage({
                         </h1>
                         {ticket.description ? (
                           <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                            {ticket.description}
+                            {stripFacilityFromDescription(ticket.description) || 'No description provided.'}
                           </p>
                         ) : (
                           <p className="mt-2 text-[14px] leading-relaxed italic text-slate-500">

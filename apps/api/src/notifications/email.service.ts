@@ -42,6 +42,7 @@ export class EmailService {
     subject: string;
     text: string;
     html?: string;
+    replyTo?: string;
     messageId?: string;
     inReplyTo?: string;
     references?: string[];
@@ -52,7 +53,7 @@ export class EmailService {
 
     await this.transporter.sendMail({
       from: this.fromAddress,
-      replyTo: this.replyToAddress,
+      replyTo: payload.replyTo ?? this.replyToAddress,
       to: payload.to,
       subject: payload.subject,
       text: payload.text,

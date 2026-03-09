@@ -50,9 +50,10 @@ async function seedMinimal() {
   await prisma.team.deleteMany();
   await prisma.category.deleteMany();
 
-  const aiTeam = await prisma.team.create({
-    data: { name: 'AI', slug: 'ai', description: 'AI support team' }
-  });
+  const [aiTeam, hrTeam] = await Promise.all([
+    prisma.team.create({ data: { name: 'AI', slug: 'ai', description: 'AI support team' } }),
+    prisma.team.create({ data: { name: 'HR', slug: 'hr', description: 'Human resources' } })
+  ]);
 
   await prisma.user.createMany({
     data: [
@@ -123,6 +124,7 @@ async function seedMinimal() {
 async function seedDev() {
   const teams = [
     { name: 'IT Service Desk', slug: 'it-service-desk', description: 'Devices, access, core systems' },
+    { name: 'HR', slug: 'hr', description: 'Human resources' },
     { name: 'HR Operations', slug: 'hr-operations', description: 'People ops, onboarding, payroll' },
     { name: 'AI', slug: 'ai', description: 'AI tooling, models, data requests' },
     { name: 'Medicaid Pending', slug: 'medicaid-pending', description: 'Eligibility, claims, approvals' },

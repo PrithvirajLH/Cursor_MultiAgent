@@ -170,118 +170,118 @@ export const TicketConversation = memo(function TicketConversation({
         ) : null}
 
         <AnimatedList className="relative w-full items-stretch gap-1">
-        {messages.map((message, index) => {
-          const isCurrentUser = message.author?.email === currentEmail;
-          const isInternal = message.type === 'INTERNAL';
-          const localStatus = message.localStatus;
-          const initials = initialsFor(
-            message.author?.displayName ?? message.author?.email ?? 'U',
-          );
-          const previousMessage = index > 0 ? messages[index - 1] : null;
-          const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+          {messages.map((message, index) => {
+            const isCurrentUser = message.author?.email === currentEmail;
+            const isInternal = message.type === 'INTERNAL';
+            const localStatus = message.localStatus;
+            const initials = initialsFor(
+              message.author?.displayName ?? message.author?.email ?? 'U',
+            );
+            const previousMessage = index > 0 ? messages[index - 1] : null;
+            const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
 
-          const previousIsSameSender =
-            previousMessage != null &&
-            (previousMessage.author?.email ?? null) ===
-            (message.author?.email ?? null) &&
-            previousMessage.type === message.type &&
-            isWithinMinutes(previousMessage.createdAt, message.createdAt, 5);
-          const nextIsSameSender =
-            nextMessage != null &&
-            (nextMessage.author?.email ?? null) === (message.author?.email ?? null) &&
-            nextMessage.type === message.type &&
-            isWithinMinutes(message.createdAt, nextMessage.createdAt, 5);
+            const previousIsSameSender =
+              previousMessage != null &&
+              (previousMessage.author?.email ?? null) ===
+              (message.author?.email ?? null) &&
+              previousMessage.type === message.type &&
+              isWithinMinutes(previousMessage.createdAt, message.createdAt, 5);
+            const nextIsSameSender =
+              nextMessage != null &&
+              (nextMessage.author?.email ?? null) === (message.author?.email ?? null) &&
+              nextMessage.type === message.type &&
+              isWithinMinutes(message.createdAt, nextMessage.createdAt, 5);
 
-          const isGroupStart = !previousIsSameSender;
-          const isGroupEnd = !nextIsSameSender;
-          const shouldShowDateDivider =
-            previousMessage == null ||
-            !isSameDay(previousMessage.createdAt, message.createdAt);
+            const isGroupStart = !previousIsSameSender;
+            const isGroupEnd = !nextIsSameSender;
+            const shouldShowDateDivider =
+              previousMessage == null ||
+              !isSameDay(previousMessage.createdAt, message.createdAt);
 
-          return (
-            <div key={message.id}>
-              {shouldShowDateDivider ? (
-                <div className="my-4 flex items-center justify-center">
-                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
-                    {formatConversationDay(message.createdAt)}
-                  </span>
-                </div>
-              ) : null}
-              <div
-                className={`flex items-end gap-2 py-0.5 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-              >
-                {!isCurrentUser ? (
-                  isGroupEnd ? (
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm">
-                      {initials}
-                    </div>
-                  ) : (
-                    <div className="h-9 w-9 shrink-0" />
-                  )
+            return (
+              <div key={message.id}>
+                {shouldShowDateDivider ? (
+                  <div className="my-4 flex items-center justify-center">
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
+                      {formatConversationDay(message.createdAt)}
+                    </span>
+                  </div>
                 ) : null}
-
                 <div
-                  className={`max-w-[82%] sm:max-w-[70%] min-w-0 ${isCurrentUser ? 'text-right' : 'text-left'}`}
+                  className={`flex items-end gap-2 py-0.5 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
                 >
-                  {isGroupStart ? (
-                    <div
-                      className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <span className="text-xs font-semibold text-slate-700">
-                        {isCurrentUser
-                          ? 'You'
-                          : message.author?.displayName ??
-                          message.author?.email ??
-                          'Unknown'}
-                      </span>
-                      {isInternal ? (
-                        <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
-                          Internal
-                        </span>
-                      ) : null}
-                      <span className="flex items-center gap-1 text-[11px] text-slate-500">
-                        {formatDate(message.createdAt)}
-                        {isCurrentUser && localStatus === 'sending' ? (
-                          <span className="text-slate-400">…</span>
-                        ) : null}
-                        {isCurrentUser && localStatus === 'sent' ? (
-                          <span className="text-xs text-slate-400">✓</span>
-                        ) : null}
-                        {isCurrentUser && localStatus === 'failed' ? (
-                          <span className="text-xs text-rose-500">!</span>
-                        ) : null}
-                      </span>
-                    </div>
+                  {!isCurrentUser ? (
+                    isGroupEnd ? (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm">
+                        {initials}
+                      </div>
+                    ) : (
+                      <div className="h-9 w-9 shrink-0" />
+                    )
                   ) : null}
 
                   <div
-                    className={`inline-flex min-h-[32px] items-center max-w-full break-words break-all whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${isCurrentUser
-                      ? 'border-slate-700 bg-slate-700 text-slate-50'
-                      : isInternal
-                        ? 'border-amber-200 bg-amber-50 text-slate-900'
-                        : 'border-slate-200 bg-white text-slate-900'
-                      } ${isCurrentUser
-                        ? `${isGroupStart ? 'rounded-tr-[20px]' : 'rounded-tr-md'} ${isGroupEnd ? 'rounded-br-[20px]' : 'rounded-br-md'} rounded-tl-[20px] rounded-bl-[20px]`
-                        : `${isGroupStart ? 'rounded-tl-[20px]' : 'rounded-tl-md'} ${isGroupEnd ? 'rounded-bl-[20px]' : 'rounded-bl-md'} rounded-tr-[20px] rounded-br-[20px]`
-                      }`}
+                    className={`max-w-[82%] sm:max-w-[70%] min-w-0 ${isCurrentUser ? 'text-right' : 'text-left'}`}
                   >
-                    {message.body.includes('\n') ? (
-                      <pre className="w-full whitespace-pre-wrap break-words break-all text-sm">
-                        {message.body}
-                      </pre>
-                    ) : (
-                      <MessageBody
-                        body={message.body}
-                        invert={isCurrentUser}
-                        className="flex w-full items-center"
-                      />
-                    )}
+                    {isGroupStart ? (
+                      <div
+                        className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <span className="text-xs font-semibold text-slate-700">
+                          {isCurrentUser
+                            ? 'You'
+                            : message.author?.displayName ??
+                            message.author?.email ??
+                            'Unknown'}
+                        </span>
+                        {isInternal ? (
+                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                            Internal
+                          </span>
+                        ) : null}
+                        <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                          {formatDate(message.createdAt)}
+                          {isCurrentUser && localStatus === 'sending' ? (
+                            <span className="text-slate-400">…</span>
+                          ) : null}
+                          {isCurrentUser && localStatus === 'sent' ? (
+                            <span className="text-xs text-slate-400">✓</span>
+                          ) : null}
+                          {isCurrentUser && localStatus === 'failed' ? (
+                            <span className="text-xs text-rose-500">!</span>
+                          ) : null}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    <div
+                      className={`inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${isCurrentUser
+                        ? 'border-slate-700 bg-slate-700 text-slate-50'
+                        : isInternal
+                          ? 'border-amber-200 bg-amber-50 text-slate-900'
+                          : 'border-slate-200 bg-white text-slate-900'
+                        } ${isCurrentUser
+                          ? `${isGroupStart ? 'rounded-tr-[20px]' : 'rounded-tr-md'} ${isGroupEnd ? 'rounded-br-[20px]' : 'rounded-br-md'} rounded-tl-[20px] rounded-bl-[20px]`
+                          : `${isGroupStart ? 'rounded-tl-[20px]' : 'rounded-tl-md'} ${isGroupEnd ? 'rounded-bl-[20px]' : 'rounded-bl-md'} rounded-tr-[20px] rounded-br-[20px]`
+                        }`}
+                    >
+                      {message.body.includes('\n') ? (
+                        <pre className="w-full whitespace-pre-wrap break-words text-sm">
+                          {message.body}
+                        </pre>
+                      ) : (
+                        <MessageBody
+                          body={message.body}
+                          invert={isCurrentUser}
+                          className="flex w-full items-center"
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
         </AnimatedList>
 
         {typingText ? (
@@ -349,11 +349,10 @@ export const TicketConversation = memo(function TicketConversation({
                     onClick={() =>
                       setMessageType(messageType === 'PUBLIC' ? 'INTERNAL' : 'PUBLIC')
                     }
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                      messageType === 'PUBLIC'
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${messageType === 'PUBLIC'
                         ? 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100'
                         : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                    }`}
+                      }`}
                     title={
                       messageType === 'PUBLIC'
                         ? 'Messages are visible to the requester'
