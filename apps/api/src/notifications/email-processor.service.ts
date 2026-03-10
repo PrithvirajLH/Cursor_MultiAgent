@@ -22,17 +22,13 @@ function getEmailMetadata(payload: unknown) {
   const email = isRecord(payload.email) ? payload.email : {};
   const content = isRecord(payload.content) ? payload.content : {};
 
-  const replyTo =
-    typeof email.replyTo === 'string'
-      ? email.replyTo
-      : undefined;
+  const replyTo = typeof email.replyTo === 'string' ? email.replyTo : undefined;
   const inReplyTo =
-    typeof email.inReplyTo === 'string'
-      ? email.inReplyTo
-      : undefined;
+    typeof email.inReplyTo === 'string' ? email.inReplyTo : undefined;
   const references = Array.isArray(email.references)
     ? email.references.filter(
-        (value): value is string => typeof value === 'string' && value.length > 0,
+        (value): value is string =>
+          typeof value === 'string' && value.length > 0,
       )
     : undefined;
   const html = typeof content.html === 'string' ? content.html : undefined;

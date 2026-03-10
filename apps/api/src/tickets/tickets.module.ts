@@ -26,6 +26,6 @@ import { TicketsService } from './tickets.service';
     TicketSlaCalculationService,
     InboundEmailService,
   ],
-  exports: [TicketsService],
+  exports: [TicketsService, TicketSlaCalculationService],
 })
-export class TicketsModule { }
+export class TicketsModule {}

@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
+import { TicketEmailThreadService } from '../../src/notifications/ticket-email-thread.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { buildOutboundMessageId } from '../../src/notifications/email-threading.util';
 import {
@@ -231,6 +232,112 @@ describe('Inbound email ingestion', () => {
     expect(thread?.canonicalSubject).toBe(subject);
     expect(thread?.rootInboundMessageId).toBe(inboundMessageId);
     expect(thread?.lastInboundMessageId).toBe(inboundMessageId);
+  });
+
+  it('keeps requester notifications anchored to the original inbound email thread after transfer', async () => {
+    const inboundEmail = fixtureEmails.requester;
+    const subject = `Transfer thread ${Date.now()}`;
+    const inboundMessageId = `transfer-thread-${Date.now()}@mail.example`;
+
+    const response = await request(server)
+      .post('/api/tickets/inbound-email')
+      .set(inboundSecretHeader)
+      .send({
+        fromEmail: inboundEmail,
+        fromName: 'Threaded Requester',
+        subject,
+        body: 'VPN access is still failing after restart.',
+        messageId: inboundMessageId,
+      })
+      .expect(201);
+
+    const created = response.body as InboundEmailResponse;
+
+    await request(server)
+      .post(`/api/tickets/${created.ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ assigneeId: fixtureUserIds.agent })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.ticket.id}/transfer`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ newTeamId: fixtureTeamIds.hr })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.ticket.id}/messages`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({
+        body: `Transfer follow-up ${Date.now()}: the new team is reviewing this now.`,
+        type: 'PUBLIC',
+      })
+      .expect(201);
+
+    const requesterOutbox = await prisma.notificationOutbox.findMany({
+      where: {
+        ticketId: created.ticket.id,
+        toEmail: inboundEmail,
+        eventType: {
+          in: ['TICKET_TRANSFERRED', 'TICKET_STATUS_CHANGED', 'MESSAGE_ADDED'],
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(requesterOutbox).toHaveLength(3);
+
+    const transferOutbox = requesterOutbox.find(
+      (entry) => entry.eventType === 'TICKET_TRANSFERRED',
+    );
+    const statusOutbox = requesterOutbox.find(
+      (entry) => entry.eventType === 'TICKET_STATUS_CHANGED',
+    );
+    const replyOutbox = requesterOutbox.find(
+      (entry) => entry.eventType === 'MESSAGE_ADDED',
+    );
+
+    expect(transferOutbox).toBeTruthy();
+    expect(statusOutbox).toBeTruthy();
+    expect(replyOutbox).toBeTruthy();
+
+    const assignedOutbox = await prisma.notificationOutbox.findFirst({
+      where: {
+        ticketId: created.ticket.id,
+        toEmail: fixtureEmails.agent,
+        eventType: 'TICKET_ASSIGNED',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(assignedOutbox).toBeTruthy();
+
+    const transferMetadata = getOutboxEmailMetadata(transferOutbox?.payload);
+    const statusMetadata = getOutboxEmailMetadata(statusOutbox?.payload);
+    const replyMetadata = getOutboxEmailMetadata(replyOutbox?.payload);
+    const assignedHtml = getOutboxHtml(assignedOutbox?.payload);
+    const transferHtml = getOutboxHtml(transferOutbox?.payload);
+    const statusHtml = getOutboxHtml(statusOutbox?.payload);
+
+    expect(transferMetadata.inReplyTo).toBe(inboundMessageId);
+    expect(statusMetadata.inReplyTo).toBe(inboundMessageId);
+    expect(replyMetadata.inReplyTo).toBe(inboundMessageId);
+    expect(transferMetadata.references).toContain(inboundMessageId);
+    expect(statusMetadata.references).toContain(inboundMessageId);
+    expect(replyMetadata.references).toContain(inboundMessageId);
+
+    const transferMessageId = buildOutboundMessageId(
+      transferOutbox!.id,
+      transferMetadata.replyTo,
+    );
+    expect(statusMetadata.inReplyTo).not.toBe(transferMessageId);
+    expect(replyMetadata.inReplyTo).not.toBe(transferMessageId);
+
+    expect(assignedHtml).toContain('Assignment updated');
+    expect(assignedHtml).toContain('View Ticket');
+    expect(transferHtml).toContain('Ticket transferred');
+    expect(transferHtml).toContain('View Ticket');
+    expect(statusHtml).toContain('Status updated');
+    expect(statusHtml).toContain('View Ticket');
   });
 
   it('ingests inbound attachments for a newly created EMAIL ticket', async () => {
@@ -571,5 +678,55 @@ describe('Inbound email ingestion', () => {
     expect(
       detailBody.attachments?.filter((a) => a.fileName === 'retry.txt'),
     ).toHaveLength(1);
+  });
+
+  it('replays the original ticket after a post-persist failure on retry', async () => {
+    const fromEmail = `partial.retry.${Date.now()}@example.com`;
+    const messageId = `partial-retry-${Date.now()}@mail.example`;
+    const subject = `Inbound partial retry ${Date.now()}`;
+    const payload = {
+      fromEmail,
+      fromName: 'Retry Requester',
+      subject,
+      body: 'Please help with printer access.',
+      messageId,
+    };
+
+    const ticketEmailThreads = app.get(TicketEmailThreadService);
+    const recordSpy = jest
+      .spyOn(ticketEmailThreads, 'recordInboundEmail')
+      .mockRejectedValueOnce(new Error('simulated post-persist failure'));
+
+    try {
+      await request(server)
+        .post('/api/tickets/inbound-email')
+        .set(inboundSecretHeader)
+        .send(payload)
+        .expect(500);
+
+      const afterFailure = await prisma.ticket.findMany({
+        where: { subject },
+        select: { id: true },
+      });
+      expect(afterFailure).toHaveLength(1);
+
+      const replay = await request(server)
+        .post('/api/tickets/inbound-email')
+        .set(inboundSecretHeader)
+        .send(payload)
+        .expect(201);
+
+      const replayBody = replay.body as InboundEmailResponse;
+      expect(replayBody.threaded).toBe(false);
+      expect(replayBody.ticket.id).toBe(afterFailure[0]?.id);
+
+      const afterRetry = await prisma.ticket.findMany({
+        where: { subject },
+        select: { id: true },
+      });
+      expect(afterRetry).toHaveLength(1);
+    } finally {
+      recordSpy.mockRestore();
+    }
   });
 });

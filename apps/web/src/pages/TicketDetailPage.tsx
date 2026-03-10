@@ -21,6 +21,7 @@ import {
   type TicketDetail,
   type TicketEvent,
   type TicketMessage,
+  type TicketStatus,
 } from '../api/client';
 import { TicketConversation } from '../components/ticket-detail/TicketConversation';
 import { TicketTimeline } from '../components/ticket-detail/TicketTimeline';
@@ -1143,7 +1144,7 @@ export function TicketDetailPage({
     setCopyToast({ message: `Status updated to ${formatStatus(targetStatus)}.`, type: 'success' });
 
     try {
-      const updated = await transitionTicket(ticket.id, { status: targetStatus });
+      const updated = await transitionTicket(ticket.id, { status: targetStatus as TicketStatus });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void refreshAfterMutation(ticket.id);
       notifyTicketAggregatesChanged();
@@ -1294,8 +1295,8 @@ export function TicketDetailPage({
             title={headerTitle}
             subtitle={headerCtx?.subtitle ?? 'Review context, collaborate, and update workflow in one workspace.'}
             currentEmail={headerCtx?.currentEmail ?? currentEmail}
-            personas={headerCtx?.personas ?? [{ label: currentEmail, email: currentEmail }]}
-            onEmailChange={headerCtx?.onEmailChange ?? (() => { })}
+
+
             onOpenSearch={headerCtx?.onOpenSearch}
             notificationProps={headerCtx?.notificationProps}
             leftAction={
@@ -1403,19 +1404,17 @@ export function TicketDetailPage({
                     aria-selected={activeTab === 'conversation'}
                     aria-controls="panel-conversation"
                     onClick={() => setActiveTab('conversation')}
-                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
-                      activeTab === 'conversation'
-                        ? 'text-slate-50'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${activeTab === 'conversation'
+                      ? 'text-slate-50'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     <span>Conversation</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        activeTab === 'conversation'
-                          ? 'bg-slate-800 text-slate-100'
-                          : 'bg-slate-200 text-slate-700'
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === 'conversation'
+                        ? 'bg-slate-800 text-slate-100'
+                        : 'bg-slate-200 text-slate-700'
+                        }`}
                     >
                       {conversationCount}
                     </span>
@@ -1428,19 +1427,17 @@ export function TicketDetailPage({
                     aria-selected={activeTab === 'attachments'}
                     aria-controls="panel-attachments"
                     onClick={() => setActiveTab('attachments')}
-                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
-                      activeTab === 'attachments'
-                        ? 'text-slate-50'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${activeTab === 'attachments'
+                      ? 'text-slate-50'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     <span>Attachments</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        activeTab === 'attachments'
-                          ? 'bg-slate-800 text-slate-100'
-                          : 'bg-slate-200 text-slate-700'
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === 'attachments'
+                        ? 'bg-slate-800 text-slate-100'
+                        : 'bg-slate-200 text-slate-700'
+                        }`}
                     >
                       {attachmentsCount}
                     </span>
@@ -1453,19 +1450,17 @@ export function TicketDetailPage({
                     aria-selected={activeTab === 'timeline'}
                     aria-controls="panel-timeline"
                     onClick={() => setActiveTab('timeline')}
-                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
-                      activeTab === 'timeline'
-                        ? 'text-slate-50'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${activeTab === 'timeline'
+                      ? 'text-slate-50'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     <span>Timeline</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        activeTab === 'timeline'
-                          ? 'bg-slate-800 text-slate-100'
-                          : 'bg-slate-200 text-slate-700'
-                      }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === 'timeline'
+                        ? 'bg-slate-800 text-slate-100'
+                        : 'bg-slate-200 text-slate-700'
+                        }`}
                     >
                       {timelineCount}
                     </span>
@@ -1489,11 +1484,10 @@ export function TicketDetailPage({
                       id="panel-conversation"
                       role="tabpanel"
                       aria-hidden={activeTab !== 'conversation'}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
-                        activeTab === 'conversation'
-                          ? 'opacity-100 translate-y-0 pointer-events-auto'
-                          : 'opacity-0 translate-y-2 pointer-events-none'
-                      }`}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${activeTab === 'conversation'
+                        ? 'opacity-100 translate-y-0 pointer-events-auto'
+                        : 'opacity-0 translate-y-2 pointer-events-none'
+                        }`}
                     >
                       <TicketConversation
                         ticket={ticket}
@@ -1528,11 +1522,10 @@ export function TicketDetailPage({
                       id="panel-attachments"
                       role="tabpanel"
                       aria-hidden={activeTab !== 'attachments'}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
-                        activeTab === 'attachments'
-                          ? 'opacity-100 translate-y-0 pointer-events-auto'
-                          : 'opacity-0 translate-y-2 pointer-events-none'
-                      }`}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${activeTab === 'attachments'
+                        ? 'opacity-100 translate-y-0 pointer-events-auto'
+                        : 'opacity-0 translate-y-2 pointer-events-none'
+                        }`}
                     >
                       <TicketAttachments
                         ticket={ticket}
@@ -1545,11 +1538,10 @@ export function TicketDetailPage({
                       id="panel-timeline"
                       role="tabpanel"
                       aria-hidden={activeTab !== 'timeline'}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
-                        activeTab === 'timeline'
-                          ? 'opacity-100 translate-y-0 pointer-events-auto'
-                          : 'opacity-0 translate-y-2 pointer-events-none'
-                      }`}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${activeTab === 'timeline'
+                        ? 'opacity-100 translate-y-0 pointer-events-auto'
+                        : 'opacity-0 translate-y-2 pointer-events-none'
+                        }`}
                     >
                       <TicketTimeline
                         events={events}

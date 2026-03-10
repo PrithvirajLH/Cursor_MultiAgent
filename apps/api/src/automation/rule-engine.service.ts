@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { TicketsService } from '../tickets/tickets.service';
+import { TicketSlaCalculationService } from '../tickets/ticket-sla-calculation.service';
 
 export type AutomationTrigger =
   | 'TICKET_CREATED'
@@ -48,21 +49,13 @@ const SLA_DE_DUPE_HOURS = 24;
 
 @Injectable()
 export class RuleEngineService {
-  private readonly defaultSlaConfig: Record<
-    TicketPriority,
-    { firstResponseHours: number; resolutionHours: number }
-  > = {
-    [TicketPriority.P1]: { firstResponseHours: 1, resolutionHours: 4 },
-    [TicketPriority.P2]: { firstResponseHours: 4, resolutionHours: 24 },
-    [TicketPriority.P3]: { firstResponseHours: 8, resolutionHours: 72 },
-    [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
-  };
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly slaEngine: SlaEngineService,
     @Inject(forwardRef(() => TicketsService))
     private readonly ticketsService: TicketsService,
+    @Inject(forwardRef(() => TicketSlaCalculationService))
+    private readonly slaCalc: TicketSlaCalculationService,
   ) {}
 
   /**
@@ -454,12 +447,12 @@ export class RuleEngineService {
             const fromPriority = current.priority;
             const newPriority = action.priority as TicketPriority;
 
-            const oldSla = await this.getSlaConfig(
+            const oldSla = await this.slaCalc.getSlaConfig(
               current.priority,
               current.assignedTeamId,
               tx,
             );
-            const newSla = await this.getSlaConfig(
+            const newSla = await this.slaCalc.getSlaConfig(
               newPriority,
               current.assignedTeamId,
               tx,
@@ -642,68 +635,6 @@ export class RuleEngineService {
     );
 
     return this.getTicketForActions(tx, ticketId);
-  }
-
-  private async getSlaConfig(
-    priority: TicketPriority,
-    teamId: string | null,
-    tx: Prisma.TransactionClient,
-  ) {
-    if (teamId) {
-      const assignedRows = await tx.$queryRaw<
-        Array<{
-          policyConfigId: string;
-          firstResponseHours: number;
-          resolutionHours: number;
-        }>
-      >`
-        SELECT
-          p."id" AS "policyConfigId",
-          t."firstResponseHours" AS "firstResponseHours",
-          t."resolutionHours" AS "resolutionHours"
-        FROM "SlaPolicyAssignment" a
-        INNER JOIN "SlaPolicyConfig" p ON p."id" = a."policyConfigId"
-        INNER JOIN "SlaPolicyConfigTarget" t
-          ON t."policyConfigId" = p."id"
-         AND t."priority" = ${priority}::"TicketPriority"
-        WHERE a."teamId" = ${teamId}
-          AND p."enabled" = true
-        ORDER BY a."updatedAt" DESC
-        LIMIT 1
-      `;
-      if (assignedRows[0]) {
-        return assignedRows[0];
-      }
-    }
-
-    const defaultRows = await tx.$queryRaw<
-      Array<{
-        policyConfigId: string;
-        firstResponseHours: number;
-        resolutionHours: number;
-      }>
-    >`
-      SELECT
-        p."id" AS "policyConfigId",
-        t."firstResponseHours" AS "firstResponseHours",
-        t."resolutionHours" AS "resolutionHours"
-      FROM "SlaPolicyConfig" p
-      INNER JOIN "SlaPolicyConfigTarget" t
-        ON t."policyConfigId" = p."id"
-       AND t."priority" = ${priority}::"TicketPriority"
-      WHERE p."isDefault" = true
-        AND p."enabled" = true
-      ORDER BY p."updatedAt" DESC
-      LIMIT 1
-    `;
-    if (defaultRows[0]) {
-      return defaultRows[0];
-    }
-
-    return {
-      policyConfigId: null,
-      ...this.defaultSlaConfig[priority],
-    };
   }
 
   private addHours(date: Date, hours: number) {

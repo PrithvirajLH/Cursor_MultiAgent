@@ -343,14 +343,15 @@ export class NotificationsService {
     ticketSubject: string;
     inboundMessageId: string;
   }) {
-    const emailContext = await this.ticketEmailThreads.buildOutboundEmailContext({
-      ticketId: details.ticketId,
-      ticketSubject: details.ticketSubject,
-      ticketDisplayId: details.ticketDisplayId,
-      ticketNumber: details.ticketNumber,
-      preferredInReplyTo: details.inboundMessageId,
-      additionalReferences: [details.inboundMessageId],
-    });
+    const emailContext =
+      await this.ticketEmailThreads.buildOutboundEmailContext({
+        ticketId: details.ticketId,
+        ticketSubject: details.ticketSubject,
+        ticketDisplayId: details.ticketDisplayId,
+        ticketNumber: details.ticketNumber,
+        preferredInReplyTo: details.inboundMessageId,
+        additionalReferences: [details.inboundMessageId],
+      });
     const body = this.buildInboundAcknowledgementTextBody(details);
     const emailContent = {
       html: this.buildInboundAcknowledgementHtmlBody(details),
@@ -369,20 +370,15 @@ export class NotificationsService {
     });
   }
 
-  async notifyUsers(
-    recipients: User[],
-    details: QueuedEmailDetails,
-  ) {
+  async notifyUsers(recipients: User[], details: QueuedEmailDetails) {
     await this.queueEmails(recipients, details);
   }
 
-  async notifyAddresses(
-    addresses: string[],
-    details: QueuedEmailDetails,
-  ) {
+  async notifyAddresses(addresses: string[], details: QueuedEmailDetails) {
     const deduped = Array.from(
       new Set(addresses.map((address) => address.trim()).filter(Boolean)),
     );
+    const emailContent = this.resolveEmailContent(details);
 
     const tasks = deduped.map((email) =>
       this.outbox
@@ -395,7 +391,7 @@ export class NotificationsService {
           eventType: details.eventType,
           payload: details.payload ?? null,
           emailMetadata: details.emailMetadata ?? null,
-          emailContent: details.emailContent ?? null,
+          emailContent,
         })
         .then((outbox) => this.emailQueue.enqueue(outbox.id))
         .catch((error) => {
@@ -457,10 +453,7 @@ export class NotificationsService {
     return users;
   }
 
-  private async queueEmails(
-    recipients: User[],
-    details: QueuedEmailDetails,
-  ) {
+  private async queueEmails(recipients: User[], details: QueuedEmailDetails) {
     const tasks = recipients.map((user) =>
       this.queueEmail(user, details).catch((error) => {
         this.logger.error(
@@ -472,13 +465,11 @@ export class NotificationsService {
     await Promise.all(tasks);
   }
 
-  private async queueEmail(
-    user: User,
-    details: QueuedEmailDetails,
-  ) {
+  private async queueEmail(user: User, details: QueuedEmailDetails) {
     if (!user.email) {
       return;
     }
+    const emailContent = this.resolveEmailContent(details);
 
     const outbox = await this.outbox.createEmail({
       toEmail: user.email,
@@ -489,10 +480,20 @@ export class NotificationsService {
       eventType: details.eventType,
       payload: details.payload ?? null,
       emailMetadata: details.emailMetadata ?? null,
-      emailContent: details.emailContent ?? null,
+      emailContent,
     });
 
     await this.emailQueue.enqueue(outbox.id);
+  }
+
+  private resolveEmailContent(details: QueuedEmailDetails) {
+    if (details.emailContent?.html) {
+      return details.emailContent;
+    }
+
+    return {
+      html: this.buildDefaultNotificationHtmlBody(details),
+    };
   }
 
   private buildTicketEmailContext(ticket: {
@@ -564,7 +565,10 @@ export class NotificationsService {
       ticket.requester?.displayName ?? ticket.requester?.email ?? 'there',
     );
     const actorName = this.escapeHtml(actor.displayName || actor.email);
-    const escapedMessage = this.escapeHtml(messageBody).replace(/\n/g, '<br />');
+    const escapedMessage = this.escapeHtml(messageBody).replace(
+      /\n/g,
+      '<br />',
+    );
     const ticketId = this.escapeHtml(this.ticketLabel(ticket));
     const ticketSubject = this.escapeHtml(ticket.subject);
     const ticketStatus = this.escapeHtml(ticket.status);
@@ -656,8 +660,12 @@ export class NotificationsService {
     ticketDisplayId: string | null;
     ticketSubject: string;
   }) {
-    const requesterName = this.escapeHtml(details.requesterName?.trim() || 'there');
-    const ticketId = this.escapeHtml(details.ticketDisplayId ?? details.ticketId);
+    const requesterName = this.escapeHtml(
+      details.requesterName?.trim() || 'there',
+    );
+    const ticketId = this.escapeHtml(
+      details.ticketDisplayId ?? details.ticketId,
+    );
     const ticketSubject = this.escapeHtml(details.ticketSubject);
     const ticketUrl = this.escapeHtml(this.ticketLink(details.ticketId));
     const companyName = this.escapeHtml(this.companyName());
@@ -710,6 +718,112 @@ export class NotificationsService {
       '  </body>',
       '</html>',
     ].join('\n');
+  }
+
+  private buildDefaultNotificationHtmlBody(details: QueuedEmailDetails) {
+    const title = this.escapeHtml(this.notificationHeadline(details.eventType));
+    const subject = this.escapeHtml(details.subject);
+    const companyName = this.escapeHtml(this.companyName());
+    const ticketUrl = details.ticketId
+      ? this.escapeHtml(this.ticketLink(details.ticketId))
+      : null;
+    const contentBlocks = this.buildHtmlContentBlocks(
+      details.body,
+      details.ticketId,
+    );
+
+    return [
+      '<!DOCTYPE html>',
+      '<html>',
+      '  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">',
+      '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f6f8;padding:24px 0;">',
+      '      <tr>',
+      '        <td align="center">',
+      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">',
+      '            <tr>',
+      '              <td style="padding:32px 32px 16px 32px;">',
+      `                <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2563eb;margin-bottom:12px;">${title}</div>`,
+      `                <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:20px;">${subject}</div>`,
+      '                <div style="background:#f8fafc;border:1px solid #dbe4ea;border-left:5px solid #2563eb;border-radius:10px;padding:20px;margin:0 0 24px 0;">',
+      ...contentBlocks,
+      '                </div>',
+      ...(ticketUrl
+        ? [
+            '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">Open the ticket for full details and replies.</div>',
+            '                <div style="margin-bottom:28px;">',
+            `                  <a href="${ticketUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;">View Ticket</a>`,
+            '                </div>',
+          ]
+        : []),
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;">Best regards,<br />${companyName} Support</div>`,
+      '              </td>',
+      '            </tr>',
+      '          </table>',
+      '        </td>',
+      '      </tr>',
+      '    </table>',
+      '  </body>',
+      '</html>',
+    ].join('\n');
+  }
+
+  private buildHtmlContentBlocks(body: string, ticketId?: string) {
+    const ticketUrl = ticketId ? this.ticketLink(ticketId) : null;
+    const cleanedLines = body
+      .split(/\r?\n/)
+      .filter((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return true;
+        }
+        if (trimmed.startsWith('View: ')) {
+          return false;
+        }
+        if (ticketUrl && trimmed === ticketUrl) {
+          return false;
+        }
+        return true;
+      })
+      .join('\n');
+
+    const blocks = cleanedLines
+      .split(/\n\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean);
+
+    if (blocks.length === 0) {
+      return [
+        '                  <div style="font-size:15px;line-height:1.8;color:#111827;">No additional details provided.</div>',
+      ];
+    }
+
+    return blocks.map((block) => {
+      const escaped = this.escapeHtml(block).replace(/\n/g, '<br />');
+      return `                  <div style="font-size:15px;line-height:1.8;color:#111827;margin-bottom:14px;">${escaped}</div>`;
+    });
+  }
+
+  private notificationHeadline(eventType: string) {
+    switch (eventType) {
+      case 'TICKET_CREATED':
+        return 'Ticket created';
+      case 'TICKET_ASSIGNED':
+        return 'Assignment updated';
+      case 'TICKET_TRANSFERRED':
+        return 'Ticket transferred';
+      case 'TICKET_STATUS_CHANGED':
+        return 'Status updated';
+      case 'MESSAGE_ADDED':
+        return 'New reply';
+      case 'SLA_BREACHED':
+        return 'SLA breached';
+      case 'SLA_AT_RISK':
+        return 'SLA at risk';
+      case 'INBOUND_EMAIL_ACKNOWLEDGED':
+        return 'Request received';
+      default:
+        return 'Ticket update';
+    }
   }
 
   private companyName() {

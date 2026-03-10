@@ -1,13 +1,13 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../auth/admin.guard';
+import { LeadOrAdminGuard } from '../auth/lead-or-admin.guard';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { ReportQueryDto, ResolutionTimeQueryDto } from './dto/report-query.dto';
 import { ReportsService } from './reports.service';
 
 @Controller('reports')
-@UseGuards(AdminGuard)
+@UseGuards(LeadOrAdminGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) {}
+  constructor(private readonly reportsService: ReportsService) { }
 
   @Get('summary')
   getSummary(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {

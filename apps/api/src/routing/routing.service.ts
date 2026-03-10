@@ -34,7 +34,7 @@ export class RoutingRulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
-  ) { }
+  ) {}
   private routingAssigneeColumnCache: {
     exists: boolean;
     checkedAtMs: number;
@@ -349,11 +349,11 @@ export class RoutingRulesService {
       },
       assignee: row.assigneeId
         ? {
-          id: row.assigneeId,
-          email: row.assigneeEmail ?? '',
-          displayName: row.assigneeDisplayName ?? row.assigneeEmail ?? '',
-          role: row.assigneeRole ?? undefined,
-        }
+            id: row.assigneeId,
+            email: row.assigneeEmail ?? '',
+            displayName: row.assigneeDisplayName ?? row.assigneeEmail ?? '',
+            role: row.assigneeRole ?? undefined,
+          }
         : null,
     };
   }
@@ -469,7 +469,7 @@ export class RoutingRulesService {
     if (
       this.routingAssigneeColumnCache &&
       now - this.routingAssigneeColumnCache.checkedAtMs <=
-      this.schemaCheckCacheTtlMs
+        this.schemaCheckCacheTtlMs
     ) {
       return this.routingAssigneeColumnCache.exists;
     }
@@ -490,8 +490,6 @@ export class RoutingRulesService {
     };
     return this.routingAssigneeColumnCache.exists;
   }
-
-
 
   private async safePublishAdminChanged(payload: {
     scope: string;

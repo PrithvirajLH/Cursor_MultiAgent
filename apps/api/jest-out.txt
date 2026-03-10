@@ -1,0 +1,70 @@
+FAIL src/tickets/tickets.service.spec.ts
+  TicketsService
+    isPauseStatus (private)
+      ΓêÜ returns true for WAITING_ON_REQUESTER and WAITING_ON_VENDOR (3 ms)
+      ΓêÜ returns false for other statuses (1 ms)
+    buildDisplayId (private)
+      ├ù formats a standard ID for no team (2 ms)
+      ├ù formats an ID using the team name to create a department code (1 ms)
+      ├ù handles padding correctly for sequence numbers (1 ms)
+    isValidTransition (private)
+      ΓêÜ always allows transition to the same status
+      ΓêÜ allows valid transitions according to default configurations (1 ms)
+      ΓêÜ rejects invalid transitions
+
+  ΓùÅ TicketsService ΓÇ║ buildDisplayId (private) ΓÇ║ formats a standard ID for no team
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "TICKET_20240315_042"
+    Received: "NA_20240315_042"
+
+      43 |             const date = new Date('2024-03-15T12:00:00Z');
+      44 |             const displayId = (service as any).buildDisplayId(null, date, 42);
+    > 45 |             expect(displayId).toBe('TICKET_20240315_042');
+         |                               ^
+      46 |         });
+      47 |
+      48 |         it('formats an ID using the team name to create a department code', () => {
+
+      at Object.<anonymous> (tickets/tickets.service.spec.ts:45:31)
+
+  ΓùÅ TicketsService ΓÇ║ buildDisplayId (private) ΓÇ║ formats an ID using the team name to create a department code
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "CUS_20251105_128"
+    Received: "CS_20251105_128"
+
+      49 |             const date = new Date('2025-11-05T08:30:00Z');
+      50 |             const displayId = (service as any).buildDisplayId('Customer Support', date, 128);
+    > 51 |             expect(displayId).toBe('CUS_20251105_128');
+         |                               ^
+      52 |         });
+      53 |
+      54 |         it('handles padding correctly for sequence numbers', () => {
+
+      at Object.<anonymous> (tickets/tickets.service.spec.ts:51:31)
+
+  ΓùÅ TicketsService ΓÇ║ buildDisplayId (private) ΓÇ║ handles padding correctly for sequence numbers
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "ITH_20240101_005"
+    Received: "IH_20231231_005"
+
+      55 |             const date = new Date('2024-01-01T00:00:00Z');
+      56 |             const displayId = (service as any).buildDisplayId('IT Helpdesk', date, 5);
+    > 57 |             expect(displayId).toBe('ITH_20240101_005');
+         |                               ^
+      58 |         });
+      59 |     });
+      60 |
+
+      at Object.<anonymous> (tickets/tickets.service.spec.ts:57:31)
+
+Test Suites: 1 failed, 1 total
+Tests:       3 failed, 5 passed, 8 total
+Snapshots:   0 total
+Time:        1.146 s
+Ran all test suites matching src/tickets/tickets.service.spec.ts.

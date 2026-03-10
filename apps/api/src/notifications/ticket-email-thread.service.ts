@@ -30,7 +30,8 @@ export class TicketEmailThreadService {
       params.ticketSubject,
     );
     const inReplyTo =
-      params.preferredInReplyTo?.trim() || this.pickLatestMessageId(thread);
+      params.preferredInReplyTo?.trim() ||
+      this.pickThreadAnchorMessageId(thread);
     const references = Array.from(
       new Set(
         [
@@ -105,7 +106,10 @@ export class TicketEmailThreadService {
       return;
     }
 
-    const thread = await this.getOrCreateThread(params.ticketId, 'Ticket update');
+    const thread = await this.getOrCreateThread(
+      params.ticketId,
+      'Ticket update',
+    );
     await this.prisma.ticketEmailThread.update({
       where: { id: thread.id },
       data: {
@@ -196,7 +200,9 @@ export class TicketEmailThreadService {
       return thread;
     }
 
-    throw new Error(`Unable to create ticket email thread for ticket ${ticketId}`);
+    throw new Error(
+      `Unable to create ticket email thread for ticket ${ticketId}`,
+    );
   }
 
   private normalizeCanonicalSubject(subject: string) {
@@ -217,33 +223,21 @@ export class TicketEmailThreadService {
     return `${canonicalSubject} [${label}]`;
   }
 
-  private pickLatestMessageId(thread: {
+  private pickThreadAnchorMessageId(thread: {
     rootInboundMessageId: string | null;
     lastInboundMessageId: string | null;
     lastInboundAt: Date | null;
     lastOutboundMessageId: string | null;
     lastOutboundAt: Date | null;
   }) {
-    const inboundAt = thread.lastInboundAt?.getTime() ?? 0;
-    const outboundAt = thread.lastOutboundAt?.getTime() ?? 0;
-
-    if (inboundAt === 0 && outboundAt === 0) {
-      return thread.rootInboundMessageId ?? undefined;
-    }
-
-    if (inboundAt >= outboundAt) {
-      return (
-        thread.lastInboundMessageId ??
-        thread.lastOutboundMessageId ??
-        thread.rootInboundMessageId ??
-        undefined
-      );
-    }
-
+    // Keep the whole ticket anchored to the first inbound message whenever
+    // possible. Outlook-style clients are much more reliable when follow-up
+    // notifications reply to the root thread rather than hopping across the
+    // latest outbound update.
     return (
-      thread.lastOutboundMessageId ??
-      thread.lastInboundMessageId ??
       thread.rootInboundMessageId ??
+      thread.lastInboundMessageId ??
+      thread.lastOutboundMessageId ??
       undefined
     );
   }

@@ -34,7 +34,7 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   private readonly priorities: TicketPriority[] = [
     TicketPriority.P1,
@@ -680,18 +680,18 @@ export class ReportsService {
         avgResolutionHours:
           Number(r.resolved) > 0
             ? Math.round(
-              (r.total_resolution_sec / 3600 / Number(r.resolved)) * 10,
-            ) / 10
+                (r.total_resolution_sec / 3600 / Number(r.resolved)) * 10,
+              ) / 10
             : null,
         firstResponses: Number(r.first_responses),
         avgFirstResponseHours:
           Number(r.first_responses) > 0
             ? Math.round(
-              (r.total_first_response_sec /
-                3600 /
-                Number(r.first_responses)) *
-              10,
-            ) / 10
+                (r.total_first_response_sec /
+                  3600 /
+                  Number(r.first_responses)) *
+                  10,
+              ) / 10
             : null,
       })),
     };

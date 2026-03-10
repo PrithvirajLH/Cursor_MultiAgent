@@ -79,7 +79,9 @@ export class IngestInboundEmailDto {
   @IsOptional()
   @Transform(({ value }) =>
     Array.isArray(value)
-      ? value.filter((item): item is string => typeof item === 'string').join(' ')
+      ? value
+          .filter((item): item is string => typeof item === 'string')
+          .join(' ')
       : value,
   )
   @IsString()

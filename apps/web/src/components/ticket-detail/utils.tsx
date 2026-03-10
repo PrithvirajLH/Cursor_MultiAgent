@@ -45,7 +45,7 @@ export function getResolutionSla(ticket: TicketDetail, RelativeTime: React.Compo
   if (!ticket.dueAt) {
     return { label: 'Not set', tone: slaDetailClass('none'), detail: 'No SLA configured' };
   }
-  const isPaused = ticket.status === 'WAITING_ON_REQUESTER' || ticket.status === 'WAITING_ON_VENDOR';
+  const isPaused = ticket.status === 'WAITING_ON_CUSTOMER' || ticket.status === 'WAITING_ON_THIRDPARTY';
   if (isPaused) {
     return {
       label: 'Paused', tone: slaDetailClass('paused'),

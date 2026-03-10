@@ -117,8 +117,8 @@ const OPEN_STATUSES = new Set([
   'TRIAGED',
   'ASSIGNED',
   'IN_PROGRESS',
-  'WAITING_ON_REQUESTER',
-  'WAITING_ON_VENDOR',
+  'WAITING_ON_CUSTOMER',
+  'WAITING_ON_THIRDPARTY',
   'REOPENED',
 ]);
 
@@ -192,10 +192,10 @@ function activitySummary(ticket: TicketRecord): string {
   if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
     return 'Resolved';
   }
-  if (ticket.status === 'WAITING_ON_REQUESTER') {
+  if (ticket.status === 'WAITING_ON_CUSTOMER') {
     return 'Waiting for requester';
   }
-  if (ticket.status === 'WAITING_ON_VENDOR') {
+  if (ticket.status === 'WAITING_ON_THIRDPARTY') {
     return 'Waiting for vendor';
   }
   return `Status changed to ${formatStatus(ticket.status)}`;
@@ -698,10 +698,10 @@ export function DashboardPage({ role }: DashboardPageProps) {
         }
         const patched: TicketRecord = { ...prev[index] };
         if (typeof payload.status === 'string' && payload.status) {
-          patched.status = payload.status;
+          patched.status = payload.status as import('../api/client').TicketStatus;
         }
         if (typeof payload.priority === 'string' && payload.priority) {
-          patched.priority = payload.priority;
+          patched.priority = payload.priority as import('../api/client').TicketPriority;
         }
         if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
           patched.updatedAt = payload.updatedAt;
@@ -792,17 +792,17 @@ export function DashboardPage({ role }: DashboardPageProps) {
         }
         const counts = new Map(prev.map((point) => [point.status, point.count]));
         if (prevStatus && prevStatus !== nextStatus) {
-          counts.set(prevStatus, Math.max(0, (counts.get(prevStatus) ?? 0) - 1));
-          counts.set(nextStatus, Math.max(0, (counts.get(nextStatus) ?? 0) + 1));
+          counts.set(prevStatus as import('../api/client').TicketStatus, Math.max(0, (counts.get(prevStatus as import('../api/client').TicketStatus) ?? 0) - 1));
+          counts.set(nextStatus as import('../api/client').TicketStatus, Math.max(0, (counts.get(nextStatus as import('../api/client').TicketStatus) ?? 0) + 1));
         } else if (!prevStatus && payload.reason === 'ticket_created') {
-          counts.set(nextStatus, Math.max(0, (counts.get(nextStatus) ?? 0) + 1));
+          counts.set(nextStatus as import('../api/client').TicketStatus, Math.max(0, (counts.get(nextStatus as import('../api/client').TicketStatus) ?? 0) + 1));
         }
         const knownOrder = prev.map((point) => point.status);
         const appended = Array.from(counts.keys()).filter(
           (status) => !knownOrder.includes(status),
         );
         return [...knownOrder, ...appended].map((status) => ({
-          status,
+          status: status as import('../api/client').TicketStatus,
           count: Math.max(0, counts.get(status) ?? 0),
         }));
       });
@@ -814,17 +814,17 @@ export function DashboardPage({ role }: DashboardPageProps) {
         const counts = new Map(prev.map((point) => [point.priority, point.count]));
         if (prevPriority && prevPriority !== nextPriority) {
           counts.set(
-            prevPriority,
-            Math.max(0, (counts.get(prevPriority) ?? 0) - 1),
+            prevPriority as import('../api/client').TicketPriority,
+            Math.max(0, (counts.get(prevPriority as import('../api/client').TicketPriority) ?? 0) - 1),
           );
           counts.set(
-            nextPriority,
-            Math.max(0, (counts.get(nextPriority) ?? 0) + 1),
+            nextPriority as import('../api/client').TicketPriority,
+            Math.max(0, (counts.get(nextPriority as import('../api/client').TicketPriority) ?? 0) + 1),
           );
         } else if (!prevPriority && payload.reason === 'ticket_created') {
           counts.set(
-            nextPriority,
-            Math.max(0, (counts.get(nextPriority) ?? 0) + 1),
+            nextPriority as import('../api/client').TicketPriority,
+            Math.max(0, (counts.get(nextPriority as import('../api/client').TicketPriority) ?? 0) + 1),
           );
         }
         const knownOrder = prev.map((point) => point.priority);
@@ -832,7 +832,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
           (priority) => !knownOrder.includes(priority),
         );
         return [...knownOrder, ...appended].map((priority) => ({
-          priority,
+          priority: priority as import('../api/client').TicketPriority,
           count: Math.max(0, counts.get(priority) ?? 0),
         }));
       });
@@ -1047,7 +1047,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
           setActivity(mapActivitySeries(activityRes.data, rangeDays));
           setStatusBreakdown(
-            isAgent ? statusRes.data : summaryRes.ticketsByStatus.data,
+            (isAgent ? statusRes.data : summaryRes.ticketsByStatus.data) as import('../api/client').TicketStatusPoint[],
           );
           setSlaCompliance({
             met: summaryRes.slaCompliance.data.met,
@@ -1159,8 +1159,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-              personas={headerCtx.personas}
-              onEmailChange={headerCtx.onEmailChange}
+
+
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={

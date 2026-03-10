@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { TeamAdminOrOwnerGuard } from '../auth/team-admin-or-owner.guard';
+import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { CreateAutomationRuleDto } from './dto/create-automation-rule.dto';
@@ -18,9 +18,9 @@ import { UpdateAutomationRuleDto } from './dto/update-automation-rule.dto';
 import { AutomationService } from './automation.service';
 
 @Controller('automation-rules')
-@UseGuards(TeamAdminOrOwnerGuard)
+@UseGuards(AdminGuard)
 export class AutomationRulesController {
-  constructor(private readonly automationService: AutomationService) {}
+  constructor(private readonly automationService: AutomationService) { }
 
   @Get()
   async list(@CurrentUser() user: AuthUser) {

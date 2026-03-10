@@ -61,6 +61,9 @@ export class EmailService {
       messageId: payload.messageId,
       inReplyTo: payload.inReplyTo,
       references: payload.references,
+      headers: {
+        'Thread-Topic': payload.subject,
+      },
     });
   }
 }

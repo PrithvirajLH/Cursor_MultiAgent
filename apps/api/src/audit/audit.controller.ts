@@ -1,14 +1,14 @@
 import { Controller, Get, Header, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
-import { TeamAdminOrOwnerGuard } from '../auth/team-admin-or-owner.guard';
+import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { ListAuditLogDto } from './dto/list-audit-log.dto';
 import { AuditService } from './audit.service';
 
 @Controller('audit-log')
-@UseGuards(TeamAdminOrOwnerGuard)
+@UseGuards(AdminGuard)
 export class AuditController {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(private readonly auditService: AuditService) { }
 
   @Get()
   async list(@Query() query: ListAuditLogDto, @CurrentUser() user: AuthUser) {

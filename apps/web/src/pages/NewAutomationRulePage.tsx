@@ -363,8 +363,8 @@ export function NewAutomationRulePage({
               title={headerValue.title}
               subtitle={headerValue.subtitle}
               currentEmail={headerValue.currentEmail}
-              personas={headerValue.personas}
-              onEmailChange={headerValue.onEmailChange}
+
+
               onOpenSearch={headerValue.onOpenSearch}
               notificationProps={headerValue.notificationProps}
               leftContent={

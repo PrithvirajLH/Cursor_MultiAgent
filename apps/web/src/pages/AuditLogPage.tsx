@@ -403,8 +403,8 @@ export function AuditLogPage() {
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-              personas={headerCtx.personas}
-              onEmailChange={headerCtx.onEmailChange}
+
+
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={

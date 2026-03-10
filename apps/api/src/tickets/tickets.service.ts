@@ -99,13 +99,26 @@ export class TicketsService {
     private readonly slaCalc: TicketSlaCalculationService,
     @Inject(forwardRef(() => InboundEmailService))
     private readonly inboundEmailService: InboundEmailService,
-  ) { }
+  ) {
+    const customTransitionsStr = this.config.get<string>('TICKET_STATUS_TRANSITIONS');
+    if (customTransitionsStr) {
+      try {
+        this.STATUS_TRANSITIONS = JSON.parse(customTransitionsStr);
+      } catch (err) {
+        this.logger.error('Failed to parse TICKET_STATUS_TRANSITIONS from env. Using defaults.', err);
+        this.STATUS_TRANSITIONS = this.DEFAULT_STATUS_TRANSITIONS;
+      }
+    } else {
+      this.STATUS_TRANSITIONS = this.DEFAULT_STATUS_TRANSITIONS;
+    }
+  }
 
   private readonly WAITING_STATUSES = [
     TicketStatus.WAITING_ON_REQUESTER,
     TicketStatus.WAITING_ON_VENDOR,
   ];
-  private readonly STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
+  private readonly STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]>;
+  private readonly DEFAULT_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
     [TicketStatus.NEW]: [TicketStatus.TRIAGED, TicketStatus.ASSIGNED],
     [TicketStatus.TRIAGED]: [TicketStatus.ASSIGNED],
     [TicketStatus.ASSIGNED]: [
@@ -142,7 +155,10 @@ export class TicketsService {
   };
 
   private readonly schemaCheckCacheTtlMs = (() => {
-    const parsed = Number.parseInt(process.env.SCHEMA_CHECK_CACHE_TTL_MS ?? '', 10);
+    const parsed = Number.parseInt(
+      process.env.SCHEMA_CHECK_CACHE_TTL_MS ?? '',
+      10,
+    );
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
   })();
   private defaultActivityDays = 7;
@@ -150,7 +166,6 @@ export class TicketsService {
     exists: boolean;
     checkedAtMs: number;
   } | null = null;
-
 
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
   private toEndExclusive(dateStr: string): Date {
@@ -446,10 +461,7 @@ export class TicketsService {
     atRisk: number;
     overdue: number;
   }> {
-    const ttlMs = parsePositiveInt(
-      process.env.CACHE_SUMMARY_TTL_MS,
-      45_000,
-    );
+    const ttlMs = parsePositiveInt(process.env.CACHE_SUMMARY_TTL_MS, 45_000);
     const key = `tickets:counts:${user.id}`;
     const cached =
       await this.cache.get<Awaited<ReturnType<TicketsService['getCounts']>>>(
@@ -707,17 +719,6 @@ export class TicketsService {
         assignedTeam: true,
         category: true,
         accessGrants: true,
-        followers: {
-          include: { user: true },
-          orderBy: { createdAt: 'asc' },
-        },
-        attachments: {
-          include: { uploadedBy: true },
-          orderBy: { createdAt: 'asc' },
-        },
-        customFieldValues: {
-          include: { customField: true },
-        },
       },
     });
 
@@ -729,10 +730,30 @@ export class TicketsService {
       throw new ForbiddenException('No access to this ticket');
     }
 
+    const [followers, attachments, customFieldValues] = await Promise.all([
+      this.prisma.ticketFollower.findMany({
+        where: { ticketId: id },
+        include: { user: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.attachment.findMany({
+        where: { ticketId: id },
+        include: { uploadedBy: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.customFieldValue.findMany({
+        where: { ticketId: id },
+        include: { customField: true },
+      }),
+    ]);
+
     const { accessGrants, ...rest } = ticket;
     void accessGrants;
     return {
       ...rest,
+      followers,
+      attachments,
+      customFieldValues,
       allowedTransitions: this.getAvailableTransitionsForTicket(
         rest.status,
         rest.assigneeId,
@@ -1060,8 +1081,13 @@ export class TicketsService {
     );
 
     // Queue automation with retry via BullMQ instead of fire-and-forget
-    this.automationQueue.enqueue(updatedTicket.id, 'TICKET_CREATED')
-      .catch((err) => this.logger.error(`Failed to enqueue automation for ticket ${updatedTicket.id}: ${(err as Error).message}`));
+    this.automationQueue
+      .enqueue(updatedTicket.id, 'TICKET_CREATED')
+      .catch((err) =>
+        this.logger.error(
+          `Failed to enqueue automation for ticket ${updatedTicket.id}: ${(err as Error).message}`,
+        ),
+      );
 
     const result = await this.prisma.ticket.findUnique({
       where: { id: updatedTicket.id },
@@ -1273,6 +1299,9 @@ export class TicketsService {
         followers: {
           select: { userId: true },
         },
+        accessGrants: {
+          select: { teamId: true },
+        },
       },
     });
 
@@ -1285,26 +1314,11 @@ export class TicketsService {
     }
 
     await this.ticketRealtime.safeRealtime(() =>
-      this.ticketRealtime.publishTicketTyping(
-        {
-          ticketId: ticket.id,
-          actorId: user.id,
-          actorDisplayName: user.displayName,
-          actorEmail: user.email,
-          isTyping: payload.isTyping,
-        },
-        {
-          teamIds: [ticket.assignedTeamId].filter((teamId): teamId is string =>
-            Boolean(teamId),
-          ),
-          userIds: [
-            ticket.requesterId,
-            ticket.assigneeId,
-            ...ticket.followers.map((follower) => follower.userId),
-            user.id,
-          ].filter((userId): userId is string => Boolean(userId)),
-        },
-      ),
+      this.ticketRealtime.publishTicketTypingForTicket({
+        ticket,
+        actor: user,
+        isTyping: payload.isTyping,
+      }),
     );
 
     return { ok: true };
@@ -1578,7 +1592,11 @@ export class TicketsService {
     }
 
     const priorTeamId = ticket.assignedTeamId;
-    const oldSla = await this.slaCalc.getSlaConfig(ticket.priority, priorTeamId, tx);
+    const oldSla = await this.slaCalc.getSlaConfig(
+      ticket.priority,
+      priorTeamId,
+      tx,
+    );
     const newSla = await this.slaCalc.getSlaConfig(
       ticket.priority,
       payload.newTeamId,
@@ -1771,8 +1789,13 @@ export class TicketsService {
     );
 
     // Queue automation with retry via BullMQ instead of fire-and-forget
-    this.automationQueue.enqueue(ticketId, 'STATUS_CHANGED')
-      .catch((err) => this.logger.error(`Failed to enqueue automation for ticket ${ticketId}: ${(err as Error).message}`));
+    this.automationQueue
+      .enqueue(ticketId, 'STATUS_CHANGED')
+      .catch((err) =>
+        this.logger.error(
+          `Failed to enqueue automation for ticket ${ticketId}: ${(err as Error).message}`,
+        ),
+      );
 
     return {
       ...updated,
@@ -2212,7 +2235,6 @@ export class TicketsService {
     });
   }
 
-
   private async safeNotify(task: () => Promise<void>) {
     try {
       await task();
@@ -2477,14 +2499,21 @@ export class TicketsService {
     payload: any,
     scannerSecret: string | undefined,
   ) {
-    return this.attachmentService.updateAttachmentScanStatus(attachmentId, payload, scannerSecret);
+    return this.attachmentService.updateAttachmentScanStatus(
+      attachmentId,
+      payload,
+      scannerSecret,
+    );
   }
 
   async publishAutomationRealtimeUpdate(
     ticketId: string,
     actorId: string | null,
   ) {
-    return this.ticketRealtime.publishAutomationRealtimeUpdate(ticketId, actorId);
+    return this.ticketRealtime.publishAutomationRealtimeUpdate(
+      ticketId,
+      actorId,
+    );
   }
 
   async ingestInboundEmail(

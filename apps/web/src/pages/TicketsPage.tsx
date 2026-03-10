@@ -335,10 +335,10 @@ export function TicketsPage({
     (ticket: TicketRecord, payload: RealtimeTicketChangedEventPayload): TicketRecord => {
       const next: TicketRecord = { ...ticket };
       if (typeof payload.status === 'string' && payload.status) {
-        next.status = payload.status;
+        next.status = payload.status as import('../api/client').TicketStatus;
       }
       if (typeof payload.priority === 'string' && payload.priority) {
-        next.priority = payload.priority;
+        next.priority = payload.priority as import('../api/client').TicketPriority;
       }
       if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
         next.updatedAt = payload.updatedAt;
@@ -817,7 +817,7 @@ export function TicketsPage({
     const snapshots = snapshotTicketsById(selectedIds);
     applyBulkPatchForTicketIds(selectedIds, (ticket, nowIso) => ({
       ...ticket,
-      status,
+      status: status as import('../api/client').TicketStatus,
       updatedAt: nowIso,
       completedAt: isResolvedStatus(status) ? nowIso : ticket.completedAt,
     }));
@@ -843,7 +843,7 @@ export function TicketsPage({
     const snapshots = snapshotTicketsById(selectedIds);
     applyBulkPatchForTicketIds(selectedIds, (ticket, nowIso) => ({
       ...ticket,
-      priority,
+      priority: priority as import('../api/client').TicketPriority,
       updatedAt: nowIso,
     }));
 
@@ -900,8 +900,8 @@ export function TicketsPage({
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-              personas={headerCtx.personas}
-              onEmailChange={headerCtx.onEmailChange}
+
+
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={

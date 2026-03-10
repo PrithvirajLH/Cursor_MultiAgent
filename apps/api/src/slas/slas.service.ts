@@ -8,7 +8,10 @@ import { randomUUID } from 'crypto';
 import { Prisma, TicketPriority, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
-import { RealtimeService } from '../realtime/realtime.service';
+import {
+  RealtimeService,
+  type AdminChangedAudience,
+} from '../realtime/realtime.service';
 import { ListSlasDto } from './dto/list-slas.dto';
 import {
   CreateSlaPolicyConfigDto,
@@ -16,6 +19,7 @@ import {
 } from './dto/policy-config.dto';
 import { UpdateSlaBusinessHoursDto } from './dto/sla-business-hours.dto';
 import { UpdateSlaPolicyDto } from './dto/update-sla.dto';
+import { DEFAULT_SLA_CONFIG } from '../common/config.utils';
 
 const PRIORITIES: TicketPriority[] = [
   TicketPriority.P1,
@@ -105,16 +109,6 @@ export class SlasService {
     private readonly realtime: RealtimeService,
   ) {}
 
-  private readonly defaultSlaConfig: Record<
-    TicketPriority,
-    { firstResponseHours: number; resolutionHours: number }
-  > = {
-    [TicketPriority.P1]: { firstResponseHours: 1, resolutionHours: 4 },
-    [TicketPriority.P2]: { firstResponseHours: 4, resolutionHours: 24 },
-    [TicketPriority.P3]: { firstResponseHours: 8, resolutionHours: 72 },
-    [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
-  };
-
   private readonly defaultSchedule: BusinessDay[] = [
     { day: 'Monday', enabled: true, start: '09:00', end: '18:00' },
     { day: 'Tuesday', enabled: true, start: '09:00', end: '18:00' },
@@ -145,7 +139,7 @@ export class SlasService {
     return {
       data: PRIORITIES.map((priority) => {
         const target = policyMap.get(priority);
-        const defaults = this.defaultSlaConfig[priority];
+        const defaults = DEFAULT_SLA_CONFIG[priority];
         return {
           priority,
           firstResponseHours:
@@ -188,7 +182,7 @@ export class SlasService {
         };
       }
       const current =
-        currentTargets.get(priority) ?? this.defaultSlaConfig[priority];
+        currentTargets.get(priority) ?? DEFAULT_SLA_CONFIG[priority];
       return {
         priority,
         firstResponseHours: current.firstResponseHours,
@@ -430,13 +424,16 @@ export class SlasService {
     });
 
     const created = await this.getPolicyById(policyId, this.prisma);
-    await this.safePublishAdminChanged({
-      scope: 'sla_policy',
-      action: 'created',
-      entityId: created.id,
-      teamId: teamIds.length === 1 ? teamIds[0] : null,
-      actorId: user.id,
-    });
+    await this.safePublishAdminChanged(
+      {
+        scope: 'sla_policy',
+        action: 'created',
+        entityId: created.id,
+        teamId: teamIds.length === 1 ? teamIds[0] : null,
+        actorId: user.id,
+      },
+      this.buildSlaPolicyRealtimeAudience(teamIds, payload.isDefault ?? false),
+    );
     return { data: this.serializePolicy(created, null) };
   }
 
@@ -573,13 +570,16 @@ export class SlasService {
     });
 
     const updated = await this.getPolicyById(policyId, this.prisma);
-    await this.safePublishAdminChanged({
-      scope: 'sla_policy',
-      action: 'updated',
-      entityId: updated.id,
-      teamId: nextTeamIds.length === 1 ? nextTeamIds[0] : null,
-      actorId: user.id,
-    });
+    await this.safePublishAdminChanged(
+      {
+        scope: 'sla_policy',
+        action: 'updated',
+        entityId: updated.id,
+        teamId: nextTeamIds.length === 1 ? nextTeamIds[0] : null,
+        actorId: user.id,
+      },
+      this.buildSlaPolicyRealtimeAudience(nextTeamIds, nextIsDefault),
+    );
     return { data: this.serializePolicy(updated, null) };
   }
 
@@ -621,16 +621,22 @@ export class SlasService {
       `;
     });
 
-    await this.safePublishAdminChanged({
-      scope: 'sla_policy',
-      action: 'deleted',
-      entityId: policyId,
-      teamId:
-        existing.assignments.length === 1
-          ? existing.assignments[0].teamId
-          : null,
-      actorId: user.id,
-    });
+    await this.safePublishAdminChanged(
+      {
+        scope: 'sla_policy',
+        action: 'deleted',
+        entityId: policyId,
+        teamId:
+          existing.assignments.length === 1
+            ? existing.assignments[0].teamId
+            : null,
+        actorId: user.id,
+      },
+      this.buildSlaPolicyRealtimeAudience(
+        existing.assignments.map((assignment) => assignment.teamId),
+        existing.isDefault,
+      ),
+    );
     return { id: policyId };
   }
 
@@ -1047,8 +1053,8 @@ export class SlasService {
 
       const defaultTargets = PRIORITIES.map((priority) => ({
         priority,
-        firstResponseHours: this.defaultSlaConfig[priority].firstResponseHours,
-        resolutionHours: this.defaultSlaConfig[priority].resolutionHours,
+        firstResponseHours: DEFAULT_SLA_CONFIG[priority].firstResponseHours,
+        resolutionHours: DEFAULT_SLA_CONFIG[priority].resolutionHours,
       }));
 
       await this.insertPolicyConfig(tx, {
@@ -1132,10 +1138,10 @@ export class SlasService {
           priority,
           firstResponseHours:
             runtimeMap.get(priority)?.firstResponseHours ??
-            this.defaultSlaConfig[priority].firstResponseHours,
+            DEFAULT_SLA_CONFIG[priority].firstResponseHours,
           resolutionHours:
             runtimeMap.get(priority)?.resolutionHours ??
-            this.defaultSlaConfig[priority].resolutionHours,
+            DEFAULT_SLA_CONFIG[priority].resolutionHours,
         }));
 
         await this.insertPolicyConfig(tx, {
@@ -1303,15 +1309,31 @@ export class SlasService {
     return startH * 60 + startM < endH * 60 + endM;
   }
 
-  private async safePublishAdminChanged(payload: {
-    scope: string;
-    action: string;
-    entityId: string | null;
-    teamId: string | null;
-    actorId: string | null;
-  }) {
+  private buildSlaPolicyRealtimeAudience(
+    teamIds: string[],
+    isDefault: boolean,
+  ): AdminChangedAudience | undefined {
+    if (isDefault) {
+      return { allScopedTeams: true };
+    }
+    if (teamIds.length > 1) {
+      return { teamIds };
+    }
+    return undefined;
+  }
+
+  private async safePublishAdminChanged(
+    payload: {
+      scope: string;
+      action: string;
+      entityId: string | null;
+      teamId: string | null;
+      actorId: string | null;
+    },
+    audience?: AdminChangedAudience,
+  ) {
     try {
-      await this.realtime.publishAdminChanged(payload);
+      await this.realtime.publishAdminChanged(payload, audience);
     } catch {
       // Best-effort realtime publish.
     }

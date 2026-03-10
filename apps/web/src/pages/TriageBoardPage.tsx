@@ -36,13 +36,13 @@ import { formatStatus, formatTicketId, getSlaTone, initialsFor } from '../utils/
 import { priorityBadgeClass, statusBadgeClass } from '../utils/statusColors';
 import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationContext';
 
-const TRIAGE_COLUMNS = [
+const TRIAGE_COLUMNS: Array<{ key: import('../api/client').TicketStatus; label: string }> = [
   { key: 'NEW', label: 'New' },
   { key: 'TRIAGED', label: 'Triaged' },
   { key: 'ASSIGNED', label: 'Assigned' },
   { key: 'IN_PROGRESS', label: 'In Progress' },
-  { key: 'WAITING_ON_REQUESTER', label: 'Waiting on Requester' },
-  { key: 'WAITING_ON_VENDOR', label: 'Waiting on Vendor' },
+  { key: 'WAITING_ON_CUSTOMER', label: 'Waiting on Customer' },
+  { key: 'WAITING_ON_THIRDPARTY', label: 'Waiting on Thirdparty' },
   { key: 'REOPENED', label: 'Reopened' }
 ];
 const TRIAGE_COLUMN_KEYS = TRIAGE_COLUMNS.map((column) => column.key);
@@ -140,10 +140,10 @@ export function TriageBoardPage({
 
         const patched: TicketRecord = { ...current };
         if (typeof payload.status === 'string' && payload.status) {
-          patched.status = payload.status;
+          patched.status = payload.status as import('../api/client').TicketStatus;
         }
         if (typeof payload.priority === 'string' && payload.priority) {
-          patched.priority = payload.priority;
+          patched.priority = payload.priority as import('../api/client').TicketPriority;
         }
         if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
           patched.updatedAt = payload.updatedAt;
@@ -416,11 +416,11 @@ export function TriageBoardPage({
       ...current,
       assignee: currentUser
         ? {
-            id: currentUser.id,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            role: currentUser.role,
-          }
+          id: currentUser.id,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          role: currentUser.role,
+        }
         : current.assignee,
     }));
     try {
@@ -475,7 +475,7 @@ export function TriageBoardPage({
     }
     startTicketAction(ticketId);
     setActionError(null);
-    patchTicketInPlace(ticketId, (current) => ({ ...current, priority }));
+    patchTicketInPlace(ticketId, (current) => ({ ...current, priority: priority as import('../api/client').TicketPriority }));
     try {
       const result = await bulkPriorityTickets([ticketId], priority);
       if (result.success > 0) {
@@ -555,9 +555,9 @@ export function TriageBoardPage({
     }
     startTicketAction(ticketId);
     setActionError(null);
-    patchTicketInPlace(ticketId, (current) => ({ ...current, status }));
+    patchTicketInPlace(ticketId, (current) => ({ ...current, status: status as import('../api/client').TicketStatus }));
     try {
-      const updated = await transitionTicket(ticketId, { status });
+      const updated = await transitionTicket(ticketId, { status: status as import('../api/client').TicketStatus });
       reconcileTicketFromServer(ticketId, updated);
       toast.success(`Moved to ${formatStatus(status)}.`);
       notifyTicketAggregatesChanged();
@@ -723,12 +723,12 @@ export function TriageBoardPage({
       normalized === 'P1' || normalized === 'URGENT'
         ? 'P1'
         : normalized === 'P2' || normalized === 'HIGH'
-        ? 'P2'
-        : normalized === 'P3' || normalized === 'MEDIUM'
-        ? 'P3'
-        : normalized === 'P4' || normalized === 'LOW'
-        ? 'P4'
-        : priority;
+          ? 'P2'
+          : normalized === 'P3' || normalized === 'MEDIUM'
+            ? 'P3'
+            : normalized === 'P4' || normalized === 'LOW'
+              ? 'P4'
+              : priority;
     return { label, className: priorityBadgeClass(priority) };
   }
 
@@ -793,8 +793,8 @@ export function TriageBoardPage({
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-              personas={headerCtx.personas}
-              onEmailChange={headerCtx.onEmailChange}
+
+
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={
@@ -906,9 +906,8 @@ export function TriageBoardPage({
                     </div>
 
                     <div
-                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-slate-50 p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar]:w-1.5 ${
-                        dragOverColumn === column.key ? 'border-blue-500 bg-blue-100/60' : 'border-slate-200'
-                      }`}
+                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-slate-50 p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar]:w-1.5 ${dragOverColumn === column.key ? 'border-blue-500 bg-blue-100/60' : 'border-slate-200'
+                        }`}
                     >
                       {columnTickets.length === 0 ? (
                         <div className="py-8 text-center text-sm text-slate-400">No tickets</div>
@@ -932,9 +931,8 @@ export function TriageBoardPage({
                               onDragStart={(event) => handleDragStart(event, ticket)}
                               onDragEnd={handleDragEnd}
                               onClick={() => handleCardClick(ticket.id)}
-                              className={`mb-2 cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
-                                draggingTicketId === ticket.id ? 'opacity-50' : ''
-                              }`}
+                              className={`mb-2 cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${draggingTicketId === ticket.id ? 'opacity-50' : ''
+                                }`}
                             >
                               <div className="mb-1 flex items-start justify-between gap-2">
                                 <div className="min-w-0">

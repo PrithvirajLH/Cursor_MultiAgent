@@ -5,8 +5,6 @@ export type HeaderContextValue = {
   title: string;
   subtitle: string;
   currentEmail: string;
-  personas: { label: string; email: string; role?: string }[];
-  onEmailChange: (email: string) => void;
   onOpenSearch?: () => void;
   currentUser?: CurrentUserSession | null;
   onSignOut?: () => void;

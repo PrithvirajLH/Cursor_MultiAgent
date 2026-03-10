@@ -86,8 +86,8 @@ const OPEN_STATUSES = new Set([
   'TRIAGED',
   'ASSIGNED',
   'IN_PROGRESS',
-  'WAITING_ON_REQUESTER',
-  'WAITING_ON_VENDOR',
+  'WAITING_ON_CUSTOMER',
+  'WAITING_ON_THIRDPARTY',
   'REOPENED',
 ]);
 
@@ -454,10 +454,10 @@ export function ManagerViewsPage({
         const next = [...prev];
         const patched: TicketRecord = { ...next[index] };
         if (typeof payload.status === 'string' && payload.status) {
-          patched.status = payload.status;
+          patched.status = payload.status as import('../api/client').TicketStatus;
         }
         if (typeof payload.priority === 'string' && payload.priority) {
-          patched.priority = payload.priority;
+          patched.priority = payload.priority as import('../api/client').TicketPriority;
         }
         if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
           patched.updatedAt = payload.updatedAt;
@@ -748,8 +748,8 @@ export function ManagerViewsPage({
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-              personas={headerCtx.personas}
-              onEmailChange={headerCtx.onEmailChange}
+
+
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={

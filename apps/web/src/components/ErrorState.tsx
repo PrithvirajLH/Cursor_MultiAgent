@@ -13,6 +13,11 @@ export function ErrorState({
   onRetry: () => void;
   secondaryAction?: Action;
 }) {
+  const handleRetryClick = () => {
+    onRetry();
+    window.location.reload();
+  };
+
   return (
     <div
       className="flex flex-col items-center justify-center rounded-lg border border-destructive/30 bg-destructive/5 py-10 px-6 text-center"
@@ -27,10 +32,10 @@ export function ErrorState({
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <button
           type="button"
-          onClick={onRetry}
+          onClick={handleRetryClick}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:ring-offset-2"
         >
-          Retry
+          Retry (refresh the page)
         </button>
         {secondaryAction && (
           <button

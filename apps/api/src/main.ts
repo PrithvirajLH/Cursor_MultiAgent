@@ -1,4 +1,5 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
@@ -13,16 +14,21 @@ import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 import { parsePositiveInt } from './common/config.utils';
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    bufferLogs: true,
   });
+  app.useLogger(app.get(Logger));
   app.use(correlationIdMiddleware);
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
-          'connect-src': ["'self'", 'https:', 'wss:'],
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'blob:'],
+          connectSrc: ["'self'", 'https:', 'wss:'],
+          frameAncestors: ["'none'"],
         },
       },
     }),
@@ -57,7 +63,7 @@ async function bootstrap() {
     expressApp.get(/^\/(?!api($|\/))/, (req: Request, res: Response) => {
       res.sendFile(join(publicDir, 'index.html'));
     });
-    logger.log(`Serving frontend from: ${publicDir}`);
+    app.get(Logger).log(`Serving frontend from: ${publicDir}`, 'Bootstrap');
   }
 
   const port = process.env.PORT ?? 3000;
@@ -84,14 +90,15 @@ async function bootstrap() {
   httpServer.keepAliveTimeout = keepAliveTimeoutMs;
   httpServer.headersTimeout = headersTimeoutMs;
 
-  logger.log(
+  app.get(Logger).log(
     `HTTP timeouts configured: request=${requestTimeoutMs}ms, keepAlive=${keepAliveTimeoutMs}ms, headers=${headersTimeoutMs}ms`,
+    'Bootstrap',
   );
-  logger.log(`Application is running on: http://0.0.0.0:${port}/api`);
+  app.get(Logger).log(`Application is running on: http://0.0.0.0:${port}/api`, 'Bootstrap');
 }
 bootstrap().catch((error) => {
-  const logger = new Logger('Bootstrap');
-  logger.error(
+  // eslint-disable-next-line no-console
+  console.error(
     'Failed to start server',
     error instanceof Error ? error.stack : String(error),
   );

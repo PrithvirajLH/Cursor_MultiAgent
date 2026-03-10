@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, LogOut, Search } from 'lucide-react';
+import { LogOut, Search } from 'lucide-react';
 import type { CurrentUserSession, NotificationRecord } from '../api/client';
 import { useHeaderContext } from '../contexts/HeaderContext';
 import { initialsFor } from '../utils/format';
@@ -26,8 +26,6 @@ export function TopBar({
   title,
   subtitle,
   currentEmail,
-  personas,
-  onEmailChange,
   onOpenSearch,
   notificationProps,
   leftAction,
@@ -38,8 +36,6 @@ export function TopBar({
   title: string;
   subtitle: string;
   currentEmail: string;
-  personas: { label: string; email: string }[];
-  onEmailChange: (email: string) => void;
   onOpenSearch?: () => void;
   notificationProps?: NotificationProps;
   leftAction?: ReactNode;
@@ -139,23 +135,6 @@ export function TopBar({
           >
             <Search className="h-4 w-4" />
           </button>
-        )}
-
-        {personas.length > 1 && (
-          <div className="relative">
-            <select
-              className="h-10 appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-              value={currentEmail}
-              onChange={(event) => onEmailChange(event.target.value)}
-            >
-              {personas.map((persona) => (
-                <option key={persona.email} value={persona.email}>
-                  {persona.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          </div>
         )}
 
         {notificationProps && (

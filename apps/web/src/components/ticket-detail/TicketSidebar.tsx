@@ -73,7 +73,7 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
   return (
     <aside className="flex h-full flex-col gap-3 bg-slate-50/70 px-3 pt-3 pb-6 text-[13px] text-slate-700">
       {/* Properties card */}
-      <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-[13px] font-semibold text-slate-900">Properties</h3>
           <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ export const TicketSidebar = memo(function TicketSidebar(props: TicketSidebarPro
 
         <PropertyRow label="Department">
           {canManage ? (
-            <div className="flex items-center gap-1 overflow-hidden w-full">
+            <div className="relative flex w-full items-center gap-1 overflow-visible">
               <InlineSelect
                 buttonClassName="flex-1 w-full"
                 value={transferTeamId || (ticket.assignedTeam?.id ?? '')}
@@ -455,6 +455,8 @@ function InlineSelect({
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className={`flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 ${disabled
             ? 'pointer-events-none'
             : 'bg-slate-50 border border-slate-200 hover:bg-white hover:shadow-sm focus:ring-2 focus:ring-blue-500/40'
@@ -471,7 +473,10 @@ function InlineSelect({
       </button>
 
       {isOpen && (
-        <ul className="absolute z-50 left-0 top-full mt-1 max-h-60 w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none">
+        <ul
+          role="listbox"
+          className="absolute left-0 top-full z-[70] mt-1 max-h-60 min-w-full w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none"
+        >
           {options.map((option) => (
             <li
               key={option.value}

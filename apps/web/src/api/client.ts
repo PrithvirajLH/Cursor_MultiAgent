@@ -135,15 +135,19 @@ export type RoutingRule = {
   assignee?: UserRef | null;
 };
 
+export type TicketStatus = 'NEW' | 'TRIAGED' | 'ASSIGNED' | 'IN_PROGRESS' | 'WAITING_ON_CUSTOMER' | 'WAITING_ON_THIRDPARTY' | 'RESOLVED' | 'CLOSED' | 'REOPENED';
+export type TicketPriority = 'P1' | 'P2' | 'P3' | 'P4';
+export type TicketChannel = 'PORTAL' | 'EMAIL' | 'API' | 'AGENT_PORTAL';
+
 export type TicketRecord = {
   id: string;
   number: number;
   displayId?: string | null;
   subject: string;
   description?: string | null;
-  status: string;
-  priority: string;
-  channel?: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  channel?: TicketChannel;
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string | null;
@@ -241,7 +245,7 @@ export type TeamMember = {
 };
 
 export type SlaPolicy = {
-  priority: string;
+  priority: TicketPriority;
   firstResponseHours: number;
   resolutionHours: number;
   source?: 'team' | 'default';
@@ -262,7 +266,7 @@ export type SlaPolicyConfigRecord = {
   appliedTeamIds: string[];
   appliedTeams: Array<{ id: string; name: string }>;
   targets: Array<{
-    priority: string;
+    priority: TicketPriority;
     firstResponseHours: number;
     resolutionHours: number;
   }>;
@@ -309,15 +313,15 @@ export type TicketActivityPoint = {
 };
 
 export type TicketStatusPoint = {
-  status: string;
+  status: TicketStatus;
   count: number;
 };
 
 export type CreateTicketPayload = {
   subject: string;
   description: string;
-  priority?: string;
-  channel?: string;
+  priority?: TicketPriority;
+  channel?: TicketChannel;
   assignedTeamId?: string;
   assigneeId?: string;
   requesterId?: string;
@@ -336,7 +340,7 @@ export type AssignPayload = {
 };
 
 export type TransitionPayload = {
-  status: string;
+  status: TicketStatus;
 };
 
 export type TransferPayload = {
@@ -470,41 +474,43 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   const requestPromise = (async () => {
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...requestInit,
-      headers: conditionalHeaders,
-    });
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...requestInit,
+        headers: conditionalHeaders,
+      });
 
-    if (response.status === 304 && cached) {
-      const refreshedCacheEntry: ApiGetCacheEntry = {
-        ...cached,
+      if (response.status === 304 && cached) {
+        const refreshedCacheEntry: ApiGetCacheEntry = {
+          ...cached,
+          cachedAt: Date.now(),
+        };
+        setApiCacheEntry(cacheKey, refreshedCacheEntry);
+        return refreshedCacheEntry.data as T;
+      }
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new ApiError(message || 'Request failed', response.status);
+      }
+
+      const payload = (await response.json()) as T;
+      setApiCacheEntry(cacheKey, {
+        data: payload,
         cachedAt: Date.now(),
-      };
-      setApiCacheEntry(cacheKey, refreshedCacheEntry);
-      return refreshedCacheEntry.data as T;
+        etag: response.headers.get('etag'),
+        lastModified: response.headers.get('last-modified'),
+      });
+      return payload;
+    } finally {
+      // Ensure cleanup always happens strictly when the promise settles,
+      // avoiding memory leaks from outer async context retention.
+      apiGetInflight.delete(cacheKey);
     }
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new ApiError(message || 'Request failed', response.status);
-    }
-
-    const payload = (await response.json()) as T;
-    setApiCacheEntry(cacheKey, {
-      data: payload,
-      cachedAt: Date.now(),
-      etag: response.headers.get('etag'),
-      lastModified: response.headers.get('last-modified'),
-    });
-    return payload;
   })();
 
   apiGetInflight.set(cacheKey, requestPromise as Promise<unknown>);
-  try {
-    return await requestPromise;
-  } finally {
-    apiGetInflight.delete(cacheKey);
-  }
+  return requestPromise;
 }
 
 type DataEnvelope<T> = { data: T };
@@ -1130,8 +1136,8 @@ export type AutomationAction = {
   type: string;
   teamId?: string;
   userId?: string;
-  priority?: string;
-  status?: string;
+  priority?: TicketPriority | string;
+  status?: TicketStatus | string;
   body?: string;
 };
 

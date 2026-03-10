@@ -9,7 +9,9 @@ import {
   Query,
   UploadedFile,
   UseInterceptors,
+  PayloadTooLargeException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
 import { ThrottlePolicy } from '../common/throttle-policy.decorator';
@@ -34,18 +36,23 @@ import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { TicketsService } from './tickets.service';
 
-const ATTACHMENTS_MAX_MB = Number.parseInt(
-  process.env.ATTACHMENTS_MAX_MB ?? '10',
-  10,
-);
-const ATTACHMENTS_MAX_BYTES =
-  Math.max(1, Number.isFinite(ATTACHMENTS_MAX_MB) ? ATTACHMENTS_MAX_MB : 10) *
-  1024 *
-  1024;
+// ATTACHMENTS_MAX_MB configuration is now injected via ConfigService
 
 @Controller('tickets')
 export class TicketsController {
-  constructor(private readonly ticketsService: TicketsService) {}
+  private readonly attachmentsMaxBytes: number;
+
+  constructor(
+    private readonly ticketsService: TicketsService,
+    private readonly configService: ConfigService,
+  ) {
+    const maxMb = Number.parseInt(
+      this.configService.get<string>('ATTACHMENTS_MAX_MB') ?? '10',
+      10,
+    );
+    this.attachmentsMaxBytes =
+      Math.max(1, Number.isFinite(maxMb) ? maxMb : 10) * 1024 * 1024;
+  }
 
   @Get()
   async list(@Query() query: ListTicketsDto, @CurrentUser() user: AuthUser) {
@@ -168,16 +175,17 @@ export class TicketsController {
 
   @Post(':id/attachments')
   @ThrottlePolicy('highWrite')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: ATTACHMENTS_MAX_BYTES },
-    }),
-  )
+  @UseInterceptors(FileInterceptor('file'))
   async addAttachment(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthUser,
   ) {
+    if (file && file.size > this.attachmentsMaxBytes) {
+      throw new PayloadTooLargeException(
+        `Attachment exceeds maximum allowed size`,
+      );
+    }
     return this.ticketsService.addAttachment(id, file, user);
   }
 

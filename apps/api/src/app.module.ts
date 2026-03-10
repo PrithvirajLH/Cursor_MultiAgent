@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
+import { LoggerModule } from 'nestjs-pino';
 import { CacheModule } from '@nestjs/cache-manager';
-import { ConfigModule } from '@nestjs/config';
-import { ConfigService } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import path from 'path';
@@ -50,6 +50,25 @@ import { parsePositiveInt } from './common/config.utils';
           setHeaders: true,
         },
       ],
+    }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const isProd = config.get<string>('NODE_ENV') === 'production';
+        return {
+          pinoHttp: {
+            level: isProd ? 'info' : 'debug',
+            transport: isProd
+              ? undefined
+              : {
+                target: 'pino-pretty',
+                options: {
+                  singleLine: true,
+                },
+              },
+          },
+        };
+      },
     }),
     CacheModule.registerAsync({
       isGlobal: true,
