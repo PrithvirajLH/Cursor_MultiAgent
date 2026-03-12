@@ -5,6 +5,7 @@ export type HeaderContextValue = {
   title: string;
   subtitle: string;
   currentEmail: string;
+  onOpenNavigation?: () => void;
   onOpenSearch?: () => void;
   currentUser?: CurrentUserSession | null;
   onSignOut?: () => void;
@@ -12,6 +13,7 @@ export type HeaderContextValue = {
     notifications: NotificationRecord[];
     unreadCount: number;
     loading: boolean;
+    actionError: string | null;
     hasMore: boolean;
     onLoadMore: () => void;
     onMarkAsRead: (id: string) => void;

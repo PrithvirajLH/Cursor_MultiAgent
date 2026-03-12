@@ -77,13 +77,15 @@ export class IngestInboundEmailDto {
   inReplyTo?: string;
 
   @IsOptional()
-  @Transform(({ value }) =>
-    Array.isArray(value)
-      ? value
-          .filter((item): item is string => typeof item === 'string')
-          .join(' ')
-      : value,
-  )
+  @Transform(({ value }: { value: unknown }): string | undefined => {
+    if (Array.isArray(value)) {
+      return value
+        .filter((item): item is string => typeof item === 'string')
+        .join(' ');
+    }
+
+    return typeof value === 'string' ? value : undefined;
+  })
   @IsString()
   @MaxLength(4000)
   references?: string;

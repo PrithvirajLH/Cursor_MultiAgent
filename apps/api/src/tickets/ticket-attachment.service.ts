@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AttachmentScanStatus, Prisma } from '@prisma/client';
+import { AttachmentScanStatus } from '@prisma/client';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import type { Express } from 'express';

@@ -119,6 +119,35 @@ export class TicketEmailThreadService {
     });
   }
 
+  async reserveOutboundEmail(params: { ticketId: string; messageId: string }) {
+    const messageId = params.messageId.trim();
+    if (!messageId) {
+      return;
+    }
+
+    const updated = await this.prisma.ticketEmailThread.updateMany({
+      where: { ticketId: params.ticketId },
+      data: {
+        lastOutboundMessageId: messageId,
+      },
+    });
+
+    if (updated.count > 0) {
+      return;
+    }
+
+    const thread = await this.getOrCreateThread(
+      params.ticketId,
+      'Ticket update',
+    );
+    await this.prisma.ticketEmailThread.update({
+      where: { id: thread.id },
+      data: {
+        lastOutboundMessageId: messageId,
+      },
+    });
+  }
+
   async resolveTicketIdByReplyAddress(address: string | null | undefined) {
     const token = this.extractReplyToken(address);
     if (!token) {

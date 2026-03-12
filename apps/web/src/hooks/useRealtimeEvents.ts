@@ -30,6 +30,7 @@ type UseRealtimeEventsOptions = {
   onTicketTyping?: (payload: RealtimeTicketTypingPayload) => void;
   onAdminChanged?: (payload: RealtimeAdminPayload) => void;
   onNotificationsUpdated?: (payload: RealtimeNotificationPayload) => void;
+  onAvailabilityChange?: (available: boolean) => void;
 };
 
 function parseRealtimeEnvelope(raw: string): RealtimeEnvelope | null {
@@ -93,6 +94,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
   const ticketTypingCallbackRef = useRef(options.onTicketTyping);
   const adminCallbackRef = useRef(options.onAdminChanged);
   const notificationCallbackRef = useRef(options.onNotificationsUpdated);
+  const availabilityCallbackRef = useRef(options.onAvailabilityChange);
 
   useEffect(() => {
     ticketCallbackRef.current = options.onTicketChanged;
@@ -111,7 +113,12 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
   }, [options.onAdminChanged]);
 
   useEffect(() => {
+    availabilityCallbackRef.current = options.onAvailabilityChange;
+  }, [options.onAvailabilityChange]);
+
+  useEffect(() => {
     if (!enabled || !userKey) {
+      availabilityCallbackRef.current?.(false);
       return;
     }
 
@@ -119,6 +126,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
     let socket: WebSocket | null = null;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
+    availabilityCallbackRef.current?.(false);
 
     const clearReconnectTimer = () => {
       if (reconnectTimer) {
@@ -183,6 +191,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
       try {
         negotiation = await negotiateRealtimeConnection();
       } catch {
+        availabilityCallbackRef.current?.(false);
         scheduleReconnect();
         return;
       }
@@ -192,6 +201,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
       }
 
       if (!negotiation.enabled || !negotiation.url) {
+        availabilityCallbackRef.current?.(false);
         return;
       }
 
@@ -199,6 +209,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
 
       socket.onopen = () => {
         reconnectAttempt = 0;
+        availabilityCallbackRef.current?.(true);
       };
 
       socket.onmessage = (event) => {
@@ -218,6 +229,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
 
       socket.onclose = () => {
         socket = null;
+        availabilityCallbackRef.current?.(false);
         scheduleReconnect();
       };
     };

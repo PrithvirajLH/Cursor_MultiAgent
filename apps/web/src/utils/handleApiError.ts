@@ -18,7 +18,16 @@ export function handleApiError(error: unknown): string {
     if (error.status >= 500) return "Server error. Please try again later.";
     // Try to parse the message from the API response body
     try {
-      const parsed = JSON.parse(error.message) as { message?: string };
+      const parsed = JSON.parse(error.message) as {
+        message?: string | string[];
+      };
+      if (Array.isArray(parsed?.message)) {
+        const messages = parsed.message.filter(
+          (message): message is string =>
+            typeof message === "string" && message.trim().length > 0,
+        );
+        if (messages.length > 0) return messages.join(". ");
+      }
       if (typeof parsed?.message === "string") return parsed.message;
     } catch {
       // not JSON, use raw message

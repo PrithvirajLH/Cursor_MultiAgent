@@ -7,7 +7,7 @@ import { ReportsService } from './reports.service';
 @Controller('reports')
 @UseGuards(LeadOrAdminGuard)
 export class ReportsController {
-  constructor(private readonly reportsService: ReportsService) { }
+  constructor(private readonly reportsService: ReportsService) {}
 
   @Get('summary')
   getSummary(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {

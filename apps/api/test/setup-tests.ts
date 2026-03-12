@@ -32,6 +32,12 @@ function loadEnv(envPath: string) {
 
 const envPath = path.join(__dirname, '..', '.env.test');
 loadEnv(envPath);
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
+if (!testDatabaseUrl) {
+  throw new Error('TEST_DATABASE_URL not found in apps/api/.env.test');
+}
+process.env.DATABASE_URL = testDatabaseUrl;
+process.env.DIRECT_URL = process.env.TEST_DIRECT_URL?.trim() || testDatabaseUrl;
 process.env.NODE_ENV = 'test';
 process.env.NOTIFICATIONS_QUEUE_ENABLED = 'false';
 process.env.SLA_BREACH_WORKER_ENABLED = 'false';

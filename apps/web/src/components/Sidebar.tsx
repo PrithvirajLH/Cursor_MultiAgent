@@ -147,14 +147,14 @@ export const Sidebar = memo(function Sidebar({
                   />
                 </span>
                 {!collapsed && (
-                  <span className="flex-1 text-left truncate flex items-center gap-2">
-                    {label}
+                  <span className="flex-1 text-left truncate flex items-center justify-between pr-2">
+                    <span className="flex items-center gap-2">{label}</span>
                     {typeof item.badge === "number" && item.badge > 0 && (
                       <span
                         className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold ${
                           isActive
                             ? "bg-blue-500 text-white"
-                            : "bg-slate-700 text-slate-300"
+                            : "bg-slate-700 text-slate-300 group-hover:bg-slate-600 group-hover:text-white transition-colors"
                         }`}
                       >
                         {item.badge > 99 ? "99+" : item.badge}
@@ -197,10 +197,10 @@ export const Sidebar = memo(function Sidebar({
                         </span>
                         {typeof child.badge === "number" && child.badge > 0 && (
                           <span
-                            className={`flex-shrink-0 min-w-[1.25rem] h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-between text-[10px] font-bold ${
                               childActive
                                 ? "bg-blue-500 text-white"
-                                : "bg-slate-700 text-slate-300"
+                                : "bg-slate-700 text-slate-300 group-hover:bg-slate-600 group-hover:text-white transition-colors"
                             }`}
                           >
                             {child.badge > 99 ? "99+" : child.badge}

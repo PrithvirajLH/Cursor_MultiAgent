@@ -23,6 +23,7 @@ import { TicketEmailThreadService } from '../notifications/ticket-email-thread.s
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
+import { TicketsService } from './tickets.service';
 import {
   InboundEmailAttachmentDto,
   IngestInboundEmailDto,
@@ -73,8 +74,8 @@ export class InboundEmailService {
     private readonly ticketRealtime: TicketRealtimeService,
     private readonly notifications: NotificationsService,
     private readonly ticketEmailThreads: TicketEmailThreadService,
-    @Inject(forwardRef(() => require('./tickets.service').TicketsService))
-    private readonly ticketsService: any,
+    @Inject(forwardRef(() => TicketsService))
+    private readonly ticketsService: TicketsService,
   ) {}
 
   async ingestInboundEmail(
@@ -431,10 +432,12 @@ export class InboundEmailService {
     }
 
     const allowedHosts = this.getInboundAttachmentAllowedHosts();
-    if (
-      allowedHosts.size > 0 &&
-      !allowedHosts.has(parsedUrl.hostname.toLowerCase())
-    ) {
+    if (allowedHosts.size === 0) {
+      throw new BadRequestException(
+        `Inbound attachment "${fileName}" contentUrl downloads are disabled until INBOUND_EMAIL_ATTACHMENT_ALLOWED_HOSTS is configured`,
+      );
+    }
+    if (!allowedHosts.has(parsedUrl.hostname.toLowerCase())) {
       throw new BadRequestException(
         `Inbound attachment host "${parsedUrl.hostname}" is not allowed`,
       );
@@ -455,6 +458,7 @@ export class InboundEmailService {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(parsedUrl.toString(), {
+        redirect: 'error',
         signal: controller.signal,
       });
       if (!response.ok) {

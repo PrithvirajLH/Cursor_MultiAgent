@@ -40,9 +40,10 @@ API base URL: `http://localhost:3000/api`
 
 ## Test environment
 - Integration tests read `apps/api/.env.test`.
-- Database reset is strict by default with `prisma migrate reset`.
-- Override strategy only when needed:
-  - `TEST_DB_RESET_STRATEGY=migrate` (default)
+- `.env.test` must set `TEST_DATABASE_URL` and should set `TEST_DIRECT_URL` for Prisma reset/migrate operations.
+- Test URLs must point to a dedicated test database or schema such as `ticketing_test` or `?schema=test`.
+- Reset strategy must be explicit:
+  - `TEST_DB_RESET_STRATEGY=migrate`
   - `TEST_DB_RESET_STRATEGY=push` (fallback/debug only)
 
 ## Attachment security behavior

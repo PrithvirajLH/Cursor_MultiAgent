@@ -1492,7 +1492,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
   ]);
 
   return (
-    <section className="min-h-full bg-[#f8fafc]">
+    <section className="min-h-screen bg-[#f8fafc]">
       <div className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
         <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
           {headerCtx ? (

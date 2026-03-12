@@ -46,17 +46,24 @@ export class OutboxService {
     });
   }
 
-  async findById(id: string) {
-    return this.prisma.notificationOutbox.findUnique({ where: { id } });
-  }
+  async claimPending(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.notificationOutbox.updateMany({
+        where: {
+          id,
+          status: OutboxStatus.PENDING,
+        },
+        data: {
+          status: OutboxStatus.PROCESSING,
+          attempts: { increment: 1 },
+        },
+      });
 
-  async markProcessing(id: string) {
-    return this.prisma.notificationOutbox.update({
-      where: { id },
-      data: {
-        status: OutboxStatus.PROCESSING,
-        attempts: { increment: 1 },
-      },
+      if (claimed.count !== 1) {
+        return null;
+      }
+
+      return tx.notificationOutbox.findUnique({ where: { id } });
     });
   }
 

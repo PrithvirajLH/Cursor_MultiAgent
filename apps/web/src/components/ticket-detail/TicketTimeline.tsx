@@ -8,14 +8,18 @@ export type TicketTimelineProps = {
   events: TicketEvent[];
   eventsHasMore: boolean;
   eventsLoading: boolean;
+  eventsError: string | null;
   onLoadMore: () => void;
+  onRetryLoad: () => void;
 };
 
 export const TicketTimeline = memo(function TicketTimeline({
   events,
   eventsHasMore,
   eventsLoading,
+  eventsError,
   onLoadMore,
+  onRetryLoad,
 }: TicketTimelineProps) {
   return (
     <div className="px-4 py-5 sm:px-6">
@@ -31,7 +35,26 @@ export const TicketTimeline = memo(function TicketTimeline({
       ) : null}
 
       <div className="mt-5 max-h-[660px] space-y-4 overflow-y-auto">
-        {events.length === 0 && !eventsLoading ? (
+        {eventsError ? (
+          <div
+            className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-left"
+            role="alert"
+          >
+            <p className="text-sm font-semibold text-amber-950">
+              Timeline unavailable
+            </p>
+            <p className="mt-1 text-sm text-amber-900">{eventsError}</p>
+            <button
+              type="button"
+              onClick={onRetryLoad}
+              className="mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
+            >
+              Retry loading timeline
+            </button>
+          </div>
+        ) : null}
+
+        {events.length === 0 && !eventsLoading && !eventsError ? (
           <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
             No events yet.
           </div>

@@ -14,7 +14,6 @@ import {
   FileText,
   FolderKanban,
   LayoutDashboard,
-  Menu,
   Settings,
   Ticket,
   Users,
@@ -46,6 +45,7 @@ import {
 import { useCommandPalette } from "./hooks/useCommandPalette";
 import { useCreateTicketForm } from "./hooks/useCreateTicketForm";
 import { useAuthSession } from "./hooks/useAuthSession";
+import { shouldEnableNotificationPolling } from "./hooks/notification-fallback";
 import {
   getShortcutContext,
   useKeyboardShortcuts,
@@ -58,6 +58,8 @@ import {
   REALTIME_TICKET_TYPING_EVENT,
   type RealtimeTicketTypingEventPayload,
 } from "./realtime/events";
+import { guardRoute } from "./route-access";
+import { getSidebarBadge, getSidebarChildBadge } from "./sidebar-badges";
 import { useSidebarState } from "./hooks/useSidebarState";
 import { useToast } from "./hooks/useToast";
 import { useTicketCountsQuery } from "./hooks/useTicketCountsQuery";
@@ -436,6 +438,8 @@ function AuthenticatedShell({
     useState<StatusFilter>("open");
   const [ticketPresetScope, setTicketPresetScope] =
     useState<TicketScope>("all");
+  const [notificationsRealtimeAvailable, setNotificationsRealtimeAvailable] =
+    useState(false);
 
   // Command Palette
   const commandPalette = useCommandPalette({
@@ -445,8 +449,11 @@ function AuthenticatedShell({
   // Notifications
   const notifications = useNotifications({
     pollingInterval: 30000,
-    enablePolling: false,
+    enablePolling: shouldEnableNotificationPolling(
+      notificationsRealtimeAvailable,
+    ),
     userKey: currentEmail,
+    onActionError: toast.error,
   });
   const handleRealtimeTicketChange = useCallback(
     (payload: RealtimeTicketChangedEventPayload) => {
@@ -493,6 +500,7 @@ function AuthenticatedShell({
     onTicketChanged: handleRealtimeTicketChange,
     onTicketTyping: handleRealtimeTicketTyping,
     onNotificationsUpdated: handleRealtimeNotificationsUpdated,
+    onAvailabilityChange: setNotificationsRealtimeAvailable,
   });
 
   // Keyboard shortcuts
@@ -614,22 +622,12 @@ function AuthenticatedShell({
       key: item.key,
       label: item.label,
       icon: item.icon,
-      badge:
-        item.key === "triage"
-          ? ticketCounts?.triage
-          : item.key === "tickets"
-            ? ticketCounts?.open
-            : undefined,
+      badge: getSidebarBadge(item.key, ticketCounts),
       children: item.children?.map((child) => ({
         key: child.key,
         label: child.label,
         icon: child.icon,
-        badge:
-          child.key === "assigned"
-            ? ticketCounts?.assignedToMe
-            : child.key === "unassigned"
-              ? ticketCounts?.unassigned
-              : undefined,
+        badge: getSidebarChildBadge(child.key, ticketCounts),
       })),
     }));
   }, [adminMenuEnabled, currentPersona.role, ticketCounts]);
@@ -642,11 +640,22 @@ function AuthenticatedShell({
     currentPersona.role,
   );
 
+  const openMobileNavigation = useCallback(() => {
+    if (adminMenuEnabled && isAdminRoute && !sidebar.adminSidebarDismissed) {
+      sidebar.setMobileAdminSidebarOpen(true);
+      sidebar.setMobileSidebarOpen(false);
+      return;
+    }
+    sidebar.setMobileSidebarOpen(true);
+    sidebar.setMobileAdminSidebarOpen(false);
+  }, [adminMenuEnabled, isAdminRoute, sidebar]);
+
   const headerValue: HeaderContextValue = useMemo(
     () => ({
       title: viewTitle,
       subtitle: viewSubtitle,
       currentEmail,
+      onOpenNavigation: openMobileNavigation,
       onOpenSearch: commandPalette.open,
       currentUser: user,
       onSignOut,
@@ -654,6 +663,7 @@ function AuthenticatedShell({
         notifications: notifications.notifications,
         unreadCount: notifications.unreadCount,
         loading: notifications.loading,
+        actionError: notifications.actionError,
         hasMore: notifications.hasMore,
         onLoadMore: notifications.loadMore,
         onMarkAsRead: notifications.markAsRead,
@@ -665,12 +675,14 @@ function AuthenticatedShell({
       viewTitle,
       viewSubtitle,
       currentEmail,
+      openMobileNavigation,
       commandPalette.open,
       user,
       onSignOut,
       notifications.notifications,
       notifications.unreadCount,
       notifications.loading,
+      notifications.actionError,
       notifications.hasMore,
       notifications.loadMore,
       notifications.markAsRead,
@@ -678,16 +690,6 @@ function AuthenticatedShell({
       notifications.refresh,
     ],
   );
-
-  const openMobileNavigation = useCallback(() => {
-    if (adminMenuEnabled && isAdminRoute && !sidebar.adminSidebarDismissed) {
-      sidebar.setMobileAdminSidebarOpen(true);
-      sidebar.setMobileSidebarOpen(false);
-      return;
-    }
-    sidebar.setMobileSidebarOpen(true);
-    sidebar.setMobileAdminSidebarOpen(false);
-  }, [adminMenuEnabled, isAdminRoute, sidebar]);
 
   const isLeadOrAbove =
     currentPersona.role === "LEAD" ||
@@ -793,20 +795,12 @@ function AuthenticatedShell({
         <main
           className={`flex-1 min-w-0 w-full transition-all duration-300 h-screen overflow-y-auto ${shellLayoutPath ? "py-0" : "py-8"} ${desktopMainOffset}`}
         >
-          <button
-            type="button"
-            onClick={openMobileNavigation}
-            className="fixed left-4 top-4 z-30 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 shadow-sm lg:hidden"
-            aria-label="Open navigation"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-
           {!shellLayoutPath && (
             <TopBar
               title={viewTitle}
               subtitle={viewSubtitle}
               currentEmail={currentEmail}
+              onOpenNavigation={openMobileNavigation}
               onOpenSearch={commandPalette.open}
               notificationProps={headerValue.notificationProps}
               user={user}
@@ -835,174 +829,143 @@ function AuthenticatedShell({
                     />
                     <Route
                       path="/triage"
-                      element={
-                        isLeadOrAbove ? (
+                      element={guardRoute(
+                        isLeadOrAbove,
+                        (
                           <TriageBoardPage
                             teamsList={teamsList}
                             role={currentPersona.role}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/manager"
-                      element={
-                        isLeadOrAbove ? (
-                          <ManagerViewsPage teamsList={teamsList} />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        isLeadOrAbove,
+                        <ManagerViewsPage teamsList={teamsList} />,
+                      )}
                     />
                     <Route
                       path="/reports"
-                      element={
-                        canViewReports ? (
-                          <ReportsPage role={currentPersona.role} />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        canViewReports,
+                        <ReportsPage role={currentPersona.role} />,
+                      )}
                     />
                     <Route
                       path="/team"
-                      element={
-                        isLeadOrAbove ? (
+                      element={guardRoute(
+                        isLeadOrAbove,
+                        (
                           <TeamPage
                             teamsList={teamsList}
                             role={currentPersona.role}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/sla-settings"
-                      element={
-                        isLeadOrAbove ? (
+                      element={guardRoute(
+                        isLeadOrAbove,
+                        (
                           <SlaSettingsPage
                             teamsList={teamsList}
                             role={currentPersona.role}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/admin"
-                      element={
-                        isAdminOrOwner ? (
-                          <Navigate to="/sla-settings" replace />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <Navigate to="/sla-settings" replace />,
+                      )}
                     />
                     <Route
                       path="/routing"
-                      element={
-                        isAdminOrOwner ? (
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        (
                           <RoutingRulesPage
                             teamsList={teamsList}
                             role={currentPersona.role}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/routing/new"
-                      element={
-                        isAdminOrOwner ? (
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        (
                           <NewRoutingRulePage
                             teamsList={teamsList}
                             role={currentPersona.role}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/automation"
-                      element={
-                        isAdminOrOwner ? (
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        (
                           <AutomationRulesPage
                             role={currentPersona.role}
                             teamsList={teamsList}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/automation/new"
-                      element={
-                        isAdminOrOwner ? (
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        (
                           <NewAutomationRulePage
                             teamsList={teamsList}
                             role={currentPersona.role}
                           />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                        ),
+                      )}
                     />
                     <Route
                       path="/audit-log"
-                      element={
-                        isAdminOrOwner ? (
-                          <AuditLogPage />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <AuditLogPage />,
+                      )}
                     />
                     <Route
                       path="/categories"
-                      element={
-                        currentPersona.role === "OWNER" ? (
-                          <CategoriesPage />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        currentPersona.role === "OWNER",
+                        <CategoriesPage />,
+                      )}
                     />
                     <Route
                       path="/categories/new"
-                      element={
-                        currentPersona.role === "OWNER" ? (
-                          <NewCategoryPage />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        currentPersona.role === "OWNER",
+                        <NewCategoryPage />,
+                      )}
                     />
                     <Route
                       path="/custom-fields"
-                      element={
-                        isAdminOrOwner ? (
-                          <CustomFieldsAdminPage role={currentPersona.role} />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <CustomFieldsAdminPage role={currentPersona.role} />,
+                      )}
                     />
                     <Route
                       path="/custom-fields/new"
-                      element={
-                        isAdminOrOwner ? (
-                          <NewCustomFieldPage role={currentPersona.role} />
-                        ) : (
-                          <Navigate to="/dashboard" replace />
-                        )
-                      }
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <NewCustomFieldPage role={currentPersona.role} />,
+                      )}
                     />
                     <Route
                       path="/tickets"

@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -13,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import type { NotificationRecord } from "../api/client";
+import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { formatTicketId } from "../utils/format";
 import { AnimatedList } from "./ui/animated-list";
 
@@ -20,6 +29,7 @@ type NotificationCenterProps = {
   notifications: NotificationRecord[];
   unreadCount: number;
   loading: boolean;
+  actionError: string | null;
   hasMore: boolean;
   onLoadMore: () => void;
   onMarkAsRead: (id: string) => void;
@@ -28,6 +38,11 @@ type NotificationCenterProps = {
   /** When true (bell dropdown), show only unread; items disappear when marked read. Default true. */
   unreadOnly?: boolean;
 };
+
+export const NOTIFICATION_DROPDOWN_TITLE = "Notifications";
+export const NOTIFICATION_DRAWER_TITLE = "All notifications";
+const UNREAD_NOTIFICATIONS_LABEL = "Unread notifications";
+const ALL_NOTIFICATIONS_LIST_LABEL = "All notifications";
 
 const NOTIFICATION_ICON_CONFIG: Record<
   string,
@@ -109,48 +124,42 @@ export function NotificationCard({
     notification.ticket?.subject ??
     notification.body ??
     null;
+  const cardClasses = `group w-full flex items-start gap-4 rounded-[16px] border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:shadow-[0_4px_15px_rgb(0,0,0,0.04)] hover:border-slate-200 ${
+    !notification.isRead
+      ? "ring-1 ring-blue-100 bg-blue-50/40 border-blue-100"
+      : ""
+  }`;
+
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onClick(notification)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick(notification);
-        }
-      }}
-      aria-label={`${notification.title}${!notification.isRead ? ", unread" : ""}`}
-      className={`group w-full flex items-start gap-4 rounded-[16px] border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:shadow-[0_4px_15px_rgb(0,0,0,0.04)] hover:border-slate-200 cursor-pointer ${
-        !notification.isRead
-          ? "ring-1 ring-blue-100 bg-blue-50/40 border-blue-100"
-          : ""
-      }`}
-    >
-      {iconEl}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-900 leading-tight">
-          {notification.title}
-          <span className="font-normal text-slate-400 mx-1">·</span>
-          <span className="font-normal text-slate-500 text-sm">
-            {formatRelativeTime(notification.createdAt)}
-          </span>
-        </p>
-        {source && (
-          <p className="text-xs text-slate-500 mt-1 truncate">
-            {notification.ticket?.displayId
-              ? formatTicketId(notification.ticket)
-              : (notification.ticket?.subject ?? notification.body)}
+    <div className={cardClasses}>
+      <button
+        type="button"
+        onClick={() => onClick(notification)}
+        aria-label={`${notification.title}${!notification.isRead ? ", unread" : ""}`}
+        className="flex min-w-0 flex-1 items-start gap-4 text-left"
+      >
+        {iconEl}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-slate-900 leading-tight">
+            {notification.title}
+            <span className="font-normal text-slate-400 mx-1">·</span>
+            <span className="font-normal text-slate-500 text-sm">
+              {formatRelativeTime(notification.createdAt)}
+            </span>
           </p>
-        )}
-      </div>
+          {source && (
+            <p className="text-xs text-slate-500 mt-1 truncate">
+              {notification.ticket?.displayId
+                ? formatTicketId(notification.ticket)
+                : (notification.ticket?.subject ?? notification.body)}
+            </p>
+          )}
+        </div>
+      </button>
       {!notification.isRead && (
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onMarkAsRead(notification.id);
-          }}
+          onClick={() => onMarkAsRead(notification.id)}
           className="flex-shrink-0 h-7 w-7 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
           aria-label="Mark as read"
         >
@@ -161,10 +170,140 @@ export function NotificationCard({
   );
 }
 
+export function NotificationErrorBanner({ message }: { message: string }) {
+  return (
+    <div
+      className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left"
+      role="alert"
+    >
+      <p className="text-sm font-semibold text-amber-950">
+        Notification update failed
+      </p>
+      <p className="mt-1 text-sm text-amber-900">{message}</p>
+    </div>
+  );
+}
+
+type NotificationDropdownPanelProps = {
+  panelId?: string;
+  panelRef?: RefObject<HTMLDivElement | null>;
+  titleId: string;
+  unreadCount: number;
+  onMarkAllAsRead: () => void;
+  onClose: () => void;
+  children: ReactNode;
+};
+
+export function NotificationDropdownPanel({
+  panelId,
+  panelRef,
+  titleId,
+  unreadCount,
+  onMarkAllAsRead,
+  onClose,
+  children,
+}: NotificationDropdownPanelProps) {
+  return (
+    <div
+      id={panelId}
+      ref={panelRef}
+      className="absolute right-0 top-full mt-2 w-[380px] max-w-[calc(100vw-2rem)] rounded-[20px] border border-slate-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.08)] z-50 overflow-hidden"
+      role="dialog"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+        <h3 id={titleId} className="text-sm font-semibold text-slate-900">
+          {NOTIFICATION_DROPDOWN_TITLE}
+        </h3>
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={onMarkAllAsRead}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Mark all read
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-6 w-6 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600"
+            aria-label="Close notifications"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+type NotificationDrawerPanelProps = {
+  panelId?: string;
+  panelRef?: RefObject<HTMLDivElement | null>;
+  titleId: string;
+  unreadCount: number;
+  onMarkAllAsRead: () => void;
+  onClose: () => void;
+  children: ReactNode;
+};
+
+export function NotificationDrawerPanel({
+  panelId,
+  panelRef,
+  titleId,
+  unreadCount,
+  onMarkAllAsRead,
+  onClose,
+  children,
+}: NotificationDrawerPanelProps) {
+  return (
+    <div
+      id={panelId}
+      ref={panelRef}
+      className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-[0_0_40px_rgb(0,0,0,0.1)] z-[101] flex flex-col animate-in slide-in-from-right duration-300"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 flex-shrink-0">
+        <h3 id={titleId} className="text-base font-semibold text-slate-900">
+          {NOTIFICATION_DRAWER_TITLE}
+        </h3>
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={onMarkAllAsRead}
+              className="text-xs text-slate-500 hover:text-slate-700"
+            >
+              Mark all read
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-8 w-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700"
+            aria-label="Close notifications"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function NotificationCenter({
   notifications,
   unreadCount,
   loading,
+  actionError,
   hasMore,
   onLoadMore,
   onMarkAsRead,
@@ -178,10 +317,44 @@ export function NotificationCenter({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const dropdownId = useId();
+  const dropdownTitleId = useId();
+  const drawerId = useId();
+  const drawerTitleId = useId();
 
   const displayList = unreadOnly
     ? notifications.filter((n) => !n.isRead)
     : notifications;
+
+  const restoreBellFocus = useCallback(() => {
+    window.setTimeout(() => buttonRef.current?.focus(), 0);
+  }, []);
+
+  const closeDropdown = useCallback(
+    ({ restoreFocus = true }: { restoreFocus?: boolean } = {}) => {
+      setIsOpen(false);
+      if (restoreFocus) {
+        restoreBellFocus();
+      }
+    },
+    [restoreBellFocus],
+  );
+
+  const closeDrawer = useCallback(
+    ({ restoreFocus = true }: { restoreFocus?: boolean } = {}) => {
+      setDrawerOpen(false);
+      if (restoreFocus) {
+        restoreBellFocus();
+      }
+    },
+    [restoreBellFocus],
+  );
+
+  useModalFocusTrap({
+    open: drawerOpen,
+    containerRef: drawerRef,
+    onClose: () => closeDrawer(),
+  });
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -192,7 +365,7 @@ export function NotificationCenter({
         buttonRef.current &&
         !buttonRef.current.contains(event.target as Node)
       ) {
-        setIsOpen(false);
+        closeDropdown({ restoreFocus: false });
       }
     }
 
@@ -201,20 +374,21 @@ export function NotificationCenter({
       return () =>
         document.removeEventListener("mousedown", handleClickOutside);
     }
-  }, [isOpen]);
+  }, [closeDropdown, isOpen]);
 
-  // Close on escape (dropdown or drawer)
+  // Close dropdown on escape.
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        if (drawerOpen) setDrawerOpen(false);
-        else if (isOpen) setIsOpen(false);
+      if (event.key === "Escape" && isOpen) {
+        closeDropdown();
       }
     }
 
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, drawerOpen]);
+    if (isOpen) {
+      document.addEventListener("keydown", handleEscape);
+      return () => document.removeEventListener("keydown", handleEscape);
+    }
+  }, [closeDropdown, isOpen]);
 
   // Refresh when opening
   useEffect(() => {
@@ -223,22 +397,30 @@ export function NotificationCenter({
     }
   }, [isOpen, onRefresh]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => dropdownRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
+
   function handleNotificationClick(
     notification: NotificationRecord,
-    closeDrawer = false,
+    closeDrawerOnNavigate = false,
   ) {
     if (!notification.isRead) {
       onMarkAsRead(notification.id);
     }
     if (notification.ticket) {
-      setIsOpen(false);
-      if (closeDrawer) setDrawerOpen(false);
+      closeDropdown({ restoreFocus: false });
+      if (closeDrawerOnNavigate) {
+        closeDrawer({ restoreFocus: false });
+      }
       navigate(`/tickets/${notification.ticket.id}`);
     }
   }
 
   function openDrawer() {
-    setIsOpen(false);
+    closeDropdown({ restoreFocus: false });
     setDrawerOpen(true);
     onRefresh();
   }
@@ -249,9 +431,18 @@ export function NotificationCenter({
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => {
+          if (isOpen) {
+            closeDropdown();
+            return;
+          }
+          setIsOpen(true);
+        }}
         className="relative h-10 w-10 rounded-full border border-slate-300 bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 hover:border-slate-400 transition"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-controls={isOpen ? dropdownId : undefined}
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -267,40 +458,18 @@ export function NotificationCenter({
 
       {/* Dropdown */}
       {isOpen && (
-        <div
-          ref={dropdownRef}
-          className="absolute right-0 top-full mt-2 w-[380px] max-w-[calc(100vw-2rem)] rounded-[20px] border border-slate-200 bg-white shadow-[0_8px_30px_rgb(0,0,0,0.08)] z-50 overflow-hidden"
-          role="menu"
+        <NotificationDropdownPanel
+          panelId={dropdownId}
+          panelRef={dropdownRef}
+          titleId={dropdownTitleId}
+          unreadCount={unreadCount}
+          onMarkAllAsRead={onMarkAllAsRead}
+          onClose={() => closeDropdown()}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-900">
-              Notifications
-            </h3>
-            <div className="flex items-center gap-2">
-              {unreadCount > 0 && (
-                <button
-                  type="button"
-                  onClick={onMarkAllAsRead}
-                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition"
-                >
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  Mark all read
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="h-6 w-6 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
           {/* Notification List */}
           <div className="max-h-[400px] overflow-y-auto p-3">
+            {actionError && <NotificationErrorBanner message={actionError} />}
+
             {loading && displayList.length === 0 && (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -343,14 +512,24 @@ export function NotificationCenter({
               </div>
             )}
 
-            <AnimatedList className="flex flex-col gap-3" staggerDelayMs={80}>
+            <AnimatedList
+              className="flex flex-col gap-3"
+              role="list"
+              aria-label={
+                unreadOnly
+                  ? UNREAD_NOTIFICATIONS_LABEL
+                  : ALL_NOTIFICATIONS_LIST_LABEL
+              }
+              staggerDelayMs={80}
+            >
               {displayList.map((notification) => (
-                <NotificationCard
-                  key={notification.id}
-                  notification={notification}
-                  onMarkAsRead={onMarkAsRead}
-                  onClick={handleNotificationClick}
-                />
+                <div key={notification.id} role="listitem">
+                  <NotificationCard
+                    notification={notification}
+                    onMarkAsRead={onMarkAsRead}
+                    onClick={handleNotificationClick}
+                  />
+                </div>
               ))}
             </AnimatedList>
 
@@ -381,7 +560,7 @@ export function NotificationCenter({
                   </div>
                 )}
           </div>
-        </div>
+        </NotificationDropdownPanel>
       )}
 
       {/* Slide-over drawer: all notifications + Load more (no route) */}
@@ -390,40 +569,20 @@ export function NotificationCenter({
           <div
             role="presentation"
             className="fixed inset-0 bg-black/20 z-[100] transition-opacity"
-            onClick={() => setDrawerOpen(false)}
+            onClick={() => closeDrawer()}
             aria-hidden
           />
-          <div
-            ref={drawerRef}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-[0_0_40px_rgb(0,0,0,0.1)] z-[101] flex flex-col animate-in slide-in-from-right duration-300"
-            role="dialog"
-            aria-label="All notifications"
+          <NotificationDrawerPanel
+            panelId={drawerId}
+            panelRef={drawerRef}
+            titleId={drawerTitleId}
+            unreadCount={unreadCount}
+            onMarkAllAsRead={onMarkAllAsRead}
+            onClose={() => closeDrawer()}
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 flex-shrink-0">
-              <h3 className="text-base font-semibold text-slate-900">
-                All notifications
-              </h3>
-              <div className="flex items-center gap-2">
-                {unreadCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={onMarkAllAsRead}
-                    className="text-xs text-slate-500 hover:text-slate-700"
-                  >
-                    Mark all read
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  className="h-8 w-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-700"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+              {actionError && <NotificationErrorBanner message={actionError} />}
+
               {loading && notifications.length === 0 && (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
@@ -451,14 +610,21 @@ export function NotificationCenter({
               )}
               {notifications.length > 0 && (
                 <>
-                  {notifications.map((notification) => (
-                    <NotificationCard
-                      key={notification.id}
-                      notification={notification}
-                      onMarkAsRead={onMarkAsRead}
-                      onClick={(n) => handleNotificationClick(n, true)}
-                    />
-                  ))}
+                  <div
+                    role="list"
+                    aria-label={ALL_NOTIFICATIONS_LIST_LABEL}
+                    className="space-y-3"
+                  >
+                    {notifications.map((notification) => (
+                      <div key={notification.id} role="listitem">
+                        <NotificationCard
+                          notification={notification}
+                          onMarkAsRead={onMarkAsRead}
+                          onClick={(n) => handleNotificationClick(n, true)}
+                        />
+                      </div>
+                    ))}
+                  </div>
                   {hasMore && (
                     <div className="pt-2">
                       <button
@@ -474,7 +640,7 @@ export function NotificationCenter({
                 </>
               )}
             </div>
-          </div>
+          </NotificationDrawerPanel>
         </>
       )}
     </div>

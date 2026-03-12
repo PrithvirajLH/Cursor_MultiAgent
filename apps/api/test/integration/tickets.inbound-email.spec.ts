@@ -340,6 +340,91 @@ describe('Inbound email ingestion', () => {
     expect(statusHtml).toContain('View Ticket');
   });
 
+  it('threads consecutive outbound status notifications for portal-created tickets', async () => {
+    const created = await createTicket(
+      server,
+      `Outbound status thread ${Date.now()}`,
+    );
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/transition`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ status: 'TRIAGED' })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/assign`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ assigneeId: fixtureUserIds.agent })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/transition`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ status: 'RESOLVED' })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/transition`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ status: 'CLOSED' })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/transition`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ status: 'REOPENED' })
+      .expect(201);
+
+    await request(server)
+      .post(`/api/tickets/${created.id}/transition`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ status: 'RESOLVED' })
+      .expect(201);
+
+    const requesterOutbox = await prisma.notificationOutbox.findMany({
+      where: {
+        ticketId: created.id,
+        toEmail: fixtureEmails.requester,
+        eventType: 'TICKET_STATUS_CHANGED',
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const closedOutbox = requesterOutbox.find((entry) =>
+      entry.body.includes('Status changed from RESOLVED to CLOSED.'),
+    );
+    const reopenedOutbox = requesterOutbox.find((entry) =>
+      entry.body.includes('Status changed from CLOSED to REOPENED.'),
+    );
+    const resolvedOutbox = requesterOutbox.find((entry) =>
+      entry.body.includes('Status changed from REOPENED to RESOLVED.'),
+    );
+
+    expect(closedOutbox).toBeTruthy();
+    expect(reopenedOutbox).toBeTruthy();
+    expect(resolvedOutbox).toBeTruthy();
+
+    const closedMetadata = getOutboxEmailMetadata(closedOutbox?.payload);
+    const reopenedMetadata = getOutboxEmailMetadata(reopenedOutbox?.payload);
+    const resolvedMetadata = getOutboxEmailMetadata(resolvedOutbox?.payload);
+    const closedMessageId = buildOutboundMessageId(
+      closedOutbox!.id,
+      closedMetadata.replyTo,
+    );
+    const reopenedMessageId = buildOutboundMessageId(
+      reopenedOutbox!.id,
+      reopenedMetadata.replyTo,
+    );
+
+    expect(reopenedMetadata.replyTo).toMatch(expectedReplyToPattern());
+    expect(resolvedMetadata.replyTo).toMatch(expectedReplyToPattern());
+    expect(reopenedMetadata.inReplyTo).toBe(closedMessageId);
+    expect(reopenedMetadata.references).toContain(closedMessageId);
+    expect(resolvedMetadata.inReplyTo).toBe(reopenedMessageId);
+    expect(resolvedMetadata.references).toContain(reopenedMessageId);
+  });
+
   it('ingests inbound attachments for a newly created EMAIL ticket', async () => {
     const subject = `Inbound attachment create ${Date.now()}`;
     const attachmentBody = `log line ${Date.now()}`;

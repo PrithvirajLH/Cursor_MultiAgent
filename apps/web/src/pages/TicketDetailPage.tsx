@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Clock3, Copy } from "lucide-react";
@@ -51,6 +52,14 @@ import { handleApiError } from "../utils/handleApiError";
 import type { Role } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
 import { formatStatus, formatTicketId } from "../utils/format";
+import { TICKET_DETAIL_LAYOUT_CLASSNAMES } from "./ticket-detail-layout";
+import {
+  getNextTicketDetailTab,
+  getTicketDetailTabAccessibilityState,
+  getTicketDetailTabIds,
+  getTicketDetailTabPanelClassName,
+  type TicketDetailTabId,
+} from "./ticket-detail-tabs";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   REALTIME_TICKET_TYPING_EVENT,
@@ -101,17 +110,18 @@ export function TicketDetailPage({
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [messagesHasMore, setMessagesHasMore] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
   const [events, setEvents] = useState<TicketEvent[]>([]);
   const [eventCursor, setEventCursor] = useState<string | null>(null);
   const [eventsHasMore, setEventsHasMore] = useState(false);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<
-    "conversation" | "timeline" | "attachments"
-  >("conversation");
+  const [activeTab, setActiveTab] =
+    useState<TicketDetailTabId>("conversation");
   const [messageType, setMessageType] = useState<"PUBLIC" | "INTERNAL">(
     "PUBLIC",
   );
@@ -451,16 +461,9 @@ export function TicketDetailPage({
   /* ——— Data loaders ——— */
 
   const loadMessagesPage = useCallback(
-    async (id: string, reset = false, clearOnReset = true) => {
+    async (id: string, reset = false) => {
       const requestSeq = ++messageRequestSeqRef.current;
-      if (reset) {
-        if (clearOnReset) {
-          setMessages([]);
-          seenRealtimeMessageIdsRef.current.clear();
-        }
-        setMessageCursor(null);
-        setMessagesHasMore(false);
-      }
+      setMessagesError(null);
       setMessagesLoading(true);
       try {
         const response = await fetchTicketMessages(id, {
@@ -468,6 +471,9 @@ export function TicketDetailPage({
           take: 50,
         });
         if (messageRequestSeqRef.current !== requestSeq) return;
+        if (reset) {
+          seenRealtimeMessageIdsRef.current.clear();
+        }
         setMessages((prev) =>
           reset ? response.data : [...response.data, ...prev],
         );
@@ -476,16 +482,10 @@ export function TicketDetailPage({
         }
         setMessageCursor(response.nextCursor ?? null);
         setMessagesHasMore(Boolean(response.nextCursor));
-      } catch {
-        if (
-          messageRequestSeqRef.current === requestSeq &&
-          reset &&
-          clearOnReset
-        ) {
-          setMessages([]);
-          setMessagesHasMore(false);
-          seenRealtimeMessageIdsRef.current.clear();
-        }
+        setMessagesError(null);
+      } catch (error) {
+        if (messageRequestSeqRef.current !== requestSeq) return;
+        setMessagesError(handleApiError(error));
       } finally {
         if (messageRequestSeqRef.current === requestSeq)
           setMessagesLoading(false);
@@ -495,16 +495,9 @@ export function TicketDetailPage({
   );
 
   const loadEventsPage = useCallback(
-    async (id: string, reset = false, clearOnReset = true) => {
+    async (id: string, reset = false) => {
       const requestSeq = ++eventRequestSeqRef.current;
-      if (reset) {
-        if (clearOnReset) {
-          setEvents([]);
-          seenRealtimeEventIdsRef.current.clear();
-        }
-        setEventCursor(null);
-        setEventsHasMore(false);
-      }
+      setEventsError(null);
       setEventsLoading(true);
       try {
         const response = await fetchTicketEvents(id, {
@@ -512,6 +505,9 @@ export function TicketDetailPage({
           take: 50,
         });
         if (eventRequestSeqRef.current !== requestSeq) return;
+        if (reset) {
+          seenRealtimeEventIdsRef.current.clear();
+        }
         setEvents((prev) => {
           const merged = reset ? response.data : [...response.data, ...prev];
           return merged;
@@ -521,16 +517,10 @@ export function TicketDetailPage({
         }
         setEventCursor(response.nextCursor ?? null);
         setEventsHasMore(Boolean(response.nextCursor));
-      } catch {
-        if (
-          eventRequestSeqRef.current === requestSeq &&
-          reset &&
-          clearOnReset
-        ) {
-          setEvents([]);
-          setEventsHasMore(false);
-          seenRealtimeEventIdsRef.current.clear();
-        }
+        setEventsError(null);
+      } catch (error) {
+        if (eventRequestSeqRef.current !== requestSeq) return;
+        setEventsError(handleApiError(error));
       } finally {
         if (eventRequestSeqRef.current === requestSeq) setEventsLoading(false);
       }
@@ -556,6 +546,8 @@ export function TicketDetailPage({
         setEventCursor(null);
         setMessagesHasMore(false);
         setEventsHasMore(false);
+        setMessagesError(null);
+        setEventsError(null);
         seenRealtimeMessageIdsRef.current.clear();
         seenRealtimeEventIdsRef.current.clear();
         lastTicketUpdateAtMsRef.current = 0;
@@ -680,9 +672,9 @@ export function TicketDetailPage({
         }
 
         // Fallback for message events without inlined payload data.
-        void loadMessagesPage(ticketId, true, false);
+        void loadMessagesPage(ticketId, true);
         if (activeTab === "timeline") {
-          void loadEventsPage(ticketId, true, false);
+          void loadEventsPage(ticketId, true);
         }
         return;
       }
@@ -1465,6 +1457,31 @@ export function TicketDetailPage({
   const conversationCount = messages.length;
   const timelineCount = events.length;
   const attachmentsCount = ticket?.attachments.length ?? 0;
+  const ticketTabRefs = {
+    conversation: conversationTabRef,
+    attachments: attachmentsTabRef,
+    timeline: timelineTabRef,
+  } as const;
+
+  const focusTicketTab = useCallback(
+    (tab: TicketDetailTabId) => {
+      setActiveTab(tab);
+      ticketTabRefs[tab].current?.focus();
+    },
+    [ticketTabRefs],
+  );
+
+  const handleTabKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: TicketDetailTabId) => {
+      const nextTab = getNextTicketDetailTab(currentTab, event.key);
+      if (!nextTab) {
+        return;
+      }
+      event.preventDefault();
+      focusTicketTab(nextTab);
+    },
+    [focusTicketTab],
+  );
 
   useEffect(() => {
     const currentContainer = tabsContainerRef.current;
@@ -1588,7 +1605,7 @@ export function TicketDetailPage({
       </div>
 
       {/* Main content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.contentShell}>
         {ticketError && (
           <p className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600 shadow-lg">
             {ticketError}
@@ -1600,9 +1617,9 @@ export function TicketDetailPage({
           </div>
         )}
 
-        <div className="flex w-full max-w-[1600px] mx-auto min-h-0">
+        <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.contentContainer}>
           {/* Left: conversation / timeline panel */}
-          <div className="flex flex-1 flex-col border-r border-slate-200 bg-white min-w-0 min-h-0">
+          <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.mainPanel}>
             <div className="flex flex-1 flex-col min-h-0">
               {/* Integrated Subject Header */}
               {ticket && (
@@ -1648,6 +1665,7 @@ export function TicketDetailPage({
                   className="relative inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100/70 p-1 text-xs shadow-sm"
                   role="tablist"
                   aria-label="Ticket views"
+                  aria-orientation="horizontal"
                 >
                   {tabIndicator ? (
                     <div
@@ -1662,10 +1680,20 @@ export function TicketDetailPage({
                   <button
                     ref={conversationTabRef}
                     type="button"
+                    id={getTicketDetailTabIds("conversation").tabId}
                     role="tab"
                     aria-selected={activeTab === "conversation"}
-                    aria-controls="panel-conversation"
+                    aria-controls={getTicketDetailTabIds("conversation").panelId}
+                    tabIndex={
+                      getTicketDetailTabAccessibilityState(
+                        "conversation",
+                        activeTab,
+                      ).tabIndex
+                    }
                     onClick={() => setActiveTab("conversation")}
+                    onKeyDown={(event) =>
+                      handleTabKeyDown(event, "conversation")
+                    }
                     className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
                       activeTab === "conversation"
                         ? "text-slate-50"
@@ -1687,10 +1715,20 @@ export function TicketDetailPage({
                   <button
                     ref={attachmentsTabRef}
                     type="button"
+                    id={getTicketDetailTabIds("attachments").tabId}
                     role="tab"
                     aria-selected={activeTab === "attachments"}
-                    aria-controls="panel-attachments"
+                    aria-controls={getTicketDetailTabIds("attachments").panelId}
+                    tabIndex={
+                      getTicketDetailTabAccessibilityState(
+                        "attachments",
+                        activeTab,
+                      ).tabIndex
+                    }
                     onClick={() => setActiveTab("attachments")}
+                    onKeyDown={(event) =>
+                      handleTabKeyDown(event, "attachments")
+                    }
                     className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
                       activeTab === "attachments"
                         ? "text-slate-50"
@@ -1712,10 +1750,18 @@ export function TicketDetailPage({
                   <button
                     ref={timelineTabRef}
                     type="button"
+                    id={getTicketDetailTabIds("timeline").tabId}
                     role="tab"
                     aria-selected={activeTab === "timeline"}
-                    aria-controls="panel-timeline"
+                    aria-controls={getTicketDetailTabIds("timeline").panelId}
+                    tabIndex={
+                      getTicketDetailTabAccessibilityState(
+                        "timeline",
+                        activeTab,
+                      ).tabIndex
+                    }
                     onClick={() => setActiveTab("timeline")}
+                    onKeyDown={(event) => handleTabKeyDown(event, "timeline")}
                     className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
                       activeTab === "timeline"
                         ? "text-slate-50"
@@ -1751,20 +1797,32 @@ export function TicketDetailPage({
                 {ticket ? (
                   <>
                     <div
-                      id="panel-conversation"
+                      id={getTicketDetailTabIds("conversation").panelId}
                       role="tabpanel"
-                      aria-hidden={activeTab !== "conversation"}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
-                        activeTab === "conversation"
-                          ? "opacity-100 translate-y-0 pointer-events-auto"
-                          : "opacity-0 translate-y-2 pointer-events-none"
-                      }`}
+                      aria-labelledby={getTicketDetailTabIds("conversation").tabId}
+                      aria-hidden={
+                        getTicketDetailTabAccessibilityState(
+                          "conversation",
+                          activeTab,
+                        ).hidden
+                      }
+                      hidden={
+                        getTicketDetailTabAccessibilityState(
+                          "conversation",
+                          activeTab,
+                        ).hidden
+                      }
+                      className={getTicketDetailTabPanelClassName(
+                        "conversation",
+                        activeTab,
+                      )}
                     >
                       <TicketConversation
                         ticket={ticket}
                         messages={messages}
                         messagesHasMore={messagesHasMore}
                         messagesLoading={messagesLoading}
+                        messagesError={messagesError}
                         currentEmail={currentEmail}
                         messageType={messageType}
                         setMessageType={setMessageType}
@@ -1776,6 +1834,9 @@ export function TicketDetailPage({
                         onReply={() => void handleReply()}
                         onLoadMore={() =>
                           ticketId && void loadMessagesPage(ticketId)
+                        }
+                        onRetryLoad={() =>
+                          ticketId && void loadMessagesPage(ticketId, true)
                         }
                         onAttachmentUpload={handleAttachmentUpload}
                         onAttachmentDownload={(id, name) =>
@@ -1794,14 +1855,25 @@ export function TicketDetailPage({
                     </div>
 
                     <div
-                      id="panel-attachments"
+                      id={getTicketDetailTabIds("attachments").panelId}
                       role="tabpanel"
-                      aria-hidden={activeTab !== "attachments"}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
-                        activeTab === "attachments"
-                          ? "opacity-100 translate-y-0 pointer-events-auto"
-                          : "opacity-0 translate-y-2 pointer-events-none"
-                      }`}
+                      aria-labelledby={getTicketDetailTabIds("attachments").tabId}
+                      aria-hidden={
+                        getTicketDetailTabAccessibilityState(
+                          "attachments",
+                          activeTab,
+                        ).hidden
+                      }
+                      hidden={
+                        getTicketDetailTabAccessibilityState(
+                          "attachments",
+                          activeTab,
+                        ).hidden
+                      }
+                      className={getTicketDetailTabPanelClassName(
+                        "attachments",
+                        activeTab,
+                      )}
                     >
                       <TicketAttachments
                         ticket={ticket}
@@ -1813,21 +1885,36 @@ export function TicketDetailPage({
                     </div>
 
                     <div
-                      id="panel-timeline"
+                      id={getTicketDetailTabIds("timeline").panelId}
                       role="tabpanel"
-                      aria-hidden={activeTab !== "timeline"}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
-                        activeTab === "timeline"
-                          ? "opacity-100 translate-y-0 pointer-events-auto"
-                          : "opacity-0 translate-y-2 pointer-events-none"
-                      }`}
+                      aria-labelledby={getTicketDetailTabIds("timeline").tabId}
+                      aria-hidden={
+                        getTicketDetailTabAccessibilityState(
+                          "timeline",
+                          activeTab,
+                        ).hidden
+                      }
+                      hidden={
+                        getTicketDetailTabAccessibilityState(
+                          "timeline",
+                          activeTab,
+                        ).hidden
+                      }
+                      className={getTicketDetailTabPanelClassName(
+                        "timeline",
+                        activeTab,
+                      )}
                     >
                       <TicketTimeline
                         events={events}
                         eventsHasMore={eventsHasMore}
                         eventsLoading={eventsLoading}
+                        eventsError={eventsError}
                         onLoadMore={() =>
                           ticketId && void loadEventsPage(ticketId)
+                        }
+                        onRetryLoad={() =>
+                          ticketId && void loadEventsPage(ticketId, true)
                         }
                       />
                     </div>
@@ -1839,7 +1926,7 @@ export function TicketDetailPage({
 
           {/* Right: sidebar */}
           {ticket && (
-            <div className="w-80 shrink-0 overflow-y-auto bg-slate-50">
+            <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.sidebar}>
               <TicketSidebar
                 ticket={ticket}
                 canManage={canManage}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 
 type SignInLandingPageProps = {
   onSignIn: () => void;
@@ -132,15 +132,24 @@ export function SignInLandingPage({ onSignIn, error }: SignInLandingPageProps) {
             </div>
 
             {error && (
-              <div className="p-3 mt-6 text-sm border rounded-lg bg-red-50 border-red-100/50 text-red-700">
-                <p
-                  role="alert"
-                  aria-live="assertive"
-                  className="flex items-center gap-2"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                  {error}
-                </p>
+              <div
+                className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-left shadow-sm"
+                role="alert"
+                aria-live="assertive"
+              >
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-red-950">
+                      Sign-in failed
+                    </p>
+                    <p className="mt-1 text-sm text-red-800">{error}</p>
+                    <p className="mt-2 text-xs text-red-700">
+                      Try signing in again. If the problem continues, contact
+                      your administrator.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 

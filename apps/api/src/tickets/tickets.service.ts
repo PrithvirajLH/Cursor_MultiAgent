@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   forwardRef,
   Inject,
@@ -16,12 +15,10 @@ import {
   MessageType,
   Prisma,
   TeamAssignmentStrategy,
-  TicketChannel,
   TicketPriority,
   TicketStatus,
   UserRole,
 } from '@prisma/client';
-import { randomUUID } from 'crypto';
 import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
@@ -48,6 +45,7 @@ import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
+import { UpdateAttachmentScanDto } from './dto/update-attachment-scan.dto';
 
 export type StatusTransitionTicketSnapshot = {
   id: string;
@@ -100,12 +98,18 @@ export class TicketsService {
     @Inject(forwardRef(() => InboundEmailService))
     private readonly inboundEmailService: InboundEmailService,
   ) {
-    const customTransitionsStr = this.config.get<string>('TICKET_STATUS_TRANSITIONS');
+    const customTransitionsStr = this.config.get<string>(
+      'TICKET_STATUS_TRANSITIONS',
+    );
     if (customTransitionsStr) {
       try {
-        this.STATUS_TRANSITIONS = JSON.parse(customTransitionsStr);
+        this.STATUS_TRANSITIONS =
+          this.parseStatusTransitions(customTransitionsStr);
       } catch (err) {
-        this.logger.error('Failed to parse TICKET_STATUS_TRANSITIONS from env. Using defaults.', err);
+        this.logger.error(
+          'Failed to parse TICKET_STATUS_TRANSITIONS from env. Using defaults.',
+          err,
+        );
         this.STATUS_TRANSITIONS = this.DEFAULT_STATUS_TRANSITIONS;
       }
     } else {
@@ -118,7 +122,10 @@ export class TicketsService {
     TicketStatus.WAITING_ON_VENDOR,
   ];
   private readonly STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]>;
-  private readonly DEFAULT_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
+  private readonly DEFAULT_STATUS_TRANSITIONS: Record<
+    TicketStatus,
+    TicketStatus[]
+  > = {
     [TicketStatus.NEW]: [TicketStatus.TRIAGED, TicketStatus.ASSIGNED],
     [TicketStatus.TRIAGED]: [TicketStatus.ASSIGNED],
     [TicketStatus.ASSIGNED]: [
@@ -845,13 +852,13 @@ export class TicketsService {
       ticketId,
       ...(user.role === UserRole.EMPLOYEE
         ? {
-          NOT: {
-            AND: [
-              { type: 'MESSAGE_ADDED' },
-              { payload: { path: ['type'], equals: MessageType.INTERNAL } },
-            ],
-          },
-        }
+            NOT: {
+              AND: [
+                { type: 'MESSAGE_ADDED' },
+                { payload: { path: ['type'], equals: MessageType.INTERNAL } },
+              ],
+            },
+          }
         : {}),
     };
     const events = await this.prisma.ticketEvent.findMany({
@@ -895,11 +902,10 @@ export class TicketsService {
           );
         }
         if (
-          !this.canAssignTicket(
-            user,
-            { assignedTeamId: routedTeamId, assigneeId: null },
-            payload.assigneeId,
-          )
+          !this.canAssignTicket(user, {
+            assignedTeamId: routedTeamId,
+            assigneeId: null,
+          })
         ) {
           throw new ForbiddenException(
             'Not allowed to assign this ticket on creation',
@@ -968,19 +974,19 @@ export class TicketsService {
       );
       const firstResponseDueAt = sla
         ? await this.slaCalc.addSlaHours(
-          ticket.createdAt,
-          sla.firstResponseHours,
-          sla.businessHoursOnly,
-          tx,
-        )
+            ticket.createdAt,
+            sla.firstResponseHours,
+            sla.businessHoursOnly,
+            tx,
+          )
         : null;
       const resolutionDueAt = sla
         ? await this.slaCalc.addSlaHours(
-          ticket.createdAt,
-          sla.resolutionHours,
-          sla.businessHoursOnly,
-          tx,
-        )
+            ticket.createdAt,
+            sla.resolutionHours,
+            sla.businessHoursOnly,
+            tx,
+          )
         : null;
 
       const updated = await tx.ticket.update({
@@ -1218,27 +1224,27 @@ export class TicketsService {
           const canView =
             teamIds.length > 0
               ? teamIds.some((teamId) =>
-                this.canViewTicket(
+                  this.canViewTicket(
+                    {
+                      id: u.id,
+                      email: u.email,
+                      displayName: u.displayName,
+                      role: u.role,
+                      teamId,
+                    },
+                    ticketForView,
+                  ),
+                )
+              : this.canViewTicket(
                   {
                     id: u.id,
                     email: u.email,
                     displayName: u.displayName,
                     role: u.role,
-                    teamId,
+                    teamId: null,
                   },
                   ticketForView,
-                ),
-              )
-              : this.canViewTicket(
-                {
-                  id: u.id,
-                  email: u.email,
-                  displayName: u.displayName,
-                  role: u.role,
-                  teamId: null,
-                },
-                ticketForView,
-              );
+                );
           if (canView) {
             allowedMentionedIds.push(u.id);
           }
@@ -1333,7 +1339,7 @@ export class TicketsService {
       throw new NotFoundException('Ticket not found');
     }
 
-    if (!this.canAssignTicket(user, ticket, payload.assigneeId)) {
+    if (!this.canAssignTicket(user, ticket)) {
       throw new ForbiddenException('Not allowed to assign this ticket');
     }
 
@@ -1605,19 +1611,19 @@ export class TicketsService {
 
     const firstStart = ticket.firstResponseDueAt
       ? await this.slaCalc.subtractSlaHours(
-        ticket.firstResponseDueAt,
-        oldSla.firstResponseHours,
-        oldSla.businessHoursOnly,
-        tx,
-      )
+          ticket.firstResponseDueAt,
+          oldSla.firstResponseHours,
+          oldSla.businessHoursOnly,
+          tx,
+        )
       : ticket.createdAt;
     const resolutionStart = ticket.dueAt
       ? await this.slaCalc.subtractSlaHours(
-        ticket.dueAt,
-        oldSla.resolutionHours,
-        oldSla.businessHoursOnly,
-        tx,
-      )
+          ticket.dueAt,
+          oldSla.resolutionHours,
+          oldSla.businessHoursOnly,
+          tx,
+        )
       : ticket.createdAt;
 
     const firstResponseDueAt = await this.slaCalc.addSlaHours(
@@ -2001,17 +2007,17 @@ export class TicketsService {
       // Derive SLA start from current cycle so reopened/paused tickets and due dates are preserved
       const firstStart = ticket.firstResponseDueAt
         ? await this.slaCalc.subtractSlaHours(
-          ticket.firstResponseDueAt,
-          oldSla.firstResponseHours,
-          oldSla.businessHoursOnly,
-        )
+            ticket.firstResponseDueAt,
+            oldSla.firstResponseHours,
+            oldSla.businessHoursOnly,
+          )
         : ticket.createdAt;
       const resolutionStart = ticket.dueAt
         ? await this.slaCalc.subtractSlaHours(
-          ticket.dueAt,
-          oldSla.resolutionHours,
-          oldSla.businessHoursOnly,
-        )
+            ticket.dueAt,
+            oldSla.resolutionHours,
+            oldSla.businessHoursOnly,
+          )
         : ticket.createdAt;
 
       const firstResponseDueAt = await this.slaCalc.addSlaHours(
@@ -2191,7 +2197,6 @@ export class TicketsService {
   private canAssignTicket(
     user: AuthUser,
     ticket: { assignedTeamId: string | null; assigneeId: string | null },
-    assigneeId?: string,
   ) {
     if (user.role === UserRole.OWNER) {
       return true;
@@ -2254,6 +2259,37 @@ export class TicketsService {
 
   private getAvailableTransitions(status: TicketStatus) {
     return this.STATUS_TRANSITIONS[status] ?? [];
+  }
+
+  private parseStatusTransitions(raw: string) {
+    const parsed: unknown = JSON.parse(raw);
+    if (!this.isStatusTransitionMap(parsed)) {
+      throw new Error('Invalid TICKET_STATUS_TRANSITIONS format');
+    }
+    return parsed;
+  }
+
+  private isStatusTransitionMap(
+    value: unknown,
+  ): value is Record<TicketStatus, TicketStatus[]> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+
+    const candidate = value as Record<string, unknown>;
+    const ticketStatuses = Object.values(TicketStatus);
+
+    return ticketStatuses.every((status) => {
+      const transitions = candidate[status];
+      return (
+        Array.isArray(transitions) &&
+        transitions.every(
+          (transition): transition is TicketStatus =>
+            typeof transition === 'string' &&
+            ticketStatuses.includes(transition as TicketStatus),
+        )
+      );
+    });
   }
 
   private getAvailableTransitionsForTicket(
@@ -2334,26 +2370,26 @@ export class TicketsService {
     const includeAssignee = await this.hasRoutingAssigneeColumn();
     const rules = includeAssignee
       ? await this.prisma.$queryRaw<
-        Array<{
-          teamId: string;
-          assigneeId: string | null;
-          name: string;
-          keywords: string[];
-        }>
-      >`
+          Array<{
+            teamId: string;
+            assigneeId: string | null;
+            name: string;
+            keywords: string[];
+          }>
+        >`
           SELECT "teamId", "assigneeId", "name", "keywords"
           FROM "RoutingRule"
           WHERE "isActive" = true
           ORDER BY "priority" ASC, "name" ASC
         `
       : await this.prisma.$queryRaw<
-        Array<{
-          teamId: string;
-          assigneeId: string | null;
-          name: string;
-          keywords: string[];
-        }>
-      >`
+          Array<{
+            teamId: string;
+            assigneeId: string | null;
+            name: string;
+            keywords: string[];
+          }>
+        >`
           SELECT "teamId", NULL::text AS "assigneeId", "name", "keywords"
           FROM "RoutingRule"
           WHERE "isActive" = true
@@ -2458,7 +2494,7 @@ export class TicketsService {
     if (
       this.routingAssigneeColumnCache &&
       now - this.routingAssigneeColumnCache.checkedAtMs <=
-      this.schemaCheckCacheTtlMs
+        this.schemaCheckCacheTtlMs
     ) {
       return this.routingAssigneeColumnCache.exists;
     }
@@ -2496,7 +2532,7 @@ export class TicketsService {
 
   async updateAttachmentScanStatus(
     attachmentId: string,
-    payload: any,
+    payload: UpdateAttachmentScanDto,
     scannerSecret: string | undefined,
   ) {
     return this.attachmentService.updateAttachmentScanStatus(

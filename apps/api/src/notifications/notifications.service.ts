@@ -4,6 +4,7 @@ import { MessageType, Prisma, TicketStatus, UserRole } from '@prisma/client';
 import type { TicketMessage, User } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildOutboundMessageId } from './email-threading.util';
 import { EmailQueueService } from './email-queue.service';
 import { InAppNotificationsService } from './in-app-notifications.service';
 import {
@@ -378,25 +379,10 @@ export class NotificationsService {
     const deduped = Array.from(
       new Set(addresses.map((address) => address.trim()).filter(Boolean)),
     );
-    const emailContent = this.resolveEmailContent(details);
-
     const tasks = deduped.map((email) =>
-      this.outbox
-        .createEmail({
-          toEmail: email,
-          toUserId: null,
-          ticketId: details.ticketId,
-          subject: details.subject,
-          body: details.body,
-          eventType: details.eventType,
-          payload: details.payload ?? null,
-          emailMetadata: details.emailMetadata ?? null,
-          emailContent,
-        })
-        .then((outbox) => this.emailQueue.enqueue(outbox.id))
-        .catch((error) => {
-          this.logger.error('Failed to queue email', (error as Error).stack);
-        }),
+      this.createAndEnqueueEmail(email, null, details).catch((error) => {
+        this.logger.error('Failed to queue email', (error as Error).stack);
+      }),
     );
 
     await Promise.all(tasks);
@@ -469,21 +455,7 @@ export class NotificationsService {
     if (!user.email) {
       return;
     }
-    const emailContent = this.resolveEmailContent(details);
-
-    const outbox = await this.outbox.createEmail({
-      toEmail: user.email,
-      toUserId: user.id,
-      ticketId: details.ticketId,
-      subject: details.subject,
-      body: details.body,
-      eventType: details.eventType,
-      payload: details.payload ?? null,
-      emailMetadata: details.emailMetadata ?? null,
-      emailContent,
-    });
-
-    await this.emailQueue.enqueue(outbox.id);
+    await this.createAndEnqueueEmail(user.email, user.id, details);
   }
 
   private resolveEmailContent(details: QueuedEmailDetails) {
@@ -494,6 +466,46 @@ export class NotificationsService {
     return {
       html: this.buildDefaultNotificationHtmlBody(details),
     };
+  }
+
+  private async createAndEnqueueEmail(
+    toEmail: string,
+    toUserId: string | null,
+    details: QueuedEmailDetails,
+  ) {
+    const outbox = await this.outbox.createEmail({
+      toEmail,
+      toUserId,
+      ticketId: details.ticketId,
+      subject: details.subject,
+      body: details.body,
+      eventType: details.eventType,
+      payload: details.payload ?? null,
+      emailMetadata: details.emailMetadata ?? null,
+      emailContent: this.resolveEmailContent(details),
+    });
+
+    await this.reserveTicketEmailThread(details, outbox.id);
+    await this.emailQueue.enqueue(outbox.id);
+  }
+
+  private async reserveTicketEmailThread(
+    details: QueuedEmailDetails,
+    outboxId: string,
+  ) {
+    if (!details.ticketId) {
+      return;
+    }
+
+    const replyTo =
+      details.emailMetadata?.replyTo ??
+      this.ticketEmailThreads.getBaseReplyToAddress();
+    const messageId = buildOutboundMessageId(outboxId, replyTo);
+
+    await this.ticketEmailThreads.reserveOutboundEmail({
+      ticketId: details.ticketId,
+      messageId,
+    });
   }
 
   private buildTicketEmailContext(ticket: {

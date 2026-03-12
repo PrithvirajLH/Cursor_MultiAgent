@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { AlertCircle, ChevronDown, ShieldAlert, Users } from "lucide-react";
 import {
   addTeamMember,
@@ -139,6 +140,7 @@ export function TeamPage({
   teamsList: TeamRef[];
   role: Role;
 }) {
+  const location = useLocation();
   const headerCtx = useHeaderContext();
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -161,6 +163,12 @@ export function TeamPage({
   const isAdmin = role === "OWNER" || role === "TEAM_ADMIN";
   const isOwner = role === "OWNER";
   const isReadOnly = role === "LEAD";
+  const requestedTeamId =
+    (
+      location.state as {
+        selectedTeamId?: string;
+      } | null
+    )?.selectedTeamId ?? null;
 
   useEffect(() => {
     function closeDropdowns(event: MouseEvent) {
@@ -193,6 +201,19 @@ export function TeamPage({
       setSelectedTeamId(teamsList[0].id);
     }
   }, [role, teamsList]);
+
+  useEffect(() => {
+    if (!requestedTeamId) {
+      return;
+    }
+    const hasRequestedTeam = teamsList.some((team) => team.id === requestedTeamId);
+    if (!hasRequestedTeam) {
+      return;
+    }
+    setSelectedTeamId((current) =>
+      current === requestedTeamId ? current : requestedTeamId,
+    );
+  }, [requestedTeamId, teamsList]);
 
   useEffect(() => {
     if (!selectedTeamId) {

@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { OutboxStatus } from '@prisma/client';
 import { EmailService } from './email.service';
 import { OutboxService } from './outbox.service';
 import { buildOutboundMessageId } from './email-threading.util';
@@ -45,16 +44,10 @@ export class EmailProcessorService {
   ) {}
 
   async process(outboxId: string) {
-    const record = await this.outbox.findById(outboxId);
+    const record = await this.outbox.claimPending(outboxId);
     if (!record) {
       return;
     }
-
-    if (record.status === OutboxStatus.SENT) {
-      return;
-    }
-
-    await this.outbox.markProcessing(outboxId);
 
     if (!this.email.isConfigured()) {
       await this.outbox.markFailed(outboxId, 'SMTP not configured');

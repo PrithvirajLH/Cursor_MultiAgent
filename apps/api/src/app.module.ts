@@ -61,11 +61,11 @@ import { parsePositiveInt } from './common/config.utils';
             transport: isProd
               ? undefined
               : {
-                target: 'pino-pretty',
-                options: {
-                  singleLine: true,
+                  target: 'pino-pretty',
+                  options: {
+                    singleLine: true,
+                  },
                 },
-              },
           },
         };
       },
@@ -111,4 +111,4 @@ import { parsePositiveInt } from './common/config.utils';
     },
   ],
 })
-export class AppModule { }
+export class AppModule {}

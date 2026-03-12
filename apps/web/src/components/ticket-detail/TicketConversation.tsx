@@ -61,6 +61,7 @@ export type TicketConversationProps = {
   >;
   messagesHasMore: boolean;
   messagesLoading: boolean;
+  messagesError: string | null;
   currentEmail: string;
   messageType: "PUBLIC" | "INTERNAL";
   setMessageType: (type: "PUBLIC" | "INTERNAL") => void;
@@ -71,6 +72,7 @@ export type TicketConversationProps = {
   canUpload: boolean;
   onReply: () => void;
   onLoadMore: () => void;
+  onRetryLoad: () => void;
   onAttachmentUpload: (event: ChangeEvent<HTMLInputElement>) => void;
   onAttachmentDownload: (id: string, fileName: string) => void;
   onAttachmentView: (id: string) => void;
@@ -93,6 +95,7 @@ export const TicketConversation = memo(function TicketConversation({
   messages,
   messagesHasMore,
   messagesLoading,
+  messagesError,
   currentEmail,
   messageType,
   setMessageType,
@@ -103,6 +106,7 @@ export const TicketConversation = memo(function TicketConversation({
   canUpload,
   onReply,
   onLoadMore,
+  onRetryLoad,
   onAttachmentUpload,
   onAttachmentDownload,
   onAttachmentView,
@@ -176,7 +180,25 @@ export const TicketConversation = memo(function TicketConversation({
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-slate-100/80 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-8 bg-gradient-to-t from-slate-200/80 to-transparent" />
-        {messages.length === 0 && !messagesLoading ? (
+        {messagesError ? (
+          <div
+            className="relative mx-auto mb-4 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm"
+            role="alert"
+          >
+            <p className="text-sm font-semibold text-amber-950">
+              Conversation history unavailable
+            </p>
+            <p className="mt-1 text-sm text-amber-900">{messagesError}</p>
+            <button
+              type="button"
+              onClick={onRetryLoad}
+              className="mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
+            >
+              Retry loading messages
+            </button>
+          </div>
+        ) : null}
+        {messages.length === 0 && !messagesLoading && !messagesError ? (
           <div className="relative mx-auto max-w-xl rounded-xl border border-dashed border-slate-300 bg-white/90 px-4 py-5 text-left text-sm text-slate-600 shadow-sm">
             <p className="font-semibold text-slate-800">
               Start the conversation

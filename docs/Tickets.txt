@@ -19,128 +19,128 @@ Local validation: `npm run build -w apps/api`, `npm run build -w apps/web`, `npm
 **Issue:** The receipt is reserved before ticket/message side effects, but any later failure deletes the receipt, even after a ticket or threaded message was already persisted.  
 **Impact:** Retries can create duplicate tickets, duplicate replies, and duplicate events for the same inbound email. **Root Cause:** idempotency bookkeeping is not transactional with the actual mutation work. **Fix:** wrap receipt finalization and ticket/message creation in one transaction, or retain a terminal failed receipt state instead of deleting the receipt after partial success.
 
-**[TICKET-004]** | Severity: ?? High  
+**[TICKET-004]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Category:** Security  
 **File & Location:** [inbound-email.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/tickets/inbound-email.service.ts):391-491 (`downloadInboundAttachmentBuffer`, `getInboundAttachmentAllowedHosts`)  
 **Issue:** When `INBOUND_EMAIL_ATTACHMENT_ALLOWED_HOSTS` is unset, any HTTPS `contentUrl` is accepted, and the fetch follows redirects by default.  
 **Impact:** The webhook can be turned into an SSRF primitive against internal or sensitive network targets. **Root Cause:** the host allowlist is fail-open instead of fail-closed. **Fix:** require an explicit allowlist, reject redirects (`redirect: 'error'`) or revalidate the final URL, and prefer provider-owned blob hosts only.
 
-**[TICKET-005]** | Severity: ?? High  
+**[TICKET-005]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Category:** Race Condition  
 **File & Location:** [email-processor.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/notifications/email-processor.service.ts):51-82 (`process`); [outbox.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/notifications/outbox.service.ts):49-60 (`findById`, `markProcessing`)  
 **Issue:** Two workers can read the same `PENDING` outbox row, both mark it `PROCESSING`, and both send the email.  
 **Impact:** Duplicate customer emails and broken email-thread state. **Root Cause:** the claim step is read-then-write instead of atomic compare-and-set. **Fix:** use `updateMany(... where: { id, status: PENDING })` and proceed only when `count === 1`, or lock the row in a transaction.
 
-**[TICKET-006]** | Severity: ?? High  
+**[TICKET-006]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Category:** Logic Error  
 **File & Location:** [reports.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/reports/reports.service.ts):401-423 (`getSlaCompliance`), 478-492 (`getSlaComplianceByPriority`), 1107-1123 (`getSlaBreaches`)  
 **Issue:** Historical SLA reports evaluate unresolved tickets against `now()` instead of the requested report window end.  
 **Impact:** The same report changes over time, so historical SLA numbers are not trustworthy. **Root Cause:** report SQL mixes report-range filters with wall-clock evaluation. **Fix:** compute against a fixed evaluation timestamp derived from the query range, e.g. report end or `min(now(), rangeEnd)`.
 
-**[TICKET-007]** | Severity: ?? Medium  
+**[TICKET-007]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Category:** Performance  
 **File & Location:** [audit.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/audit/audit.service.ts):93-119 (`exportCsv`), 358-423 (`loadCombinedAuditEntries`)  
 **Issue:** CSV export loads all ticket and admin audit rows, merges them in memory, then applies search and sort in the application layer.  
 **Impact:** Large audit logs will cause slow exports, high memory use, and potential process instability. **Root Cause:** export bypasses DB-level pagination and filtering. **Fix:** push filtering/search/sort into SQL and stream rows to the response.
 
-**[TICKET-008]** | Severity: ?? Medium  
+**[TICKET-008]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Category:** Config  
 **File & Location:** [reset-test-db.cjs](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/scripts/reset-test-db.cjs):40-105 (`resetDb`)  
 **Issue:** The reset script operates directly on `DATABASE_URL`, defaults to destructive reset strategies, and failed on March 9, 2026 with Prisma `P1014` against the configured database.  
 **Impact:** Integration tests are not reliably runnable and the script is unsafe for shared or misconfigured databases. **Root Cause:** there is no dedicated isolated `TEST_DATABASE_URL` guardrail and the script assumes migration history is present. **Fix:** require a separate test DB URL, hard-fail on non-test hosts/schemas, and make reset strategy explicit and CI-safe.
 
-**[TICKET-009]** | Severity: ?? Medium  
+**[TICKET-009]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Category:** Logic Error  
 **File & Location:** [client.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/api/client.ts):12,455,1377-1396 (`HOT_GET_CACHE_TTL_MS`, `fetchNotifications`, `fetchUnreadNotificationCount`); [useNotifications.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/hooks/useNotifications.ts):153-174 (`applyRealtimeUpdate`)  
 **Issue:** Notifications use the shared 15-second hot GET cache, so a realtime-triggered refresh often re-reads cached `/notifications` data instead of the new server state.  
 **Impact:** unread badges and notification lists remain stale even after realtime says they changed. **Root Cause:** notification endpoints were treated like cacheable list reads. **Fix:** fetch `/notifications*` with `cache: 'no-store'` or exempt them from the hot cache.
 
-**[TICKET-010]** | Severity: ?? High  
+**[TICKET-010]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Category:** Bug  
 **File & Location:** [client.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/api/client.ts):428-490 (`apiFetch`), 779-816 (`uploadTicketAttachment`, `downloadAttachment`), 1725-1735 (`exportAuditLogCsv`)  
 **Issue:** Normal API requests, uploads, downloads, and CSV exports have no client-side timeout or abort path.  
 **Impact:** transient network hangs can freeze loading states indefinitely and leave stale screens mounted. **Root Cause:** fetch wrappers never create or honor an `AbortController` timeout. **Fix:** add a standard timeout-enabled fetch helper and thread `signal` through all wrappers.
 
-**[TICKET-011]** | Severity: ?? Medium  
+**[TICKET-011]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Category:** Logic Error  
 **File & Location:** [client.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/api/client.ts):1294-1308 (`searchAll`); [CommandPalette.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/components/CommandPalette.tsx):161-194  
 **Issue:** `searchAll` accepts an abort signal, but the ticket fetch is started via `fetchTickets(...)` without forwarding that signal.  
 **Impact:** canceled command-palette searches still consume network/server work and can race newer queries. **Root Cause:** the abort API is only checked before and after `Promise.all`, not inside the underlying requests. **Fix:** pass `signal` into `apiFetch`/`fetchTickets` and make cached loaders abort-aware too.
 
-**[TICKET-012]** | Severity: ?? Medium  
+**[TICKET-012]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Category:** Logic Error  
 **File & Location:** [client.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/api/client.ts):1262-1269 (`getCachedUsers`); [users.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/users/users.service.ts):15-20,37-43 (`list`)  
 **Issue:** Command-palette user search only caches the first page of users, while the backend defaults `pageSize` to 20.  
 **Impact:** user search silently misses most eligible users in larger teams. **Root Cause:** the frontend assumes `fetchUsers()` returns the whole directory. **Fix:** use `fetchAllUsers`, or better, query the backend with `q` and proper pagination.
 
-**[TICKET-013]** | Severity: ?? High  
+**[TICKET-013]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Category:** UX  
 **File & Location:** [TicketDetailPage.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/pages/TicketDetailPage.tsx):418-482 (`loadMessagesPage`, `loadEventsPage`)  
 **Issue:** Conversation and timeline fetch failures are swallowed, and reset loads clear the UI to an empty state with no visible error.  
-**Impact:** agents can mistake “failed to load history” for “no history exists” and act without context. **Root Cause:** loaders catch and suppress errors instead of surfacing state. **Fix:** preserve last-known-good data, add `messagesError`/`eventsError`, and render retry affordances.
+**Impact:** agents can mistake ï¿½failed to load historyï¿½ for ï¿½no history existsï¿½ and act without context. **Root Cause:** loaders catch and suppress errors instead of surfacing state. **Fix:** preserve last-known-good data, add `messagesError`/`eventsError`, and render retry affordances.
 
-**[TICKET-014]** | Severity: ?? Low  
+**[TICKET-014]** | Status: Completed (2026-03-10) | Severity: ?? Low  
 **Category:** UX  
 **File & Location:** [useNotifications.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/hooks/useNotifications.ts):181-206 (`markAsRead`, `markAllAsRead`)  
 **Issue:** notification mutation failures only write to `console.error` and do not expose any UI error state.  
-**Impact:** the user gets no feedback when “mark read” fails, so the drawer feels randomly broken. **Root Cause:** the hook owns the mutation but never returns failure status to the caller. **Fix:** surface an error callback/state and show a toast or inline error.
+**Impact:** the user gets no feedback when ï¿½mark readï¿½ fails, so the drawer feels randomly broken. **Root Cause:** the hook owns the mutation but never returns failure status to the caller. **Fix:** surface an error callback/state and show a toast or inline error.
 
-**[TICKET-015]** | Severity: ?? Low  
+**[TICKET-015]** | Status: Completed (FALSE, 2026-03-10) | Severity: ?? Low  
 **Category:** Type Error  
 **File & Location:** [inbound-email.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/tickets/inbound-email.service.ts):71-72  
 **Issue:** `TicketsService` is injected through `require(...)` and stored as `any`.  
 **Impact:** refactors lose compile-time safety around one of the highest-risk flows in the system. **Root Cause:** a circular dependency was bypassed with dynamic require instead of a typed boundary. **Fix:** use a typed `forwardRef(() => TicketsService)` injection or extract a narrow interface service.
 
-**[TICKET-016]** | Severity: ?? Low  
+**[TICKET-016]** | Status: Completed (FALSE, 2026-03-10) | Severity: ?? Low  
 **Category:** Type Error  
 **File & Location:** [tickets.service.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/api/src/tickets/tickets.service.ts):2484-2489 (`updateAttachmentScanStatus`)  
 **Issue:** the public attachment scan-status delegation takes `payload: any`.  
 **Impact:** malformed scanner payloads can bypass compile-time validation and make future changes brittle. **Root Cause:** the method signature was left untyped while delegating to a typed service. **Fix:** use the same DTO/type as `TicketAttachmentService.updateAttachmentScanStatus`.
 
-**[TICKET-017]** | Severity: ? Info  
+**[TICKET-017]** | Status: Completed (FALSE, 2026-03-10) | Severity: ? Info  
 **Category:** Maintainability  
 **File & Location:** [createTicket.test.ts](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/schemas/createTicket.test.ts):1 (`frontend test suite layout`)  
 **Issue:** the frontend currently has one schema test and no component/page/hook coverage for notifications, auth, ticket detail, or command palette behavior.  
 **Impact:** regressions in the flows above are unlikely to be caught before shipping. **Root Cause:** test investment is concentrated in the API suite while the web app remains mostly untested. **Fix:** add RTL/Vitest coverage for `useNotifications`, `TicketDetailPage`, `CommandPalette`, and auth bootstrap paths.
 
 **Phase 2**
-**[UI-001]** | Severity: ?? High  
+**[UI-001]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Component:** `TicketDetailPage` in [TicketDetailPage.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/pages/TicketDetailPage.tsx):1567-1605  
 **Issue:** the 320px right sidebar is always rendered in the split layout, including narrow screens.  
 **User Impact:** mobile users get a cramped or horizontally overflowing conversation view.  
 **Fix:** collapse the sidebar into a bottom sheet/drawer below `lg`, or stack it below the conversation panel.
 
-**[UI-002]** | Severity: ?? High  
+**[UI-002]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Component:** `TicketDetailPage` in [TicketDetailPage.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/pages/TicketDetailPage.tsx):1386-1454,1488-1558  
 **Issue:** tabs expose ARIA tab roles but do not implement arrow-key navigation, and inactive panels remain in the tab order because they are only visually hidden.  
 **User Impact:** keyboard users can tab into invisible controls and cannot navigate tabs using standard tablist behavior.  
 **Fix:** add roving `tabIndex` with arrow/Home/End handlers and set inactive panels to `hidden`/`inert`.
 
-**[UI-003]** | Severity: ?? High  
+**[UI-003]** | Status: Completed (2026-03-10) | Severity: ?? High  
 **Component:** `NotificationCenter` in [NotificationCenter.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/components/NotificationCenter.tsx):253-357,377-414  
 **Issue:** the bell popover is labeled as a `menu` even though it contains cards and utility buttons, and the drawer dialog lacks a focus trap / `aria-modal`.  
 **User Impact:** screen readers announce the wrong model and keyboard focus can escape behind the drawer.  
 **Fix:** use dialog/list semantics instead of menu semantics, trap focus in the drawer, and restore focus to the bell on close.
 
-**[UI-004]** | Severity: ?? Medium  
+**[UI-004]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Component:** `TopBar` in [TopBar.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/components/TopBar.tsx):198-252  
 **Issue:** the profile popover is marked `role="menu"` even though most of its content is static profile metadata rather than menu items.  
 **User Impact:** assistive tech users get misleading semantics and inconsistent navigation cues.  
 **Fix:** change it to a popover/dialog, or convert the content into a real menu made only of actionable items.
 
-**[UI-005]** | Severity: ?? High  
+**[UI-005]** | Status: Completed (FALSE, 2026-03-10) | Severity: ?? High  
 **Component:** `TicketDetailPage` in [TicketDetailPage.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/pages/TicketDetailPage.tsx):418-482  
 **Issue:** message and timeline load failures collapse into empty panes without explanation.  
 **User Impact:** users can respond to a ticket believing there is no prior context when the real problem is a failed fetch.  
 **Fix:** show explicit inline error states with retry buttons and keep the previous content visible.
 
-**[UI-006]** | Severity: ?? Medium  
+**[UI-006]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Component:** `CommandPalette` in [CommandPalette.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/components/CommandPalette.tsx):243-250  
 **Issue:** user search results close the palette without doing anything, and team results ignore the selected team and always navigate to `/team`.  
-**User Impact:** search feels misleading and low-trust because visible “results” are not real actions.  
+**User Impact:** search feels misleading and low-trust because visible ï¿½resultsï¿½ are not real actions.  
 **Fix:** either remove those result types until deep links exist, or navigate to meaningful user/team destinations.
 
-**[UI-007]** | Severity: ?? Medium  
+**[UI-007]** | Status: Completed (2026-03-10) | Severity: ?? Medium  
 **Component:** `AuthenticatedShell` in [App.tsx](/c:/Users/PHulgur/Downloads/Ticketing%20System%20Quality%20Review/apps/web/src/App.tsx):272-321  
 **Issue:** notification polling is explicitly disabled, so when realtime is unavailable the badge and drawer only refresh on manual open.  
 **User Impact:** users can miss unread notifications entirely during websocket outages or disabled realtime environments.  
@@ -149,7 +149,7 @@ Local validation: `npm run build -w apps/api`, `npm run build -w apps/web`, `npm
 **Phase 3**
 - **System Design & Architecture:** Add an access-aware realtime audience service that resolves recipients from the same authorization graph used for reads/writes; this removes the current class of data leaks and makes websocket behavior auditable. **Complexity:** Hard **Priority:** Medium-term  
 - **System Design & Architecture:** Move notifications/email into a transactional outbox + worker queue with explicit claim semantics and dead-letter handling; this eliminates duplicate sends and gives you recoverable delivery pipelines. **Complexity:** Medium **Priority:** Quick Win  
-- **System Design & Architecture:** Introduce workspace/team isolation primitives at the data and event layers; this makes future multi-team or multi-tenant expansion safer than today’s shared group model. **Complexity:** Hard **Priority:** Long-term vision  
+- **System Design & Architecture:** Introduce workspace/team isolation primitives at the data and event layers; this makes future multi-team or multi-tenant expansion safer than todayï¿½s shared group model. **Complexity:** Hard **Priority:** Long-term vision  
 - **Performance:** Cache counts/search/report aggregates in Redis and invalidate them from ticket mutations; this will cut repeated expensive list/report queries. **Complexity:** Medium **Priority:** Quick Win  
 - **Performance:** Precompute SLA/report rollups in background jobs instead of recalculating historical windows ad hoc; this improves dashboard latency and makes analytics stable. **Complexity:** Hard **Priority:** Medium-term  
 - **UI/UX Innovation:** Build a true triage workspace with split view, keyboard-first bulk actions, and inline status/assignment edits; this reduces clicks for agents living in the queue. **Complexity:** Medium **Priority:** Quick Win  
@@ -184,6 +184,76 @@ Local validation: `npm run build -w apps/api`, `npm run build -w apps/web`, `npm
 | UI-002 | ?? High | UI/UX | Ticket detail tabs are not keyboard-safe and hidden panels remain focusable |
 | UI-003 | ?? High | UI/UX | Notification drawer/popover uses incorrect semantics and weak focus handling |
 | UI-004 | ?? Medium | UI/UX | Profile popover uses misleading menu semantics |
-| UI-005 | ?? High | UI/UX | Failed message/timeline loads are presented as “empty” |
+| UI-005 | ?? High | UI/UX | Failed message/timeline loads are presented as ï¿½emptyï¿½ |
 | UI-006 | ?? Medium | UI/UX | Command-palette user/team results are misleading dead ends |
 | UI-007 | ?? Medium | UI/UX | Notifications have no graceful fallback when realtime is unavailable |
+
+
+[UI-008] | Status: Completed (PARTIAL, 2026-03-10) | Severity: ðŸŸ¡ Medium
+
+Component: Sidebar badges in apps/web/src/App.tsx
+
+Issue: Badge counts (e.g., triage count, open tickets, assigned to me) only show on specific nav items. There's no badge for "Completed" or "Created by Me" navigation items, even though the API returns resolved, resolvedByMe counts.
+
+User Impact: Inconsistent use of badges â€” users expect the same pattern across all nav items.
+
+Fix: Add badges to "Completed" (showing resolvedByMe or resolved count) and consider a badge for "Created by Me" showing the user's own ticket count.
+
+[UI-009] | Status: Completed (2026-03-10) | Severity: ðŸŸ¡ Medium
+
+Component: Route protection in apps/web/src/App.tsx
+
+Issue: Unauthorized route access silently redirects to /dashboard with no feedback. If a user bookmarks an admin page and their role changes, they're silently bounced with no explanation.
+
+User Impact: Confusing user experience â€” "Why can't I access this page anymore?" No toast, no message, no indication of what happened.
+
+Fix: Show a toast notification: "You don't have permission to access this page." before redirecting, or show a 403-style page.
+
+[UI-010] | Status: Completed (2026-03-10) | Severity: ðŸŸ¡ Medium
+
+Component: Mobile navigation in apps/web/src/App.tsx
+
+Issue: The mobile hamburger menu button (line 565-572) is positioned at fixed left-4 top-4 which can overlap with page content, especially on the TicketDetailPage or any page with a TopBar. The z-index is z-30 while other elements may have higher z-indices.
+
+User Impact: Hamburger button may be visually obscured or overlap with page-level controls.
+
+Fix: Integrate the hamburger into the TopBar component rather than floating it independently.
+
+[UI-011] | Status: Completed (2026-03-10) | Severity: ðŸŸ¡ Medium
+
+Component: Error handling in apps/web/src/api/client.ts
+
+Issue: API errors (ApiError) include the raw response text as the error message. For NestJS validation errors, this is a JSON blob like {"statusCode":400,"message":["subject must be a string"],...} which gets displayed directly in toast notifications.
+
+User Impact: Users see raw JSON in error messages instead of friendly, human-readable text.
+
+Fix: Parse validation error responses and format them into user-friendly messages:
+
+typescript
+if (parsed.message && Array.isArray(parsed.message)) {
+  throw new ApiError(parsed.message.join('. '), response.status);
+}
+[UI-012] | Status: Completed (PARTIAL, 2026-03-10) | Severity: ðŸ”µ Low
+
+Component: SignInLandingPage in apps/web/src/components/auth/SignInLandingPage.tsx
+
+Issue: The sign-in page receives an error prop but may not display it prominently. When MSAL auth fails, users need clear feedback about what went wrong.
+
+User Impact: Auth errors may be invisible or poorly highlighted.
+
+Fix: Ensure auth errors are displayed in a prominent alert/banner with actionable guidance (e.g., "Try signing in again" or "Contact your administrator").
+
+[UI-013] | Severity: ðŸ”µ Low
+
+Component: TopBar in apps/web/src/components/TopBar.tsx
+
+Issue: TopBar is rendered conditionally â€” only when !shellLayoutPath. This means pages like TicketDetailPage and TicketsPage have their own header implementations rather than using the shared TopBar, leading to inconsistent header styling across pages.
+
+User Impact: Visual inconsistency â€” different pages feel like different applications.
+
+Fix: Unify page headers to use a single, consistent component.
+
+
+
+
+

@@ -12,6 +12,7 @@ type ApiGetCacheEntry = {
 };
 
 const HOT_GET_CACHE_TTL_MS = 15 * 1000;
+const API_REQUEST_TIMEOUT_MS = 30 * 1000;
 const MAX_GET_CACHE_ENTRIES = 300;
 const apiGetCache = new Map<string, ApiGetCacheEntry>();
 const apiGetInflight = new Map<string, Promise<unknown>>();
@@ -62,6 +63,38 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+type ApiErrorBody = {
+  message?: string | string[];
+  error?: string;
+};
+
+function formatApiErrorMessage(raw: string, fallback: string): string {
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw) as ApiErrorBody;
+    if (Array.isArray(parsed.message)) {
+      const messages = parsed.message.filter(
+        (message): message is string =>
+          typeof message === "string" && message.trim().length > 0,
+      );
+      if (messages.length > 0) {
+        return messages.join(". ");
+      }
+    }
+    if (typeof parsed.message === "string" && parsed.message.trim().length > 0) {
+      return parsed.message;
+    }
+    if (typeof parsed.error === "string" && parsed.error.trim().length > 0) {
+      return parsed.error;
+    }
+  } catch {
+    // keep raw response text
+  }
+
+  return raw || fallback;
 }
 
 export type UserRef = {
@@ -447,6 +480,47 @@ function buildRequestHeaders(optionsHeaders?: HeadersInit): Headers {
   return headers;
 }
 
+async function fetchWithTimeout(
+  input: string,
+  options?: RequestInit & { timeoutMs?: number },
+) {
+  const timeoutMs = options?.timeoutMs ?? API_REQUEST_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  const upstreamSignal = options?.signal;
+  const abortFromUpstream = () => controller.abort();
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      controller.abort();
+    } else {
+      upstreamSignal.addEventListener("abort", abortFromUpstream, {
+        once: true,
+      });
+    }
+  }
+
+  const timeoutId = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError("Request timed out", 408);
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeoutId);
+    upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+  }
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const method = requestMethod(options);
   const isGetRequest = method === "GET";
@@ -459,10 +533,13 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   };
 
   if (!cacheableGet) {
-    const response = await fetch(`${API_BASE}${path}`, requestInit);
+    const response = await fetchWithTimeout(`${API_BASE}${path}`, requestInit);
     if (!response.ok) {
-      const message = await response.text();
-      throw new ApiError(message || "Request failed", response.status);
+      const raw = await response.text();
+      throw new ApiError(
+        formatApiErrorMessage(raw, "Request failed"),
+        response.status,
+      );
     }
     const payload = (await response.json()) as T;
     if (!isGetRequest) {
@@ -493,7 +570,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   const requestPromise = (async () => {
     try {
-      const response = await fetch(`${API_BASE}${path}`, {
+      const response = await fetchWithTimeout(`${API_BASE}${path}`, {
         ...requestInit,
         headers: conditionalHeaders,
       });
@@ -508,8 +585,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       }
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new ApiError(message || "Request failed", response.status);
+        const raw = await response.text();
+        throw new ApiError(
+          formatApiErrorMessage(raw, "Request failed"),
+          response.status,
+        );
       }
 
       const payload = (await response.json()) as T;
@@ -531,6 +611,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return requestPromise;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 type DataEnvelope<T> = { data: T };
 
 function isDataEnvelope<T>(
@@ -545,6 +629,7 @@ function unwrapDataEnvelope<T>(value: T | DataEnvelope<T>): T {
 
 export function fetchTickets(
   params?: Record<string, string | number | boolean | undefined | string[]>,
+  options?: Pick<RequestInit, "signal">,
 ) {
   const query = new URLSearchParams();
   if (params) {
@@ -559,7 +644,7 @@ export function fetchTickets(
   }
 
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return apiFetch<TicketListResponse>(`/tickets${suffix}`);
+  return apiFetch<TicketListResponse>(`/tickets${suffix}`, options);
 }
 
 export function fetchTicketCounts() {
@@ -844,13 +929,16 @@ export function sendTicketTypingSignal(
 export async function uploadTicketAttachment(ticketId: string, file: File) {
   const form = new FormData();
   form.append("file", file);
-  const response = await fetch(`${API_BASE}/tickets/${ticketId}/attachments`, {
-    method: "POST",
-    headers: {
-      ...authHeaders(),
+  const response = await fetchWithTimeout(
+    `${API_BASE}/tickets/${ticketId}/attachments`,
+    {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+      },
+      body: form,
     },
-    body: form,
-  });
+  );
 
   if (!response.ok) {
     const raw = await response.text();
@@ -874,7 +962,7 @@ export async function uploadTicketAttachment(ticketId: string, file: File) {
 }
 
 export async function downloadAttachment(attachmentId: string) {
-  const response = await fetch(`${API_BASE}/attachments/${attachmentId}`, {
+  const response = await fetchWithTimeout(`${API_BASE}/attachments/${attachmentId}`, {
     headers: {
       ...authHeaders(),
     },
@@ -921,8 +1009,8 @@ export function transferTicket(ticketId: string, payload: TransferPayload) {
   });
 }
 
-export function fetchTeams() {
-  return apiFetch<{ data: TeamRef[] }>("/teams");
+export function fetchTeams(options?: Pick<RequestInit, "signal">) {
+  return apiFetch<{ data: TeamRef[] }>("/teams", options);
 }
 
 type FetchUsersParams = {
@@ -932,14 +1020,20 @@ type FetchUsersParams = {
   pageSize?: number;
 };
 
-export function fetchUsers(params?: FetchUsersParams) {
+export function fetchUsers(
+  params?: FetchUsersParams,
+  options?: Pick<RequestInit, "signal">,
+) {
   const query = new URLSearchParams();
   if (params?.role) query.set("role", params.role);
   if (params?.q) query.set("q", params.q);
   if (params?.page) query.set("page", String(params.page));
   if (params?.pageSize) query.set("pageSize", String(params.pageSize));
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return apiFetch<{ data: UserRef[]; meta: PaginationMeta }>(`/users${suffix}`);
+  return apiFetch<{ data: UserRef[]; meta: PaginationMeta }>(
+    `/users${suffix}`,
+    options,
+  );
 }
 
 export function fetchCurrentUser() {
@@ -964,18 +1058,24 @@ export function syncCurrentUserProfile(
   });
 }
 
-export async function fetchAllUsers(params?: Omit<FetchUsersParams, "page">) {
+export async function fetchAllUsers(
+  params?: Omit<FetchUsersParams, "page">,
+  options?: Pick<RequestInit, "signal">,
+) {
   const pageSize = Math.min(Math.max(params?.pageSize ?? 100, 1), 100);
   let page = 1;
   let totalPages = 1;
   const users: UserRef[] = [];
 
   while (page <= totalPages) {
-    const response = await fetchUsers({
-      ...params,
-      page,
-      pageSize,
-    });
+    const response = await fetchUsers(
+      {
+        ...params,
+        page,
+        pageSize,
+      },
+      options,
+    );
     users.push(...response.data);
     totalPages = response.meta.totalPages;
     page += 1;
@@ -1369,35 +1469,41 @@ function validateCacheUser(): void {
   cacheUserEmail = currentEmail;
 }
 
-async function getCachedUsers(): Promise<UserRef[]> {
+async function getCachedUsers(signal?: AbortSignal): Promise<UserRef[]> {
   validateCacheUser();
   const now = Date.now();
   if (cachedUsers && now - usersCacheTime < CACHE_TTL_MS) {
     return cachedUsers;
   }
   try {
-    const response = await fetchUsers();
+    const response = await fetchAllUsers(undefined, { signal });
     cachedUsers = response.data;
     usersCacheTime = now;
     return cachedUsers;
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     // Return cached data if available, empty array otherwise
     return cachedUsers ?? [];
   }
 }
 
-async function getCachedTeams(): Promise<TeamRef[]> {
+async function getCachedTeams(signal?: AbortSignal): Promise<TeamRef[]> {
   validateCacheUser();
   const now = Date.now();
   if (cachedTeams && now - teamsCacheTime < CACHE_TTL_MS) {
     return cachedTeams;
   }
   try {
-    const response = await fetchTeams();
+    const response = await fetchTeams({ signal });
     cachedTeams = response.data;
     teamsCacheTime = now;
     return cachedTeams;
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw error;
+    }
     // Return cached data if available, empty array otherwise
     return cachedTeams ?? [];
   }
@@ -1414,9 +1520,14 @@ export async function searchAll(
 
   // Perform parallel searches across tickets, users (cached), and teams (cached)
   const [ticketsResponse, users, teams] = await Promise.all([
-    fetchTickets({ q: query, pageSize: 5 }).catch(() => ({ data: [] })),
-    getCachedUsers(),
-    getCachedTeams(),
+    fetchTickets({ q: query, pageSize: 5 }, { signal }).catch((error) => {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      return { data: [] };
+    }),
+    getCachedUsers(signal),
+    getCachedTeams(signal),
   ]);
 
   // Check if aborted after fetching
@@ -1486,6 +1597,8 @@ export type NotificationListResponse = {
   };
 };
 
+const NOTIFICATION_FETCH_OPTIONS = { cache: "no-store" } as const;
+
 export function fetchNotifications(params?: {
   page?: number;
   pageSize?: number;
@@ -1500,12 +1613,16 @@ export function fetchNotifications(params?: {
     });
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  return apiFetch<NotificationListResponse>(`/notifications${suffix}`);
+  return apiFetch<NotificationListResponse>(
+    `/notifications${suffix}`,
+    NOTIFICATION_FETCH_OPTIONS,
+  );
 }
 
 export function fetchUnreadNotificationCount() {
   return apiFetch<{ count: number } | DataEnvelope<{ count: number }>>(
     "/notifications/unread-count",
+    NOTIFICATION_FETCH_OPTIONS,
   ).then((response) => unwrapDataEnvelope(response));
 }
 
@@ -1900,18 +2017,12 @@ export async function fetchAuditLogExport(
     });
   }
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  const response = await fetch(`${API_BASE}/audit-log/export${suffix}`, {
+  const response = await fetchWithTimeout(`${API_BASE}/audit-log/export${suffix}`, {
     headers: { ...authHeaders() },
   });
   if (!response.ok) {
     const raw = await response.text();
-    let message = raw || "Export failed";
-    try {
-      const body = JSON.parse(raw) as { message?: string };
-      if (typeof body?.message === "string") message = body.message;
-    } catch {
-      // not JSON
-    }
+    const message = formatApiErrorMessage(raw, "Export failed");
     throw new ApiError(message, response.status);
   }
   return response.text();

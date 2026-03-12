@@ -20,7 +20,7 @@ import { AutomationService } from './automation.service';
 @Controller('automation-rules')
 @UseGuards(AdminGuard)
 export class AutomationRulesController {
-  constructor(private readonly automationService: AutomationService) { }
+  constructor(private readonly automationService: AutomationService) {}
 
   @Get()
   async list(@CurrentUser() user: AuthUser) {

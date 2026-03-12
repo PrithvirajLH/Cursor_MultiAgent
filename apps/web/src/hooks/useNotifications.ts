@@ -7,6 +7,8 @@ import {
   markNotificationAsRead,
   type NotificationRecord,
 } from "../api/client";
+import { shouldRefreshNotificationsAfterCountPoll } from "./notification-fallback";
+import { handleApiError } from "../utils/handleApiError";
 
 type UseNotificationsOptions = {
   /** Polling interval in milliseconds (default: 30000 = 30 seconds) */
@@ -17,6 +19,8 @@ type UseNotificationsOptions = {
   pageSize?: number;
   /** User key (e.g., email) to reset notifications when user changes */
   userKey?: string;
+  /** Optional callback for surfacing mutation failures to the UI (e.g. toast). */
+  onActionError?: (message: string) => void;
 };
 
 type RealtimeNotificationUpdate = {
@@ -30,12 +34,14 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     enablePolling = true,
     pageSize = 20,
     userKey,
+    onActionError,
   } = options;
 
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
   // Track when userKey is synced to storage to prevent fetching with stale credentials
@@ -53,6 +59,11 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   currentUserKeyRef.current = userKey;
   const countInFlightRef = useRef(false);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
+  const unreadCountRef = useRef(0);
+
+  useEffect(() => {
+    unreadCountRef.current = unreadCount;
+  }, [unreadCount]);
 
   // Check if userKey matches the persisted email to prevent fetching with stale credentials
   const isUserKeySynced = useCallback(() => {
@@ -107,9 +118,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
           currentUserKeyRef.current !== requestUserKey
         ) {
           return;
-        }
+      }
         setError("Failed to load notifications");
-        console.error("Failed to fetch notifications", err);
       } finally {
         // Guard: don't update loading if user changed during request
         if (
@@ -123,7 +133,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     [pageSize, isUserKeySynced],
   );
 
-  // Fetch just the unread count (lightweight polling) with request cancellation support
+  // Poll the unread count, and refresh the first page if the count changed.
   const fetchCount = useCallback(async () => {
     if (!mountedRef.current) return;
 
@@ -138,19 +148,27 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
     // Capture userKey at request start to guard against stale responses
     const requestUserKey = currentUserKeyRef.current;
+    const previousUnreadCount = unreadCountRef.current;
 
     try {
       const response = await fetchUnreadNotificationCount();
       // Guard: don't apply results if user changed during request
       if (mountedRef.current && currentUserKeyRef.current === requestUserKey) {
         setUnreadCount(response.count);
+        if (
+          shouldRefreshNotificationsAfterCountPoll(
+            previousUnreadCount,
+            response.count,
+          )
+        ) {
+          void fetchData(1, false);
+        }
       }
-    } catch (err) {
-      console.error("Failed to fetch unread count", err);
+    } catch {
     } finally {
       countInFlightRef.current = false;
     }
-  }, [isUserKeySynced]);
+  }, [fetchData, isUserKeySynced]);
 
   // Load more notifications (pagination)
   const loadMore = useCallback(() => {
@@ -191,6 +209,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
   // Mark a single notification as read
   const markAsRead = useCallback(async (notificationId: string) => {
+    setActionError(null);
     try {
       await markNotificationAsRead(notificationId);
 
@@ -204,12 +223,15 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
-      console.error("Failed to mark notification as read", err);
+      const message = handleApiError(err);
+      setActionError(message);
+      onActionError?.(message);
     }
-  }, []);
+  }, [onActionError]);
 
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
+    setActionError(null);
     try {
       await markAllNotificationsAsRead();
 
@@ -223,9 +245,11 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       );
       setUnreadCount(0);
     } catch (err) {
-      console.error("Failed to mark all notifications as read", err);
+      const message = handleApiError(err);
+      setActionError(message);
+      onActionError?.(message);
     }
-  }, []);
+  }, [onActionError]);
 
   // Reset state when user changes (prevents cross-user data leak)
   useEffect(() => {
@@ -234,6 +258,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       setNotifications([]);
       setUnreadCount(0);
       setError(null);
+      setActionError(null);
       setHasMore(true);
       setPage(1);
       setUserKeySynced(false);
@@ -323,6 +348,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     unreadCount,
     loading,
     error,
+    actionError,
     hasMore,
     loadMore,
     refresh,

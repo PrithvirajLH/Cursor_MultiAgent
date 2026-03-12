@@ -35,8 +35,8 @@ async function bootstrap() {
   );
   const corsOrigins = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',')
-      .map((o) => o.trim())
-      .filter(Boolean)
+        .map((o) => o.trim())
+        .filter(Boolean)
     : [];
   app.enableCors({
     origin: corsOrigins.length
@@ -90,14 +90,17 @@ async function bootstrap() {
   httpServer.keepAliveTimeout = keepAliveTimeoutMs;
   httpServer.headersTimeout = headersTimeoutMs;
 
-  app.get(Logger).log(
-    `HTTP timeouts configured: request=${requestTimeoutMs}ms, keepAlive=${keepAliveTimeoutMs}ms, headers=${headersTimeoutMs}ms`,
-    'Bootstrap',
-  );
-  app.get(Logger).log(`Application is running on: http://0.0.0.0:${port}/api`, 'Bootstrap');
+  app
+    .get(Logger)
+    .log(
+      `HTTP timeouts configured: request=${requestTimeoutMs}ms, keepAlive=${keepAliveTimeoutMs}ms, headers=${headersTimeoutMs}ms`,
+      'Bootstrap',
+    );
+  app
+    .get(Logger)
+    .log(`Application is running on: http://0.0.0.0:${port}/api`, 'Bootstrap');
 }
 bootstrap().catch((error) => {
-  // eslint-disable-next-line no-console
   console.error(
     'Failed to start server',
     error instanceof Error ? error.stack : String(error),

@@ -146,6 +146,11 @@ export class ReportsService {
     return { fromDate, toEndExclusive, toDateInclusive };
   }
 
+  private reportEvaluationAt(toEndExclusive: Date) {
+    const now = new Date();
+    return toEndExclusive.getTime() < now.getTime() ? toEndExclusive : now;
+  }
+
   /** Build raw SQL conditions for date + optional filters (parameterized). End is exclusive (lt). Use tableAlias (e.g. 't') when query joins multiple tables that have these columns. */
   private rawConditions(
     fromDate: Date,
@@ -369,6 +374,7 @@ export class ReportsService {
   async getSlaCompliance(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
@@ -403,11 +409,11 @@ export class ReportsService {
           ("firstResponseDueAt" IS NOT NULL) AS has_fr,
           ("dueAt" IS NOT NULL) AS has_res,
           ("firstResponseDueAt" IS NOT NULL AND (
-            ("firstResponseAt" IS NULL AND now() > "firstResponseDueAt") OR
+            ("firstResponseAt" IS NULL AND ${evaluationAt} > "firstResponseDueAt") OR
             ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt")
           )) AS fr_breached,
           ("dueAt" IS NOT NULL AND (
-            ("resolvedAt" IS NULL AND now() > "dueAt") OR
+            ("resolvedAt" IS NULL AND ${evaluationAt} > "dueAt") OR
             ("resolvedAt" IS NOT NULL AND "resolvedAt" > "dueAt")
           )) AS res_breached
         FROM "Ticket"
@@ -446,6 +452,7 @@ export class ReportsService {
   async getSlaComplianceByPriority(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
@@ -481,11 +488,11 @@ export class ReportsService {
           ("firstResponseDueAt" IS NOT NULL) AS has_fr,
           ("dueAt" IS NOT NULL) AS has_res,
           ("firstResponseDueAt" IS NOT NULL AND (
-            ("firstResponseAt" IS NULL AND now() > "firstResponseDueAt") OR
+            ("firstResponseAt" IS NULL AND ${evaluationAt} > "firstResponseDueAt") OR
             ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt")
           )) AS fr_breached,
           ("dueAt" IS NOT NULL AND (
-            ("resolvedAt" IS NULL AND now() > "dueAt") OR
+            ("resolvedAt" IS NULL AND ${evaluationAt} > "dueAt") OR
             ("resolvedAt" IS NOT NULL AND "resolvedAt" > "dueAt")
           )) AS res_breached
         FROM "Ticket"
@@ -1072,6 +1079,7 @@ export class ReportsService {
   async getSlaBreaches(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
     const conditions = this.rawConditions(
@@ -1109,7 +1117,7 @@ export class ReportsService {
             CASE
               WHEN t."firstResponseDueAt" IS NULL THEN 0
               WHEN t."firstResponseAt" IS NOT NULL THEN extract(epoch from (t."firstResponseAt" - t."firstResponseDueAt"))
-              ELSE extract(epoch from (now() - t."firstResponseDueAt"))
+              ELSE extract(epoch from (${evaluationAt} - t."firstResponseDueAt"))
             END
           )::bigint as fr_breach_seconds,
           greatest(
@@ -1118,7 +1126,7 @@ export class ReportsService {
               WHEN t."dueAt" IS NULL THEN 0
               WHEN t."resolvedAt" IS NOT NULL THEN extract(epoch from (t."resolvedAt" - t."dueAt"))
               WHEN t."status"::text IN (${Prisma.join([TicketStatus.RESOLVED, TicketStatus.CLOSED])}) THEN 0
-              ELSE extract(epoch from (now() - t."dueAt"))
+              ELSE extract(epoch from (${evaluationAt} - t."dueAt"))
             END
           )::bigint as res_breach_seconds
         FROM "Ticket" t

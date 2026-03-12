@@ -17,6 +17,10 @@ import {
   History,
 } from "lucide-react";
 import { searchAll, type SearchResults } from "../api/client";
+import {
+  buildActionableCommandPaletteEntityItems,
+  getTeamSearchNavigationTarget,
+} from "./command-palette-navigation";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import type { RecentSearch } from "../hooks/useCommandPalette";
 import { formatTicketId } from "../utils/format";
@@ -136,6 +140,22 @@ const ACTIONS = [
   },
 ];
 
+export function getNextCommandPaletteSelectedIndex(
+  currentIndex: number,
+  key: "ArrowDown" | "ArrowUp",
+  resultCount: number,
+) {
+  if (resultCount <= 0) {
+    return 0;
+  }
+
+  if (key === "ArrowDown") {
+    return Math.min(currentIndex + 1, resultCount - 1);
+  }
+
+  return Math.max(currentIndex - 1, 0);
+}
+
 export function CommandPalette({
   isOpen,
   onClose,
@@ -208,26 +228,7 @@ export function CommandPalette({
       items.push({ type: "page", data: page, id: `page-${page.key}` });
     });
 
-    // Tickets from search
-    if (results?.tickets) {
-      results.tickets.forEach((ticket) => {
-        items.push({ type: "ticket", data: ticket, id: `ticket-${ticket.id}` });
-      });
-    }
-
-    // Users from search
-    if (results?.users) {
-      results.users.forEach((user) => {
-        items.push({ type: "user", data: user, id: `user-${user.id}` });
-      });
-    }
-
-    // Teams from search
-    if (results?.teams) {
-      results.teams.forEach((team) => {
-        items.push({ type: "team", data: team, id: `team-${team.id}` });
-      });
-    }
+    items.push(...buildActionableCommandPaletteEntityItems(results));
 
     return items;
   }, [query, recentSearches, filteredActions, filteredPages, results]);
@@ -325,14 +326,11 @@ export function CommandPalette({
           navigate(`/tickets/${ticket.id}`);
           break;
         }
-        case "user": {
-          // For now, just close - could navigate to user profile in future
-          onClose();
-          break;
-        }
         case "team": {
+          const team = item.data as SearchResults["teams"][0];
+          const target = getTeamSearchNavigationTarget(team);
           onClose();
-          navigate("/team");
+          navigate(target.pathname, { state: target.state });
           break;
         }
       }
@@ -346,11 +344,19 @@ export function CommandPalette({
       switch (event.key) {
         case "ArrowDown":
           event.preventDefault();
-          setSelectedIndex((prev) => Math.min(prev + 1, allResults.length - 1));
+          setSelectedIndex((prev) =>
+            getNextCommandPaletteSelectedIndex(
+              prev,
+              "ArrowDown",
+              allResults.length,
+            ),
+          );
           break;
         case "ArrowUp":
           event.preventDefault();
-          setSelectedIndex((prev) => Math.max(prev - 1, 0));
+          setSelectedIndex((prev) =>
+            getNextCommandPaletteSelectedIndex(prev, "ArrowUp", allResults.length),
+          );
           break;
         case "Enter":
           event.preventDefault();
@@ -579,48 +585,6 @@ export function CommandPalette({
             </div>
           )}
 
-          {/* User Results */}
-          {results?.users && results.users.length > 0 && (
-            <div className="mb-2">
-              <div className="px-3 py-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                  Users
-                </span>
-              </div>
-              {results.users.map((user) => {
-                const itemIndex = allResults.findIndex(
-                  (r) => r.id === `user-${user.id}`,
-                );
-                const isSelected = selectedIndex === itemIndex;
-                return (
-                  <button
-                    key={user.id}
-                    type="button"
-                    data-selected={isSelected}
-                    onClick={() => handleSelect({ type: "user", data: user })}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? "bg-slate-100" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 flex items-center justify-center text-white text-xs font-semibold">
-                      {user.displayName
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .slice(0, 2)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900">
-                        {user.displayName}
-                      </p>
-                      <p className="text-xs text-slate-500">{user.email}</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {/* Team Results */}
           {results?.teams && results.teams.length > 0 && (
             <div className="mb-2">
@@ -660,7 +624,6 @@ export function CommandPalette({
           {query.trim().length >= 2 &&
             !loading &&
             !results?.tickets?.length &&
-            !results?.users?.length &&
             !results?.teams?.length &&
             filteredPages.length === 0 &&
             filteredActions.length === 0 && (

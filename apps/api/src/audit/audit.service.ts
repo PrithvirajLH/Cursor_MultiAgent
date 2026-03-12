@@ -45,6 +45,11 @@ type CombinedAuditRow = {
   createdByEmail: string | null;
 };
 
+type CombinedAuditCursor = {
+  createdAt: Date;
+  entryId: string;
+};
+
 @Injectable()
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
@@ -90,7 +95,7 @@ export class AuditService {
     };
   }
 
-  async exportCsv(
+  async *exportCsv(
     params: {
       dateFrom?: string;
       dateTo?: string;
@@ -99,24 +104,42 @@ export class AuditService {
       search?: string;
     },
     user: AuthUser,
-  ): Promise<string> {
+  ): AsyncGenerator<string> {
     this.ensureCanAccess(user);
-    const data = await this.loadCombinedAuditEntries(params, user);
-
     const header = 'Date,User,Ticket,Action,Details';
-    const rows = data.map((e) => {
-      const date = e.createdAt.toISOString();
-      const user = e.createdBy
-        ? `"${(e.createdBy.displayName || e.createdBy.email).replace(/"/g, '""')}"`
-        : 'System';
-      const ticket =
-        e.ticketDisplayId ??
-        (e.ticketNumber > 0 ? `#${e.ticketNumber}` : 'N/A');
-      const action = this.eventTypeLabel(e.type);
-      const details = this.formatPayloadForCsv(e.type, e.payload);
-      return `${date},${user},${ticket},${action},${details}`;
-    });
-    return [header, ...rows].join('\n');
+    yield `${header}\n`;
+
+    const batchSize = 1000;
+    let cursor: CombinedAuditCursor | undefined;
+
+    while (true) {
+      const rows = await this.loadCombinedAuditEntriesBatch(
+        params,
+        user,
+        batchSize,
+        cursor,
+      );
+      if (rows.length === 0) {
+        return;
+      }
+
+      const chunk = rows
+        .map((row) =>
+          this.formatAuditEntryCsvRow(this.mapCombinedAuditRow(row)),
+        )
+        .join('\n');
+      yield `${chunk}\n`;
+
+      if (rows.length < batchSize) {
+        return;
+      }
+
+      const lastRow = rows[rows.length - 1];
+      cursor = {
+        createdAt: lastRow.createdAt,
+        entryId: lastRow.entryId,
+      };
+    }
   }
 
   private async listCombinedAuditEntriesPage(
@@ -135,50 +158,7 @@ export class AuditService {
     total: number;
     categoryCounts: AuditCategoryCounts;
   }> {
-    const hasAdminTable = await this.hasAdminAuditEventTable();
-    const ticketWhereClause = this.buildTicketAuditSqlWhereClause(params, user);
-    const adminWhereClause = this.buildAdminAuditSqlWhereClause(params, user);
-
-    const ticketQuery = Prisma.sql`
-      SELECT
-        te."id" AS "entryId",
-        te."ticketId" AS "ticketId",
-        t."number" AS "ticketNumber",
-        t."displayId" AS "ticketDisplayId",
-        te."type" AS "type",
-        te."payload" AS "payload",
-        te."createdAt" AS "createdAt",
-        te."createdById" AS "createdById",
-        u."id" AS "createdByUserId",
-        u."displayName" AS "createdByDisplayName",
-        u."email" AS "createdByEmail"
-      FROM "TicketEvent" te
-      INNER JOIN "Ticket" t ON t."id" = te."ticketId"
-      LEFT JOIN "User" u ON u."id" = te."createdById"
-      ${ticketWhereClause}
-    `;
-
-    const adminQuery = Prisma.sql`
-      SELECT
-        ('admin:' || a."id")::text AS "entryId",
-        NULL::text AS "ticketId",
-        NULL::int AS "ticketNumber",
-        NULL::text AS "ticketDisplayId",
-        a."type" AS "type",
-        a."payload" AS "payload",
-        a."createdAt" AS "createdAt",
-        a."createdById" AS "createdById",
-        u."id" AS "createdByUserId",
-        u."displayName" AS "createdByDisplayName",
-        u."email" AS "createdByEmail"
-      FROM "AdminAuditEvent" a
-      LEFT JOIN "User" u ON u."id" = a."createdById"
-      ${adminWhereClause}
-    `;
-
-    const combinedQuery = hasAdminTable
-      ? Prisma.sql`(${ticketQuery} UNION ALL ${adminQuery})`
-      : Prisma.sql`(${ticketQuery})`;
+    const combinedQuery = await this.buildCombinedAuditQuery(params, user);
 
     const [rows, totalRows, categoryRows] = await Promise.all([
       this.prisma.$queryRaw<CombinedAuditRow[]>`
@@ -217,7 +197,119 @@ export class AuditService {
       `,
     ]);
 
-    const data = rows.map((row) => ({
+    const data = rows.map((row) => this.mapCombinedAuditRow(row));
+
+    const categoryCounts: AuditCategoryCounts = {
+      sla: 0,
+      routing: 0,
+      automation: 0,
+      custom_fields: 0,
+    };
+    for (const row of categoryRows) {
+      categoryCounts[row.category] = Number(row.count);
+    }
+
+    return {
+      data,
+      total: Number(totalRows[0]?.count ?? 0),
+      categoryCounts,
+    };
+  }
+
+  private async buildCombinedAuditQuery(
+    params: {
+      dateFrom?: string;
+      dateTo?: string;
+      userId?: string;
+      type?: string;
+      search?: string;
+    },
+    user: AuthUser,
+  ): Promise<Prisma.Sql> {
+    const hasAdminTable = await this.hasAdminAuditEventTable();
+    const ticketWhereClause = this.buildTicketAuditSqlWhereClause(params, user);
+    const adminWhereClause = this.buildAdminAuditSqlWhereClause(params, user);
+
+    const ticketQuery = Prisma.sql`
+      SELECT
+        te."id" AS "entryId",
+        te."ticketId" AS "ticketId",
+        t."number" AS "ticketNumber",
+        t."displayId" AS "ticketDisplayId",
+        te."type" AS "type",
+        te."payload" AS "payload",
+        te."createdAt" AS "createdAt",
+        te."createdById" AS "createdById",
+        u."id" AS "createdByUserId",
+        u."displayName" AS "createdByDisplayName",
+        u."email" AS "createdByEmail"
+      FROM "TicketEvent" te
+      INNER JOIN "Ticket" t ON t."id" = te."ticketId"
+      LEFT JOIN "User" u ON u."id" = te."createdById"
+      ${ticketWhereClause}
+    `;
+
+    if (!hasAdminTable) {
+      return Prisma.sql`(${ticketQuery})`;
+    }
+
+    const adminQuery = Prisma.sql`
+      SELECT
+        ('admin:' || a."id")::text AS "entryId",
+        NULL::text AS "ticketId",
+        NULL::int AS "ticketNumber",
+        NULL::text AS "ticketDisplayId",
+        a."type" AS "type",
+        a."payload" AS "payload",
+        a."createdAt" AS "createdAt",
+        a."createdById" AS "createdById",
+        u."id" AS "createdByUserId",
+        u."displayName" AS "createdByDisplayName",
+        u."email" AS "createdByEmail"
+      FROM "AdminAuditEvent" a
+      LEFT JOIN "User" u ON u."id" = a."createdById"
+      ${adminWhereClause}
+    `;
+
+    return Prisma.sql`(${ticketQuery} UNION ALL ${adminQuery})`;
+  }
+
+  private async loadCombinedAuditEntriesBatch(
+    params: {
+      dateFrom?: string;
+      dateTo?: string;
+      userId?: string;
+      type?: string;
+      search?: string;
+    },
+    user: AuthUser,
+    limit: number,
+    cursor?: CombinedAuditCursor,
+  ): Promise<CombinedAuditRow[]> {
+    const combinedQuery = await this.buildCombinedAuditQuery(params, user);
+    const cursorClause = cursor
+      ? Prisma.sql`
+          WHERE (
+            "createdAt" < ${cursor.createdAt}
+            OR (
+              "createdAt" = ${cursor.createdAt}
+              AND "entryId" < ${cursor.entryId}
+            )
+          )
+        `
+      : Prisma.empty;
+
+    return this.prisma.$queryRaw<CombinedAuditRow[]>`
+      SELECT *
+      FROM ${combinedQuery} AS "combined"
+      ${cursorClause}
+      ORDER BY "createdAt" DESC, "entryId" DESC
+      LIMIT ${limit}
+    `;
+  }
+
+  private mapCombinedAuditRow(row: CombinedAuditRow): AuditLogEntry {
+    return {
       id: row.entryId,
       ticketId: row.ticketId ?? '',
       ticketNumber: row.ticketNumber ?? 0,
@@ -234,22 +326,6 @@ export class AuditService {
               email: row.createdByEmail,
             }
           : null,
-    }));
-
-    const categoryCounts: AuditCategoryCounts = {
-      sla: 0,
-      routing: 0,
-      automation: 0,
-      custom_fields: 0,
-    };
-    for (const row of categoryRows) {
-      categoryCounts[row.category] = Number(row.count);
-    }
-
-    return {
-      data,
-      total: Number(totalRows[0]?.count ?? 0),
-      categoryCounts,
     };
   }
 
@@ -782,5 +858,18 @@ export class AuditService {
     }
     const serialized = JSON.stringify(value);
     return serialized ?? '';
+  }
+
+  private formatAuditEntryCsvRow(entry: AuditLogEntry): string {
+    const date = entry.createdAt.toISOString();
+    const user = entry.createdBy
+      ? `"${(entry.createdBy.displayName || entry.createdBy.email).replace(/"/g, '""')}"`
+      : 'System';
+    const ticket =
+      entry.ticketDisplayId ??
+      (entry.ticketNumber > 0 ? `#${entry.ticketNumber}` : 'N/A');
+    const action = this.eventTypeLabel(entry.type);
+    const details = this.formatPayloadForCsv(entry.type, entry.payload);
+    return `${date},${user},${ticket},${action},${details}`;
   }
 }

@@ -1,0 +1,14 @@
+- main [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - img [ref=e9]
+      - heading "Ticketing Systems" [level=1] [ref=e12]
+    - generic [ref=e13]:
+      - heading "Sign in" [level=2] [ref=e14]
+      - paragraph [ref=e15]: to continue to your workspace
+    - button "Sign in with Microsoft" [ref=e17] [cursor=pointer]:
+      - img [ref=e18]
+      - generic [ref=e23]: Sign in with Microsoft
+    - paragraph [ref=e25]:
+      - img [ref=e26]
+      - text: Single Sign-On Enabled

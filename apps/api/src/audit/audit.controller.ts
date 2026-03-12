@@ -1,5 +1,11 @@
-import { Controller, Get, Header, Query, Res, UseGuards } from '@nestjs/common';
-import type { Response } from 'express';
+import {
+  Controller,
+  Get,
+  StreamableFile,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { Readable } from 'stream';
 import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { ListAuditLogDto } from './dto/list-audit-log.dto';
@@ -8,7 +14,7 @@ import { AuditService } from './audit.service';
 @Controller('audit-log')
 @UseGuards(AdminGuard)
 export class AuditController {
-  constructor(private readonly auditService: AuditService) { }
+  constructor(private readonly auditService: AuditService) {}
 
   @Get()
   async list(@Query() query: ListAuditLogDto, @CurrentUser() user: AuthUser) {
@@ -34,23 +40,24 @@ export class AuditController {
   }
 
   @Get('export')
-  @Header('Content-Type', 'text/csv; charset=utf-8')
-  @Header('Content-Disposition', 'attachment; filename="audit-log.csv"')
-  async exportCsv(
-    @Query() query: ListAuditLogDto,
-    @CurrentUser() user: AuthUser,
-    @Res() res: Response,
-  ) {
-    const csv = await this.auditService.exportCsv(
+  exportCsv(@Query() query: ListAuditLogDto, @CurrentUser() user: AuthUser) {
+    return new StreamableFile(
+      Readable.from(
+        this.auditService.exportCsv(
+          {
+            dateFrom: query.dateFrom,
+            dateTo: query.dateTo,
+            userId: query.userId,
+            type: query.type,
+            search: query.search,
+          },
+          user,
+        ),
+      ),
       {
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
-        userId: query.userId,
-        type: query.type,
-        search: query.search,
+        type: 'text/csv; charset=utf-8',
+        disposition: 'attachment; filename="audit-log.csv"',
       },
-      user,
     );
-    res.send(csv);
   }
 }
