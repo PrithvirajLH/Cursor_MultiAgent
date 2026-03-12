@@ -1,4 +1,10 @@
-type TeamRow = { id: string; name: string; open: number; resolved: number; total: number };
+type TeamRow = {
+  id: string;
+  name: string;
+  open: number;
+  resolved: number;
+  total: number;
+};
 
 export function TeamSummaryTable({ data }: { data: TeamRow[] }) {
   if (data.length === 0) {
@@ -23,10 +29,18 @@ export function TeamSummaryTable({ data }: { data: TeamRow[] }) {
         <tbody>
           {data.map((row) => (
             <tr key={row.id} className="border-b border-slate-100">
-              <td className="py-2 pr-3 font-medium text-slate-900">{row.name}</td>
-              <td className="py-2 pr-3 text-right text-slate-700">{row.open}</td>
-              <td className="py-2 pr-3 text-right text-slate-700">{row.resolved}</td>
-              <td className="py-2 text-right text-slate-900 font-semibold">{row.total}</td>
+              <td className="py-2 pr-3 font-medium text-slate-900">
+                {row.name}
+              </td>
+              <td className="py-2 pr-3 text-right text-slate-700">
+                {row.open}
+              </td>
+              <td className="py-2 pr-3 text-right text-slate-700">
+                {row.resolved}
+              </td>
+              <td className="py-2 text-right text-slate-900 font-semibold">
+                {row.total}
+              </td>
             </tr>
           ))}
         </tbody>

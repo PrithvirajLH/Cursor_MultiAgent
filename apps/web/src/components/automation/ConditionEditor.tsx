@@ -1,29 +1,36 @@
-import type { AutomationCondition } from '../../api/client';
+import type { AutomationCondition } from "../../api/client";
 
 const FIELDS = [
-  { value: 'subject', label: 'Subject' },
-  { value: 'description', label: 'Description' },
-  { value: 'priority', label: 'Priority' },
-  { value: 'status', label: 'Status' },
-  { value: 'assignedTeamId', label: 'Team' },
-  { value: 'assigneeId', label: 'Assignee' },
-  { value: 'categoryId', label: 'Category' },
+  { value: "subject", label: "Subject" },
+  { value: "description", label: "Description" },
+  { value: "priority", label: "Priority" },
+  { value: "status", label: "Status" },
+  { value: "assignedTeamId", label: "Team" },
+  { value: "assigneeId", label: "Assignee" },
+  { value: "categoryId", label: "Category" },
 ] as const;
 
 const OPERATORS = [
-  { value: 'contains', label: 'contains' },
-  { value: 'equals', label: 'equals' },
-  { value: 'notEquals', label: 'not equals' },
-  { value: 'in', label: 'is one of' },
-  { value: 'notIn', label: 'is not one of' },
-  { value: 'isEmpty', label: 'is empty' },
-  { value: 'isNotEmpty', label: 'is not empty' },
+  { value: "contains", label: "contains" },
+  { value: "equals", label: "equals" },
+  { value: "notEquals", label: "not equals" },
+  { value: "in", label: "is one of" },
+  { value: "notIn", label: "is not one of" },
+  { value: "isEmpty", label: "is empty" },
+  { value: "isNotEmpty", label: "is not empty" },
 ] as const;
 
-const PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+const PRIORITIES = ["P1", "P2", "P3", "P4"];
 const STATUSES = [
-  'NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS',
-  'WAITING_ON_REQUESTER', 'WAITING_ON_VENDOR', 'RESOLVED', 'CLOSED', 'REOPENED',
+  "NEW",
+  "TRIAGED",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "WAITING_ON_REQUESTER",
+  "WAITING_ON_VENDOR",
+  "RESOLVED",
+  "CLOSED",
+  "REOPENED",
 ];
 
 type Props = {
@@ -43,14 +50,17 @@ export function ConditionEditor({
   users,
   categories = [],
 }: Props) {
-  const field = condition.field ?? 'subject';
-  const operator = condition.operator ?? 'contains';
+  const field = condition.field ?? "subject";
+  const operator = condition.operator ?? "contains";
   const value = condition.value;
 
-  const needsValue =
-    operator !== 'isEmpty' && operator !== 'isNotEmpty';
-  const isMulti = operator === 'in' || operator === 'notIn';
-  const valueArray = Array.isArray(value) ? value : value != null ? [value] : [];
+  const needsValue = operator !== "isEmpty" && operator !== "isNotEmpty";
+  const isMulti = operator === "in" || operator === "notIn";
+  const valueArray = Array.isArray(value)
+    ? value
+    : value != null
+      ? [value]
+      : [];
 
   function setValue(next: unknown) {
     onChange({ ...condition, value: next });
@@ -82,10 +92,10 @@ export function ConditionEditor({
       </select>
       {needsValue && (
         <>
-          {field === 'priority' && (
+          {field === "priority" && (
             <select
               className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? '') : (value ?? '')}
+              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
               }
@@ -98,10 +108,10 @@ export function ConditionEditor({
               ))}
             </select>
           )}
-          {field === 'status' && (
+          {field === "status" && (
             <select
               className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? '') : (value ?? '')}
+              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
               }
@@ -109,15 +119,15 @@ export function ConditionEditor({
               <option value="">Select</option>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
+                  {s.replace(/_/g, " ")}
                 </option>
               ))}
             </select>
           )}
-          {field === 'assignedTeamId' && (
+          {field === "assignedTeamId" && (
             <select
               className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? '') : (value ?? '')}
+              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
               }
@@ -130,10 +140,10 @@ export function ConditionEditor({
               ))}
             </select>
           )}
-          {field === 'assigneeId' && (
+          {field === "assigneeId" && (
             <select
               className="rounded border border-slate-200 bg-white px-2 py-1 text-xs min-w-[140px]"
-              value={isMulti ? (valueArray[0] ?? '') : (value ?? '')}
+              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
               }
@@ -146,10 +156,10 @@ export function ConditionEditor({
               ))}
             </select>
           )}
-          {field === 'categoryId' && (
+          {field === "categoryId" && (
             <select
               className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? '') : (value ?? '')}
+              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
               }
@@ -162,26 +172,26 @@ export function ConditionEditor({
               ))}
             </select>
           )}
-          {(field === 'subject' || field === 'description') && (
+          {(field === "subject" || field === "description") && (
             <input
               type="text"
               className="rounded border border-slate-200 bg-white px-2 py-1 text-xs min-w-[120px]"
-              placeholder={isMulti ? 'Comma-separated' : 'Value'}
+              placeholder={isMulti ? "Comma-separated" : "Value"}
               value={
                 isMulti
-                  ? valueArray.map(String).join(', ')
+                  ? valueArray.map(String).join(", ")
                   : value != null
                     ? String(value)
-                    : ''
+                    : ""
               }
               onChange={(e) => {
                 const v = e.target.value;
                 if (isMulti) {
                   setValue(
                     v
-                      .split(',')
+                      .split(",")
                       .map((s) => s.trim())
-                      .filter(Boolean)
+                      .filter(Boolean),
                   );
                 } else {
                   setValue(v || undefined);

@@ -7,20 +7,24 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
+} from "recharts";
 
 type Point = { date: string; count: number };
 
-const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function dayLabel(date: string) {
   const d = new Date(`${date}T00:00:00Z`);
-  return d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+  return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
 }
 
 function shortDateLabel(date: string) {
   const d = new Date(`${date}T00:00:00Z`);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 export function ReopenRateChart({ data }: { data: Point[] }) {
@@ -43,7 +47,9 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
 
   const byDay = DAY_ORDER.map((day) => ({
     day,
-    count: chartData.filter((row) => row.day === day).reduce((sum, row) => sum + row.count, 0),
+    count: chartData
+      .filter((row) => row.day === day)
+      .reduce((sum, row) => sum + row.count, 0),
   }));
   const dayTotal = byDay.reduce((sum, row) => sum + row.count, 0) || 1;
 
@@ -51,14 +57,26 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
     <div className="w-full">
       <div className="h-[200px] w-full min-h-0 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+          >
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="short" tick={{ fontSize: 11 }} stroke="#64748b" />
-            <YAxis tick={{ fontSize: 11 }} stroke="#64748b" allowDecimals={false} />
+            <YAxis
+              tick={{ fontSize: 11 }}
+              stroke="#64748b"
+              allowDecimals={false}
+            />
             <Tooltip
-              formatter={(value: number | undefined) => [value ?? 0, 'Reopens']}
-              labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ''}
-              contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)' }}
+              formatter={(value: number | undefined) => [value ?? 0, "Reopens"]}
+              labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ""}
+              contentStyle={{
+                fontSize: 12,
+                borderRadius: "12px",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
+              }}
             />
             <ReferenceLine
               y={avg}
@@ -66,7 +84,16 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
               strokeDasharray="4 4"
               ifOverflow="extendDomain"
             />
-            <Line type="monotone" dataKey="count" stroke="#0f172a" strokeWidth={2} dot={{ r: 3 }} animationBegin={0} animationDuration={800} animationEasing="ease-out" />
+            <Line
+              type="monotone"
+              dataKey="count"
+              stroke="#0f172a"
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              animationBegin={0}
+              animationDuration={800}
+              animationEasing="ease-out"
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>

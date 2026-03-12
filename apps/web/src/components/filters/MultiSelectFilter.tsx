@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Check, ChevronDown, Search, X } from 'lucide-react';
+import { useMemo, useState } from "react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 
 export type MultiSelectOption = { value: string; label: string };
 
@@ -8,7 +8,7 @@ export function MultiSelectFilter({
   options,
   selected,
   onChange,
-  placeholder = 'All',
+  placeholder = "All",
   searchable = true,
 }: {
   label: string;
@@ -19,13 +19,15 @@ export function MultiSelectFilter({
   searchable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
 
   const filteredOptions = useMemo(() => {
     if (!searchable || !search.trim()) return options;
     const lower = search.toLowerCase();
     return options.filter(
-      (o) => o.label.toLowerCase().includes(lower) || o.value.toLowerCase().includes(lower),
+      (o) =>
+        o.label.toLowerCase().includes(lower) ||
+        o.value.toLowerCase().includes(lower),
     );
   }, [options, search, searchable]);
 
@@ -42,13 +44,15 @@ export function MultiSelectFilter({
     const labels = options
       .filter((o) => selected.includes(o.value))
       .map((o) => o.label);
-    if (labels.length <= 2) return labels.join(', ');
-    return `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
+    if (labels.length <= 2) return labels.join(", ");
+    return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
   }, [options, placeholder, selected]);
 
   return (
     <div className="space-y-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        {label}
+      </span>
       <div className="relative">
         <button
           type="button"
@@ -56,11 +60,17 @@ export function MultiSelectFilter({
           className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 hover:bg-slate-50 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         >
           <span className="truncate">{summary}</span>
-          <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+          <ChevronDown
+            className={`h-4 w-4 text-slate-400 transition ${open ? "rotate-180" : ""}`}
+          />
         </button>
         {open && (
           <>
-            <div className="fixed inset-0 z-10" aria-hidden onClick={() => setOpen(false)} />
+            <div
+              className="fixed inset-0 z-10"
+              aria-hidden
+              onClick={() => setOpen(false)}
+            />
             <div className="absolute left-0 top-full z-20 mt-1.5 w-full min-w-[220px] rounded-[16px] border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
               {searchable && (
                 <div className="relative mb-2">
@@ -82,10 +92,11 @@ export function MultiSelectFilter({
                       key={opt.value}
                       type="button"
                       onClick={() => toggle(opt.value)}
-                      className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors ${checked
-                          ? 'bg-blue-50 text-blue-700 font-medium'
-                          : 'text-slate-700 hover:bg-slate-50'
-                        }`}
+                      className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors ${
+                        checked
+                          ? "bg-blue-50 text-blue-700 font-medium"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
                     >
                       <span className="truncate">{opt.label}</span>
                       {checked ? <Check className="h-4 w-4" /> : null}
@@ -93,7 +104,9 @@ export function MultiSelectFilter({
                   );
                 })}
                 {filteredOptions.length === 0 ? (
-                  <p className="px-2 py-2 text-xs text-slate-500 text-center">No matches</p>
+                  <p className="px-2 py-2 text-xs text-slate-500 text-center">
+                    No matches
+                  </p>
                 ) : null}
               </div>
               <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
@@ -101,7 +114,7 @@ export function MultiSelectFilter({
                   type="button"
                   onClick={() => {
                     onChange([]);
-                    setSearch('');
+                    setSearch("");
                   }}
                   className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                 >
@@ -145,7 +158,9 @@ export function CheckboxGroupFilter({
 
   return (
     <div className="space-y-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       <div className="flex flex-wrap gap-2">
         {options.map((opt) => {
           const active = selected.includes(opt.value);
@@ -154,10 +169,11 @@ export function CheckboxGroupFilter({
               key={opt.value}
               type="button"
               onClick={() => toggle(opt.value)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${active
-                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                  : 'border-border bg-background text-foreground hover:bg-muted/30'
-                }`}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                active
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : "border-border bg-background text-foreground hover:bg-muted/30"
+              }`}
             >
               {opt.label}
             </button>

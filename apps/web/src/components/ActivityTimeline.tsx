@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { TicketDetail, TicketEvent, TicketMessage } from '../api/client';
-import { TimelineEvent } from './TimelineEvent';
-import { formatDate } from '../utils/format';
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import type { TicketDetail, TicketEvent, TicketMessage } from "../api/client";
+import { TimelineEvent } from "./TimelineEvent";
+import { formatDate } from "../utils/format";
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  TICKET_CREATED: 'Ticket created',
-  TICKET_STATUS_CHANGED: 'Status changed',
-  TICKET_ASSIGNED: 'Assigned',
-  TICKET_TRANSFERRED: 'Team transferred',
-  TICKET_PRIORITY_CHANGED: 'Priority changed',
-  PRIORITY_BUMPED: 'Priority bumped',
-  MESSAGE_ADDED: 'Message',
-  ATTACHMENT_ADDED: 'Attachment',
-  SLA_BREACHED: 'SLA breached',
-  SLA_AT_RISK: 'SLA at risk'
+  TICKET_CREATED: "Ticket created",
+  TICKET_STATUS_CHANGED: "Status changed",
+  TICKET_ASSIGNED: "Assigned",
+  TICKET_TRANSFERRED: "Team transferred",
+  TICKET_PRIORITY_CHANGED: "Priority changed",
+  PRIORITY_BUMPED: "Priority bumped",
+  MESSAGE_ADDED: "Message",
+  ATTACHMENT_ADDED: "Attachment",
+  SLA_BREACHED: "SLA breached",
+  SLA_AT_RISK: "SLA at risk",
 };
 
 function getDateKey(createdAt: string): string {
@@ -40,19 +40,21 @@ export function ActivityTimeline({
   messages,
   role,
   eventTypeFilter = [],
-  collapseGroups = false
+  collapseGroups = false,
 }: ActivityTimelineProps) {
-  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(() => new Set());
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [typeFilter, setTypeFilter] = useState<string[]>(eventTypeFilter);
 
   const rawEvents = timelineEvents ?? [];
 
   const events = useMemo(() => {
-    if (role !== 'EMPLOYEE') return rawEvents;
+    if (role !== "EMPLOYEE") return rawEvents;
     return rawEvents.filter((e) => {
-      if (e.type !== 'MESSAGE_ADDED') return true;
+      if (e.type !== "MESSAGE_ADDED") return true;
       const payloadType = e.payload?.type as string | undefined;
-      return payloadType !== 'INTERNAL';
+      return payloadType !== "INTERNAL";
     });
   }, [rawEvents, role]);
 
@@ -76,15 +78,24 @@ export function ActivityTimeline({
 
   const sortedEvents = useMemo(() => {
     const list = [...events].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
     if (typeFilter.length === 0) return list;
     return list.filter((e) => typeFilter.includes(e.type));
   }, [events, typeFilter]);
 
   const groupedByDate = useMemo(() => {
-    const groups: { dateKey: string; dateLabel: string; events: TicketEvent[] }[] = [];
-    let current: { dateKey: string; dateLabel: string; events: TicketEvent[] } | null = null;
+    const groups: {
+      dateKey: string;
+      dateLabel: string;
+      events: TicketEvent[];
+    }[] = [];
+    let current: {
+      dateKey: string;
+      dateLabel: string;
+      events: TicketEvent[];
+    } | null = null;
     for (const event of sortedEvents) {
       const dateKey = getDateKey(event.createdAt);
       const dateLabel = formatDate(event.createdAt) ?? dateKey;
@@ -117,7 +128,8 @@ export function ActivityTimeline({
       <div className="py-10 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
         <p className="text-sm font-medium text-slate-600">No activity yet</p>
         <p className="text-xs text-slate-500 mt-1">
-          Events will appear here as the ticket is updated (status changes, assignments, messages, and more).
+          Events will appear here as the ticket is updated (status changes,
+          assignments, messages, and more).
         </p>
       </div>
     );
@@ -145,11 +157,11 @@ export function ActivityTimeline({
                 }}
                 className={`text-xs px-2 py-1 rounded-full border transition ${
                   active
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
                 }`}
               >
-                {EVENT_TYPE_LABELS[type] ?? type.replace(/_/g, ' ')}
+                {EVENT_TYPE_LABELS[type] ?? type.replace(/_/g, " ")}
               </button>
             );
           })}
@@ -181,12 +193,14 @@ export function ActivityTimeline({
                   <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
                 )}
                 {dateLabel}
-                <span className="text-slate-400 font-normal">({events.length})</span>
+                <span className="text-slate-400 font-normal">
+                  ({events.length})
+                </span>
               </button>
               {!isCollapsed &&
                 events.map((event) => {
                   const message =
-                    event.type === 'MESSAGE_ADDED' && event.payload?.messageId
+                    event.type === "MESSAGE_ADDED" && event.payload?.messageId
                       ? messageById.get(String(event.payload.messageId))
                       : null;
                   return (

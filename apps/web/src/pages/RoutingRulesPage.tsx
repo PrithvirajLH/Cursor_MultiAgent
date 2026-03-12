@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   createRoutingRule,
   deleteRoutingRule,
@@ -9,18 +9,18 @@ import {
   updateRoutingRule,
   type RoutingRule,
   type TeamMember,
-  type TeamRef
-} from '../api/client';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useToast } from '../hooks/useToast';
-import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+  type TeamRef,
+} from "../api/client";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useToast } from "../hooks/useToast";
+import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import {
   REALTIME_ADMIN_CHANGED_EVENT,
   type RealtimeAdminChangedEventPayload,
-} from '../realtime/events';
-import type { Role } from '../types';
-import { handleApiError } from '../utils/handleApiError';
+} from "../realtime/events";
+import type { Role } from "../types";
+import { handleApiError } from "../utils/handleApiError";
 
 type RoutingCondition = {
   field: string;
@@ -47,7 +47,7 @@ type RuleUiMeta = {
   actions: RoutingAction[];
 };
 
-type AssignmentMode = 'team' | 'member';
+type AssignmentMode = "team" | "member";
 
 type MemberOption = {
   id: string;
@@ -56,12 +56,16 @@ type MemberOption = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  assign_team: 'Assign Team',
-  assign_member: 'Assign Member',
+  assign_team: "Assign Team",
+  assign_member: "Assign Member",
 };
 
-const DEFAULT_CONDITION: RoutingCondition = { field: 'subject', op: 'contains', val: '' };
-const DEFAULT_ACTION: RoutingAction = { type: 'assign_team', val: '' };
+const DEFAULT_CONDITION: RoutingCondition = {
+  field: "subject",
+  op: "contains",
+  val: "",
+};
+const DEFAULT_ACTION: RoutingAction = { type: "assign_team", val: "" };
 
 function normalizeKeyword(value: string): string {
   return value.trim().toLowerCase();
@@ -79,7 +83,10 @@ function toUniqueKeywords(conditions: RoutingCondition[]): string[] {
   return next;
 }
 
-function resolveTeamId(actionValue: string, teamsList: TeamRef[]): string | null {
+function resolveTeamId(
+  actionValue: string,
+  teamsList: TeamRef[],
+): string | null {
   const trimmed = actionValue.trim();
   if (!trimmed) return null;
   const byId = teamsList.find((team) => team.id === trimmed);
@@ -93,15 +100,22 @@ function resolveTeamName(teamId: string, teamsList: TeamRef[]): string {
   return teamsList.find((team) => team.id === teamId)?.name ?? teamId;
 }
 
-function resolveMemberId(actionValue: string, members: MemberOption[]): string | null {
+function resolveMemberId(
+  actionValue: string,
+  members: MemberOption[],
+): string | null {
   const trimmed = actionValue.trim();
   if (!trimmed) return null;
   const byId = members.find((member) => member.id === trimmed);
   if (byId) return byId.id;
   const lowered = trimmed.toLowerCase();
-  const byEmail = members.find((member) => member.email.toLowerCase() === lowered);
+  const byEmail = members.find(
+    (member) => member.email.toLowerCase() === lowered,
+  );
   if (byEmail) return byEmail.id;
-  const byLabel = members.find((member) => member.label.toLowerCase() === lowered);
+  const byLabel = members.find(
+    (member) => member.label.toLowerCase() === lowered,
+  );
   return byLabel?.id ?? null;
 }
 
@@ -109,34 +123,37 @@ function resolveMemberName(memberId: string, members: MemberOption[]): string {
   return members.find((member) => member.id === memberId)?.label ?? memberId;
 }
 
-function deriveMetaFromRule(rule: RoutingRule, mode: AssignmentMode): RuleUiMeta {
+function deriveMetaFromRule(
+  rule: RoutingRule,
+  mode: AssignmentMode,
+): RuleUiMeta {
   const conditions =
     rule.keywords.length > 0
       ? rule.keywords.map((keyword) => ({
-        field: 'subject',
-        op: 'contains',
-        val: keyword
-      }))
+          field: "subject",
+          op: "contains",
+          val: keyword,
+        }))
       : [{ ...DEFAULT_CONDITION }];
 
   const actions: RoutingAction[] = [
     {
-      type: mode === 'member' ? 'assign_member' : 'assign_team',
-      val: mode === 'member' ? rule.assigneeId ?? '' : rule.teamId
-    }
+      type: mode === "member" ? "assign_member" : "assign_team",
+      val: mode === "member" ? (rule.assigneeId ?? "") : rule.teamId,
+    },
   ];
 
   return { conditions, actions };
 }
 
-function getActionType(mode: AssignmentMode): RoutingAction['type'] {
-  return mode === 'member' ? 'assign_member' : 'assign_team';
+function getActionType(mode: AssignmentMode): RoutingAction["type"] {
+  return mode === "member" ? "assign_member" : "assign_team";
 }
 
 function Toggle({
   checked,
   onChange,
-  disabled
+  disabled,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
@@ -160,7 +177,7 @@ function Toggle({
 function ConfirmDeleteModal({
   ruleName,
   onConfirm,
-  onCancel
+  onCancel,
 }: {
   ruleName: string;
   onConfirm: () => void;
@@ -172,7 +189,9 @@ function ConfirmDeleteModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
     >
       <div
         ref={dialogRef}
@@ -184,7 +203,12 @@ function ConfirmDeleteModal({
       >
         <div className="mb-3 flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
-            <svg className="h-5 w-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className="h-5 w-5 text-red-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -193,7 +217,9 @@ function ConfirmDeleteModal({
               />
             </svg>
           </div>
-          <h3 className="text-base font-semibold text-slate-900">Delete Routing Rule</h3>
+          <h3 className="text-base font-semibold text-slate-900">
+            Delete Routing Rule
+          </h3>
         </div>
         <p className="mb-5 text-sm leading-relaxed text-slate-600">
           Delete "{ruleName}"? This cannot be undone.
@@ -232,7 +258,7 @@ function RuleEditorModal({
   onAddCondition,
   onRemoveCondition,
   onUpdateCondition,
-  onUpdateAction
+  onUpdateAction,
 }: {
   form: RoutingForm;
   isNew: boolean;
@@ -245,8 +271,16 @@ function RuleEditorModal({
   onChange: (next: Partial<RoutingForm>) => void;
   onAddCondition: () => void;
   onRemoveCondition: (index: number) => void;
-  onUpdateCondition: (index: number, key: keyof RoutingCondition, value: string) => void;
-  onUpdateAction: (index: number, key: keyof RoutingAction, value: string) => void;
+  onUpdateCondition: (
+    index: number,
+    key: keyof RoutingCondition,
+    value: string,
+  ) => void;
+  onUpdateAction: (
+    index: number,
+    key: keyof RoutingAction,
+    value: string,
+  ) => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalFocusTrap({
@@ -258,28 +292,45 @@ function RuleEditorModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={isNew ? 'Create routing rule' : 'Edit routing rule'}
+        aria-label={isNew ? "Create routing rule" : "Edit routing rule"}
         tabIndex={-1}
         className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <p className="text-base font-semibold text-slate-900">
-              {isNew ? 'Create Routing Rule' : 'Edit Routing Rule'}
+              {isNew ? "Create Routing Rule" : "Edit Routing Rule"}
             </p>
             <p className="mt-0.5 text-xs text-slate-500">
-              Define subject keywords and target {assignmentMode === 'member' ? 'team member' : 'team'}
+              Define subject keywords and target{" "}
+              {assignmentMode === "member" ? "team member" : "team"}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -287,7 +338,9 @@ function RuleEditorModal({
         <div className="flex-1 space-y-5 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-slate-700">Rule Name *</label>
+              <label className="mb-1 block text-xs font-medium text-slate-700">
+                Rule Name *
+              </label>
               <input
                 value={form.name}
                 onChange={(event) => onChange({ name: event.target.value })}
@@ -297,7 +350,10 @@ function RuleEditorModal({
             </div>
             <div className="col-span-2 flex items-end pb-1 sm:col-span-1">
               <div className="flex items-center space-x-2">
-                <Toggle checked={form.enabled} onChange={(value) => onChange({ enabled: value })} />
+                <Toggle
+                  checked={form.enabled}
+                  onChange={(value) => onChange({ enabled: value })}
+                />
                 <span className="text-sm text-slate-700">Enabled</span>
               </div>
             </div>
@@ -305,12 +361,19 @@ function RuleEditorModal({
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">Subject Keywords</p>
-              <span className="text-xs text-slate-400">All keywords are matched against the ticket subject</span>
+              <p className="text-sm font-semibold text-slate-800">
+                Subject Keywords
+              </p>
+              <span className="text-xs text-slate-400">
+                All keywords are matched against the ticket subject
+              </span>
             </div>
             <div className="space-y-2">
               {form.conditions.map((condition, index) => (
-                <div key={`condition-${index}`} className="flex items-center space-x-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                <div
+                  key={`condition-${index}`}
+                  className="flex items-center space-x-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5"
+                >
                   <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
                     subject
                   </span>
@@ -319,7 +382,9 @@ function RuleEditorModal({
                   </span>
                   <input
                     value={condition.val}
-                    onChange={(event) => onUpdateCondition(index, 'val', event.target.value)}
+                    onChange={(event) =>
+                      onUpdateCondition(index, "val", event.target.value)
+                    }
                     className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                     placeholder="keyword..."
                   />
@@ -328,8 +393,18 @@ function RuleEditorModal({
                     onClick={() => onRemoveCondition(index)}
                     className="flex-shrink-0 text-slate-400 hover:text-red-500"
                   >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -339,8 +414,18 @@ function RuleEditorModal({
                 onClick={onAddCondition}
                 className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700"
               >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
                 <span>Add Condition</span>
               </button>
@@ -350,41 +435,62 @@ function RuleEditorModal({
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold text-slate-800">Assignment</p>
-              <span className="text-xs text-slate-400">Persisted backend field</span>
+              <span className="text-xs text-slate-400">
+                Persisted backend field
+              </span>
             </div>
             <div className="space-y-2">
               {form.actions.map((action, index) => (
-                <div key={`action-${index}`} className="flex items-center space-x-2 rounded-lg border border-blue-100 bg-blue-50 p-2.5">
-                  <svg className="h-4 w-4 flex-shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                <div
+                  key={`action-${index}`}
+                  className="flex items-center space-x-2 rounded-lg border border-blue-100 bg-blue-50 p-2.5"
+                >
+                  <svg
+                    className="h-4 w-4 flex-shrink-0 text-blue-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
                   </svg>
                   <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-blue-700">
-                    {assignmentMode === 'member' ? 'Assign Member' : 'Assign Team'}
+                    {assignmentMode === "member"
+                      ? "Assign Member"
+                      : "Assign Team"}
                   </span>
                   <select
                     value={action.val}
-                    onChange={(event) => onUpdateAction(index, 'val', event.target.value)}
+                    onChange={(event) =>
+                      onUpdateAction(index, "val", event.target.value)
+                    }
                     className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">
-                      {assignmentMode === 'member' ? 'Select member...' : 'Select team...'}
+                      {assignmentMode === "member"
+                        ? "Select member..."
+                        : "Select team..."}
                     </option>
-                    {assignmentMode === 'member'
+                    {assignmentMode === "member"
                       ? memberOptions.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.label}
-                        </option>
-                      ))
+                          <option key={member.id} value={member.id}>
+                            {member.label}
+                          </option>
+                        ))
                       : teamsList.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
                   </select>
                 </div>
               ))}
             </div>
-            {assignmentMode === 'member' && memberOptions.length === 0 && (
+            {assignmentMode === "member" && memberOptions.length === 0 && (
               <p className="mt-2 text-xs text-amber-700">
                 No team members found for assignment. Add team members first.
               </p>
@@ -407,7 +513,7 @@ function RuleEditorModal({
             disabled={loading}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
-            {loading ? 'Saving...' : isNew ? 'Create Rule' : 'Save Changes'}
+            {loading ? "Saving..." : isNew ? "Create Rule" : "Save Changes"}
           </button>
         </div>
       </div>
@@ -417,7 +523,7 @@ function RuleEditorModal({
 
 export function RoutingRulesPage({
   teamsList,
-  role
+  role,
 }: {
   teamsList: TeamRef[];
   role: Role;
@@ -432,17 +538,18 @@ export function RoutingRulesPage({
   const [saving, setSaving] = useState(false);
   const [updatingRuleId, setUpdatingRuleId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const assignmentMode: AssignmentMode = role === 'TEAM_ADMIN' ? 'member' : 'team';
+  const assignmentMode: AssignmentMode =
+    role === "TEAM_ADMIN" ? "member" : "team";
   const actionType = getActionType(assignmentMode);
 
   const [showEditor, setShowEditor] = useState(false);
   const [form, setForm] = useState<RoutingForm>({
     id: null,
-    name: '',
+    name: "",
     enabled: true,
     priority: 1,
     conditions: [{ ...DEFAULT_CONDITION }],
-    actions: [{ ...DEFAULT_ACTION }]
+    actions: [{ ...DEFAULT_ACTION }],
   });
 
   const [deleteTarget, setDeleteTarget] = useState<RoutingRule | null>(null);
@@ -452,7 +559,7 @@ export function RoutingRulesPage({
   }, [assignmentMode]);
 
   useEffect(() => {
-    if (assignmentMode !== 'member') {
+    if (assignmentMode !== "member") {
       setMemberOptions([]);
       return;
     }
@@ -495,16 +602,16 @@ export function RoutingRulesPage({
         .detail;
       const scope = payload?.scope;
       if (
-        scope !== 'routing_rule' &&
-        scope !== 'team' &&
-        scope !== 'team_member'
+        scope !== "routing_rule" &&
+        scope !== "team" &&
+        scope !== "team_member"
       ) {
         return;
       }
 
       void loadRules();
 
-      if (assignmentMode !== 'member') {
+      if (assignmentMode !== "member") {
         return;
       }
 
@@ -570,15 +677,18 @@ export function RoutingRulesPage({
   }
 
   const sortedRules = useMemo(() => {
-    return [...rules].sort((a, b) => a.priority - b.priority || a.name.localeCompare(b.name));
+    return [...rules].sort(
+      (a, b) => a.priority - b.priority || a.name.localeCompare(b.name),
+    );
   }, [rules]);
 
   function openCreateModal() {
-    navigate('/routing/new');
+    navigate("/routing/new");
   }
 
   function openEditModal(rule: RoutingRule) {
-    const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, assignmentMode);
+    const meta =
+      uiMetaById[rule.id] ?? deriveMetaFromRule(rule, assignmentMode);
     setForm({
       id: rule.id,
       name: rule.name,
@@ -591,7 +701,7 @@ export function RoutingRulesPage({
       actions:
         meta.actions.length > 0
           ? meta.actions.map((item) => ({ ...item, type: actionType }))
-          : [{ type: actionType, val: '' }]
+          : [{ type: actionType, val: "" }],
     });
     setShowEditor(true);
   }
@@ -608,12 +718,12 @@ export function RoutingRulesPage({
     error?: string;
   } {
     if (!nextForm.name.trim()) {
-      return { error: 'Rule name is required.' };
+      return { error: "Rule name is required." };
     }
 
     const keywords = toUniqueKeywords(nextForm.conditions);
     if (keywords.length === 0) {
-      return { error: 'Add at least one condition value.' };
+      return { error: "Add at least one condition value." };
     }
 
     const assignmentAction = nextForm.actions[0];
@@ -621,50 +731,52 @@ export function RoutingRulesPage({
       name: nextForm.name.trim(),
       keywords,
       priority: Math.max(1, Number(nextForm.priority) || 1),
-      isActive: nextForm.enabled
+      isActive: nextForm.enabled,
     };
 
-    if (assignmentMode === 'member') {
+    if (assignmentMode === "member") {
       if (memberOptions.length === 0) {
-        return { error: 'No team members available for assignment.' };
+        return { error: "No team members available for assignment." };
       }
       const assigneeId = assignmentAction
         ? resolveMemberId(assignmentAction.val, memberOptions)
         : null;
       if (!assigneeId) {
-        return { error: 'Select a valid member assignment.' };
+        return { error: "Select a valid member assignment." };
       }
       const scopedTeamId = teamsList[0]?.id;
       if (!scopedTeamId) {
-        return { error: 'No team found for team admin routing rules.' };
+        return { error: "No team found for team admin routing rules." };
       }
 
       return {
         payload: {
           ...basePayload,
           teamId: scopedTeamId,
-          assigneeId
-        }
+          assigneeId,
+        },
       };
     }
 
-    const teamId = assignmentAction ? resolveTeamId(assignmentAction.val, teamsList) : null;
+    const teamId = assignmentAction
+      ? resolveTeamId(assignmentAction.val, teamsList)
+      : null;
     if (!teamId) {
-      return { error: 'Select a valid team assignment.' };
+      return { error: "Select a valid team assignment." };
     }
 
     return {
       payload: {
         ...basePayload,
         teamId,
-      }
+      },
     };
   }
 
   async function handleSaveRule() {
     const parsed = validateForm(form);
     if (!parsed.payload) {
-      const message = parsed.error ?? 'Invalid form values.';
+      const message = parsed.error ?? "Invalid form values.";
       setError(message);
       toast.error(message);
       return;
@@ -675,20 +787,22 @@ export function RoutingRulesPage({
     try {
       if (form.id) {
         const updated = await updateRoutingRule(form.id, parsed.payload);
-        setRules((prev) => prev.map((rule) => (rule.id === form.id ? updated : rule)));
+        setRules((prev) =>
+          prev.map((rule) => (rule.id === form.id ? updated : rule)),
+        );
         setUiMetaById((prev) => ({
           ...prev,
-          [form.id!]: deriveMetaFromRule(updated, assignmentMode)
+          [form.id!]: deriveMetaFromRule(updated, assignmentMode),
         }));
-        toast.success('Routing rule updated.');
+        toast.success("Routing rule updated.");
       } else {
         const created = await createRoutingRule(parsed.payload);
         setRules((prev) => [...prev, created]);
         setUiMetaById((prev) => ({
           ...prev,
-          [created.id]: deriveMetaFromRule(created, assignmentMode)
+          [created.id]: deriveMetaFromRule(created, assignmentMode),
         }));
-        toast.success('Routing rule created.');
+        toast.success("Routing rule created.");
       }
 
       setShowEditor(false);
@@ -705,9 +819,13 @@ export function RoutingRulesPage({
     setUpdatingRuleId(rule.id);
     setError(null);
     try {
-      const updated = await updateRoutingRule(rule.id, { isActive: nextEnabled });
-      setRules((prev) => prev.map((item) => (item.id === rule.id ? updated : item)));
-      toast.success(nextEnabled ? 'Rule enabled.' : 'Rule disabled.');
+      const updated = await updateRoutingRule(rule.id, {
+        isActive: nextEnabled,
+      });
+      setRules((prev) =>
+        prev.map((item) => (item.id === rule.id ? updated : item)),
+      );
+      toast.success(nextEnabled ? "Rule enabled." : "Rule disabled.");
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -728,7 +846,7 @@ export function RoutingRulesPage({
         return next;
       });
       setDeleteTarget(null);
-      toast.success('Routing rule deleted.');
+      toast.success("Routing rule deleted.");
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -736,21 +854,29 @@ export function RoutingRulesPage({
     }
   }
 
-  function updateCondition(index: number, key: keyof RoutingCondition, value: string) {
+  function updateCondition(
+    index: number,
+    key: keyof RoutingCondition,
+    value: string,
+  ) {
     setForm((prev) => ({
       ...prev,
       conditions: prev.conditions.map((condition, itemIndex) =>
-        itemIndex === index ? { ...condition, [key]: value } : condition
-      )
+        itemIndex === index ? { ...condition, [key]: value } : condition,
+      ),
     }));
   }
 
-  function updateAction(index: number, key: keyof RoutingAction, value: string) {
+  function updateAction(
+    index: number,
+    key: keyof RoutingAction,
+    value: string,
+  ) {
     setForm((prev) => ({
       ...prev,
       actions: prev.actions.map((action, itemIndex) =>
-        itemIndex === index ? { ...action, [key]: value } : action
-      )
+        itemIndex === index ? { ...action, [key]: value } : action,
+      ),
     }));
   }
 
@@ -763,24 +889,30 @@ export function RoutingRulesPage({
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-
-
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">Routing Rules</h1>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    Routing Rules
+                  </h1>
                   <p className="mt-0.5 text-sm text-slate-500">
-                    Auto-assign {assignmentMode === 'member' ? 'team members' : 'teams'} and priorities using ticket conditions.
+                    Auto-assign{" "}
+                    {assignmentMode === "member" ? "team members" : "teams"} and
+                    priorities using ticket conditions.
                   </p>
                 </div>
               }
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">Routing Rules</h1>
+              <h1 className="text-xl font-semibold text-slate-900">
+                Routing Rules
+              </h1>
               <p className="mt-0.5 text-sm text-slate-500">
-                Auto-assign {assignmentMode === 'member' ? 'team members' : 'teams'} and priorities using ticket conditions.
+                Auto-assign{" "}
+                {assignmentMode === "member" ? "team members" : "teams"} and
+                priorities using ticket conditions.
               </p>
             </div>
           )}
@@ -813,7 +945,10 @@ export function RoutingRulesPage({
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={`rule-skel-${i}`} className="rounded-xl border border-slate-200 bg-white p-5">
+              <div
+                key={`rule-skel-${i}`}
+                className="rounded-xl border border-slate-200 bg-white p-5"
+              >
                 <div className="flex items-center justify-between">
                   <div className="space-y-2">
                     <div className="h-5 w-40 skeleton-shimmer rounded" />
@@ -831,26 +966,42 @@ export function RoutingRulesPage({
         ) : (
           <div className="space-y-3">
             {sortedRules.map((rule, index) => {
-              const meta = uiMetaById[rule.id] ?? deriveMetaFromRule(rule, assignmentMode);
+              const meta =
+                uiMetaById[rule.id] ?? deriveMetaFromRule(rule, assignmentMode);
               return (
                 <div
                   key={rule.id}
-                  className={`rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-md ${!rule.isActive ? 'opacity-60' : ''
-                    }`}
+                  className={`rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-md ${
+                    !rule.isActive ? "opacity-60" : ""
+                  }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-3">
                       <div className="flex flex-col items-center pt-1">
                         <div className="cursor-grab opacity-40 transition-opacity hover:opacity-80">
-                          <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                          <svg
+                            className="h-4 w-4 text-slate-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 6h16M4 12h16M4 18h16"
+                            />
                           </svg>
                         </div>
-                        <span className="mt-1 text-xs font-medium text-slate-400">#{index + 1}</span>
+                        <span className="mt-1 text-xs font-medium text-slate-400">
+                          #{index + 1}
+                        </span>
                       </div>
                       <div>
                         <div className="mb-2 flex items-center space-x-2">
-                          <span className="text-sm font-semibold text-slate-900">{rule.name}</span>
+                          <span className="text-sm font-semibold text-slate-900">
+                            {rule.name}
+                          </span>
                           {!rule.isActive && (
                             <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
                               Disabled
@@ -859,26 +1010,41 @@ export function RoutingRulesPage({
                         </div>
 
                         <div className="mb-2 flex flex-wrap gap-1.5">
-                          <span className="mt-0.5 text-xs font-medium text-slate-400">IF</span>
+                          <span className="mt-0.5 text-xs font-medium text-slate-400">
+                            IF
+                          </span>
                           {meta.conditions.map((condition, conditionIndex) => (
-                            <span key={`${rule.id}-condition-${conditionIndex}`} className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                              <span className="text-slate-500">{condition.field.replace('_', ' ')}</span>&nbsp;
-                              {condition.op.replace('_', ' ')}&nbsp;
-                              <span className="font-semibold">"{condition.val}"</span>
+                            <span
+                              key={`${rule.id}-condition-${conditionIndex}`}
+                              className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                            >
+                              <span className="text-slate-500">
+                                {condition.field.replace("_", " ")}
+                              </span>
+                              &nbsp;
+                              {condition.op.replace("_", " ")}&nbsp;
+                              <span className="font-semibold">
+                                "{condition.val}"
+                              </span>
                             </span>
                           ))}
                         </div>
 
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="mt-0.5 text-xs font-medium text-blue-500">THEN</span>
+                          <span className="mt-0.5 text-xs font-medium text-blue-500">
+                            THEN
+                          </span>
                           {meta.actions.map((action, actionIndex) => (
-                            <span key={`${rule.id}-action-${actionIndex}`} className="inline-flex items-center rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                            <span
+                              key={`${rule.id}-action-${actionIndex}`}
+                              className="inline-flex items-center rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700"
+                            >
                               {ACTION_LABELS[action.type] ?? action.type}
                               {action.val
-                                ? action.type === 'assign_member'
+                                ? action.type === "assign_member"
                                   ? `: ${resolveMemberName(resolveMemberId(action.val, memberOptions) ?? action.val, memberOptions)}`
                                   : `: ${resolveTeamName(resolveTeamId(action.val, teamsList) ?? action.val, teamsList)}`
-                                : ''}
+                                : ""}
                             </span>
                           ))}
                         </div>
@@ -896,8 +1062,18 @@ export function RoutingRulesPage({
                         onClick={() => openEditModal(rule)}
                         className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
                       >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
                         </svg>
                       </button>
                       <button
@@ -905,8 +1081,18 @@ export function RoutingRulesPage({
                         onClick={() => setDeleteTarget(rule)}
                         className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
                       >
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
                         </svg>
                       </button>
                     </div>
@@ -917,9 +1103,12 @@ export function RoutingRulesPage({
 
             {sortedRules.length === 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
-                <p className="text-sm font-semibold text-slate-700">No routing rules</p>
+                <p className="text-sm font-semibold text-slate-700">
+                  No routing rules
+                </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  Create your first rule to automatically assign and prioritize incoming tickets.
+                  Create your first rule to automatically assign and prioritize
+                  incoming tickets.
                 </p>
               </div>
             )}
@@ -929,8 +1118,18 @@ export function RoutingRulesPage({
               onClick={openCreateModal}
               className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
               <span>Add Routing Rule</span>
             </button>
@@ -952,7 +1151,7 @@ export function RoutingRulesPage({
           onAddCondition={() =>
             setForm((prev) => ({
               ...prev,
-              conditions: [...prev.conditions, { ...DEFAULT_CONDITION }]
+              conditions: [...prev.conditions, { ...DEFAULT_CONDITION }],
             }))
           }
           onRemoveCondition={(index) =>
@@ -960,8 +1159,10 @@ export function RoutingRulesPage({
               ...prev,
               conditions:
                 prev.conditions.length > 1
-                  ? prev.conditions.filter((_, itemIndex) => itemIndex !== index)
-                  : prev.conditions
+                  ? prev.conditions.filter(
+                      (_, itemIndex) => itemIndex !== index,
+                    )
+                  : prev.conditions,
             }))
           }
           onUpdateCondition={updateCondition}

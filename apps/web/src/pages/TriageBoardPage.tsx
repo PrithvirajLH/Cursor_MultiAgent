@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from 'react';
-import { createPortal } from 'react-dom';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+} from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -8,9 +15,9 @@ import {
   MoreVertical,
   Search,
   Tag,
-  UserPlus
-} from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+  UserPlus,
+} from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   bulkPriorityTickets,
   assignTicket,
@@ -21,44 +28,52 @@ import {
   transitionTicket,
   type TeamMember,
   type TeamRef,
-  type TicketRecord
-} from '../api/client';
-import { RelativeTime } from '../components/RelativeTime';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useToast } from '../hooks/useToast';
+  type TicketRecord,
+} from "../api/client";
+import { RelativeTime } from "../components/RelativeTime";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useToast } from "../hooks/useToast";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   type RealtimeTicketChangedEventPayload,
-} from '../realtime/events';
-import type { Role } from '../types';
-import { formatStatus, formatTicketId, getSlaTone, initialsFor } from '../utils/format';
-import { priorityBadgeClass, statusBadgeClass } from '../utils/statusColors';
-import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationContext';
+} from "../realtime/events";
+import type { Role } from "../types";
+import {
+  formatStatus,
+  formatTicketId,
+  getSlaTone,
+  initialsFor,
+} from "../utils/format";
+import { priorityBadgeClass, statusBadgeClass } from "../utils/statusColors";
+import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 
-const TRIAGE_COLUMNS: Array<{ key: import('../api/client').TicketStatus; label: string }> = [
-  { key: 'NEW', label: 'New' },
-  { key: 'TRIAGED', label: 'Triaged' },
-  { key: 'ASSIGNED', label: 'Assigned' },
-  { key: 'IN_PROGRESS', label: 'In Progress' },
-  { key: 'WAITING_ON_CUSTOMER', label: 'Waiting on Customer' },
-  { key: 'WAITING_ON_THIRDPARTY', label: 'Waiting on Thirdparty' },
-  { key: 'REOPENED', label: 'Reopened' }
+const TRIAGE_COLUMNS: Array<{
+  key: import("../api/client").TicketStatus;
+  label: string;
+}> = [
+  { key: "NEW", label: "New" },
+  { key: "TRIAGED", label: "Triaged" },
+  { key: "ASSIGNED", label: "Assigned" },
+  { key: "IN_PROGRESS", label: "In Progress" },
+  { key: "WAITING_ON_CUSTOMER", label: "Waiting on Customer" },
+  { key: "WAITING_ON_THIRDPARTY", label: "Waiting on Thirdparty" },
+  { key: "REOPENED", label: "Reopened" },
 ];
 const TRIAGE_COLUMN_KEYS = TRIAGE_COLUMNS.map((column) => column.key);
 
 const PRIORITY_OPTIONS = [
-  { label: 'P1', value: 'P1' },
-  { label: 'P2', value: 'P2' },
-  { label: 'P3', value: 'P3' },
-  { label: 'P4', value: 'P4' }
+  { label: "P1", value: "P1" },
+  { label: "P2", value: "P2" },
+  { label: "P3", value: "P3" },
+  { label: "P4", value: "P4" },
 ];
 
 const CARD_MENU_WIDTH = 208;
 const CARD_MENU_MARGIN = 8;
 const CARD_MENU_APPROX_HEIGHT = 220;
 
-type CardSubmenuType = 'assign' | 'move' | 'priority' | 'transfer';
+type CardSubmenuType = "assign" | "move" | "priority" | "transfer";
 
 function parseDateMillis(value?: string | null): number {
   if (!value) return 0;
@@ -74,7 +89,7 @@ function sortByUpdatedDesc(tickets: TicketRecord[]) {
 
 export function TriageBoardPage({
   teamsList,
-  role
+  role,
 }: {
   teamsList: TeamRef[];
   role: Role;
@@ -86,27 +101,37 @@ export function TriageBoardPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pendingActionTicketIds, setPendingActionTicketIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [pendingActionTicketIds, setPendingActionTicketIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [draggingTicketId, setDraggingTicketId] = useState<string | null>(null);
   const [draggingStatus, setDraggingStatus] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [activeCardMenu, setActiveCardMenu] = useState<string | null>(null);
-  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
-  const [activeSubmenu, setActiveSubmenu] = useState<{ ticketId: string; type: CardSubmenuType } | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<{
+    ticketId: string;
+    type: CardSubmenuType;
+  } | null>(null);
   const [teamMembersByTeamId, setTeamMembersByTeamId] = useState<
-    Record<string, { loading: boolean; members: TeamMember[]; error: string | null }>
+    Record<
+      string,
+      { loading: boolean; members: TeamMember[]; error: string | null }
+    >
   >({});
   const loadRequestIdRef = useRef(0);
   const ticketSnapshotRef = useRef<TicketRecord[]>([]);
   const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
   const draggingTicketIdRef = useRef<string | null>(null);
   const toast = useToast();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [teamFilterId, setTeamFilterId] = useState('all');
-  const isOwner = role === 'OWNER';
-  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [teamFilterId, setTeamFilterId] = useState("all");
+  const isOwner = role === "OWNER";
+  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
+    useTicketDataInvalidation();
 
   useEffect(() => {
     loadTickets();
@@ -114,7 +139,8 @@ export function TriageBoardPage({
 
   useEffect(() => {
     const handleTicketChanged = (event: Event) => {
-      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>).detail;
+      const payload = (event as CustomEvent<RealtimeTicketChangedEventPayload>)
+        .detail;
       const ticketId = payload?.ticketId;
       if (!ticketId) {
         return;
@@ -134,21 +160,26 @@ export function TriageBoardPage({
         const currentUpdatedAtMs = parseDateMillis(current.updatedAt);
         const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt);
 
-        if (incomingUpdatedAtMs > 0 && incomingUpdatedAtMs < currentUpdatedAtMs) {
+        if (
+          incomingUpdatedAtMs > 0 &&
+          incomingUpdatedAtMs < currentUpdatedAtMs
+        ) {
           return prev;
         }
 
         const patched: TicketRecord = { ...current };
-        if (typeof payload.status === 'string' && payload.status) {
-          patched.status = payload.status as import('../api/client').TicketStatus;
+        if (typeof payload.status === "string" && payload.status) {
+          patched.status =
+            payload.status as import("../api/client").TicketStatus;
         }
-        if (typeof payload.priority === 'string' && payload.priority) {
-          patched.priority = payload.priority as import('../api/client').TicketPriority;
+        if (typeof payload.priority === "string" && payload.priority) {
+          patched.priority =
+            payload.priority as import("../api/client").TicketPriority;
         }
-        if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
+        if (typeof payload.updatedAt === "string" && payload.updatedAt) {
           patched.updatedAt = payload.updatedAt;
         }
-        if (Object.prototype.hasOwnProperty.call(payload, 'assignedTeamId')) {
+        if (Object.prototype.hasOwnProperty.call(payload, "assignedTeamId")) {
           if (payload.assignedTeamId === null) {
             patched.assignedTeam = null;
           } else if (payload.assignedTeam?.id) {
@@ -159,13 +190,13 @@ export function TriageBoardPage({
           ) {
             patched.assignedTeam = {
               id: payload.assignedTeamId,
-              name: patched.assignedTeam?.name ?? 'Team',
+              name: patched.assignedTeam?.name ?? "Team",
             };
           }
         } else if (payload.assignedTeam?.id) {
           patched.assignedTeam = payload.assignedTeam;
         }
-        if (Object.prototype.hasOwnProperty.call(payload, 'assigneeId')) {
+        if (Object.prototype.hasOwnProperty.call(payload, "assigneeId")) {
           if (payload.assigneeId === null) {
             patched.assignee = null;
           } else if (payload.assignee?.id) {
@@ -176,8 +207,8 @@ export function TriageBoardPage({
           ) {
             patched.assignee = {
               id: payload.assigneeId,
-              email: patched.assignee?.email ?? '',
-              displayName: patched.assignee?.displayName ?? 'Assigned user',
+              email: patched.assignee?.email ?? "",
+              displayName: patched.assignee?.displayName ?? "Assigned user",
             };
           }
         } else if (payload.assignee?.id) {
@@ -185,7 +216,7 @@ export function TriageBoardPage({
         }
 
         const belongsToVisibleTeam =
-          teamFilterId === 'all' || patched.assignedTeam?.id === teamFilterId;
+          teamFilterId === "all" || patched.assignedTeam?.id === teamFilterId;
         const isVisibleStatus = TRIAGE_COLUMN_KEYS.includes(patched.status);
         if (!belongsToVisibleTeam || !isVisibleStatus) {
           return prev.filter((ticket) => ticket.id !== ticketId);
@@ -214,7 +245,10 @@ export function TriageBoardPage({
             if (!TRIAGE_COLUMN_KEYS.includes(ticket.status)) {
               return prev;
             }
-            if (teamFilterId !== 'all' && ticket.assignedTeam?.id !== teamFilterId) {
+            if (
+              teamFilterId !== "all" &&
+              ticket.assignedTeam?.id !== teamFilterId
+            ) {
               return prev;
             }
             return sortByUpdatedDesc([...prev, ticket]);
@@ -242,31 +276,31 @@ export function TriageBoardPage({
   }, [teamFilterId]);
 
   useEffect(() => {
-    if (!isOwner && teamFilterId !== 'all') {
-      setTeamFilterId('all');
+    if (!isOwner && teamFilterId !== "all") {
+      setTeamFilterId("all");
     }
   }, [isOwner, teamFilterId]);
 
   useEffect(() => {
-    if (teamFilterId === 'all') {
+    if (teamFilterId === "all") {
       return;
     }
     const exists = teamsList.some((team) => team.id === teamFilterId);
     if (!exists) {
-      setTeamFilterId('all');
+      setTeamFilterId("all");
     }
   }, [teamsList, teamFilterId]);
 
   useEffect(() => {
     function handleDocumentClick(event: globalThis.MouseEvent) {
       const target = event.target as HTMLElement | null;
-      if (!target?.closest('[data-card-menu]')) {
+      if (!target?.closest("[data-card-menu]")) {
         setActiveCardMenu(null);
         setActiveSubmenu(null);
       }
     }
-    document.addEventListener('click', handleDocumentClick);
-    return () => document.removeEventListener('click', handleDocumentClick);
+    document.addEventListener("click", handleDocumentClick);
+    return () => document.removeEventListener("click", handleDocumentClick);
   }, []);
 
   async function loadTickets() {
@@ -276,12 +310,12 @@ export function TriageBoardPage({
     setActionError(null);
     try {
       const response = await fetchTickets({
-        statusGroup: 'open',
-        sort: 'updatedAt',
-        order: 'desc',
+        statusGroup: "open",
+        sort: "updatedAt",
+        order: "desc",
         pageSize: 100,
         includeTotal: false,
-        teamId: isOwner && teamFilterId !== 'all' ? teamFilterId : undefined
+        teamId: isOwner && teamFilterId !== "all" ? teamFilterId : undefined,
       });
       if (loadRequestIdRef.current !== requestId) {
         return;
@@ -291,7 +325,7 @@ export function TriageBoardPage({
       if (loadRequestIdRef.current !== requestId) {
         return;
       }
-      setError('Unable to load triage tickets.');
+      setError("Unable to load triage tickets.");
       setTickets([]);
     } finally {
       if (loadRequestIdRef.current === requestId) {
@@ -308,15 +342,19 @@ export function TriageBoardPage({
     draggingTicketIdRef.current = draggingTicketId;
   }, [draggingTicketId]);
 
-  function isVisibleOnBoard(ticket: Pick<TicketRecord, 'status' | 'assignedTeam'>) {
+  function isVisibleOnBoard(
+    ticket: Pick<TicketRecord, "status" | "assignedTeam">,
+  ) {
     const belongsToVisibleTeam =
-      teamFilterId === 'all' || ticket.assignedTeam?.id === teamFilterId;
+      teamFilterId === "all" || ticket.assignedTeam?.id === teamFilterId;
     const isVisibleStatus = TRIAGE_COLUMN_KEYS.includes(ticket.status);
     return belongsToVisibleTeam && isVisibleStatus;
   }
 
   function getTicketSnapshot(ticketId: string) {
-    return ticketSnapshotRef.current.find((item) => item.id === ticketId) ?? null;
+    return (
+      ticketSnapshotRef.current.find((item) => item.id === ticketId) ?? null
+    );
   }
 
   function startTicketAction(ticketId: string) {
@@ -388,7 +426,9 @@ export function TriageBoardPage({
       return;
     }
     setTickets((prev) => {
-      const existingIndex = prev.findIndex((item) => item.id === previousTicket.id);
+      const existingIndex = prev.findIndex(
+        (item) => item.id === previousTicket.id,
+      );
       if (!isVisibleOnBoard(previousTicket)) {
         if (existingIndex === -1) {
           return prev;
@@ -416,29 +456,33 @@ export function TriageBoardPage({
       ...current,
       assignee: currentUser
         ? {
-          id: currentUser.id,
-          email: currentUser.email,
-          displayName: currentUser.displayName,
-          role: currentUser.role,
-        }
+            id: currentUser.id,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            role: currentUser.role,
+          }
         : current.assignee,
     }));
     try {
       const updated = await assignTicket(ticket.id, {});
       reconcileTicketFromServer(ticket.id, updated);
-      toast.success('Ticket assigned to you.');
+      toast.success("Ticket assigned to you.");
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
     } catch (err) {
       restoreTicket(previousTicket);
-      setActionError('Unable to assign ticket.');
-      toast.error('Unable to assign ticket.');
+      setActionError("Unable to assign ticket.");
+      toast.error("Unable to assign ticket.");
     } finally {
       endTicketAction(ticket.id);
     }
   }
 
-  async function handleAssignUser(ticket: TicketRecord, assigneeId: string, assigneeName: string) {
+  async function handleAssignUser(
+    ticket: TicketRecord,
+    assigneeId: string,
+    assigneeName: string,
+  ) {
     const previousTicket = getTicketSnapshot(ticket.id);
     if (!previousTicket) {
       return;
@@ -450,7 +494,8 @@ export function TriageBoardPage({
       assignee: {
         id: assigneeId,
         displayName: assigneeName,
-        email: current.assignee?.id === assigneeId ? current.assignee.email : '',
+        email:
+          current.assignee?.id === assigneeId ? current.assignee.email : "",
       },
     }));
     try {
@@ -461,38 +506,49 @@ export function TriageBoardPage({
       notifyTicketReportsChanged();
     } catch (err) {
       restoreTicket(previousTicket);
-      setActionError('Unable to assign ticket.');
-      toast.error('Unable to assign ticket.');
+      setActionError("Unable to assign ticket.");
+      toast.error("Unable to assign ticket.");
     } finally {
       endTicketAction(ticket.id);
     }
   }
 
-  async function handlePriorityChange(ticketId: string, priority: string, priorityLabel: string) {
+  async function handlePriorityChange(
+    ticketId: string,
+    priority: string,
+    priorityLabel: string,
+  ) {
     const previousTicket = getTicketSnapshot(ticketId);
     if (!previousTicket) {
       return;
     }
     startTicketAction(ticketId);
     setActionError(null);
-    patchTicketInPlace(ticketId, (current) => ({ ...current, priority: priority as import('../api/client').TicketPriority }));
+    patchTicketInPlace(ticketId, (current) => ({
+      ...current,
+      priority: priority as import("../api/client").TicketPriority,
+    }));
     try {
       const result = await bulkPriorityTickets([ticketId], priority);
       if (result.success > 0) {
         toast.success(`Priority changed to ${priorityLabel}.`);
       } else {
-        throw new Error('No tickets updated');
+        throw new Error("No tickets updated");
       }
     } catch (err) {
       restoreTicket(previousTicket);
-      setActionError('Unable to update priority.');
-      toast.error('Unable to update priority.');
+      setActionError("Unable to update priority.");
+      toast.error("Unable to update priority.");
     } finally {
       endTicketAction(ticketId);
     }
   }
 
-  async function handleTransfer(ticketId: string, newTeamId: string, newTeamName: string) {
+  async function handleTransfer(
+    ticketId: string,
+    newTeamId: string,
+    newTeamName: string,
+  ) {
     const previousTicket = getTicketSnapshot(ticketId);
     if (!previousTicket) {
       return;
@@ -512,8 +568,8 @@ export function TriageBoardPage({
       notifyTicketReportsChanged();
     } catch (err) {
       restoreTicket(previousTicket);
-      setActionError('Unable to transfer ticket.');
-      toast.error('Unable to transfer ticket.');
+      setActionError("Unable to transfer ticket.");
+      toast.error("Unable to transfer ticket.");
     } finally {
       endTicketAction(ticketId);
     }
@@ -526,18 +582,22 @@ export function TriageBoardPage({
     }
     setTeamMembersByTeamId((prev) => ({
       ...prev,
-      [teamId]: { loading: true, members: [], error: null }
+      [teamId]: { loading: true, members: [], error: null },
     }));
     try {
       const response = await fetchTeamMembers(teamId);
       setTeamMembersByTeamId((prev) => ({
         ...prev,
-        [teamId]: { loading: false, members: response.data, error: null }
+        [teamId]: { loading: false, members: response.data, error: null },
       }));
     } catch (err) {
       setTeamMembersByTeamId((prev) => ({
         ...prev,
-        [teamId]: { loading: false, members: [], error: 'Unable to load team members.' }
+        [teamId]: {
+          loading: false,
+          members: [],
+          error: "Unable to load team members.",
+        },
       }));
     }
   }
@@ -555,31 +615,42 @@ export function TriageBoardPage({
     }
     startTicketAction(ticketId);
     setActionError(null);
-    patchTicketInPlace(ticketId, (current) => ({ ...current, status: status as import('../api/client').TicketStatus }));
+    patchTicketInPlace(ticketId, (current) => ({
+      ...current,
+      status: status as import("../api/client").TicketStatus,
+    }));
     try {
-      const updated = await transitionTicket(ticketId, { status: status as import('../api/client').TicketStatus });
+      const updated = await transitionTicket(ticketId, {
+        status: status as import("../api/client").TicketStatus,
+      });
       reconcileTicketFromServer(ticketId, updated);
       toast.success(`Moved to ${formatStatus(status)}.`);
       notifyTicketAggregatesChanged();
       // Only some status changes materially affect report data; for now, refresh
       // reports when tickets move out of open states.
-      if (status === 'RESOLVED' || status === 'CLOSED') {
+      if (status === "RESOLVED" || status === "CLOSED") {
         notifyTicketReportsChanged();
       }
     } catch (err) {
       restoreTicket(ticket);
-      setActionError('Unable to move ticket to that status.');
-      toast.error('Unable to move ticket to that status.');
+      setActionError("Unable to move ticket to that status.");
+      toast.error("Unable to move ticket to that status.");
     } finally {
       endTicketAction(ticketId);
     }
   }
 
-  function handleDragStart(event: DragEvent<HTMLDivElement>, ticket: TicketRecord) {
+  function handleDragStart(
+    event: DragEvent<HTMLDivElement>,
+    ticket: TicketRecord,
+  ) {
     setDraggingTicketId(ticket.id);
     setDraggingStatus(ticket.status);
-    event.dataTransfer.setData('text/plain', JSON.stringify({ id: ticket.id, status: ticket.status }));
-    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(
+      "text/plain",
+      JSON.stringify({ id: ticket.id, status: ticket.status }),
+    );
+    event.dataTransfer.effectAllowed = "move";
   }
 
   function clearDragState() {
@@ -642,11 +713,13 @@ export function TriageBoardPage({
       return;
     }
     if (!isValidTransition(draggingTicket, status)) {
-      toast.error(`Cannot move from ${formatStatus(droppedFromStatus)} to ${formatStatus(status)}.`);
+      toast.error(
+        `Cannot move from ${formatStatus(droppedFromStatus)} to ${formatStatus(status)}.`,
+      );
       clearDragStateForTicket(droppedTicketId);
       return;
     }
-    const payload = event.dataTransfer.getData('text/plain');
+    const payload = event.dataTransfer.getData("text/plain");
     if (!payload) {
       clearDragStateForTicket(droppedTicketId);
       return;
@@ -656,7 +729,7 @@ export function TriageBoardPage({
       const ticket = tickets.find((item) => item.id === id);
       if (!ticket || ticket.status === status) {
         if (ticket?.status === status) {
-          toast.info('Ticket already in that status.');
+          toast.info("Ticket already in that status.");
         }
         clearDragStateForTicket(droppedTicketId);
         return;
@@ -672,11 +745,14 @@ export function TriageBoardPage({
 
   function handleCardClick(ticketId: string) {
     navigate(`/tickets/${ticketId}`, {
-      state: { fromTicketsPath: `${location.pathname}${location.search}` }
+      state: { fromTicketsPath: `${location.pathname}${location.search}` },
     });
   }
 
-  function toggleCardMenu(event: MouseEvent<HTMLButtonElement>, ticketId: string) {
+  function toggleCardMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    ticketId: string,
+  ) {
     event.stopPropagation();
     const button = event.currentTarget as HTMLElement;
     const rect = button.getBoundingClientRect();
@@ -688,9 +764,13 @@ export function TriageBoardPage({
       } else {
         const preferredLeft = rect.right - CARD_MENU_WIDTH;
         const maxLeft = window.innerWidth - CARD_MENU_WIDTH - CARD_MENU_MARGIN;
-        const left = Math.max(CARD_MENU_MARGIN, Math.min(preferredLeft, maxLeft));
+        const left = Math.max(
+          CARD_MENU_MARGIN,
+          Math.min(preferredLeft, maxLeft),
+        );
         const preferredTop = rect.bottom + 4;
-        const maxTop = window.innerHeight - CARD_MENU_APPROX_HEIGHT - CARD_MENU_MARGIN;
+        const maxTop =
+          window.innerHeight - CARD_MENU_APPROX_HEIGHT - CARD_MENU_MARGIN;
         const top = Math.max(CARD_MENU_MARGIN, Math.min(preferredTop, maxTop));
         setMenuAnchor({ top, left });
       }
@@ -698,7 +778,11 @@ export function TriageBoardPage({
     });
   }
 
-  function toggleSubmenu(event: MouseEvent<HTMLButtonElement>, ticket: TicketRecord, type: CardSubmenuType) {
+  function toggleSubmenu(
+    event: MouseEvent<HTMLButtonElement>,
+    ticket: TicketRecord,
+    type: CardSubmenuType,
+  ) {
     event.stopPropagation();
     setActiveSubmenu((prev) => {
       if (prev?.ticketId === ticket.id && prev.type === type) {
@@ -706,7 +790,7 @@ export function TriageBoardPage({
       }
       return { ticketId: ticket.id, type };
     });
-    if (type === 'assign' && ticket.assignedTeam?.id) {
+    if (type === "assign" && ticket.assignedTeam?.id) {
       void ensureTeamMembersLoaded(ticket.assignedTeam.id);
     }
   }
@@ -720,29 +804,29 @@ export function TriageBoardPage({
   function getPriorityBadge(priority: string) {
     const normalized = priority.toUpperCase();
     const label =
-      normalized === 'P1' || normalized === 'URGENT'
-        ? 'P1'
-        : normalized === 'P2' || normalized === 'HIGH'
-          ? 'P2'
-          : normalized === 'P3' || normalized === 'MEDIUM'
-            ? 'P3'
-            : normalized === 'P4' || normalized === 'LOW'
-              ? 'P4'
+      normalized === "P1" || normalized === "URGENT"
+        ? "P1"
+        : normalized === "P2" || normalized === "HIGH"
+          ? "P2"
+          : normalized === "P3" || normalized === "MEDIUM"
+            ? "P3"
+            : normalized === "P4" || normalized === "LOW"
+              ? "P4"
               : priority;
     return { label, className: priorityBadgeClass(priority) };
   }
 
   function getSlaChipClass(label: string) {
-    if (label === 'Breached') {
-      return 'bg-red-100 text-red-700';
+    if (label === "Breached") {
+      return "bg-red-100 text-red-700";
     }
-    if (label === 'At risk') {
-      return 'bg-orange-100 text-orange-700';
+    if (label === "At risk") {
+      return "bg-orange-100 text-orange-700";
     }
-    if (label === 'Paused' || label === 'Waiting') {
-      return 'bg-orange-100 text-orange-700';
+    if (label === "Paused" || label === "Waiting") {
+      return "bg-orange-100 text-orange-700";
     }
-    return 'bg-green-100 text-green-700';
+    return "bg-green-100 text-green-700";
   }
 
   function isValidTransition(ticket: TicketRecord, to: string) {
@@ -793,21 +877,27 @@ export function TriageBoardPage({
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-
-
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-xl font-semibold text-slate-900">Triage Board</h1>
-                  <span className="text-sm text-slate-500">({filteredTickets.length} tickets)</span>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    Triage Board
+                  </h1>
+                  <span className="text-sm text-slate-500">
+                    ({filteredTickets.length} tickets)
+                  </span>
                 </div>
               }
             />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold text-slate-900">Triage Board</h1>
-              <span className="text-sm text-slate-500">({filteredTickets.length} tickets)</span>
+              <h1 className="text-xl font-semibold text-slate-900">
+                Triage Board
+              </h1>
+              <span className="text-sm text-slate-500">
+                ({filteredTickets.length} tickets)
+              </span>
             </div>
           )}
         </div>
@@ -815,7 +905,9 @@ export function TriageBoardPage({
 
       <div className="mx-auto max-w-[1600px] p-6">
         {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-        {actionError && <p className="mb-2 text-sm text-red-600">{actionError}</p>}
+        {actionError && (
+          <p className="mb-2 text-sm text-red-600">{actionError}</p>
+        )}
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[260px] flex-1 max-w-md">
@@ -844,13 +936,13 @@ export function TriageBoardPage({
             </select>
           )}
 
-          {(searchQuery.trim() || (isOwner && teamFilterId !== 'all')) && (
+          {(searchQuery.trim() || (isOwner && teamFilterId !== "all")) && (
             <button
               type="button"
               onClick={() => {
-                setSearchQuery('');
+                setSearchQuery("");
                 if (isOwner) {
-                  setTeamFilterId('all');
+                  setTeamFilterId("all");
                 }
               }}
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-100"
@@ -867,7 +959,10 @@ export function TriageBoardPage({
                 <div className="mb-3 h-5 w-28 skeleton-shimmer rounded" />
                 <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   {Array.from({ length: 3 }).map((_, j) => (
-                    <div key={`card-skel-${i}-${j}`} className="rounded-lg border border-slate-200 bg-white p-4">
+                    <div
+                      key={`card-skel-${i}-${j}`}
+                      className="rounded-lg border border-slate-200 bg-white p-4"
+                    >
                       <div className="mb-2 h-4 w-3/4 skeleton-shimmer rounded" />
                       <div className="mb-3 h-3 w-1/2 skeleton-shimmer rounded" />
                       <div className="flex items-center gap-2">
@@ -898,7 +993,9 @@ export function TriageBoardPage({
                   >
                     <div className="mb-4 flex items-center justify-between">
                       <div className="flex items-center space-x-2">
-                        <h2 className="text-sm font-semibold text-slate-900">{column.label}</h2>
+                        <h2 className="text-sm font-semibold text-slate-900">
+                          {column.label}
+                        </h2>
                         <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-medium text-slate-700">
                           {columnTickets.length}
                         </span>
@@ -906,11 +1003,16 @@ export function TriageBoardPage({
                     </div>
 
                     <div
-                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-slate-50 p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar]:w-1.5 ${dragOverColumn === column.key ? 'border-blue-500 bg-blue-100/60' : 'border-slate-200'
-                        }`}
+                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-slate-50 p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar]:w-1.5 ${
+                        dragOverColumn === column.key
+                          ? "border-blue-500 bg-blue-100/60"
+                          : "border-slate-200"
+                      }`}
                     >
                       {columnTickets.length === 0 ? (
-                        <div className="py-8 text-center text-sm text-slate-400">No tickets</div>
+                        <div className="py-8 text-center text-sm text-slate-400">
+                          No tickets
+                        </div>
                       ) : (
                         columnTickets.map((ticket) => {
                           const priority = getPriorityBadge(ticket.priority);
@@ -918,21 +1020,32 @@ export function TriageBoardPage({
                             dueAt: ticket.dueAt,
                             completedAt: ticket.completedAt,
                             status: ticket.status,
-                            slaPausedAt: ticket.slaPausedAt
+                            slaPausedAt: ticket.slaPausedAt,
                           });
-                          const tags = [ticket.category?.name, ticket.channel].filter(Boolean) as string[];
+                          const tags = [
+                            ticket.category?.name,
+                            ticket.channel,
+                          ].filter(Boolean) as string[];
                           const possibleMoves = getPossibleMoves(ticket);
-                          const assigneeName = ticket.assignee?.displayName ?? ticket.assignee?.email ?? '';
+                          const assigneeName =
+                            ticket.assignee?.displayName ??
+                            ticket.assignee?.email ??
+                            "";
 
                           return (
                             <div
                               key={ticket.id}
                               draggable
-                              onDragStart={(event) => handleDragStart(event, ticket)}
+                              onDragStart={(event) =>
+                                handleDragStart(event, ticket)
+                              }
                               onDragEnd={handleDragEnd}
                               onClick={() => handleCardClick(ticket.id)}
-                              className={`mb-2 cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${draggingTicketId === ticket.id ? 'opacity-50' : ''
-                                }`}
+                              className={`mb-2 cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
+                                draggingTicketId === ticket.id
+                                  ? "opacity-50"
+                                  : ""
+                              }`}
                             >
                               <div className="mb-1 flex items-start justify-between gap-2">
                                 <div className="min-w-0">
@@ -955,10 +1068,15 @@ export function TriageBoardPage({
                                     {ticket.subject}
                                   </h3>
                                 </div>
-                                <div className="relative flex-shrink-0 pl-1" data-card-menu>
+                                <div
+                                  className="relative flex-shrink-0 pl-1"
+                                  data-card-menu
+                                >
                                   <button
                                     type="button"
-                                    onClick={(event) => toggleCardMenu(event, ticket.id)}
+                                    onClick={(event) =>
+                                      toggleCardMenu(event, ticket.id)
+                                    }
                                     className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                                     aria-label="Ticket actions"
                                   >
@@ -969,11 +1087,13 @@ export function TriageBoardPage({
 
                               <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600">
                                 <span className="truncate">
-                                  {ticket.requester?.displayName ?? 'Requester unknown'}
+                                  {ticket.requester?.displayName ??
+                                    "Requester unknown"}
                                 </span>
                                 <span className="text-slate-400">•</span>
                                 <span className="truncate">
-                                  {ticket.assignedTeam?.name ?? 'Unassigned team'}
+                                  {ticket.assignedTeam?.name ??
+                                    "Unassigned team"}
                                 </span>
                                 <span className="text-slate-400">•</span>
                                 {ticket.assignee ? (
@@ -984,14 +1104,16 @@ export function TriageBoardPage({
                                     title={assigneeName}
                                   >
                                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[9px] font-bold text-white shadow-sm ring-1 ring-slate-100">
-                                      {initialsFor(assigneeName || 'U')}
+                                      {initialsFor(assigneeName || "U")}
                                     </span>
                                     <span className="hidden sm:inline truncate max-w-[100px] group-hover:inline">
                                       {assigneeName}
                                     </span>
                                   </button>
                                 ) : (
-                                  <span className="text-slate-400">Unassigned</span>
+                                  <span className="text-slate-400">
+                                    Unassigned
+                                  </span>
                                 )}
                               </div>
 
@@ -1013,7 +1135,9 @@ export function TriageBoardPage({
                                   <div
                                     className="relative flex-1"
                                     onClick={(event) => event.stopPropagation()}
-                                    onKeyDown={(event) => event.stopPropagation()}
+                                    onKeyDown={(event) =>
+                                      event.stopPropagation()
+                                    }
                                   >
                                     <button
                                       type="button"
@@ -1031,18 +1155,28 @@ export function TriageBoardPage({
                                     <select
                                       id={`triage-move-${ticket.id}`}
                                       defaultValue=""
-                                      disabled={isTicketActionInProgress(ticket.id)}
+                                      disabled={isTicketActionInProgress(
+                                        ticket.id,
+                                      )}
                                       onChange={(event) => {
                                         const nextStatus = event.target.value;
-                                        if (!nextStatus || nextStatus === ticket.status) {
+                                        if (
+                                          !nextStatus ||
+                                          nextStatus === ticket.status
+                                        ) {
                                           return;
                                         }
-                                        void handleTransition(ticket.id, nextStatus);
-                                        event.target.value = '';
+                                        void handleTransition(
+                                          ticket.id,
+                                          nextStatus,
+                                        );
+                                        event.target.value = "";
                                       }}
                                       className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                                     >
-                                      <option value="">{formatStatus(ticket.status)}</option>
+                                      <option value="">
+                                        {formatStatus(ticket.status)}
+                                      </option>
                                       {possibleMoves.map((status) => (
                                         <option key={status} value={status}>
                                           {formatStatus(status)}
@@ -1053,7 +1187,8 @@ export function TriageBoardPage({
                                 )}
 
                                 <span className="whitespace-nowrap text-right">
-                                  Updated <RelativeTime value={ticket.updatedAt} />
+                                  Updated{" "}
+                                  <RelativeTime value={ticket.updatedAt} />
                                 </span>
                               </div>
                             </div>
@@ -1075,32 +1210,42 @@ export function TriageBoardPage({
             if (!ticket) return null;
             const possibleMoves = getPossibleMoves(ticket);
             const teamId = ticket.assignedTeam?.id;
-            const teamMembersState = teamId ? teamMembersByTeamId[teamId] : undefined;
+            const teamMembersState = teamId
+              ? teamMembersByTeamId[teamId]
+              : undefined;
             const isAssignSubmenuOpen =
-              activeSubmenu?.ticketId === ticket.id && activeSubmenu.type === 'assign';
+              activeSubmenu?.ticketId === ticket.id &&
+              activeSubmenu.type === "assign";
             const isMoveSubmenuOpen =
-              activeSubmenu?.ticketId === ticket.id && activeSubmenu.type === 'move';
+              activeSubmenu?.ticketId === ticket.id &&
+              activeSubmenu.type === "move";
             const isPrioritySubmenuOpen =
-              activeSubmenu?.ticketId === ticket.id && activeSubmenu.type === 'priority';
+              activeSubmenu?.ticketId === ticket.id &&
+              activeSubmenu.type === "priority";
             const isTransferSubmenuOpen =
-              activeSubmenu?.ticketId === ticket.id && activeSubmenu.type === 'transfer';
-            const openSubmenuToLeft = menuAnchor.left + CARD_MENU_WIDTH + 260 > window.innerWidth - CARD_MENU_MARGIN;
-            const submenuPositionClass = openSubmenuToLeft ? 'right-full mr-1' : 'left-full ml-1';
+              activeSubmenu?.ticketId === ticket.id &&
+              activeSubmenu.type === "transfer";
+            const openSubmenuToLeft =
+              menuAnchor.left + CARD_MENU_WIDTH + 260 >
+              window.innerWidth - CARD_MENU_MARGIN;
+            const submenuPositionClass = openSubmenuToLeft
+              ? "right-full mr-1"
+              : "left-full ml-1";
             return createPortal(
               <div
                 data-card-menu
                 className="w-52 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
                 style={{
-                  position: 'fixed',
+                  position: "fixed",
                   top: menuAnchor.top,
                   left: menuAnchor.left,
-                  zIndex: 9999
+                  zIndex: 9999,
                 }}
               >
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={(e) => toggleSubmenu(e, ticket, 'assign')}
+                    onClick={(e) => toggleSubmenu(e, ticket, "assign")}
                     className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
                   >
                     <span className="flex items-center gap-2">
@@ -1110,7 +1255,9 @@ export function TriageBoardPage({
                     <ChevronRight className="h-4 w-4 text-slate-500" />
                   </button>
                   {isAssignSubmenuOpen && (
-                    <div className={`absolute top-0 z-20 min-w-52 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}>
+                    <div
+                      className={`absolute top-0 z-20 min-w-52 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                    >
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1126,13 +1273,19 @@ export function TriageBoardPage({
                       </button>
                       <div className="my-1 border-t border-slate-100" />
                       {!teamId && (
-                        <p className="px-4 py-2 text-xs text-slate-500">No team on ticket</p>
+                        <p className="px-4 py-2 text-xs text-slate-500">
+                          No team on ticket
+                        </p>
                       )}
                       {teamId && teamMembersState?.loading && (
-                        <p className="px-4 py-2 text-xs text-slate-500">Loading members...</p>
+                        <p className="px-4 py-2 text-xs text-slate-500">
+                          Loading members...
+                        </p>
                       )}
                       {teamId && teamMembersState?.error && (
-                        <p className="px-4 py-2 text-xs text-red-600">{teamMembersState.error}</p>
+                        <p className="px-4 py-2 text-xs text-red-600">
+                          {teamMembersState.error}
+                        </p>
                       )}
                       {teamId &&
                         (teamMembersState?.members ?? []).map((member) => (
@@ -1145,7 +1298,7 @@ export function TriageBoardPage({
                               void handleAssignUser(
                                 ticket,
                                 member.user.id,
-                                member.user.displayName
+                                member.user.displayName,
                               );
                             }}
                             disabled={isTicketActionInProgress(ticket.id)}
@@ -1161,7 +1314,7 @@ export function TriageBoardPage({
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={(e) => toggleSubmenu(e, ticket, 'priority')}
+                    onClick={(e) => toggleSubmenu(e, ticket, "priority")}
                     className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
                   >
                     <span className="flex items-center gap-2">
@@ -1171,7 +1324,9 @@ export function TriageBoardPage({
                     <ChevronRight className="h-4 w-4 text-slate-500" />
                   </button>
                   {isPrioritySubmenuOpen && (
-                    <div className={`absolute top-0 z-20 min-w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}>
+                    <div
+                      className={`absolute top-0 z-20 min-w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                    >
                       {PRIORITY_OPTIONS.map((option) => (
                         <button
                           key={option.value}
@@ -1182,7 +1337,7 @@ export function TriageBoardPage({
                             void handlePriorityChange(
                               ticket.id,
                               option.value,
-                              option.label
+                              option.label,
                             );
                           }}
                           disabled={isTicketActionInProgress(ticket.id)}
@@ -1198,7 +1353,7 @@ export function TriageBoardPage({
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={(e) => toggleSubmenu(e, ticket, 'move')}
+                    onClick={(e) => toggleSubmenu(e, ticket, "move")}
                     className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
                   >
                     <span className="flex items-center gap-2">
@@ -1208,9 +1363,13 @@ export function TriageBoardPage({
                     <ChevronRight className="h-4 w-4 text-slate-500" />
                   </button>
                   {isMoveSubmenuOpen && (
-                    <div className={`absolute top-0 z-20 min-w-56 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}>
+                    <div
+                      className={`absolute top-0 z-20 min-w-56 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                    >
                       {possibleMoves.length === 0 && (
-                        <p className="px-4 py-2 text-xs text-slate-500">No valid moves</p>
+                        <p className="px-4 py-2 text-xs text-slate-500">
+                          No valid moves
+                        </p>
                       )}
                       {possibleMoves.map((status) => (
                         <button
@@ -1234,7 +1393,7 @@ export function TriageBoardPage({
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={(e) => toggleSubmenu(e, ticket, 'transfer')}
+                    onClick={(e) => toggleSubmenu(e, ticket, "transfer")}
                     className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
                   >
                     <span className="flex items-center gap-2">
@@ -1244,7 +1403,9 @@ export function TriageBoardPage({
                     <ChevronRight className="h-4 w-4 text-slate-500" />
                   </button>
                   {isTransferSubmenuOpen && (
-                    <div className={`absolute top-0 z-20 min-w-56 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}>
+                    <div
+                      className={`absolute top-0 z-20 min-w-56 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                    >
                       {teamsList.map((team) => (
                         <button
                           key={team.id}
@@ -1280,7 +1441,7 @@ export function TriageBoardPage({
                   <span>View details</span>
                 </button>
               </div>,
-              document.body
+              document.body,
             );
           })()}
       </div>

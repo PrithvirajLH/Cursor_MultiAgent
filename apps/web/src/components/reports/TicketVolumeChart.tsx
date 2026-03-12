@@ -6,7 +6,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-} from 'recharts';
+} from "recharts";
 
 type Point = { date: string; count: number };
 
@@ -18,14 +18,36 @@ export function TicketVolumeChart({ data }: { data: Point[] }) {
   return (
     <div className="h-[240px] w-full min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={display} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-          <XAxis dataKey="short" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
+        <LineChart
+          data={display}
+          margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#e2e8f0"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="short"
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            allowDecimals={false}
+            axisLine={false}
+            tickLine={false}
+          />
           <Tooltip
-            formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
-            labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ''}
-            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+            formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
+            labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ""}
+            contentStyle={{
+              borderRadius: "12px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
+              fontSize: "12px",
+            }}
           />
           <Line
             type="monotone"

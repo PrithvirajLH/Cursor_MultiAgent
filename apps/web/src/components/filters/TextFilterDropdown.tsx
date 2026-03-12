@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, Search, X } from "lucide-react";
 
 export function TextFilterDropdown({
   label,
   value,
-  placeholder = 'Any text',
-  inputPlaceholder = 'Type to filter...',
+  placeholder = "Any text",
+  inputPlaceholder = "Type to filter...",
   onChange,
 }: {
   label: string;
@@ -32,7 +32,9 @@ export function TextFilterDropdown({
 
   return (
     <div className="space-y-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        {label}
+      </span>
       <div className="relative">
         <button
           type="button"
@@ -40,11 +42,17 @@ export function TextFilterDropdown({
           className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 hover:bg-slate-50 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         >
           <span className="truncate">{summary}</span>
-          <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+          <ChevronDown
+            className={`h-4 w-4 text-slate-400 transition ${open ? "rotate-180" : ""}`}
+          />
         </button>
         {open ? (
           <>
-            <div className="fixed inset-0 z-10" aria-hidden onClick={() => setOpen(false)} />
+            <div
+              className="fixed inset-0 z-10"
+              aria-hidden
+              onClick={() => setOpen(false)}
+            />
             <div className="absolute left-0 top-full z-20 mt-1.5 w-full min-w-[240px] rounded-[16px] border border-slate-200 bg-white p-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -60,8 +68,8 @@ export function TextFilterDropdown({
                 <button
                   type="button"
                   onClick={() => {
-                    setDraft('');
-                    onChange('');
+                    setDraft("");
+                    onChange("");
                   }}
                   className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
                 >

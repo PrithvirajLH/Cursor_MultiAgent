@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import type { UserRef } from '../api/client';
+import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import type { UserRef } from "../api/client";
 
 export type MentionUser = UserRef;
 
@@ -9,7 +9,7 @@ export function MentionAutocomplete({
   selectedIndex,
   onSelect,
   position,
-  className = '',
+  className = "",
 }: {
   users: MentionUser[];
   search?: string;
@@ -26,7 +26,7 @@ export function MentionAutocomplete({
     const el = listRef.current;
     if (!el) return;
     const item = el.querySelector(`[data-index="${selectedIndex}"]`);
-    item?.scrollIntoView({ block: 'nearest' });
+    item?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
   if (position === null || users.length === 0) return null;
@@ -35,7 +35,7 @@ export function MentionAutocomplete({
     <div
       ref={listRef}
       className={`z-[9999] max-h-48 w-64 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg ${className}`}
-      style={{ position: 'fixed', top: position.top, left: position.left }}
+      style={{ position: "fixed", top: position.top, left: position.left }}
       role="listbox"
       aria-label="Mention user"
     >
@@ -47,7 +47,9 @@ export function MentionAutocomplete({
           role="option"
           aria-selected={index === selectedIndex}
           className={`w-full px-3 py-2 text-left text-sm transition ${
-            index === selectedIndex ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'
+            index === selectedIndex
+              ? "bg-slate-100 text-slate-900"
+              : "text-slate-700 hover:bg-slate-50"
           }`}
           onMouseDown={(e) => {
             e.preventDefault();

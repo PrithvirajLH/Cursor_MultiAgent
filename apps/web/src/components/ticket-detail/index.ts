@@ -1,6 +1,13 @@
-export { TicketConversation, type TicketConversationProps } from './TicketConversation';
-export { TicketTimeline, type TicketTimelineProps } from './TicketTimeline';
-export { TicketSidebar, type TicketSidebarProps, type ExpandedSections } from './TicketSidebar';
+export {
+  TicketConversation,
+  type TicketConversationProps,
+} from "./TicketConversation";
+export { TicketTimeline, type TicketTimelineProps } from "./TicketTimeline";
+export {
+  TicketSidebar,
+  type TicketSidebarProps,
+  type ExpandedSections,
+} from "./TicketSidebar";
 export {
   formatChannel,
   formatFileSize,
@@ -12,4 +19,4 @@ export {
   getResolutionSla,
   getEventKind,
   formatEventText,
-} from './utils';
+} from "./utils";

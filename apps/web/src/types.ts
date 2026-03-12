@@ -1,9 +1,9 @@
-export type Role = 'EMPLOYEE' | 'AGENT' | 'LEAD' | 'TEAM_ADMIN' | 'OWNER';
+export type Role = "EMPLOYEE" | "AGENT" | "LEAD" | "TEAM_ADMIN" | "OWNER";
 
-export type StatusFilter = 'open' | 'resolved' | 'all';
-export type SortField = 'createdAt' | 'completedAt' | 'updatedAt';
-export type SortOrder = 'asc' | 'desc';
-export type SlaStatusFilter = 'on_track' | 'at_risk' | 'breached';
+export type StatusFilter = "open" | "resolved" | "all";
+export type SortField = "createdAt" | "completedAt" | "updatedAt";
+export type SortOrder = "asc" | "desc";
+export type SlaStatusFilter = "on_track" | "at_risk" | "breached";
 
 export type TicketFilters = {
   statusGroup?: StatusFilter;
@@ -26,7 +26,7 @@ export type TicketFilters = {
   page: number;
   pageSize: number;
 };
-export type TicketScope = 'all' | 'assigned' | 'unassigned' | 'created';
+export type TicketScope = "all" | "assigned" | "unassigned" | "created";
 
 export type DashboardStats = {
   open: number;

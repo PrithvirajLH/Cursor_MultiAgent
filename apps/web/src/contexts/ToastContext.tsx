@@ -1,6 +1,13 @@
-import { createContext, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastType = "success" | "error" | "warning" | "info";
 
 export interface ToastItem {
   id: string;
@@ -32,7 +39,9 @@ function generateId() {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const timeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const timeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
 
   const removeToast = useCallback((id: string) => {
     const existing = timeoutsRef.current.get(id);
@@ -55,23 +64,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       }, AUTO_DISMISS_MS);
       timeoutsRef.current.set(id, timeoutId);
     },
-    [removeToast]
+    [removeToast],
   );
 
   const toast: ToastApi = useMemo(
     () => ({
-      success: (message: string) => addToast('success', message),
-      error: (message: string) => addToast('error', message),
-      warning: (message: string) => addToast('warning', message),
-      info: (message: string) => addToast('info', message)
+      success: (message: string) => addToast("success", message),
+      error: (message: string) => addToast("error", message),
+      warning: (message: string) => addToast("warning", message),
+      info: (message: string) => addToast("info", message),
     }),
-    [addToast]
+    [addToast],
   );
 
   const value: ToastContextValue = useMemo(
     () => ({ toasts, toast, removeToast }),
-    [toasts, toast, removeToast]
+    [toasts, toast, removeToast],
   );
 
-  return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
+  return (
+    <ToastContext.Provider value={value}>{children}</ToastContext.Provider>
+  );
 }

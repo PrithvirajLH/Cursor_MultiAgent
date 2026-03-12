@@ -1,35 +1,35 @@
-import { X } from 'lucide-react';
-import { MultiSelectFilter, type MultiSelectOption } from './MultiSelectFilter';
-import { DateRangeFilter } from './DateRangeFilter';
-import { SavedViewsDropdown } from './SavedViewsDropdown';
-import { TextFilterDropdown } from './TextFilterDropdown';
-import type { TicketFilters } from '../../types';
-import type { TeamRef } from '../../api/client';
-import type { UserRef } from '../../api/client';
+import { X } from "lucide-react";
+import { MultiSelectFilter, type MultiSelectOption } from "./MultiSelectFilter";
+import { DateRangeFilter } from "./DateRangeFilter";
+import { SavedViewsDropdown } from "./SavedViewsDropdown";
+import { TextFilterDropdown } from "./TextFilterDropdown";
+import type { TicketFilters } from "../../types";
+import type { TeamRef } from "../../api/client";
+import type { UserRef } from "../../api/client";
 
 const STATUS_OPTIONS: MultiSelectOption[] = [
-  { value: 'NEW', label: 'New' },
-  { value: 'TRIAGED', label: 'Triaged' },
-  { value: 'ASSIGNED', label: 'Assigned' },
-  { value: 'IN_PROGRESS', label: 'In Progress' },
-  { value: 'WAITING_ON_REQUESTER', label: 'Waiting on Requester' },
-  { value: 'WAITING_ON_VENDOR', label: 'Waiting on Vendor' },
-  { value: 'RESOLVED', label: 'Resolved' },
-  { value: 'CLOSED', label: 'Closed' },
-  { value: 'REOPENED', label: 'Reopened' },
+  { value: "NEW", label: "New" },
+  { value: "TRIAGED", label: "Triaged" },
+  { value: "ASSIGNED", label: "Assigned" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "WAITING_ON_REQUESTER", label: "Waiting on Requester" },
+  { value: "WAITING_ON_VENDOR", label: "Waiting on Vendor" },
+  { value: "RESOLVED", label: "Resolved" },
+  { value: "CLOSED", label: "Closed" },
+  { value: "REOPENED", label: "Reopened" },
 ];
 
 const PRIORITY_OPTIONS: MultiSelectOption[] = [
-  { value: 'P1', label: 'P1' },
-  { value: 'P2', label: 'P2' },
-  { value: 'P3', label: 'P3' },
-  { value: 'P4', label: 'P4' },
+  { value: "P1", label: "P1" },
+  { value: "P2", label: "P2" },
+  { value: "P3", label: "P3" },
+  { value: "P4", label: "P4" },
 ];
 
 const SLA_STATUS_OPTIONS: MultiSelectOption[] = [
-  { value: 'on_track', label: 'On track' },
-  { value: 'at_risk', label: 'At risk' },
-  { value: 'breached', label: 'Breached' },
+  { value: "on_track", label: "On track" },
+  { value: "at_risk", label: "At risk" },
+  { value: "breached", label: "Breached" },
 ];
 
 export function FilterPanel({
@@ -59,25 +59,34 @@ export function FilterPanel({
   onClose?: () => void;
   drawerMode?: boolean;
 }) {
-  const teamOptions: MultiSelectOption[] = teamsList.map((t) => ({ value: t.id, label: t.name }));
+  const teamOptions: MultiSelectOption[] = teamsList.map((t) => ({
+    value: t.id,
+    label: t.name,
+  }));
   const assigneeOptions: MultiSelectOption[] = assignableUsers.map((u) => ({
     value: u.id,
     label: u.displayName,
   }));
-  const requesterSelectOptions: MultiSelectOption[] = requesterOptions.map((u) => ({
-    value: u.id,
-    label: u.displayName,
-  }));
+  const requesterSelectOptions: MultiSelectOption[] = requesterOptions.map(
+    (u) => ({
+      value: u.id,
+      label: u.displayName,
+    }),
+  );
 
   function toggleValue(list: string[], value: string) {
-    return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+    return list.includes(value)
+      ? list.filter((item) => item !== value)
+      : [...list, value];
   }
 
   if (drawerMode) {
     return (
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-slate-700">Saved Views</label>
+          <label className="block text-sm font-medium text-slate-700">
+            Saved Views
+          </label>
           <div className="mt-2">
             <SavedViewsDropdown
               currentFilters={filters}
@@ -89,14 +98,23 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Status
+          </label>
           <div className="mt-2 space-y-2">
             {STATUS_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-[13px] text-slate-700">
+              <label
+                key={option.value}
+                className="flex items-center gap-2 text-[13px] text-slate-700"
+              >
                 <input
                   type="checkbox"
                   checked={filters.statuses.includes(option.value)}
-                  onChange={() => setFilters({ statuses: toggleValue(filters.statuses, option.value) })}
+                  onChange={() =>
+                    setFilters({
+                      statuses: toggleValue(filters.statuses, option.value),
+                    })
+                  }
                   className="custom-checkbox mt-0.5"
                 />
                 <span>{option.label}</span>
@@ -106,14 +124,23 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Priority</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Priority
+          </label>
           <div className="mt-2 space-y-2">
             {PRIORITY_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-[13px] text-slate-700">
+              <label
+                key={option.value}
+                className="flex items-center gap-2 text-[13px] text-slate-700"
+              >
                 <input
                   type="checkbox"
                   checked={filters.priorities.includes(option.value)}
-                  onChange={() => setFilters({ priorities: toggleValue(filters.priorities, option.value) })}
+                  onChange={() =>
+                    setFilters({
+                      priorities: toggleValue(filters.priorities, option.value),
+                    })
+                  }
                   className="custom-checkbox mt-0.5"
                 />
                 <span>{option.label}</span>
@@ -124,10 +151,16 @@ export function FilterPanel({
 
         {showTeamFilter ? (
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Team</label>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Team
+            </label>
             <select
-              value={filters.teamIds[0] ?? ''}
-              onChange={(event) => setFilters({ teamIds: event.target.value ? [event.target.value] : [] })}
+              value={filters.teamIds[0] ?? ""}
+              onChange={(event) =>
+                setFilters({
+                  teamIds: event.target.value ? [event.target.value] : [],
+                })
+              }
               className="custom-select mt-2 w-full"
             >
               <option value="">All Teams</option>
@@ -141,10 +174,16 @@ export function FilterPanel({
         ) : null}
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Assignee</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Assignee
+          </label>
           <select
-            value={filters.assigneeIds[0] ?? ''}
-            onChange={(event) => setFilters({ assigneeIds: event.target.value ? [event.target.value] : [] })}
+            value={filters.assigneeIds[0] ?? ""}
+            onChange={(event) =>
+              setFilters({
+                assigneeIds: event.target.value ? [event.target.value] : [],
+              })
+            }
             className="custom-select mt-2 w-full"
           >
             <option value="">All Assignees</option>
@@ -157,10 +196,16 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Requester</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Requester
+          </label>
           <select
-            value={filters.requesterIds[0] ?? ''}
-            onChange={(event) => setFilters({ requesterIds: event.target.value ? [event.target.value] : [] })}
+            value={filters.requesterIds[0] ?? ""}
+            onChange={(event) =>
+              setFilters({
+                requesterIds: event.target.value ? [event.target.value] : [],
+              })
+            }
             className="custom-select mt-2 w-full"
           >
             <option value="">All Requesters</option>
@@ -173,16 +218,26 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">SLA Status</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            SLA Status
+          </label>
           <div className="mt-2 space-y-2">
             {SLA_STATUS_OPTIONS.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-[13px] text-slate-700">
+              <label
+                key={option.value}
+                className="flex items-center gap-2 text-[13px] text-slate-700"
+              >
                 <input
                   type="checkbox"
-                  checked={filters.slaStatus.includes(option.value as (typeof filters.slaStatus)[number])}
+                  checked={filters.slaStatus.includes(
+                    option.value as (typeof filters.slaStatus)[number],
+                  )}
                   onChange={() =>
                     setFilters({
-                      slaStatus: toggleValue(filters.slaStatus, option.value) as typeof filters.slaStatus,
+                      slaStatus: toggleValue(
+                        filters.slaStatus,
+                        option.value,
+                      ) as typeof filters.slaStatus,
                     })
                   }
                   className="custom-checkbox mt-0.5"
@@ -194,43 +249,57 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Created Date</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Created Date
+          </label>
           <div className="mt-2 space-y-2">
             <input
               type="date"
               value={filters.createdFrom}
-              onChange={(event) => setFilters({ createdFrom: event.target.value })}
+              onChange={(event) =>
+                setFilters({ createdFrom: event.target.value })
+              }
               className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
             <input
               type="date"
               value={filters.createdTo}
-              onChange={(event) => setFilters({ createdTo: event.target.value })}
+              onChange={(event) =>
+                setFilters({ createdTo: event.target.value })
+              }
               className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Updated Date</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Updated Date
+          </label>
           <div className="mt-2 space-y-2">
             <input
               type="date"
               value={filters.updatedFrom}
-              onChange={(event) => setFilters({ updatedFrom: event.target.value })}
+              onChange={(event) =>
+                setFilters({ updatedFrom: event.target.value })
+              }
               className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
             <input
               type="date"
               value={filters.updatedTo}
-              onChange={(event) => setFilters({ updatedTo: event.target.value })}
+              onChange={(event) =>
+                setFilters({ updatedTo: event.target.value })
+              }
               className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Due Date</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Due Date
+          </label>
           <div className="mt-2 space-y-2">
             <input
               type="date"
@@ -248,7 +317,9 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Contains</label>
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Contains
+          </label>
           <input
             type="text"
             value={filters.q}
@@ -265,8 +336,12 @@ export function FilterPanel({
     <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
       <div className="flex flex-wrap items-center gap-2">
         <div>
-          <h4 className="text-[15px] font-semibold text-slate-900 tracking-tight">Advanced filters</h4>
-          <p className="text-[13px] text-slate-500 mt-0.5">Refine by status, ownership, SLA, and dates.</p>
+          <h4 className="text-[15px] font-semibold text-slate-900 tracking-tight">
+            Advanced filters
+          </h4>
+          <p className="text-[13px] text-slate-500 mt-0.5">
+            Refine by status, ownership, SLA, and dates.
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {hasActiveFilters ? (
@@ -312,7 +387,9 @@ export function FilterPanel({
           label="SLA Status"
           options={SLA_STATUS_OPTIONS}
           selected={filters.slaStatus}
-          onChange={(slaStatus) => setFilters({ slaStatus: slaStatus as typeof filters.slaStatus })}
+          onChange={(slaStatus) =>
+            setFilters({ slaStatus: slaStatus as typeof filters.slaStatus })
+          }
           placeholder="Any SLA status"
           searchable={false}
         />

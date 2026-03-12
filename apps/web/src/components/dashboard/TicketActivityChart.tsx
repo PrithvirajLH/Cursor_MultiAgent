@@ -6,7 +6,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from 'recharts';
+} from "recharts";
 
 export type ActivityPoint = {
   day: string;
@@ -38,14 +38,18 @@ function ActivityTooltip({
             <span className="h-2 w-2 rounded-full bg-[hsl(var(--status-progress))]" />
             Open
           </span>
-          <span className="font-semibold text-slate-800">{point.open ?? 0}</span>
+          <span className="font-semibold text-slate-800">
+            {point.open ?? 0}
+          </span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="flex items-center gap-2 text-slate-600">
             <span className="h-2 w-2 rounded-full bg-[hsl(var(--status-resolved))]" />
             Resolved
           </span>
-          <span className="font-semibold text-slate-800">{point.resolved ?? 0}</span>
+          <span className="font-semibold text-slate-800">
+            {point.resolved ?? 0}
+          </span>
         </div>
       </div>
     </div>
@@ -64,29 +68,52 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
   return (
     <div className="h-48 min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+        <AreaChart
+          data={data}
+          margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
+        >
           <defs>
             <linearGradient id="openGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--status-progress))" stopOpacity={0.2} />
-              <stop offset="100%" stopColor="hsl(var(--status-progress))" stopOpacity={0} />
+              <stop
+                offset="0%"
+                stopColor="hsl(var(--status-progress))"
+                stopOpacity={0.2}
+              />
+              <stop
+                offset="100%"
+                stopColor="hsl(var(--status-progress))"
+                stopOpacity={0}
+              />
             </linearGradient>
             <linearGradient id="resolvedGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="hsl(var(--status-resolved))" stopOpacity={0.2} />
-              <stop offset="100%" stopColor="hsl(var(--status-resolved))" stopOpacity={0} />
+              <stop
+                offset="0%"
+                stopColor="hsl(var(--status-resolved))"
+                stopOpacity={0.2}
+              />
+              <stop
+                offset="100%"
+                stopColor="hsl(var(--status-resolved))"
+                stopOpacity={0}
+              />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#e2e8f0"
+            vertical={false}
+          />
           <XAxis
             dataKey="day"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: '#64748b', fontSize: 12 }}
+            tick={{ fill: "#64748b", fontSize: 12 }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
             allowDecimals={false}
-            tick={{ fill: '#64748b', fontSize: 12 }}
+            tick={{ fill: "#64748b", fontSize: 12 }}
           />
           <Tooltip content={<ActivityTooltip />} />
           <Area
@@ -95,7 +122,7 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
             stroke="hsl(var(--status-progress))"
             strokeWidth={2}
             fill="url(#openGradient)"
-            dot={{ fill: 'hsl(var(--status-progress))', strokeWidth: 0, r: 4 }}
+            dot={{ fill: "hsl(var(--status-progress))", strokeWidth: 0, r: 4 }}
             animationBegin={0}
             animationDuration={800}
             animationEasing="ease-out"
@@ -106,7 +133,7 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
             stroke="hsl(var(--status-resolved))"
             strokeWidth={2}
             fill="url(#resolvedGradient)"
-            dot={{ fill: 'hsl(var(--status-resolved))', strokeWidth: 0, r: 4 }}
+            dot={{ fill: "hsl(var(--status-resolved))", strokeWidth: 0, r: 4 }}
             animationBegin={0}
             animationDuration={800}
             animationEasing="ease-out"

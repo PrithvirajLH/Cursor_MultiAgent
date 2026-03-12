@@ -3,7 +3,7 @@
  * @returns true if copy succeeded, false otherwise.
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
-  if (typeof navigator === 'undefined') {
+  if (typeof navigator === "undefined") {
     return false;
   }
   try {
@@ -16,15 +16,15 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   }
   // Fallback for older browsers or when clipboard API fails (e.g. insecure context)
   try {
-    const textarea = document.createElement('textarea');
+    const textarea = document.createElement("textarea");
     textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px';
-    textarea.style.top = '0';
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
     document.body.appendChild(textarea);
     textarea.focus();
     textarea.select();
-    const ok = document.execCommand('copy');
+    const ok = document.execCommand("copy");
     document.body.removeChild(textarea);
     return ok;
   } catch {

@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Plus, ArrowLeft } from "lucide-react";
 import {
   createRoutingRule,
   fetchTeamMembers,
   type TeamMember,
   type TeamRef,
-} from '../api/client';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useToast } from '../hooks/useToast';
-import type { Role } from '../types';
-import { handleApiError } from '../utils/handleApiError';
+} from "../api/client";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useToast } from "../hooks/useToast";
+import type { Role } from "../types";
+import { handleApiError } from "../utils/handleApiError";
 
 type RoutingCondition = {
   field: string;
@@ -20,7 +20,7 @@ type RoutingCondition = {
 };
 
 type RoutingAction = {
-  type: 'assign_team' | 'assign_member';
+  type: "assign_team" | "assign_member";
   val: string;
 };
 
@@ -32,7 +32,7 @@ type RoutingForm = {
   actions: RoutingAction[];
 };
 
-type AssignmentMode = 'team' | 'member';
+type AssignmentMode = "team" | "member";
 
 type MemberOption = {
   id: string;
@@ -40,7 +40,11 @@ type MemberOption = {
   email: string;
 };
 
-const DEFAULT_CONDITION: RoutingCondition = { field: 'subject', op: 'contains', val: '' };
+const DEFAULT_CONDITION: RoutingCondition = {
+  field: "subject",
+  op: "contains",
+  val: "",
+};
 
 function normalizeKeyword(value: string): string {
   return value.trim().toLowerCase();
@@ -69,7 +73,8 @@ export function NewRoutingRulePage({
   const toast = useToast();
   const navigate = useNavigate();
 
-  const assignmentMode: AssignmentMode = role === 'TEAM_ADMIN' ? 'member' : 'team';
+  const assignmentMode: AssignmentMode =
+    role === "TEAM_ADMIN" ? "member" : "team";
 
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -78,23 +83,23 @@ export function NewRoutingRulePage({
 
   const [form, setForm] = useState<RoutingForm>(() => {
     const nextPriority = 1;
-    const defaultTeamId = teamsList[0]?.id ?? '';
+    const defaultTeamId = teamsList[0]?.id ?? "";
     return {
-      name: '',
+      name: "",
       enabled: true,
       priority: nextPriority,
       conditions: [{ ...DEFAULT_CONDITION }],
       actions: [
         {
-          type: assignmentMode === 'member' ? 'assign_member' : 'assign_team',
-          val: assignmentMode === 'member' ? '' : defaultTeamId,
+          type: assignmentMode === "member" ? "assign_member" : "assign_team",
+          val: assignmentMode === "member" ? "" : defaultTeamId,
         },
       ],
     };
   });
 
   useEffect(() => {
-    if (assignmentMode !== 'member') {
+    if (assignmentMode !== "member") {
       setMemberOptions([]);
       return;
     }
@@ -131,9 +136,15 @@ export function NewRoutingRulePage({
     if (keywords.length === 0) return false;
     const action = form.actions[0];
     if (!action?.val.trim()) return false;
-    if (assignmentMode === 'member' && memberOptions.length === 0) return false;
+    if (assignmentMode === "member" && memberOptions.length === 0) return false;
     return true;
-  }, [assignmentMode, form.actions, form.conditions, form.name, memberOptions.length]);
+  }, [
+    assignmentMode,
+    form.actions,
+    form.conditions,
+    form.name,
+    memberOptions.length,
+  ]);
 
   function handleAddCondition() {
     setForm((prev) => ({
@@ -173,13 +184,13 @@ export function NewRoutingRulePage({
   async function handleSubmit() {
     const keywords = toUniqueKeywords(form.conditions);
     if (!form.name.trim()) {
-      const message = 'Rule name is required.';
+      const message = "Rule name is required.";
       setError(message);
       toast.error(message);
       return;
     }
     if (keywords.length === 0) {
-      const message = 'Add at least one subject keyword.';
+      const message = "Add at least one subject keyword.";
       setError(message);
       toast.error(message);
       return;
@@ -188,9 +199,9 @@ export function NewRoutingRulePage({
     const assignmentAction = form.actions[0];
     if (!assignmentAction?.val.trim()) {
       const message =
-        assignmentMode === 'member'
-          ? 'Select a team member to assign.'
-          : 'Select a team to assign.';
+        assignmentMode === "member"
+          ? "Select a team member to assign."
+          : "Select a team to assign.";
       setError(message);
       toast.error(message);
       return;
@@ -207,17 +218,17 @@ export function NewRoutingRulePage({
       | (typeof basePayload & { teamId: string; assigneeId?: string })
       | undefined;
 
-    if (assignmentMode === 'member') {
+    if (assignmentMode === "member") {
       const scopedTeamId = teamsList[0]?.id;
       if (!scopedTeamId) {
-        const message = 'No team found for team admin routing rules.';
+        const message = "No team found for team admin routing rules.";
         setError(message);
         toast.error(message);
         return;
       }
       const member = memberOptions.find((m) => m.id === assignmentAction.val);
       if (!member) {
-        const message = 'Select a valid team member.';
+        const message = "Select a valid team member.";
         setError(message);
         toast.error(message);
         return;
@@ -230,7 +241,7 @@ export function NewRoutingRulePage({
     } else {
       const team = teamsList.find((t) => t.id === assignmentAction.val);
       if (!team) {
-        const message = 'Select a valid team.';
+        const message = "Select a valid team.";
         setError(message);
         toast.error(message);
         return;
@@ -245,8 +256,8 @@ export function NewRoutingRulePage({
     setError(null);
     try {
       await createRoutingRule(payload);
-      toast.success('Routing rule created.');
-      navigate('/routing');
+      toast.success("Routing rule created.");
+      navigate("/routing");
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -267,8 +278,6 @@ export function NewRoutingRulePage({
               title={headerValue.title}
               subtitle={headerValue.subtitle}
               currentEmail={headerValue.currentEmail}
-
-
               onOpenSearch={headerValue.onOpenSearch}
               notificationProps={headerValue.notificationProps}
               leftContent={
@@ -277,7 +286,8 @@ export function NewRoutingRulePage({
                     New Routing Rule
                   </h1>
                   <p className="mt-0.5 text-sm text-slate-500">
-                    Define subject keywords and auto-assignment for incoming tickets.
+                    Define subject keywords and auto-assignment for incoming
+                    tickets.
                   </p>
                 </div>
               }
@@ -288,7 +298,8 @@ export function NewRoutingRulePage({
                 New Routing Rule
               </h1>
               <p className="mt-0.5 text-sm text-slate-500">
-                Define subject keywords and auto-assignment for incoming tickets.
+                Define subject keywords and auto-assignment for incoming
+                tickets.
               </p>
             </div>
           )}
@@ -298,7 +309,7 @@ export function NewRoutingRulePage({
       <div className="mx-auto w-full max-w-[900px] px-6 py-8">
         <button
           type="button"
-          onClick={() => navigate('/routing')}
+          onClick={() => navigate("/routing")}
           className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -360,7 +371,9 @@ export function NewRoutingRulePage({
 
             <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-slate-700">Rule status</p>
+                <p className="text-sm font-medium text-slate-700">
+                  Rule status
+                </p>
                 <p className="text-xs text-slate-500">
                   Disable to keep the rule configured but inactive.
                 </p>
@@ -370,7 +383,10 @@ export function NewRoutingRulePage({
                   type="checkbox"
                   checked={form.enabled}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, enabled: event.target.checked }))
+                    setForm((prev) => ({
+                      ...prev,
+                      enabled: event.target.checked,
+                    }))
                   }
                   className="peer sr-only"
                 />
@@ -442,10 +458,12 @@ export function NewRoutingRulePage({
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">Assignment</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  Assignment
+                </p>
                 <span className="text-xs text-slate-400">
-                  Route matching tickets to the right{' '}
-                  {assignmentMode === 'member' ? 'agent' : 'team'}.
+                  Route matching tickets to the right{" "}
+                  {assignmentMode === "member" ? "agent" : "team"}.
                 </span>
               </div>
               <div className="space-y-2">
@@ -464,19 +482,21 @@ export function NewRoutingRulePage({
                     />
                   </svg>
                   <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-blue-700">
-                    {assignmentMode === 'member' ? 'Assign member' : 'Assign team'}
+                    {assignmentMode === "member"
+                      ? "Assign member"
+                      : "Assign team"}
                   </span>
                   <select
-                    value={form.actions[0]?.val ?? ''}
+                    value={form.actions[0]?.val ?? ""}
                     onChange={(event) => handleUpdateAction(event.target.value)}
                     className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">
-                      {assignmentMode === 'member'
-                        ? 'Select member…'
-                        : 'Select team…'}
+                      {assignmentMode === "member"
+                        ? "Select member…"
+                        : "Select team…"}
                     </option>
-                    {assignmentMode === 'member'
+                    {assignmentMode === "member"
                       ? memberOptions.map((member) => (
                           <option key={member.id} value={member.id}>
                             {member.label}
@@ -489,11 +509,14 @@ export function NewRoutingRulePage({
                         ))}
                   </select>
                 </div>
-                {assignmentMode === 'member' && memberOptions.length === 0 && !loadingMembers && (
-                  <p className="text-xs text-amber-700">
-                    No team members found for assignment. Add team members first.
-                  </p>
-                )}
+                {assignmentMode === "member" &&
+                  memberOptions.length === 0 &&
+                  !loadingMembers && (
+                    <p className="text-xs text-amber-700">
+                      No team members found for assignment. Add team members
+                      first.
+                    </p>
+                  )}
               </div>
             </div>
           </div>
@@ -505,7 +528,7 @@ export function NewRoutingRulePage({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate('/routing')}
+                onClick={() => navigate("/routing")}
                 disabled={saving}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -517,7 +540,7 @@ export function NewRoutingRulePage({
                 disabled={saving || !canSubmit}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
-                {saving ? 'Saving…' : 'Create rule'}
+                {saving ? "Saving…" : "Create rule"}
               </button>
             </div>
           </div>
@@ -526,4 +549,3 @@ export function NewRoutingRulePage({
     </section>
   );
 }
-

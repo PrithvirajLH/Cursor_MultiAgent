@@ -1,10 +1,10 @@
-import { useMinuteTick } from '../hooks/useMinuteTick';
-import { formatDateLong, formatRelative } from '../utils/format';
+import { useMinuteTick } from "../hooks/useMinuteTick";
+import { formatDateLong, formatRelative } from "../utils/format";
 
 type RelativeTimeProps = {
   value: string | Date | null | undefined;
   className?: string;
-  variant?: 'default' | 'compact';
+  variant?: "default" | "compact";
 };
 
 /**
@@ -12,9 +12,9 @@ type RelativeTimeProps = {
  * Updates every minute while mounted.
  */
 function formatRelativeCompact(value: string | Date): string {
-  const date = typeof value === 'string' ? new Date(value) : value;
+  const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) {
-    return '—';
+    return "—";
   }
   const now = Date.now();
   const ms = now - date.getTime();
@@ -25,10 +25,10 @@ function formatRelativeCompact(value: string | Date): string {
   const days = Math.floor(hours / 24);
 
   if (ms < 0) {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
   if (seconds < 60) {
-    return 'now';
+    return "now";
   }
   if (minutes < 60) {
     return `${minutes}m ago`;
@@ -39,23 +39,30 @@ function formatRelativeCompact(value: string | Date): string {
   if (days < 7) {
     return `${days}d ago`;
   }
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function RelativeTime({ value, className, variant = 'default' }: RelativeTimeProps) {
+export function RelativeTime({
+  value,
+  className,
+  variant = "default",
+}: RelativeTimeProps) {
   useMinuteTick(value != null);
 
   if (value == null) {
     return <span className={className}>—</span>;
   }
 
-  const date = typeof value === 'string' ? new Date(value) : value;
+  const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) {
     return <span className={className}>—</span>;
   }
 
   const title = formatDateLong(date);
-  const text = variant === 'compact' ? formatRelativeCompact(value) : formatRelative(value);
+  const text =
+    variant === "compact"
+      ? formatRelativeCompact(value)
+      : formatRelative(value);
 
   return (
     <time dateTime={date.toISOString()} title={title} className={className}>

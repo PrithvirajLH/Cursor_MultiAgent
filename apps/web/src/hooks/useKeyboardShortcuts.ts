@@ -1,27 +1,27 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
-export type ShortcutContext = 'global' | 'tickets-list' | 'ticket-detail';
+export type ShortcutContext = "global" | "tickets-list" | "ticket-detail";
 
 /**
  * Derive keyboard shortcut context from pathname for help modal.
  */
 export function getShortcutContext(pathname: string): ShortcutContext {
   if (pathname.match(/^\/tickets\/[^/]+$/)) {
-    return 'ticket-detail';
+    return "ticket-detail";
   }
-  if (pathname.startsWith('/tickets') || pathname === '/triage') {
-    return 'tickets-list';
+  if (pathname.startsWith("/tickets") || pathname === "/triage") {
+    return "tickets-list";
   }
-  return 'global';
+  return "global";
 }
 
-const FOCUS_SEARCH_EVENT = 'focus-search';
+const FOCUS_SEARCH_EVENT = "focus-search";
 
 /**
  * Dispatch focus-search so pages with a search input can focus it.
  */
 export function dispatchFocusSearch() {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(FOCUS_SEARCH_EVENT));
   }
 }
@@ -29,13 +29,16 @@ export function dispatchFocusSearch() {
 /**
  * Listen for focus-search (e.g. from Cmd+/) and focus the given ref.
  */
-export function useFocusSearchOnShortcut(inputRef: { current: HTMLInputElement | null }) {
+export function useFocusSearchOnShortcut(inputRef: {
+  current: HTMLInputElement | null;
+}) {
   useEffect(() => {
     function handleFocusSearch() {
       inputRef.current?.focus();
     }
     window.addEventListener(FOCUS_SEARCH_EVENT, handleFocusSearch);
-    return () => window.removeEventListener(FOCUS_SEARCH_EVENT, handleFocusSearch);
+    return () =>
+      window.removeEventListener(FOCUS_SEARCH_EVENT, handleFocusSearch);
   }, [inputRef]);
 }
 
@@ -53,12 +56,17 @@ export function useKeyboardShortcuts() {
     function handleKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement;
       const isInput =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
         target.isContentEditable;
 
       // ? - Show keyboard shortcuts help (only when not typing)
-      if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (
+        event.key === "?" &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
         if (!isInput) {
           event.preventDefault();
           setShowHelp((prev) => !prev);
@@ -67,7 +75,7 @@ export function useKeyboardShortcuts() {
       }
 
       // Cmd/Ctrl + / - Focus search (dispatch so current page can focus its search input)
-      if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+      if ((event.metaKey || event.ctrlKey) && event.key === "/") {
         event.preventDefault();
         if (!isInput) {
           dispatchFocusSearch();
@@ -76,13 +84,13 @@ export function useKeyboardShortcuts() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   return {
     showHelp,
     openHelp,
-    closeHelp
+    closeHelp,
   };
 }

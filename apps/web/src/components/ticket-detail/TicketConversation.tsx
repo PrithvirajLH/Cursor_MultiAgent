@@ -1,9 +1,14 @@
-import { memo, type ChangeEvent, type KeyboardEvent, type RefObject } from 'react';
-import { Paperclip, Send, Shield } from 'lucide-react';
-import type { TicketDetail, TicketMessage } from '../../api/client';
-import { MessageBody } from '../MessageBody';
-import { initialsFor, formatDate } from '../../utils/format';
-import { AnimatedList } from '../ui/animated-list';
+import {
+  memo,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type RefObject,
+} from "react";
+import { Paperclip, Send, Shield } from "lucide-react";
+import type { TicketDetail, TicketMessage } from "../../api/client";
+import { MessageBody } from "../MessageBody";
+import { initialsFor, formatDate } from "../../utils/format";
+import { AnimatedList } from "../ui/animated-list";
 
 function isSameDay(leftIso: string, rightIso: string) {
   const left = new Date(leftIso);
@@ -29,27 +34,36 @@ function formatConversationDay(iso: string) {
     current.getMonth(),
     current.getDate(),
   );
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  );
   const dayDiff = Math.round(
     (startOfToday.getTime() - startOfCurrent.getTime()) / (24 * 60 * 60 * 1000),
   );
-  if (dayDiff === 0) return 'Today';
-  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff === 0) return "Today";
+  if (dayDiff === 1) return "Yesterday";
   return current.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: startOfCurrent.getFullYear() !== startOfToday.getFullYear() ? 'numeric' : undefined,
+    month: "short",
+    day: "numeric",
+    year:
+      startOfCurrent.getFullYear() !== startOfToday.getFullYear()
+        ? "numeric"
+        : undefined,
   });
 }
 
 export type TicketConversationProps = {
   ticket: TicketDetail;
-  messages: Array<TicketMessage & { localStatus?: 'sending' | 'sent' | 'failed' }>;
+  messages: Array<
+    TicketMessage & { localStatus?: "sending" | "sent" | "failed" }
+  >;
   messagesHasMore: boolean;
   messagesLoading: boolean;
   currentEmail: string;
-  messageType: 'PUBLIC' | 'INTERNAL';
-  setMessageType: (type: 'PUBLIC' | 'INTERNAL') => void;
+  messageType: "PUBLIC" | "INTERNAL";
+  setMessageType: (type: "PUBLIC" | "INTERNAL") => void;
   messageBody: string;
   onMessageBodyChange: (body: string) => void;
   onMessageInputBlur: () => void;
@@ -104,8 +118,10 @@ export const TicketConversation = memo(function TicketConversation({
   void ticket;
   void onAttachmentDownload;
   void onAttachmentView;
-  const handleMessageInputKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== 'Enter' || event.shiftKey) {
+  const handleMessageInputKeyDown = (
+    event: KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (event.key !== "Enter" || event.shiftKey) {
       return;
     }
     event.preventDefault();
@@ -122,7 +138,7 @@ export const TicketConversation = memo(function TicketConversation({
 
     const names = typingUsers
       .slice(0, 2)
-      .map((user) => user.displayName || user.email || 'Someone');
+      .map((user) => user.displayName || user.email || "Someone");
     if (typingUsers.length === 1) {
       return `${names[0]} is typing...`;
     }
@@ -133,11 +149,11 @@ export const TicketConversation = memo(function TicketConversation({
   })();
   const typingLead = typingUsers[0];
   const typingLeadInitials = typingLead
-    ? initialsFor(typingLead.displayName || typingLead.email || 'U')
-    : 'U';
+    ? initialsFor(typingLead.displayName || typingLead.email || "U")
+    : "U";
   const typingLeadLabel = typingLead
-    ? typingLead.displayName || typingLead.email || 'Someone'
-    : 'Someone';
+    ? typingLead.displayName || typingLead.email || "Someone"
+    : "Someone";
 
   return (
     <div className="flex flex-1 flex-col min-h-0 w-full">
@@ -149,7 +165,7 @@ export const TicketConversation = memo(function TicketConversation({
             disabled={messagesLoading}
             className="text-sm font-medium text-blue-600 hover:text-blue-700"
           >
-            {messagesLoading ? 'Loading...' : '↑ Load older messages'}
+            {messagesLoading ? "Loading..." : "↑ Load older messages"}
           </button>
         ) : null}
       </div>
@@ -162,7 +178,9 @@ export const TicketConversation = memo(function TicketConversation({
         <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-8 bg-gradient-to-t from-slate-200/80 to-transparent" />
         {messages.length === 0 && !messagesLoading ? (
           <div className="relative mx-auto max-w-xl rounded-xl border border-dashed border-slate-300 bg-white/90 px-4 py-5 text-left text-sm text-slate-600 shadow-sm">
-            <p className="font-semibold text-slate-800">Start the conversation</p>
+            <p className="font-semibold text-slate-800">
+              Start the conversation
+            </p>
             <p className="mt-1 text-xs text-slate-500">
               Your first reply will show up here and notify the requester.
             </p>
@@ -172,23 +190,25 @@ export const TicketConversation = memo(function TicketConversation({
         <AnimatedList className="relative w-full items-stretch gap-1">
           {messages.map((message, index) => {
             const isCurrentUser = message.author?.email === currentEmail;
-            const isInternal = message.type === 'INTERNAL';
+            const isInternal = message.type === "INTERNAL";
             const localStatus = message.localStatus;
             const initials = initialsFor(
-              message.author?.displayName ?? message.author?.email ?? 'U',
+              message.author?.displayName ?? message.author?.email ?? "U",
             );
             const previousMessage = index > 0 ? messages[index - 1] : null;
-            const nextMessage = index < messages.length - 1 ? messages[index + 1] : null;
+            const nextMessage =
+              index < messages.length - 1 ? messages[index + 1] : null;
 
             const previousIsSameSender =
               previousMessage != null &&
               (previousMessage.author?.email ?? null) ===
-              (message.author?.email ?? null) &&
+                (message.author?.email ?? null) &&
               previousMessage.type === message.type &&
               isWithinMinutes(previousMessage.createdAt, message.createdAt, 5);
             const nextIsSameSender =
               nextMessage != null &&
-              (nextMessage.author?.email ?? null) === (message.author?.email ?? null) &&
+              (nextMessage.author?.email ?? null) ===
+                (message.author?.email ?? null) &&
               nextMessage.type === message.type &&
               isWithinMinutes(message.createdAt, nextMessage.createdAt, 5);
 
@@ -208,7 +228,7 @@ export const TicketConversation = memo(function TicketConversation({
                   </div>
                 ) : null}
                 <div
-                  className={`flex items-end gap-2 py-0.5 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                  className={`flex items-end gap-2 py-0.5 ${isCurrentUser ? "justify-end" : "justify-start"}`}
                 >
                   {!isCurrentUser ? (
                     isGroupEnd ? (
@@ -221,18 +241,18 @@ export const TicketConversation = memo(function TicketConversation({
                   ) : null}
 
                   <div
-                    className={`max-w-[82%] sm:max-w-[70%] min-w-0 ${isCurrentUser ? 'text-right' : 'text-left'}`}
+                    className={`max-w-[82%] sm:max-w-[70%] min-w-0 ${isCurrentUser ? "text-right" : "text-left"}`}
                   >
                     {isGroupStart ? (
                       <div
-                        className={`mb-1 flex items-center gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                        className={`mb-1 flex items-center gap-2 ${isCurrentUser ? "justify-end" : "justify-start"}`}
                       >
                         <span className="text-xs font-semibold text-slate-700">
                           {isCurrentUser
-                            ? 'You'
-                            : message.author?.displayName ??
-                            message.author?.email ??
-                            'Unknown'}
+                            ? "You"
+                            : (message.author?.displayName ??
+                              message.author?.email ??
+                              "Unknown")}
                         </span>
                         {isInternal ? (
                           <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
@@ -241,13 +261,13 @@ export const TicketConversation = memo(function TicketConversation({
                         ) : null}
                         <span className="flex items-center gap-1 text-[11px] text-slate-500">
                           {formatDate(message.createdAt)}
-                          {isCurrentUser && localStatus === 'sending' ? (
+                          {isCurrentUser && localStatus === "sending" ? (
                             <span className="text-slate-400">…</span>
                           ) : null}
-                          {isCurrentUser && localStatus === 'sent' ? (
+                          {isCurrentUser && localStatus === "sent" ? (
                             <span className="text-xs text-slate-400">✓</span>
                           ) : null}
-                          {isCurrentUser && localStatus === 'failed' ? (
+                          {isCurrentUser && localStatus === "failed" ? (
                             <span className="text-xs text-rose-500">!</span>
                           ) : null}
                         </span>
@@ -255,17 +275,19 @@ export const TicketConversation = memo(function TicketConversation({
                     ) : null}
 
                     <div
-                      className={`inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${isCurrentUser
-                        ? 'border-slate-700 bg-slate-700 text-slate-50'
-                        : isInternal
-                          ? 'border-amber-200 bg-amber-50 text-slate-900'
-                          : 'border-slate-200 bg-white text-slate-900'
-                        } ${isCurrentUser
-                          ? `${isGroupStart ? 'rounded-tr-[20px]' : 'rounded-tr-md'} ${isGroupEnd ? 'rounded-br-[20px]' : 'rounded-br-md'} rounded-tl-[20px] rounded-bl-[20px]`
-                          : `${isGroupStart ? 'rounded-tl-[20px]' : 'rounded-tl-md'} ${isGroupEnd ? 'rounded-bl-[20px]' : 'rounded-bl-md'} rounded-tr-[20px] rounded-br-[20px]`
-                        }`}
+                      className={`inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
+                        isCurrentUser
+                          ? "border-slate-700 bg-slate-700 text-slate-50"
+                          : isInternal
+                            ? "border-amber-200 bg-amber-50 text-slate-900"
+                            : "border-slate-200 bg-white text-slate-900"
+                      } ${
+                        isCurrentUser
+                          ? `${isGroupStart ? "rounded-tr-[20px]" : "rounded-tr-md"} ${isGroupEnd ? "rounded-br-[20px]" : "rounded-br-md"} rounded-tl-[20px] rounded-bl-[20px]`
+                          : `${isGroupStart ? "rounded-tl-[20px]" : "rounded-tl-md"} ${isGroupEnd ? "rounded-bl-[20px]" : "rounded-bl-md"} rounded-tr-[20px] rounded-br-[20px]`
+                      }`}
                     >
-                      {message.body.includes('\n') ? (
+                      {message.body.includes("\n") ? (
                         <pre className="w-full whitespace-pre-wrap break-words text-sm">
                           {message.body}
                         </pre>
@@ -347,25 +369,30 @@ export const TicketConversation = memo(function TicketConversation({
                   <button
                     type="button"
                     onClick={() =>
-                      setMessageType(messageType === 'PUBLIC' ? 'INTERNAL' : 'PUBLIC')
+                      setMessageType(
+                        messageType === "PUBLIC" ? "INTERNAL" : "PUBLIC",
+                      )
                     }
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${messageType === 'PUBLIC'
-                        ? 'border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100'
-                        : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                      }`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      messageType === "PUBLIC"
+                        ? "border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100"
+                        : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                    }`}
                     title={
-                      messageType === 'PUBLIC'
-                        ? 'Messages are visible to the requester'
-                        : 'Messages are internal and only visible to your team'
+                      messageType === "PUBLIC"
+                        ? "Messages are visible to the requester"
+                        : "Messages are internal and only visible to your team"
                     }
                     aria-label={
-                      messageType === 'PUBLIC'
-                        ? 'Sending public replies'
-                        : 'Sending internal notes'
+                      messageType === "PUBLIC"
+                        ? "Sending public replies"
+                        : "Sending internal notes"
                     }
                   >
                     <Shield className="h-3.5 w-3.5" />
-                    <span>{messageType === 'PUBLIC' ? 'Public' : 'Internal'}</span>
+                    <span>
+                      {messageType === "PUBLIC" ? "Public" : "Internal"}
+                    </span>
                   </button>
                 ) : null}
 

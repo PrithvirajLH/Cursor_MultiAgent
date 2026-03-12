@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from "react";
 import {
   createTicket,
   fetchCategories,
   fetchCustomFields,
   type CategoryRef,
   type CustomFieldRecord,
-} from '../api/client';
-import type { CreateTicketFormData } from '../schemas/createTicket';
-import { handleApiError } from '../utils/handleApiError';
+} from "../api/client";
+import type { CreateTicketFormData } from "../schemas/createTicket";
+import { handleApiError } from "../utils/handleApiError";
 
 export function useCreateTicketForm(opts: {
   onSuccess: () => void;
@@ -17,12 +17,16 @@ export function useCreateTicketForm(opts: {
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryRef[]>([]);
-  const [customFieldsRaw, setCustomFieldsRaw] = useState<CustomFieldRecord[]>([]);
-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+  const [customFieldsRaw, setCustomFieldsRaw] = useState<CustomFieldRecord[]>(
+    [],
+  );
+  const [customFieldValues, setCustomFieldValues] = useState<
+    Record<string, string>
+  >({});
 
   // Track the currently-selected team so we can filter custom fields and refetch
-  const [selectedTeamId, setSelectedTeamId] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
   const customFields = useMemo(() => {
     if (!selectedCategoryId) return customFieldsRaw;
@@ -55,8 +59,8 @@ export function useCreateTicketForm(opts: {
 
   function closeModal() {
     setShowModal(false);
-    setSelectedTeamId('');
-    setSelectedCategoryId('');
+    setSelectedTeamId("");
+    setSelectedCategoryId("");
     setCustomFieldValues({});
     setError(null);
   }
@@ -70,13 +74,13 @@ export function useCreateTicketForm(opts: {
 
     // Keep track of selections for custom field filtering
     setSelectedTeamId(data.assignedTeamId);
-    setSelectedCategoryId(data.categoryId ?? '');
+    setSelectedCategoryId(data.categoryId ?? "");
 
-      const missingRequired = customFields.filter(
-      (f) => f.isRequired && !(customFieldValues[f.id]?.trim?.() ?? ''),
+    const missingRequired = customFields.filter(
+      (f) => f.isRequired && !(customFieldValues[f.id]?.trim?.() ?? ""),
     );
     if (missingRequired.length > 0) {
-      const names = missingRequired.map((f) => f.name).join(', ');
+      const names = missingRequired.map((f) => f.name).join(", ");
       const msg = `Required field(s) must be filled: ${names}`;
       setError(msg);
       opts.toastError(msg);
@@ -88,7 +92,7 @@ export function useCreateTicketForm(opts: {
         customFields.length > 0
           ? customFields.map((f) => ({
               customFieldId: f.id,
-              value: (customFieldValues[f.id]?.trim?.() ?? '') || null,
+              value: (customFieldValues[f.id]?.trim?.() ?? "") || null,
             }))
           : [];
 
@@ -105,11 +109,11 @@ export function useCreateTicketForm(opts: {
       });
 
       setCustomFieldValues({});
-      setSelectedTeamId('');
-      setSelectedCategoryId('');
+      setSelectedTeamId("");
+      setSelectedCategoryId("");
       setShowModal(false);
       opts.onSuccess();
-      opts.toastSuccess('Ticket created successfully.');
+      opts.toastSuccess("Ticket created successfully.");
       return true;
     } catch (err: unknown) {
       const display = handleApiError(err);

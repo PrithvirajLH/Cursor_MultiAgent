@@ -1,8 +1,8 @@
-import { memo } from 'react';
-import { Clock3, MessageSquare } from 'lucide-react';
-import type { TicketEvent } from '../../api/client';
-import { RelativeTime } from '../RelativeTime';
-import { formatEventText, getEventKind } from './utils';
+import { memo } from "react";
+import { Clock3, MessageSquare } from "lucide-react";
+import type { TicketEvent } from "../../api/client";
+import { RelativeTime } from "../RelativeTime";
+import { formatEventText, getEventKind } from "./utils";
 
 export type TicketTimelineProps = {
   events: TicketEvent[];
@@ -26,7 +26,7 @@ export const TicketTimeline = memo(function TicketTimeline({
           disabled={eventsLoading}
           className="text-sm font-medium text-blue-600 hover:text-blue-700"
         >
-          {eventsLoading ? 'Loading...' : '↑ Load older events'}
+          {eventsLoading ? "Loading..." : "↑ Load older events"}
         </button>
       ) : null}
 
@@ -44,14 +44,14 @@ export const TicketTimeline = memo(function TicketTimeline({
               <div className="relative">
                 <div
                   className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
-                    eventKind === 'message'
-                      ? 'border-blue-200 bg-blue-50'
-                      : eventKind === 'internal'
-                        ? 'border-amber-200 bg-amber-50'
-                        : 'border-slate-200 bg-slate-100'
+                    eventKind === "message"
+                      ? "border-blue-200 bg-blue-50"
+                      : eventKind === "internal"
+                        ? "border-amber-200 bg-amber-50"
+                        : "border-slate-200 bg-slate-100"
                   }`}
                 >
-                  {eventKind === 'message' || eventKind === 'internal' ? (
+                  {eventKind === "message" || eventKind === "internal" ? (
                     <MessageSquare className="h-4 w-4 text-slate-600" />
                   ) : (
                     <Clock3 className="h-4 w-4 text-slate-600" />
@@ -62,7 +62,9 @@ export const TicketTimeline = memo(function TicketTimeline({
                 ) : null}
               </div>
               <div className="pt-1">
-                <p className="text-sm text-slate-900">{formatEventText(event)}</p>
+                <p className="text-sm text-slate-900">
+                  {formatEventText(event)}
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
                   <RelativeTime value={event.createdAt} />
                 </p>

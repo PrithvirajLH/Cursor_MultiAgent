@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -8,28 +8,28 @@ import {
   Shield,
   Tags,
   Wrench,
-  type LucideIcon
-} from 'lucide-react';
-import type { Role } from '../types';
+  type LucideIcon,
+} from "lucide-react";
+import type { Role } from "../types";
 
 type AdminRoute =
-  | '/sla-settings'
-  | '/routing'
-  | '/automation'
-  | '/custom-fields'
-  | '/audit-log'
-  | '/categories'
-  | '/reports';
+  | "/sla-settings"
+  | "/routing"
+  | "/automation"
+  | "/custom-fields"
+  | "/audit-log"
+  | "/categories"
+  | "/reports";
 
 type AdminSidebarItem = {
   key:
-  | 'sla-settings'
-  | 'routing'
-  | 'automation'
-  | 'custom-fields'
-  | 'audit-log'
-  | 'categories'
-  | 'reports';
+    | "sla-settings"
+    | "routing"
+    | "automation"
+    | "custom-fields"
+    | "audit-log"
+    | "categories"
+    | "reports";
   label: string;
   route: AdminRoute;
   icon: LucideIcon;
@@ -38,72 +38,77 @@ type AdminSidebarItem = {
 
 const adminItems: AdminSidebarItem[] = [
   {
-    key: 'sla-settings',
-    label: 'SLA Policies',
-    route: '/sla-settings',
+    key: "sla-settings",
+    label: "SLA Policies",
+    route: "/sla-settings",
     icon: Shield,
-    roles: ['TEAM_ADMIN', 'OWNER']
+    roles: ["TEAM_ADMIN", "OWNER"],
   },
   {
-    key: 'routing',
-    label: 'Routing Rules',
-    route: '/routing',
+    key: "routing",
+    label: "Routing Rules",
+    route: "/routing",
     icon: ArrowRightLeft,
-    roles: ['TEAM_ADMIN', 'OWNER']
+    roles: ["TEAM_ADMIN", "OWNER"],
   },
   {
-    key: 'automation',
-    label: 'Automation Rules',
-    route: '/automation',
+    key: "automation",
+    label: "Automation Rules",
+    route: "/automation",
     icon: Bot,
-    roles: ['TEAM_ADMIN', 'OWNER']
+    roles: ["TEAM_ADMIN", "OWNER"],
   },
   {
-    key: 'custom-fields',
-    label: 'Custom Fields',
-    route: '/custom-fields',
+    key: "custom-fields",
+    label: "Custom Fields",
+    route: "/custom-fields",
     icon: Wrench,
-    roles: ['TEAM_ADMIN', 'OWNER']
+    roles: ["TEAM_ADMIN", "OWNER"],
   },
   {
-    key: 'audit-log',
-    label: 'Audit Logs',
-    route: '/audit-log',
+    key: "audit-log",
+    label: "Audit Logs",
+    route: "/audit-log",
     icon: FileText,
-    roles: ['TEAM_ADMIN', 'OWNER']
+    roles: ["TEAM_ADMIN", "OWNER"],
   },
   {
-    key: 'categories',
-    label: 'Categories',
-    route: '/categories',
+    key: "categories",
+    label: "Categories",
+    route: "/categories",
     icon: Tags,
-    roles: ['OWNER']
+    roles: ["OWNER"],
   },
   {
-    key: 'reports',
-    label: 'Reports',
-    route: '/reports',
+    key: "reports",
+    label: "Reports",
+    route: "/reports",
     icon: BarChart3,
-    roles: ['TEAM_ADMIN', 'OWNER']
-  }
+    roles: ["TEAM_ADMIN", "OWNER"],
+  },
 ];
 
- function isItemActive(route: AdminRoute, pathname: string): boolean {
-   let effectivePathname = pathname;
+function isItemActive(route: AdminRoute, pathname: string): boolean {
+  let effectivePathname = pathname;
 
-   if (pathname.startsWith('/admin')) {
-     const withoutAdmin = pathname.slice('/admin'.length) || '/sla-settings';
-     effectivePathname = withoutAdmin.startsWith('/') ? withoutAdmin : `/${withoutAdmin}`;
-   }
+  if (pathname.startsWith("/admin")) {
+    const withoutAdmin = pathname.slice("/admin".length) || "/sla-settings";
+    effectivePathname = withoutAdmin.startsWith("/")
+      ? withoutAdmin
+      : `/${withoutAdmin}`;
+  }
 
-   if (route === '/sla-settings') return effectivePathname.startsWith('/sla-settings');
-   if (route === '/routing') return effectivePathname.startsWith('/routing');
-   if (route === '/automation') return effectivePathname.startsWith('/automation');
-   if (route === '/custom-fields') return effectivePathname.startsWith('/custom-fields');
-   if (route === '/audit-log') return effectivePathname.startsWith('/audit-log');
-   if (route === '/reports') return effectivePathname.startsWith('/reports');
-   return effectivePathname.startsWith('/categories');
- }
+  if (route === "/sla-settings")
+    return effectivePathname.startsWith("/sla-settings");
+  if (route === "/routing") return effectivePathname.startsWith("/routing");
+  if (route === "/automation")
+    return effectivePathname.startsWith("/automation");
+  if (route === "/custom-fields")
+    return effectivePathname.startsWith("/custom-fields");
+  if (route === "/audit-log") return effectivePathname.startsWith("/audit-log");
+  if (route === "/reports") return effectivePathname.startsWith("/reports");
+  return effectivePathname.startsWith("/categories");
+}
 
 export function AdminSidebar({
   visible,
@@ -111,7 +116,7 @@ export function AdminSidebar({
   pathname,
   onBack,
   onNavigate,
-  className
+  className,
 }: {
   visible: boolean;
   role: Role;
@@ -122,7 +127,11 @@ export function AdminSidebar({
 }) {
   const items = adminItems.filter((item) => item.roles.includes(role));
   const navRef = useRef<HTMLElement | null>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState({ top: 0, height: 0, opacity: 0 });
+  const [indicatorStyle, setIndicatorStyle] = useState({
+    top: 0,
+    height: 0,
+    opacity: 0,
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -130,17 +139,25 @@ export function AdminSidebar({
         return;
       }
 
-      const activeEl = navRef.current.querySelector('[data-active="true"]') as HTMLElement | null;
+      const activeEl = navRef.current.querySelector(
+        '[data-active="true"]',
+      ) as HTMLElement | null;
 
       if (activeEl) {
         const topOffset = activeEl.offsetTop;
-        const pHeight = parseInt(activeEl.getAttribute('data-indicator-height') || '24', 10);
-        const pTopPadding = parseInt(activeEl.getAttribute('data-indicator-padding') || '8', 10);
+        const pHeight = parseInt(
+          activeEl.getAttribute("data-indicator-height") || "24",
+          10,
+        );
+        const pTopPadding = parseInt(
+          activeEl.getAttribute("data-indicator-padding") || "8",
+          10,
+        );
 
         setIndicatorStyle({
           top: topOffset + pTopPadding,
           height: pHeight,
-          opacity: 1
+          opacity: 1,
         });
       } else {
         setIndicatorStyle((prev) => ({ ...prev, opacity: 0 }));
@@ -152,8 +169,9 @@ export function AdminSidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 h-screen w-64 border-r border-slate-800 bg-slate-900 p-5 transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : '-translate-x-full pointer-events-none'
-        } ${className ?? ''}`}
+      className={`fixed left-0 top-0 z-50 h-screen w-64 border-r border-slate-800 bg-slate-900 p-5 transition-transform duration-300 ease-out ${
+        visible ? "translate-x-0" : "-translate-x-full pointer-events-none"
+      } ${className ?? ""}`}
       aria-hidden={!visible}
     >
       <div className="flex h-full flex-col">
@@ -177,7 +195,7 @@ export function AdminSidebar({
             style={{
               top: indicatorStyle.top,
               height: indicatorStyle.height,
-              opacity: indicatorStyle.opacity
+              opacity: indicatorStyle.opacity,
             }}
             aria-hidden="true"
           />
@@ -192,12 +210,15 @@ export function AdminSidebar({
                 data-indicator-height="24"
                 data-indicator-padding="8"
                 onClick={() => onNavigate(item.route)}
-                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${active
-                    ? 'bg-slate-800 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-                  }`}
+                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  active
+                    ? "bg-slate-800 text-white shadow-sm"
+                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                }`}
               >
-                <Icon className={`h-5 w-5 flex-shrink-0 transition-colors ${active ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                <Icon
+                  className={`h-5 w-5 flex-shrink-0 transition-colors ${active ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"}`}
+                />
                 <span className="truncate text-left">{item.label}</span>
               </button>
             );

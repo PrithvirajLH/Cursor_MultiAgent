@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   createCategory,
   deleteCategory,
   fetchCategories,
   type CategoryRef,
-  updateCategory
-} from '../api/client';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+  updateCategory,
+} from "../api/client";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import {
   REALTIME_ADMIN_CHANGED_EVENT,
   type RealtimeAdminChangedEventPayload,
-} from '../realtime/events';
-import { handleApiError } from '../utils/handleApiError';
+} from "../realtime/events";
+import { handleApiError } from "../utils/handleApiError";
 
 type CategoryForm = {
   id: string | null;
@@ -30,19 +30,19 @@ function toSlug(input: string): string {
   return input
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 function emptyForm(): CategoryForm {
   return {
     id: null,
-    name: '',
-    slug: '',
-    description: '',
-    parentId: '',
-    isActive: true
+    name: "",
+    slug: "",
+    description: "",
+    parentId: "",
+    isActive: true,
   };
 }
 
@@ -55,8 +55,10 @@ export function CategoriesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "inactive"
+  >("all");
 
   const [showEditor, setShowEditor] = useState(false);
   const [form, setForm] = useState<CategoryForm>(emptyForm());
@@ -72,7 +74,7 @@ export function CategoriesPage() {
     const handleAdminChanged = (event: Event) => {
       const payload = (event as CustomEvent<RealtimeAdminChangedEventPayload>)
         .detail;
-      if (payload?.scope !== 'category') {
+      if (payload?.scope !== "category") {
         return;
       }
       void loadCategories();
@@ -95,7 +97,7 @@ export function CategoriesPage() {
     try {
       const response = await fetchCategories({ includeInactive: true });
       setCategories(
-        [...response.data].sort((a, b) => a.name.localeCompare(b.name))
+        [...response.data].sort((a, b) => a.name.localeCompare(b.name)),
       );
     } catch (err) {
       setError(handleApiError(err));
@@ -109,15 +111,18 @@ export function CategoriesPage() {
       categories
         .filter((category) => !category.parentId)
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [categories]
+    [categories],
   );
 
   const childCountByParent = useMemo(() => {
-    return categories.reduce((acc, category) => {
-      if (!category.parentId) return acc;
-      acc[category.parentId] = (acc[category.parentId] ?? 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    return categories.reduce(
+      (acc, category) => {
+        if (!category.parentId) return acc;
+        acc[category.parentId] = (acc[category.parentId] ?? 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
   }, [categories]);
 
   const filteredRows = useMemo(() => {
@@ -127,16 +132,16 @@ export function CategoriesPage() {
         !query ||
         category.name.toLowerCase().includes(query) ||
         category.slug.toLowerCase().includes(query) ||
-        (category.description ?? '').toLowerCase().includes(query);
+        (category.description ?? "").toLowerCase().includes(query);
       const matchStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'active' ? category.isActive : !category.isActive);
+        statusFilter === "all" ||
+        (statusFilter === "active" ? category.isActive : !category.isActive);
       return matchSearch && matchStatus;
     });
   }, [categories, search, statusFilter]);
 
   function startCreate() {
-    navigate('/categories/new');
+    navigate("/categories/new");
   }
 
   function startEdit(category: CategoryRef) {
@@ -146,9 +151,9 @@ export function CategoriesPage() {
       id: category.id,
       name: category.name,
       slug: category.slug,
-      description: category.description ?? '',
-      parentId: category.parentId ?? '',
-      isActive: category.isActive
+      description: category.description ?? "",
+      parentId: category.parentId ?? "",
+      isActive: category.isActive,
     });
     setShowEditor(true);
   }
@@ -172,7 +177,7 @@ export function CategoriesPage() {
 
   async function saveCategory() {
     if (!form.name.trim()) {
-      setError('Category name is required.');
+      setError("Category name is required.");
       return;
     }
 
@@ -183,29 +188,31 @@ export function CategoriesPage() {
       if (form.id) {
         const updated = await updateCategory(form.id, {
           name: form.name.trim(),
-          slug: (form.slug.trim() || toSlug(form.name)) || undefined,
+          slug: form.slug.trim() || toSlug(form.name) || undefined,
           description: form.description.trim() || null,
           parentId: form.parentId || null,
-          isActive: form.isActive
+          isActive: form.isActive,
         });
         setCategories((prev) =>
           prev
-            .map((category) => (category.id === updated.id ? updated : category))
-            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((category) =>
+              category.id === updated.id ? updated : category,
+            )
+            .sort((a, b) => a.name.localeCompare(b.name)),
         );
-        setNotice('Category updated.');
+        setNotice("Category updated.");
       } else {
         const created = await createCategory({
           name: form.name.trim(),
-          slug: (form.slug.trim() || toSlug(form.name)) || undefined,
+          slug: form.slug.trim() || toSlug(form.name) || undefined,
           description: form.description.trim() || undefined,
           parentId: form.parentId || undefined,
-          isActive: form.isActive
+          isActive: form.isActive,
         });
         setCategories((prev) =>
-          [...prev, created].sort((a, b) => a.name.localeCompare(b.name))
+          [...prev, created].sort((a, b) => a.name.localeCompare(b.name)),
         );
-        setNotice('Category created.');
+        setNotice("Category created.");
       }
       closeEditor();
     } catch (err) {
@@ -216,9 +223,11 @@ export function CategoriesPage() {
   }
 
   async function confirmDelete(category: CategoryRef) {
-    const hasChildren = categories.some((item) => item.parentId === category.id);
+    const hasChildren = categories.some(
+      (item) => item.parentId === category.id,
+    );
     if (hasChildren) {
-      setError('Cannot delete a category that has subcategories.');
+      setError("Cannot delete a category that has subcategories.");
       setDeleteTarget(null);
       return;
     }
@@ -229,15 +238,17 @@ export function CategoriesPage() {
       await deleteCategory(category.id);
       setCategories((prev) => prev.filter((item) => item.id !== category.id));
       setDeleteTarget(null);
-      setNotice('Category deleted.');
+      setNotice("Category deleted.");
     } catch (err) {
       setError(handleApiError(err));
     }
   }
 
   function parentName(parentId: string | null | undefined): string {
-    if (!parentId) return 'None';
-    return categories.find((category) => category.id === parentId)?.name ?? parentId;
+    if (!parentId) return "None";
+    return (
+      categories.find((category) => category.id === parentId)?.name ?? parentId
+    );
   }
 
   return (
@@ -249,21 +260,27 @@ export function CategoriesPage() {
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-
-
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">Categories</h1>
-                  <p className="mt-0.5 text-sm text-slate-500">Manage ticket taxonomy.</p>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    Categories
+                  </h1>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Manage ticket taxonomy.
+                  </p>
                 </div>
               }
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">Categories</h1>
-              <p className="mt-0.5 text-sm text-slate-500">Manage ticket taxonomy.</p>
+              <h1 className="text-xl font-semibold text-slate-900">
+                Categories
+              </h1>
+              <p className="mt-0.5 text-sm text-slate-500">
+                Manage ticket taxonomy.
+              </p>
             </div>
           )}
         </div>
@@ -294,7 +311,9 @@ export function CategoriesPage() {
           <select
             value={statusFilter}
             onChange={(event) =>
-              setStatusFilter(event.target.value as 'all' | 'active' | 'inactive')
+              setStatusFilter(
+                event.target.value as "all" | "active" | "inactive",
+              )
             }
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
           >
@@ -306,8 +325,8 @@ export function CategoriesPage() {
           <button
             type="button"
             onClick={() => {
-              setSearch('');
-              setStatusFilter('all');
+              setSearch("");
+              setStatusFilter("all");
             }}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700"
           >
@@ -335,7 +354,9 @@ export function CategoriesPage() {
         <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-4">
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs text-slate-500">Total</p>
-            <p className="mt-0.5 text-2xl font-bold text-blue-600">{categories.length}</p>
+            <p className="mt-0.5 text-2xl font-bold text-blue-600">
+              {categories.length}
+            </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4">
             <p className="text-xs text-slate-500">Active</p>
@@ -362,35 +383,60 @@ export function CategoriesPage() {
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
-                  {['Name', 'Slug', 'Parent', 'Children', 'Status', 'Description', 'Actions'].map(
-                    (heading) => (
-                      <th
-                        key={heading}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
-                      >
-                        {heading}
-                      </th>
-                    )
-                  )}
+                  {[
+                    "Name",
+                    "Slug",
+                    "Parent",
+                    "Children",
+                    "Status",
+                    "Description",
+                    "Actions",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
-                    <tr key={`skel-${i}`} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-3"><div className="h-4 w-6 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-32 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-24 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-20 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-5 w-14 skeleton-shimmer rounded-full" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-16 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-12 skeleton-shimmer rounded" /></td>
+                    <tr
+                      key={`skel-${i}`}
+                      className="border-b border-slate-100 last:border-0"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-6 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-32 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-24 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-20 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-5 w-14 skeleton-shimmer rounded-full" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-16 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-12 skeleton-shimmer rounded" />
+                      </td>
                     </tr>
                   ))
                 ) : filteredRows.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center">
-                      <p className="text-sm font-semibold text-slate-700">No categories found</p>
+                      <p className="text-sm font-semibold text-slate-700">
+                        No categories found
+                      </p>
                       <p className="mt-1 text-xs text-slate-400">
                         Try a different search or create a new category.
                       </p>
@@ -398,11 +444,16 @@ export function CategoriesPage() {
                   </tr>
                 ) : (
                   filteredRows.map((category) => (
-                    <tr key={category.id} className="transition-colors hover:bg-slate-50">
+                    <tr
+                      key={category.id}
+                      className="transition-colors hover:bg-slate-50"
+                    >
                       <td className="px-4 py-3 text-sm font-semibold text-slate-900">
                         {category.name}
                       </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">{category.slug}</td>
+                      <td className="px-4 py-3 text-sm text-slate-700">
+                        {category.slug}
+                      </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
                         {parentName(category.parentId)}
                       </td>
@@ -411,16 +462,17 @@ export function CategoriesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded-md px-2 py-1 text-xs font-medium ${category.isActive
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-slate-100 text-slate-600'
-                            }`}
+                          className={`rounded-md px-2 py-1 text-xs font-medium ${
+                            category.isActive
+                              ? "bg-green-100 text-green-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
                         >
-                          {category.isActive ? 'Active' : 'Inactive'}
+                          {category.isActive ? "Active" : "Inactive"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600">
-                        {category.description || '—'}
+                        {category.description || "—"}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center space-x-1">
@@ -452,30 +504,48 @@ export function CategoriesPage() {
       {showEditor && form.id && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) closeEditor(); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeEditor();
+          }}
         >
           <div
             ref={editorDialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={form.id ? 'Edit category' : 'Create category'}
+            aria-label={form.id ? "Edit category" : "Create category"}
             tabIndex={-1}
             className="flex w-full max-w-lg flex-col rounded-xl bg-white shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <p className="text-base font-semibold text-slate-900">
-                {form.id ? 'Edit Category' : 'Create Category'}
+                {form.id ? "Edit Category" : "Create Category"}
               </p>
-              <button type="button" onClick={closeEditor} className="text-slate-400 hover:text-slate-600">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
 
             <div className="space-y-4 p-6">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Name *</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Name *
+                </label>
                 <input
                   value={form.name}
                   onChange={(event) =>
@@ -487,7 +557,9 @@ export function CategoriesPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Slug</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Slug
+                </label>
                 <input
                   value={form.slug}
                   onChange={(event) =>
@@ -499,11 +571,16 @@ export function CategoriesPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Description</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Description
+                </label>
                 <textarea
                   value={form.description}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, description: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
                   }
                   rows={3}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
@@ -512,11 +589,16 @@ export function CategoriesPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Parent</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Parent
+                </label>
                 <select
                   value={form.parentId}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, parentId: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      parentId: event.target.value,
+                    }))
                   }
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                 >
@@ -536,7 +618,10 @@ export function CategoriesPage() {
                   type="checkbox"
                   checked={form.isActive}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, isActive: event.target.checked }))
+                    setForm((prev) => ({
+                      ...prev,
+                      isActive: event.target.checked,
+                    }))
                   }
                   className="h-4 w-4 rounded text-blue-600"
                 />
@@ -559,7 +644,11 @@ export function CategoriesPage() {
                 disabled={saving}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
-                {saving ? 'Saving...' : form.id ? 'Save Category' : 'Create Category'}
+                {saving
+                  ? "Saving..."
+                  : form.id
+                    ? "Save Category"
+                    : "Create Category"}
               </button>
             </div>
           </div>
@@ -569,7 +658,9 @@ export function CategoriesPage() {
       {deleteTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteTarget(null);
+          }}
         >
           <div
             ref={deleteDialogRef}
@@ -583,10 +674,13 @@ export function CategoriesPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <Trash2 className="h-5 w-5 text-red-600" />
               </div>
-              <h3 className="text-base font-semibold text-slate-900">Delete Category</h3>
+              <h3 className="text-base font-semibold text-slate-900">
+                Delete Category
+              </h3>
             </div>
             <p className="mb-5 text-sm leading-relaxed text-slate-600">
-              Delete "{deleteTarget.name}"? You cannot delete categories that still have subcategories.
+              Delete "{deleteTarget.name}"? You cannot delete categories that
+              still have subcategories.
             </p>
             <div className="flex justify-end space-x-3">
               <button

@@ -7,19 +7,19 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-} from 'recharts';
+} from "recharts";
 
 type Point = { priority: string; count: number };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  P1: '#dc2626',
-  P2: '#ea580c',
-  P3: '#2563eb',
-  P4: '#64748b',
+  P1: "#dc2626",
+  P2: "#ea580c",
+  P3: "#2563eb",
+  P4: "#64748b",
 };
 
 function colorForPriority(priority: string): string {
-  return PRIORITY_COLORS[priority] ?? '#64748b';
+  return PRIORITY_COLORS[priority] ?? "#64748b";
 }
 
 export function TicketsByPriorityChart({ data }: { data: Point[] }) {
@@ -34,11 +34,39 @@ export function TicketsByPriorityChart({ data }: { data: Point[] }) {
     <div className="h-[200px] w-full min-h-0 overflow-visible">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-          <XAxis dataKey="priority" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }} />
-          <Bar dataKey="count" name="Tickets" radius={[6, 6, 0, 0]} animationBegin={0} animationDuration={800} animationEasing="ease-out">
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#e2e8f0"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="priority"
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            allowDecimals={false}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip
+            contentStyle={{
+              borderRadius: "12px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
+              fontSize: "12px",
+            }}
+          />
+          <Bar
+            dataKey="count"
+            name="Tickets"
+            radius={[6, 6, 0, 0]}
+            animationBegin={0}
+            animationDuration={800}
+            animationEasing="ease-out"
+          >
             {data.map((entry, index) => (
               <Cell key={index} fill={colorForPriority(entry.priority)} />
             ))}

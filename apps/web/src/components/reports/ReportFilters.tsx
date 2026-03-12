@@ -1,9 +1,9 @@
-import type { CategoryRef, TeamRef } from '../../api/client';
+import type { CategoryRef, TeamRef } from "../../api/client";
 
 const DATE_PRESETS = [
-  { label: 'Last 7 days', days: 7 },
-  { label: 'Last 30 days', days: 30 },
-  { label: 'Last 90 days', days: 90 },
+  { label: "Last 7 days", days: 7 },
+  { label: "Last 30 days", days: 30 },
+  { label: "Last 90 days", days: 90 },
 ] as const;
 
 export type ReportFiltersState = {
@@ -21,9 +21,9 @@ function defaultFilters(): ReportFiltersState {
   return {
     from: from.toISOString().slice(0, 10),
     to: to.toISOString().slice(0, 10),
-    teamId: '',
-    priority: '',
-    categoryId: '',
+    teamId: "",
+    priority: "",
+    categoryId: "",
   };
 }
 
@@ -139,11 +139,11 @@ export function reportFiltersToQuery(f: ReportFiltersState): {
   teamId?: string;
   priority?: string;
   categoryId?: string;
-  groupBy?: 'team' | 'priority';
+  groupBy?: "team" | "priority";
 } {
   const q: Record<string, string> = {};
-  if (f.from) q.from = f.from + 'T00:00:00.000Z';
-  if (f.to) q.to = f.to + 'T23:59:59.999Z';
+  if (f.from) q.from = f.from + "T00:00:00.000Z";
+  if (f.to) q.to = f.to + "T23:59:59.999Z";
   if (f.teamId) q.teamId = f.teamId;
   if (f.priority) q.priority = f.priority;
   if (f.categoryId) q.categoryId = f.categoryId;

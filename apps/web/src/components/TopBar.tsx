@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { LogOut, Search } from 'lucide-react';
-import type { CurrentUserSession, NotificationRecord } from '../api/client';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { initialsFor } from '../utils/format';
-import { NotificationCenter } from './NotificationCenter';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { LogOut, Search } from "lucide-react";
+import type { CurrentUserSession, NotificationRecord } from "../api/client";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { initialsFor } from "../utils/format";
+import { NotificationCenter } from "./NotificationCenter";
 
 type NotificationProps = {
   notifications: NotificationRecord[];
@@ -31,7 +38,7 @@ export function TopBar({
   leftAction,
   leftContent,
   user,
-  onSignOut
+  onSignOut,
 }: {
   title: string;
   subtitle: string;
@@ -48,8 +55,10 @@ export function TopBar({
   const headerCtx = useHeaderContext();
   const resolvedUser = user ?? headerCtx?.currentUser ?? null;
   const resolvedSignOut = onSignOut ?? headerCtx?.onSignOut;
-  const avatarSource = resolvedUser?.displayName || resolvedUser?.email || currentEmail;
-  const avatarSeed = avatarSource.split('@')[0]?.replace(/[._-]+/g, ' ') || avatarSource;
+  const avatarSource =
+    resolvedUser?.displayName || resolvedUser?.email || currentEmail;
+  const avatarSeed =
+    avatarSource.split("@")[0]?.replace(/[._-]+/g, " ") || avatarSource;
   const avatarInitials = initialsFor(avatarSeed);
   const graphProfile = resolvedUser?.graphProfile ?? null;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -58,21 +67,23 @@ export function TopBar({
   const panelRef = useRef<HTMLDivElement>(null);
 
   const displayName =
-    resolvedUser?.displayName ?? graphProfile?.displayName ?? currentEmail?.split('@')[0] ?? '—';
-  const jobTitle = graphProfile?.jobTitle?.trim() ?? '—';
-  const officeLocation = graphProfile?.officeLocation?.trim() ?? '—';
-  const email = resolvedUser?.email ?? currentEmail ?? graphProfile?.mail?.trim() ?? '—';
+    resolvedUser?.displayName ??
+    graphProfile?.displayName ??
+    currentEmail?.split("@")[0] ??
+    "—";
+  const jobTitle = graphProfile?.jobTitle?.trim() ?? "—";
+  const officeLocation = graphProfile?.officeLocation?.trim() ?? "—";
+  const email =
+    resolvedUser?.email ?? currentEmail ?? graphProfile?.mail?.trim() ?? "—";
   const departmentOrTeam =
-    graphProfile?.department?.trim() ||
-    resolvedUser?.teamName?.trim() ||
-    '—';
+    graphProfile?.department?.trim() || resolvedUser?.teamName?.trim() || "—";
 
   const profileRows: ProfileRow[] = [
-    { label: 'Display Name', value: displayName },
-    { label: 'Job Title', value: jobTitle },
-    { label: 'Office Location', value: officeLocation },
-    { label: 'Email', value: email },
-    { label: 'Department / Team', value: departmentOrTeam },
+    { label: "Display Name", value: displayName },
+    { label: "Job Title", value: jobTitle },
+    { label: "Office Location", value: officeLocation },
+    { label: "Email", value: email },
+    { label: "Department / Team", value: departmentOrTeam },
   ];
 
   const handleCloseUserMenu = useCallback(() => setUserMenuOpen(false), []);
@@ -84,7 +95,10 @@ export function TopBar({
     const padding = 8;
     const left = Math.max(
       padding,
-      Math.min(rect.right - menuWidth, document.documentElement.clientWidth - menuWidth - padding),
+      Math.min(
+        rect.right - menuWidth,
+        document.documentElement.clientWidth - menuWidth - padding,
+      ),
     );
     setMenuPosition({ top: rect.bottom + padding, left });
   }, [userMenuOpen]);
@@ -101,13 +115,13 @@ export function TopBar({
       }
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setUserMenuOpen(false);
+      if (event.key === "Escape") setUserMenuOpen(false);
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
     };
   }, [userMenuOpen]);
 
@@ -119,8 +133,12 @@ export function TopBar({
           leftContent
         ) : (
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold leading-tight text-slate-900">{title}</h1>
-            <p className="mt-0.5 truncate text-sm leading-snug text-slate-500">{subtitle}</p>
+            <h1 className="truncate text-xl font-semibold leading-tight text-slate-900">
+              {title}
+            </h1>
+            <p className="mt-0.5 truncate text-sm leading-snug text-slate-500">
+              {subtitle}
+            </p>
           </div>
         )}
       </div>
@@ -164,7 +182,11 @@ export function TopBar({
             {resolvedUser?.avatarDataUrl ? (
               <img
                 src={resolvedUser.avatarDataUrl}
-                alt={resolvedUser.displayName || resolvedUser.email || 'User avatar'}
+                alt={
+                  resolvedUser.displayName ||
+                  resolvedUser.email ||
+                  "User avatar"
+                }
                 className="h-full w-full rounded-[12px] object-cover"
               />
             ) : (
@@ -180,7 +202,7 @@ export function TopBar({
                 role="menu"
                 aria-orientation="vertical"
                 style={{
-                  position: 'fixed',
+                  position: "fixed",
                   top: menuPosition.top,
                   left: menuPosition.left,
                   zIndex: 9999,
@@ -192,29 +214,46 @@ export function TopBar({
                       {resolvedUser?.avatarDataUrl ? (
                         <img
                           src={resolvedUser.avatarDataUrl}
-                          alt={resolvedUser.displayName || resolvedUser.email || 'User avatar'}
+                          alt={
+                            resolvedUser.displayName ||
+                            resolvedUser.email ||
+                            "User avatar"
+                          }
                           className="h-10 w-10 rounded-full object-cover"
                         />
+                      ) : resolvedUser ? (
+                        initialsFor(
+                          resolvedUser.displayName || resolvedUser.email,
+                        )
                       ) : (
-                        resolvedUser
-                          ? initialsFor(resolvedUser.displayName || resolvedUser.email)
-                          : avatarInitials
+                        avatarInitials
                       )}
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900">
-                        {resolvedUser?.displayName ?? currentEmail.split('@')[0] ?? 'User'}
+                        {resolvedUser?.displayName ??
+                          currentEmail.split("@")[0] ??
+                          "User"}
                       </p>
-                      <p className="truncate text-xs text-slate-500">{resolvedUser?.email ?? currentEmail}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {resolvedUser?.email ?? currentEmail}
+                      </p>
                     </div>
                   </div>
                 </div>
                 <div className="px-2 py-2">
                   <div className="space-y-2">
                     {profileRows.map((row) => (
-                      <div key={row.label} className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 text-xs">
-                        <span className="font-medium text-slate-500">{row.label}</span>
-                        <span className="break-words text-slate-700">{row.value}</span>
+                      <div
+                        key={row.label}
+                        className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 text-xs"
+                      >
+                        <span className="font-medium text-slate-500">
+                          {row.label}
+                        </span>
+                        <span className="break-words text-slate-700">
+                          {row.value}
+                        </span>
                       </div>
                     ))}
                   </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
 type Listener = () => void;
 
@@ -36,4 +36,3 @@ export function useMinuteTick(enabled: boolean) {
     };
   }, [enabled]);
 }
-

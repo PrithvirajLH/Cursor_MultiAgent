@@ -1,7 +1,7 @@
-import { cn } from '@/lib/utils';
-import { DEFAULT_WIDTHS } from '../../hooks/useTableSettings';
-import type { TableColumnId } from '../../hooks/useTableSettings';
-import { TABLE_COLUMN_IDS } from '../../hooks/useTableSettings';
+import { cn } from "@/lib/utils";
+import { DEFAULT_WIDTHS } from "../../hooks/useTableSettings";
+import type { TableColumnId } from "../../hooks/useTableSettings";
+import { TABLE_COLUMN_IDS } from "../../hooks/useTableSettings";
 
 /**
  * Single table row skeleton matching TicketTableView row layout.
@@ -19,13 +19,13 @@ export function TableRowSkeleton({
   className?: string;
 }) {
   const visibleColumns = TABLE_COLUMN_IDS.filter(
-    (id) => id === 'checkbox' || (columnVisibility ?? { [id]: true })[id]
+    (id) => id === "checkbox" || (columnVisibility ?? { [id]: true })[id],
   );
   const widths = columnWidths ?? DEFAULT_WIDTHS;
 
   return (
-    <tr className={cn('border-b border-border/60', className)} aria-hidden>
-      {showCheckbox && visibleColumns.includes('checkbox') && (
+    <tr className={cn("border-b border-border/60", className)} aria-hidden>
+      {showCheckbox && visibleColumns.includes("checkbox") && (
         <td
           className="sticky left-0 z-[2] border-b border-r border-border/60 bg-card p-0"
           style={{ width: widths.checkbox, minWidth: widths.checkbox }}
@@ -35,7 +35,7 @@ export function TableRowSkeleton({
           </div>
         </td>
       )}
-      {visibleColumns.includes('id') && (
+      {visibleColumns.includes("id") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.id, minWidth: widths.id }}
@@ -43,7 +43,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-14 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('subject') && (
+      {visibleColumns.includes("subject") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.subject, minWidth: widths.subject }}
@@ -51,7 +51,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-40 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('status') && (
+      {visibleColumns.includes("status") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.status, minWidth: widths.status }}
@@ -59,7 +59,7 @@ export function TableRowSkeleton({
           <div className="h-5 w-16 rounded-full skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('priority') && (
+      {visibleColumns.includes("priority") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.priority, minWidth: widths.priority }}
@@ -67,7 +67,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-8 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('team') && (
+      {visibleColumns.includes("team") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.team, minWidth: widths.team }}
@@ -75,7 +75,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-20 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('assignee') && (
+      {visibleColumns.includes("assignee") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.assignee, minWidth: widths.assignee }}
@@ -83,7 +83,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-24 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('requester') && (
+      {visibleColumns.includes("requester") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.requester, minWidth: widths.requester }}
@@ -91,7 +91,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-24 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('createdAt') && (
+      {visibleColumns.includes("createdAt") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.createdAt, minWidth: widths.createdAt }}
@@ -99,7 +99,7 @@ export function TableRowSkeleton({
           <div className="h-3 w-16 rounded skeleton-shimmer" />
         </td>
       )}
-      {visibleColumns.includes('slaStatus') && (
+      {visibleColumns.includes("slaStatus") && (
         <td
           className="border-b border-border/60 px-3 py-2"
           style={{ width: widths.slaStatus, minWidth: widths.slaStatus }}

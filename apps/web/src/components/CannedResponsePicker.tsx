@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { FileText, X } from 'lucide-react';
-import { fetchCannedResponses, type CannedResponseRecord } from '../api/client';
-import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import { useEffect, useRef, useState } from "react";
+import { FileText, X } from "lucide-react";
+import { fetchCannedResponses, type CannedResponseRecord } from "../api/client";
+import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 
 export type CannedResponsePickerProps = {
   open: boolean;
@@ -15,12 +15,17 @@ export type CannedResponsePickerProps = {
   className?: string;
 };
 
-function substituteVariables(content: string, vars: CannedResponsePickerProps['variables']): string {
+function substituteVariables(
+  content: string,
+  vars: CannedResponsePickerProps["variables"],
+): string {
   let out = content;
   if (vars.ticketId) out = out.replace(/\{\{ticket\.id\}\}/g, vars.ticketId);
-  if (vars.ticketSubject) out = out.replace(/\{\{ticket\.subject\}\}/g, vars.ticketSubject);
-  if (vars.requesterName) out = out.replace(/\{\{requester\.name\}\}/g, vars.requesterName);
-  out = out.replace(/\{\{[^}]+\}\}/g, '');
+  if (vars.ticketSubject)
+    out = out.replace(/\{\{ticket\.subject\}\}/g, vars.ticketSubject);
+  if (vars.requesterName)
+    out = out.replace(/\{\{requester\.name\}\}/g, vars.requesterName);
+  out = out.replace(/\{\{[^}]+\}\}/g, "");
   return out;
 }
 
@@ -29,7 +34,7 @@ export function CannedResponsePicker({
   onClose,
   onSelect,
   variables,
-  className = '',
+  className = "",
 }: CannedResponsePickerProps) {
   const [list, setList] = useState<CannedResponseRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +50,7 @@ export function CannedResponsePicker({
     fetchCannedResponses()
       .then((data) => setList(Array.isArray(data) ? data : []))
       .catch(() => {
-        setError('Failed to load templates');
+        setError("Failed to load templates");
         setList([]);
       })
       .finally(() => setLoading(false));
@@ -69,7 +74,9 @@ export function CannedResponsePicker({
         tabIndex={-1}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-900">Insert template</h3>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Insert template
+          </h3>
           <button
             type="button"
             onClick={onClose}
@@ -87,7 +94,9 @@ export function CannedResponsePicker({
             <p className="py-4 text-center text-sm text-red-600">{error}</p>
           )}
           {!loading && !error && list.length === 0 && (
-            <p className="py-4 text-center text-sm text-slate-500">No templates saved.</p>
+            <p className="py-4 text-center text-sm text-slate-500">
+              No templates saved.
+            </p>
           )}
           {!loading && !error && list.length > 0 && (
             <ul className="space-y-1">
@@ -98,7 +107,10 @@ export function CannedResponsePicker({
                     className="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      const content = substituteVariables(item.content, variables);
+                      const content = substituteVariables(
+                        item.content,
+                        variables,
+                      );
                       onSelect(content);
                       onClose();
                     }}
@@ -106,7 +118,10 @@ export function CannedResponsePicker({
                     <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-slate-900">{item.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">{item.content.slice(0, 80)}{item.content.length > 80 ? '…' : ''}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                        {item.content.slice(0, 80)}
+                        {item.content.length > 80 ? "…" : ""}
+                      </p>
                     </div>
                   </button>
                 </li>

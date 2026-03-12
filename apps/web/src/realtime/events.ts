@@ -1,6 +1,6 @@
-export const REALTIME_TICKET_CHANGED_EVENT = 'ticketing:ticket-changed';
-export const REALTIME_TICKET_TYPING_EVENT = 'ticketing:ticket-typing';
-export const REALTIME_ADMIN_CHANGED_EVENT = 'ticketing:admin-changed';
+export const REALTIME_TICKET_CHANGED_EVENT = "ticketing:ticket-changed";
+export const REALTIME_TICKET_TYPING_EVENT = "ticketing:ticket-typing";
+export const REALTIME_ADMIN_CHANGED_EVENT = "ticketing:admin-changed";
 
 export type RealtimeTicketMessagePayload = {
   id: string;

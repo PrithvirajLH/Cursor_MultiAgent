@@ -1,4 +1,4 @@
-import { cn } from '../../lib/utils';
+import { cn } from "../../lib/utils";
 
 /* ——————————————————————————————————————————————————————————————
  * Skeleton primitives – consistent loading states across pages.
@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils';
 
 /** Base skeleton block – shimmer rectangle with configurable size. */
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('skeleton-shimmer rounded', className)} />;
+  return <div className={cn("skeleton-shimmer rounded", className)} />;
 }
 
 /** Row of KPI card skeletons (e.g. 4 stat boxes). */
@@ -67,7 +67,7 @@ export function TableSkeleton({
         {Array.from({ length: columns }).map((_, i) => (
           <Skeleton
             key={`th-${i}`}
-            className={cn('h-4', i === 0 ? 'w-40' : 'w-24')}
+            className={cn("h-4", i === 0 ? "w-40" : "w-24")}
           />
         ))}
       </div>
@@ -81,8 +81,8 @@ export function TableSkeleton({
             <Skeleton
               key={`td-${ri}-${ci}`}
               className={cn(
-                'h-4',
-                ci === 0 ? 'w-40' : ci === columns - 1 ? 'w-16' : 'w-24',
+                "h-4",
+                ci === 0 ? "w-40" : ci === columns - 1 ? "w-16" : "w-24",
               )}
             />
           ))}
@@ -93,9 +93,11 @@ export function TableSkeleton({
 }
 
 /** Chart placeholder skeleton (single large card). */
-export function ChartSkeleton({ height = 'h-72' }: { height?: string }) {
+export function ChartSkeleton({ height = "h-72" }: { height?: string }) {
   return (
-    <div className={cn('rounded-xl border border-slate-200 bg-white p-6', height)}>
+    <div
+      className={cn("rounded-xl border border-slate-200 bg-white p-6", height)}
+    >
       <Skeleton className="mb-4 h-5 w-32" />
       <Skeleton className="h-3/4 w-full rounded-lg" />
     </div>

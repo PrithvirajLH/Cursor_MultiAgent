@@ -1,17 +1,17 @@
-import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 export function useSidebarState() {
   const location = useLocation();
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('sidebar-collapsed') === 'true';
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("sidebar-collapsed") === "true";
   });
 
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(max-width: 1023px)').matches;
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 1023px)").matches;
   });
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -19,12 +19,12 @@ export function useSidebarState() {
   const [adminSidebarDismissed, setAdminSidebarDismissed] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const media = window.matchMedia('(max-width: 1023px)');
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsMobileViewport(media.matches);
     sync();
-    media.addEventListener('change', sync);
-    return () => media.removeEventListener('change', sync);
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
@@ -40,8 +40,11 @@ export function useSidebarState() {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('sidebar-collapsed', String(isSidebarCollapsed));
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      "sidebar-collapsed",
+      String(isSidebarCollapsed),
+    );
   }, [isSidebarCollapsed]);
 
   return {

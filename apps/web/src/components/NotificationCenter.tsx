@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Bell,
   Check,
@@ -10,11 +10,11 @@ import {
   UserPlus,
   ArrowRightLeft,
   CheckCircle,
-  X
-} from 'lucide-react';
-import type { NotificationRecord } from '../api/client';
-import { formatTicketId } from '../utils/format';
-import { AnimatedList } from './ui/animated-list';
+  X,
+} from "lucide-react";
+import type { NotificationRecord } from "../api/client";
+import { formatTicketId } from "../utils/format";
+import { AnimatedList } from "./ui/animated-list";
 
 type NotificationCenterProps = {
   notifications: NotificationRecord[];
@@ -35,41 +35,43 @@ const NOTIFICATION_ICON_CONFIG: Record<
 > = {
   TICKET_ASSIGNED: {
     icon: <UserPlus className="h-4 w-4 text-white" />,
-    bgClass: 'bg-blue-500',
+    bgClass: "bg-blue-500",
   },
   NEW_MESSAGE: {
     icon: <MessageSquare className="h-4 w-4 text-white" />,
-    bgClass: 'bg-pink-500',
+    bgClass: "bg-pink-500",
   },
   SLA_AT_RISK: {
     icon: <Clock className="h-4 w-4 text-white" />,
-    bgClass: 'bg-amber-500',
+    bgClass: "bg-amber-500",
   },
   SLA_BREACHED: {
     icon: <AlertTriangle className="h-4 w-4 text-white" />,
-    bgClass: 'bg-red-500',
+    bgClass: "bg-red-500",
   },
   TICKET_RESOLVED: {
     icon: <CheckCircle className="h-4 w-4 text-white" />,
-    bgClass: 'bg-emerald-500',
+    bgClass: "bg-emerald-500",
   },
   TICKET_TRANSFERRED: {
     icon: <ArrowRightLeft className="h-4 w-4 text-white" />,
-    bgClass: 'bg-violet-500',
+    bgClass: "bg-violet-500",
   },
   TICKET_MENTIONED: {
     icon: <MessageSquare className="h-4 w-4 text-white" />,
-    bgClass: 'bg-blue-500',
+    bgClass: "bg-blue-500",
   },
 };
 
 function getNotificationIcon(type: string) {
   const config = NOTIFICATION_ICON_CONFIG[type] ?? {
     icon: <Bell className="h-4 w-4 text-white" />,
-    bgClass: 'bg-slate-500',
+    bgClass: "bg-slate-500",
   };
   return (
-    <div className={`h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 ${config.bgClass}`}>
+    <div
+      className={`h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 ${config.bgClass}`}
+    >
       {config.icon}
     </div>
   );
@@ -83,7 +85,7 @@ function formatRelativeTime(dateString: string) {
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 1) return "Just now";
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
@@ -96,24 +98,34 @@ export type NotificationCardProps = {
   onClick: (notification: NotificationRecord) => void;
 };
 
-export function NotificationCard({ notification, onMarkAsRead, onClick }: NotificationCardProps) {
+export function NotificationCard({
+  notification,
+  onMarkAsRead,
+  onClick,
+}: NotificationCardProps) {
   const iconEl = getNotificationIcon(notification.type);
   const source =
-    notification.ticket?.displayId ?? notification.ticket?.subject ?? notification.body ?? null;
+    notification.ticket?.displayId ??
+    notification.ticket?.subject ??
+    notification.body ??
+    null;
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={() => onClick(notification)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onClick(notification);
         }
       }}
-      aria-label={`${notification.title}${!notification.isRead ? ', unread' : ''}`}
-      className={`group w-full flex items-start gap-4 rounded-[16px] border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:shadow-[0_4px_15px_rgb(0,0,0,0.04)] hover:border-slate-200 cursor-pointer ${!notification.isRead ? 'ring-1 ring-blue-100 bg-blue-50/40 border-blue-100' : ''
-        }`}
+      aria-label={`${notification.title}${!notification.isRead ? ", unread" : ""}`}
+      className={`group w-full flex items-start gap-4 rounded-[16px] border border-transparent bg-white p-4 text-left shadow-sm transition-all hover:shadow-[0_4px_15px_rgb(0,0,0,0.04)] hover:border-slate-200 cursor-pointer ${
+        !notification.isRead
+          ? "ring-1 ring-blue-100 bg-blue-50/40 border-blue-100"
+          : ""
+      }`}
     >
       {iconEl}
       <div className="flex-1 min-w-0">
@@ -128,7 +140,7 @@ export function NotificationCard({ notification, onMarkAsRead, onClick }: Notifi
           <p className="text-xs text-slate-500 mt-1 truncate">
             {notification.ticket?.displayId
               ? formatTicketId(notification.ticket)
-              : notification.ticket?.subject ?? notification.body}
+              : (notification.ticket?.subject ?? notification.body)}
           </p>
         )}
       </div>
@@ -158,7 +170,7 @@ export function NotificationCenter({
   onMarkAsRead,
   onMarkAllAsRead,
   onRefresh,
-  unreadOnly = true
+  unreadOnly = true,
 }: NotificationCenterProps) {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
@@ -185,22 +197,23 @@ export function NotificationCenter({
     }
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isOpen]);
 
   // Close on escape (dropdown or drawer)
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         if (drawerOpen) setDrawerOpen(false);
         else if (isOpen) setIsOpen(false);
       }
     }
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, [isOpen, drawerOpen]);
 
   // Refresh when opening
@@ -210,7 +223,10 @@ export function NotificationCenter({
     }
   }, [isOpen, onRefresh]);
 
-  function handleNotificationClick(notification: NotificationRecord, closeDrawer = false) {
+  function handleNotificationClick(
+    notification: NotificationRecord,
+    closeDrawer = false,
+  ) {
     if (!notification.isRead) {
       onMarkAsRead(notification.id);
     }
@@ -235,7 +251,7 @@ export function NotificationCenter({
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className="relative h-10 w-10 rounded-full border border-slate-300 bg-white flex items-center justify-center text-slate-600 hover:text-slate-900 hover:border-slate-400 transition"
-        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -244,7 +260,7 @@ export function NotificationCenter({
             aria-live="polite"
             aria-atomic="true"
           >
-            {unreadCount > 99 ? '99+' : unreadCount}
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </button>
@@ -258,7 +274,9 @@ export function NotificationCenter({
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
+            <h3 className="text-sm font-semibold text-slate-900">
+              Notifications
+            </h3>
             <div className="flex items-center gap-2">
               {unreadCount > 0 && (
                 <button
@@ -286,7 +304,10 @@ export function NotificationCenter({
             {loading && displayList.length === 0 && (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse rounded-xl bg-white border border-slate-100 shadow-sm p-4 flex gap-3">
+                  <div
+                    key={i}
+                    className="animate-pulse rounded-xl bg-white border border-slate-100 shadow-sm p-4 flex gap-3"
+                  >
                     <div className="h-9 w-9 rounded-full bg-slate-200 flex-shrink-0" />
                     <div className="flex-1 space-y-2 min-w-0">
                       <div className="h-4 w-3/4 rounded bg-slate-200" />
@@ -301,11 +322,13 @@ export function NotificationCenter({
               <div className="py-12 px-4 text-center">
                 <Bell className="h-10 w-10 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm text-slate-500">
-                  {unreadOnly ? 'No unread notifications' : 'No notifications yet'}
+                  {unreadOnly
+                    ? "No unread notifications"
+                    : "No notifications yet"}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
                   {unreadOnly
-                    ? 'Marked items disappear from the bell. View all below.'
+                    ? "Marked items disappear from the bell. View all below."
                     : "You'll be notified about ticket updates here"}
                 </p>
                 {unreadOnly && (
@@ -332,32 +355,31 @@ export function NotificationCenter({
             </AnimatedList>
 
             {/* See all (bell) or Load more (full page) */}
-            {unreadOnly ? (
-              displayList.length > 0 && (
-                <div className="p-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={openDrawer}
-                    className="w-full py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition"
-                  >
-                    See all notifications
-                  </button>
-                </div>
-              )
-            ) : (
-              hasMore && notifications.length > 0 && (
-                <div className="p-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={onLoadMore}
-                    disabled={loading}
-                    className="w-full py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition disabled:opacity-50"
-                  >
-                    {loading ? 'Loading...' : 'Load more'}
-                  </button>
-                </div>
-              )
-            )}
+            {unreadOnly
+              ? displayList.length > 0 && (
+                  <div className="p-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={openDrawer}
+                      className="w-full py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition"
+                    >
+                      See all notifications
+                    </button>
+                  </div>
+                )
+              : hasMore &&
+                notifications.length > 0 && (
+                  <div className="p-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={onLoadMore}
+                      disabled={loading}
+                      className="w-full py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition disabled:opacity-50"
+                    >
+                      {loading ? "Loading..." : "Load more"}
+                    </button>
+                  </div>
+                )}
           </div>
         </div>
       )}
@@ -378,7 +400,9 @@ export function NotificationCenter({
             aria-label="All notifications"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 flex-shrink-0">
-              <h3 className="text-base font-semibold text-slate-900">All notifications</h3>
+              <h3 className="text-base font-semibold text-slate-900">
+                All notifications
+              </h3>
               <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
                   <button
@@ -443,7 +467,7 @@ export function NotificationCenter({
                         disabled={loading}
                         className="w-full py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg border border-slate-200 transition disabled:opacity-50"
                       >
-                        {loading ? 'Loading...' : 'Load more'}
+                        {loading ? "Loading..." : "Load more"}
                       </button>
                     </div>
                   )}

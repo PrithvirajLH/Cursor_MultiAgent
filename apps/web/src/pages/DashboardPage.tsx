@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   fetchReportAgentWorkload,
   fetchReportReopenRate,
@@ -25,20 +25,37 @@ import {
   type TicketsByCategoryResponse,
   type TicketsByPriorityResponse,
   type TransfersResponse,
-} from '../api/client';
-import { EmptyState } from '../components/EmptyState';
-import { RelativeTime } from '../components/RelativeTime';
-import { TopBar } from '../components/TopBar';
-import { StatusBadge } from '../components/dashboard/StatusBadge';
-import { TicketActivityChart, type ActivityPoint } from '../components/dashboard/TicketActivityChart';
-import { ReopenRateChart } from '../components/reports/ReopenRateChart';
-import { TicketVolumeChart } from '../components/reports/TicketVolumeChart';
-import { TicketsByAgeChart } from '../components/reports/TicketsByAgeChart';
-import { REALTIME_TICKET_CHANGED_EVENT, type RealtimeTicketChangedEventPayload } from '../realtime/events';
-import { formatStatus, formatTicketId, getSlaTone } from '../utils/format';
-import type { Role } from '../types';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+} from "../api/client";
+import { EmptyState } from "../components/EmptyState";
+import { RelativeTime } from "../components/RelativeTime";
+import { TopBar } from "../components/TopBar";
+import { StatusBadge } from "../components/dashboard/StatusBadge";
+import {
+  TicketActivityChart,
+  type ActivityPoint,
+} from "../components/dashboard/TicketActivityChart";
+import { ReopenRateChart } from "../components/reports/ReopenRateChart";
+import { TicketVolumeChart } from "../components/reports/TicketVolumeChart";
+import { TicketsByAgeChart } from "../components/reports/TicketsByAgeChart";
+import {
+  REALTIME_TICKET_CHANGED_EVENT,
+  type RealtimeTicketChangedEventPayload,
+} from "../realtime/events";
+import { formatStatus, formatTicketId, getSlaTone } from "../utils/format";
+import type { Role } from "../types";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 const RECENT_TICKETS_COUNT = 6;
 
@@ -46,7 +63,7 @@ type DashboardPageProps = {
   role: Role;
 };
 
-type KpiTone = 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'gray';
+type KpiTone = "blue" | "green" | "purple" | "orange" | "red" | "gray";
 
 type KpiItem = {
   label: string;
@@ -67,11 +84,20 @@ type SnapshotStats = {
 };
 
 const ROLE_META: Record<Role, { title: string; subtitle: string }> = {
-  EMPLOYEE: { title: 'My Dashboard', subtitle: 'Track your support requests' },
-  AGENT: { title: 'Agent Dashboard', subtitle: 'Your assigned tickets and workload' },
-  LEAD: { title: 'Team Lead Dashboard', subtitle: 'Team insights and performance' },
-  TEAM_ADMIN: { title: 'Team Admin Dashboard', subtitle: 'Queue operations and SLA management' },
-  OWNER: { title: 'Platform Dashboard', subtitle: 'Organization-wide metrics' },
+  EMPLOYEE: { title: "My Dashboard", subtitle: "Track your support requests" },
+  AGENT: {
+    title: "Agent Dashboard",
+    subtitle: "Your assigned tickets and workload",
+  },
+  LEAD: {
+    title: "Team Lead Dashboard",
+    subtitle: "Team insights and performance",
+  },
+  TEAM_ADMIN: {
+    title: "Team Admin Dashboard",
+    subtitle: "Queue operations and SLA management",
+  },
+  OWNER: { title: "Platform Dashboard", subtitle: "Organization-wide metrics" },
 };
 
 const EMPTY_TICKETS = {
@@ -111,15 +137,15 @@ const EMPTY_REPORT_SUMMARY: ReportSummaryResponse = {
   agentPerformance: { data: [] },
 };
 
-const RESOLVED_STATUSES = new Set(['RESOLVED', 'CLOSED']);
+const RESOLVED_STATUSES = new Set(["RESOLVED", "CLOSED"]);
 const OPEN_STATUSES = new Set([
-  'NEW',
-  'TRIAGED',
-  'ASSIGNED',
-  'IN_PROGRESS',
-  'WAITING_ON_CUSTOMER',
-  'WAITING_ON_THIRDPARTY',
-  'REOPENED',
+  "NEW",
+  "TRIAGED",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "WAITING_ON_CUSTOMER",
+  "WAITING_ON_THIRDPARTY",
+  "REOPENED",
 ]);
 
 function parseDateMillis(value?: string | null): number {
@@ -154,49 +180,59 @@ function incrementTodaySeries(
   return next;
 }
 
-function mapActivitySeries(data: TicketActivityPoint[], rangeDays: number): ActivityPoint[] {
+function mapActivitySeries(
+  data: TicketActivityPoint[],
+  rangeDays: number,
+): ActivityPoint[] {
   return data.map((point) => {
     const date = new Date(`${point.date}T00:00:00Z`);
     const day =
       rangeDays > 7
-        ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-        : date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+        ? date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          })
+        : date.toLocaleDateString("en-US", {
+            weekday: "short",
+            timeZone: "UTC",
+          });
     return { ...point, day };
   });
 }
 
 function priorityLabel(priority?: string | null): string {
-  const v = (priority ?? '').toUpperCase();
-  if (v === 'P1' || v === 'URGENT') return 'P1';
-  if (v === 'P2' || v === 'HIGH') return 'P2';
-  if (v === 'P3' || v === 'MEDIUM') return 'P3';
-  if (v === 'P4' || v === 'LOW') return 'P4';
-  return priority ?? '—';
+  const v = (priority ?? "").toUpperCase();
+  if (v === "P1" || v === "URGENT") return "P1";
+  if (v === "P2" || v === "HIGH") return "P2";
+  if (v === "P3" || v === "MEDIUM") return "P3";
+  if (v === "P4" || v === "LOW") return "P4";
+  return priority ?? "—";
 }
 
 function priorityClass(priority?: string | null): string {
   switch (priority) {
-    case 'P1':
-      return 'bg-red-100 text-red-700';
-    case 'P2':
-      return 'bg-orange-100 text-orange-700';
-    case 'P3':
-      return 'bg-blue-100 text-blue-700';
-    case 'P4':
+    case "P1":
+      return "bg-red-100 text-red-700";
+    case "P2":
+      return "bg-orange-100 text-orange-700";
+    case "P3":
+      return "bg-blue-100 text-blue-700";
+    case "P4":
     default:
-      return 'bg-slate-100 text-slate-700';
+      return "bg-slate-100 text-slate-700";
   }
 }
 
 function activitySummary(ticket: TicketRecord): string {
-  if (ticket.status === 'RESOLVED' || ticket.status === 'CLOSED') {
-    return 'Resolved';
+  if (ticket.status === "RESOLVED" || ticket.status === "CLOSED") {
+    return "Resolved";
   }
-  if (ticket.status === 'WAITING_ON_CUSTOMER') {
-    return 'Waiting for requester';
+  if (ticket.status === "WAITING_ON_CUSTOMER") {
+    return "Waiting for requester";
   }
-  if (ticket.status === 'WAITING_ON_THIRDPARTY') {
-    return 'Waiting for vendor';
+  if (ticket.status === "WAITING_ON_THIRDPARTY") {
+    return "Waiting for vendor";
   }
   return `Status changed to ${formatStatus(ticket.status)}`;
 }
@@ -206,29 +242,49 @@ function safePercent(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 100);
 }
 
-function kpiToneClass(tone: KpiTone): { bg: string; text: string; bgTone: string } {
+function kpiToneClass(tone: KpiTone): {
+  bg: string;
+  text: string;
+  bgTone: string;
+} {
   switch (tone) {
-    case 'green':
-      return { bg: 'bg-green-500', text: 'text-green-600', bgTone: 'bg-green-50' };
-    case 'purple':
-      return { bg: 'bg-violet-500', text: 'text-violet-600', bgTone: 'bg-violet-50' };
-    case 'orange':
-      return { bg: 'bg-orange-500', text: 'text-orange-600', bgTone: 'bg-orange-50' };
-    case 'red':
-      return { bg: 'bg-red-500', text: 'text-red-600', bgTone: 'bg-red-50' };
-    case 'gray':
-      return { bg: 'bg-slate-400', text: 'text-slate-600', bgTone: 'bg-slate-100' };
-    case 'blue':
+    case "green":
+      return {
+        bg: "bg-green-500",
+        text: "text-green-600",
+        bgTone: "bg-green-50",
+      };
+    case "purple":
+      return {
+        bg: "bg-violet-500",
+        text: "text-violet-600",
+        bgTone: "bg-violet-50",
+      };
+    case "orange":
+      return {
+        bg: "bg-orange-500",
+        text: "text-orange-600",
+        bgTone: "bg-orange-50",
+      };
+    case "red":
+      return { bg: "bg-red-500", text: "text-red-600", bgTone: "bg-red-50" };
+    case "gray":
+      return {
+        bg: "bg-slate-400",
+        text: "text-slate-600",
+        bgTone: "bg-slate-100",
+      };
+    case "blue":
     default:
-      return { bg: 'bg-blue-600', text: 'text-blue-600', bgTone: 'bg-blue-50' };
+      return { bg: "bg-blue-600", text: "text-blue-600", bgTone: "bg-blue-50" };
   }
 }
 
-
-
 function PriorityBadge({ priority }: { priority?: string | null }) {
   return (
-    <span className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${priorityClass(priority)}`}>
+    <span
+      className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${priorityClass(priority)}`}
+    >
       {priorityLabel(priority)}
     </span>
   );
@@ -242,18 +298,27 @@ function SlaChip({ ticket }: { ticket: TicketRecord }) {
     slaPausedAt: ticket.slaPausedAt,
   });
   return (
-    <span className={`inline-flex rounded border px-2 py-1 text-xs font-medium ${tone.className}`}>
+    <span
+      className={`inline-flex rounded border px-2 py-1 text-xs font-medium ${tone.className}`}
+    >
       {tone.label}
     </span>
   );
 }
 
-function ChartLegend({ items }: { items: Array<{ label: string; color: string }> }) {
+function ChartLegend({
+  items,
+}: {
+  items: Array<{ label: string; color: string }>;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
       {items.map((item) => (
         <div key={item.label} className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: item.color }}
+          />
           <span>{item.label}</span>
         </div>
       ))}
@@ -264,26 +329,26 @@ function ChartLegend({ items }: { items: Array<{ label: string; color: string }>
 function StatusDonutChart({ data }: { data: TicketStatusPoint[] }) {
   function statusColor(status: string): string {
     switch (status) {
-      case 'NEW':
-        return '#3b82f6';
-      case 'TRIAGED':
-        return '#8b5cf6';
-      case 'ASSIGNED':
-        return '#06b6d4';
-      case 'IN_PROGRESS':
-        return '#fbbf24';
-      case 'WAITING_ON_REQUESTER':
-        return '#f59e0b';
-      case 'WAITING_ON_VENDOR':
-        return '#d97706';
-      case 'RESOLVED':
-        return '#22c55e';
-      case 'CLOSED':
-        return '#71717a';
-      case 'REOPENED':
-        return '#ef4444';
+      case "NEW":
+        return "#3b82f6";
+      case "TRIAGED":
+        return "#8b5cf6";
+      case "ASSIGNED":
+        return "#06b6d4";
+      case "IN_PROGRESS":
+        return "#fbbf24";
+      case "WAITING_ON_REQUESTER":
+        return "#f59e0b";
+      case "WAITING_ON_VENDOR":
+        return "#d97706";
+      case "RESOLVED":
+        return "#22c55e";
+      case "CLOSED":
+        return "#71717a";
+      case "REOPENED":
+        return "#ef4444";
       default:
-        return '#94a3b8';
+        return "#94a3b8";
     }
   }
 
@@ -296,7 +361,11 @@ function StatusDonutChart({ data }: { data: TicketStatusPoint[] }) {
     .filter((item) => item.value > 0);
 
   if (points.length === 0) {
-    return <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">No tickets in range</div>;
+    return (
+      <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
+        No tickets in range
+      </div>
+    );
   }
 
   return (
@@ -304,38 +373,60 @@ function StatusDonutChart({ data }: { data: TicketStatusPoint[] }) {
       <div className="h-[200px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={points} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={2}>
+            <Pie
+              data={points}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={55}
+              outerRadius={80}
+              paddingAngle={2}
+            >
               {points.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Tickets']} />
+            <Tooltip
+              formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <ChartLegend items={points.map((point) => ({ label: point.name, color: point.color }))} />
+      <ChartLegend
+        items={points.map((point) => ({
+          label: point.name,
+          color: point.color,
+        }))}
+      />
     </div>
   );
 }
 
-function PriorityDonutChart({ data }: { data: TicketsByPriorityResponse['data'] }) {
+function PriorityDonutChart({
+  data,
+}: {
+  data: TicketsByPriorityResponse["data"];
+}) {
   const points = data
     .map((item) => ({
       name: priorityLabel(item.priority),
       value: item.count,
       color:
-        item.priority === 'P1'
-          ? '#ef4444'
-          : item.priority === 'P2'
-            ? '#fb923c'
-            : item.priority === 'P3'
-              ? '#3b82f6'
-              : '#9ca3af',
+        item.priority === "P1"
+          ? "#ef4444"
+          : item.priority === "P2"
+            ? "#fb923c"
+            : item.priority === "P3"
+              ? "#3b82f6"
+              : "#9ca3af",
     }))
     .filter((item) => item.value > 0);
 
   if (points.length === 0) {
-    return <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">No tickets in range</div>;
+    return (
+      <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
+        No tickets in range
+      </div>
+    );
   }
 
   return (
@@ -343,30 +434,52 @@ function PriorityDonutChart({ data }: { data: TicketsByPriorityResponse['data'] 
       <div className="h-[200px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={points} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={2}>
+            <Pie
+              data={points}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={55}
+              outerRadius={80}
+              paddingAngle={2}
+            >
               {points.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Tickets']} />
+            <Tooltip
+              formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
+            />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <ChartLegend items={points.map((point) => ({ label: point.name, color: point.color }))} />
+      <ChartLegend
+        items={points.map((point) => ({
+          label: point.name,
+          color: point.color,
+        }))}
+      />
     </div>
   );
 }
 
-function LeadAgentWorkloadBarChart({ data }: { data: AgentWorkloadResponse['data'] }) {
+function LeadAgentWorkloadBarChart({
+  data,
+}: {
+  data: AgentWorkloadResponse["data"];
+}) {
   const points = data.map((item) => ({
-    name: item.name || item.email || 'Agent',
+    name: item.name || item.email || "Agent",
     openTickets: Math.max(0, item.assignedOpen ?? 0),
   }));
 
   if (points.length === 0) {
     return (
       <div className="flex h-[250px] w-full items-center justify-center">
-        <EmptyState title="No workload data" description="No assigned open tickets." compact />
+        <EmptyState
+          title="No workload data"
+          description="No assigned open tickets."
+          compact
+        />
       </div>
     );
   }
@@ -374,13 +487,38 @@ function LeadAgentWorkloadBarChart({ data }: { data: AgentWorkloadResponse['data
   return (
     <div className="h-[250px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={points} margin={{ top: 5, right: 5, left: 0, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+        <BarChart
+          data={points}
+          margin={{ top: 5, right: 5, left: 0, bottom: 10 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#e2e8f0"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="name"
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            allowDecimals={false}
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
           <Tooltip
-            formatter={(value: number | undefined) => [value ?? 0, 'Open Tickets']}
-            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+            formatter={(value: number | undefined) => [
+              value ?? 0,
+              "Open Tickets",
+            ]}
+            contentStyle={{
+              borderRadius: "12px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
+              fontSize: "12px",
+            }}
           />
           <Bar dataKey="openTickets" fill="#3b82f6" radius={[6, 6, 0, 0]} />
         </BarChart>
@@ -389,17 +527,25 @@ function LeadAgentWorkloadBarChart({ data }: { data: AgentWorkloadResponse['data
   );
 }
 
-function LeadSlaBarChart({ data }: { data: { met: number; atRisk: number; breached: number } }) {
+function LeadSlaBarChart({
+  data,
+}: {
+  data: { met: number; atRisk: number; breached: number };
+}) {
   const points = [
-    { name: 'Met', value: data.met, color: '#22c55e' },
-    { name: 'At Risk', value: data.atRisk, color: '#f59e0b' },
-    { name: 'Breached', value: data.breached, color: '#ef4444' },
+    { name: "Met", value: data.met, color: "#22c55e" },
+    { name: "At Risk", value: data.atRisk, color: "#f59e0b" },
+    { name: "Breached", value: data.breached, color: "#ef4444" },
   ];
 
   if (points.every((item) => item.value <= 0)) {
     return (
       <div className="flex h-[250px] w-full items-center justify-center">
-        <EmptyState title="No SLA data" description="No SLA events found in this range." compact />
+        <EmptyState
+          title="No SLA data"
+          description="No SLA events found in this range."
+          compact
+        />
       </div>
     );
   }
@@ -407,13 +553,35 @@ function LeadSlaBarChart({ data }: { data: { met: number; atRisk: number; breach
   return (
     <div className="h-[250px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={points} margin={{ top: 5, right: 5, left: 0, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-          <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} tickLine={false} />
-          <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+        <BarChart
+          data={points}
+          margin={{ top: 5, right: 5, left: 0, bottom: 10 }}
+        >
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="#e2e8f0"
+            vertical={false}
+          />
+          <XAxis
+            dataKey="name"
+            tick={{ fill: "#64748b", fontSize: 12 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            allowDecimals={false}
+            tick={{ fill: "#64748b", fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
           <Tooltip
-            formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
-            contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+            formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
+            contentStyle={{
+              borderRadius: "12px",
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
+              fontSize: "12px",
+            }}
           />
           <Bar dataKey="value" radius={[6, 6, 0, 0]}>
             {points.map((entry) => (
@@ -429,26 +597,26 @@ function LeadSlaBarChart({ data }: { data: { met: number; atRisk: number; breach
 function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
   function statusColor(status: string): string {
     switch (status) {
-      case 'NEW':
-        return '#3b82f6';
-      case 'TRIAGED':
-        return '#8b5cf6';
-      case 'ASSIGNED':
-        return '#06b6d4';
-      case 'IN_PROGRESS':
-        return '#fbbf24';
-      case 'WAITING_ON_REQUESTER':
-        return '#f59e0b';
-      case 'WAITING_ON_VENDOR':
-        return '#d97706';
-      case 'RESOLVED':
-        return '#22c55e';
-      case 'CLOSED':
-        return '#71717a';
-      case 'REOPENED':
-        return '#ef4444';
+      case "NEW":
+        return "#3b82f6";
+      case "TRIAGED":
+        return "#8b5cf6";
+      case "ASSIGNED":
+        return "#06b6d4";
+      case "IN_PROGRESS":
+        return "#fbbf24";
+      case "WAITING_ON_REQUESTER":
+        return "#f59e0b";
+      case "WAITING_ON_VENDOR":
+        return "#d97706";
+      case "RESOLVED":
+        return "#22c55e";
+      case "CLOSED":
+        return "#71717a";
+      case "REOPENED":
+        return "#ef4444";
       default:
-        return '#94a3b8';
+        return "#94a3b8";
     }
   }
 
@@ -462,7 +630,11 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
   if (total <= 0) {
     return (
       <div className="flex h-[250px] w-full items-center justify-center">
-        <EmptyState title="No status data" description="No tickets matching this range." compact />
+        <EmptyState
+          title="No status data"
+          description="No tickets matching this range."
+          compact
+        />
       </div>
     );
   }
@@ -472,62 +644,100 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
       <div className="h-[250px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie data={points} dataKey="value" nameKey="name" innerRadius={55} outerRadius={105}>
+            <Pie
+              data={points}
+              dataKey="value"
+              nameKey="name"
+              innerRadius={55}
+              outerRadius={105}
+            >
               {points.map((entry) => (
                 <Cell key={entry.name} fill={entry.color} />
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number | undefined) => [value ?? 0, 'Tickets']}
-              contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 15px rgba(0, 0, 0, 0.04)', fontSize: '12px' }}
+              formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
+              contentStyle={{
+                borderRadius: "12px",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
+                fontSize: "12px",
+              }}
             />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <ChartLegend items={points.map((item) => ({ label: item.name, color: item.color }))} />
+      <ChartLegend
+        items={points.map((item) => ({ label: item.name, color: item.color }))}
+      />
     </div>
   );
 }
 
-function ModernTicketCard({ ticket, onClick }: { ticket: TicketRecord, onClick: () => void }) {
+function ModernTicketCard({
+  ticket,
+  onClick,
+}: {
+  ticket: TicketRecord;
+  onClick: () => void;
+}) {
   return (
-    <div onClick={onClick} className="group flex flex-col sm:flex-row gap-5 p-6 bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_12px_rgb(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgb(0,0,0,0.06)] hover:border-blue-200 transition-all cursor-pointer mb-4">
+    <div
+      onClick={onClick}
+      className="group flex flex-col sm:flex-row gap-5 p-6 bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_12px_rgb(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgb(0,0,0,0.06)] hover:border-blue-200 transition-all cursor-pointer mb-4"
+    >
       <div className="flex-shrink-0">
-        <div className={`w-12 h-12 rounded-full border-2 border-white shadow-sm flex items-center justify-center font-bold text-lg ${priorityClass(ticket.priority)}`}>
-          {ticket.assignee ? (ticket.assignee.displayName?.charAt(0) || ticket.assignee.email?.charAt(0) || '?').toUpperCase() : '?'}
+        <div
+          className={`w-12 h-12 rounded-full border-2 border-white shadow-sm flex items-center justify-center font-bold text-lg ${priorityClass(ticket.priority)}`}
+        >
+          {ticket.assignee
+            ? (
+                ticket.assignee.displayName?.charAt(0) ||
+                ticket.assignee.email?.charAt(0) ||
+                "?"
+              ).toUpperCase()
+            : "?"}
         </div>
       </div>
       <div className="flex-grow">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-          <h3 className="text-[17px] font-bold text-slate-900 group-hover:text-blue-600 transition truncate pr-4">{ticket.subject}</h3>
-          <span className="text-xs font-medium text-slate-400 whitespace-nowrap"><RelativeTime value={ticket.updatedAt} /></span>
+          <h3 className="text-[17px] font-bold text-slate-900 group-hover:text-blue-600 transition truncate pr-4">
+            {ticket.subject}
+          </h3>
+          <span className="text-xs font-medium text-slate-400 whitespace-nowrap">
+            <RelativeTime value={ticket.updatedAt} />
+          </span>
         </div>
-        <p className="text-[14px] text-slate-500 mb-5 line-clamp-1">{activitySummary(ticket)}</p>
+        <p className="text-[14px] text-slate-500 mb-5 line-clamp-1">
+          {activitySummary(ticket)}
+        </p>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-xs font-bold tracking-wider uppercase border border-slate-100">ID: {formatTicketId(ticket)}</span>
+          <span className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-xs font-bold tracking-wider uppercase border border-slate-100">
+            ID: {formatTicketId(ticket)}
+          </span>
           <PriorityBadge priority={ticket.priority} />
           <StatusBadge status={ticket.status} />
           <SlaChip ticket={ticket} />
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function DashboardPage({ role }: DashboardPageProps) {
   const headerCtx = useHeaderContext();
   const navigate = useNavigate();
-  const currentEmail = headerCtx?.currentEmail?.trim().toLowerCase() ?? '';
-  const isEmployee = role === 'EMPLOYEE';
-  const isAgent = role === 'AGENT';
-  const isLead = role === 'LEAD';
-  const isTeamAdmin = role === 'TEAM_ADMIN';
-  const isOwner = role === 'OWNER';
+  const currentEmail = headerCtx?.currentEmail?.trim().toLowerCase() ?? "";
+  const isEmployee = role === "EMPLOYEE";
+  const isAgent = role === "AGENT";
+  const isLead = role === "LEAD";
+  const isTeamAdmin = role === "TEAM_ADMIN";
+  const isOwner = role === "OWNER";
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [range, setRange] = useState<'3' | '7' | '30'>('30');
-  const [sort, setSort] = useState<'recent' | 'oldest'>('recent');
+  const [range, setRange] = useState<"3" | "7" | "30">("30");
+  const [sort, setSort] = useState<"recent" | "oldest">("recent");
 
   const [recentTickets, setRecentTickets] = useState<TicketRecord[]>([]);
   const [stats, setStats] = useState<SnapshotStats>({
@@ -541,17 +751,43 @@ export function DashboardPage({ role }: DashboardPageProps) {
     overdue: 0,
   });
   const [activity, setActivity] = useState<ActivityPoint[]>([]);
-  const [statusBreakdown, setStatusBreakdown] = useState<TicketStatusPoint[]>([]);
-  const [priorityBreakdown, setPriorityBreakdown] = useState<TicketsByPriorityResponse['data']>([]);
-  const [ageBreakdown, setAgeBreakdown] = useState<TicketAgeBucketResponse['data']>([]);
-  const [agentWorkload, setAgentWorkload] = useState<AgentWorkloadResponse['data']>([]);
-  const [agentPerformance, setAgentPerformance] = useState<AgentPerformanceResponse['data']>([]);
-  const [reopenSeries, setReopenSeries] = useState<ReopenRateResponse['data']>([]);
-  const [queueCategories, setQueueCategories] = useState<TicketsByCategoryResponse['data']>([]);
-  const [teamSummary, setTeamSummary] = useState<TeamSummaryResponse['data']>([]);
-  const [volumeSeries, setVolumeSeries] = useState<{ date: string; count: number }[]>([]);
-  const [transfers, setTransfers] = useState<TransfersResponse['data']>({ total: 0, series: [] });
-  const [slaCompliance, setSlaCompliance] = useState({ met: 0, breached: 0, total: 0, atRisk: 0 });
+  const [statusBreakdown, setStatusBreakdown] = useState<TicketStatusPoint[]>(
+    [],
+  );
+  const [priorityBreakdown, setPriorityBreakdown] = useState<
+    TicketsByPriorityResponse["data"]
+  >([]);
+  const [ageBreakdown, setAgeBreakdown] = useState<
+    TicketAgeBucketResponse["data"]
+  >([]);
+  const [agentWorkload, setAgentWorkload] = useState<
+    AgentWorkloadResponse["data"]
+  >([]);
+  const [agentPerformance, setAgentPerformance] = useState<
+    AgentPerformanceResponse["data"]
+  >([]);
+  const [reopenSeries, setReopenSeries] = useState<ReopenRateResponse["data"]>(
+    [],
+  );
+  const [queueCategories, setQueueCategories] = useState<
+    TicketsByCategoryResponse["data"]
+  >([]);
+  const [teamSummary, setTeamSummary] = useState<TeamSummaryResponse["data"]>(
+    [],
+  );
+  const [volumeSeries, setVolumeSeries] = useState<
+    { date: string; count: number }[]
+  >([]);
+  const [transfers, setTransfers] = useState<TransfersResponse["data"]>({
+    total: 0,
+    series: [],
+  });
+  const [slaCompliance, setSlaCompliance] = useState({
+    met: 0,
+    breached: 0,
+    total: 0,
+    atRisk: 0,
+  });
 
   const loadedOnceRef = useRef(false);
   const recentTicketsRef = useRef<TicketRecord[]>([]);
@@ -569,8 +805,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
   const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    setRange('30');
-    setSort('recent');
+    setRange("30");
+    setSort("recent");
   }, [role]);
 
   useEffect(() => {
@@ -580,14 +816,13 @@ export function DashboardPage({ role }: DashboardPageProps) {
       knownStates[ticket.id] = {
         status: ticket.status,
         priority: ticket.priority,
-        assigneeEmail: ticket.assignee?.email?.toLowerCase() ?? '',
+        assigneeEmail: ticket.assignee?.email?.toLowerCase() ?? "",
       };
       const updatedAtMs = parseDateMillis(ticket.updatedAt);
       if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) {
         continue;
       }
-      const previous =
-        lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0;
+      const previous = lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0;
       if (updatedAtMs > previous) {
         lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = updatedAtMs;
       }
@@ -595,38 +830,35 @@ export function DashboardPage({ role }: DashboardPageProps) {
     knownTicketStateRef.current = knownStates;
   }, [recentTickets]);
 
-  const hydrateRealtimeTicketState = useCallback(
-    async (ticketId: string) => {
-      if (knownTicketStateRef.current[ticketId]) {
-        return knownTicketStateRef.current[ticketId];
+  const hydrateRealtimeTicketState = useCallback(async (ticketId: string) => {
+    if (knownTicketStateRef.current[ticketId]) {
+      return knownTicketStateRef.current[ticketId];
+    }
+    if (realtimeHydrationInFlightRef.current.has(ticketId)) {
+      return null;
+    }
+    realtimeHydrationInFlightRef.current.add(ticketId);
+    try {
+      const ticket = await fetchTicketById(ticketId);
+      knownTicketStateRef.current[ticket.id] = {
+        status: ticket.status,
+        priority: ticket.priority,
+        assigneeEmail: ticket.assignee?.email?.toLowerCase() ?? "",
+      };
+      const updatedAtMs = parseDateMillis(ticket.updatedAt);
+      if (updatedAtMs > 0) {
+        lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = Math.max(
+          lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0,
+          updatedAtMs,
+        );
       }
-      if (realtimeHydrationInFlightRef.current.has(ticketId)) {
-        return null;
-      }
-      realtimeHydrationInFlightRef.current.add(ticketId);
-      try {
-        const ticket = await fetchTicketById(ticketId);
-        knownTicketStateRef.current[ticket.id] = {
-          status: ticket.status,
-          priority: ticket.priority,
-          assigneeEmail: ticket.assignee?.email?.toLowerCase() ?? '',
-        };
-        const updatedAtMs = parseDateMillis(ticket.updatedAt);
-        if (updatedAtMs > 0) {
-          lastRealtimeUpdatedAtByTicketRef.current[ticket.id] = Math.max(
-            lastRealtimeUpdatedAtByTicketRef.current[ticket.id] ?? 0,
-            updatedAtMs,
-          );
-        }
-        return knownTicketStateRef.current[ticket.id];
-      } catch {
-        return null;
-      } finally {
-        realtimeHydrationInFlightRef.current.delete(ticketId);
-      }
-    },
-    [],
-  );
+      return knownTicketStateRef.current[ticket.id];
+    } catch {
+      return null;
+    } finally {
+      realtimeHydrationInFlightRef.current.delete(ticketId);
+    }
+  }, []);
 
   const applyRealtimeTicketPatch = useCallback(
     (payload: RealtimeTicketChangedEventPayload) => {
@@ -635,14 +867,17 @@ export function DashboardPage({ role }: DashboardPageProps) {
         return;
       }
 
-      const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt ?? payload.occurredAt);
+      const incomingUpdatedAtMs = parseDateMillis(
+        payload.updatedAt ?? payload.occurredAt,
+      );
       if (incomingUpdatedAtMs > 0) {
         const lastUpdatedAtMs =
           lastRealtimeUpdatedAtByTicketRef.current[ticketId] ?? 0;
         if (incomingUpdatedAtMs < lastUpdatedAtMs) {
           return;
         }
-        lastRealtimeUpdatedAtByTicketRef.current[ticketId] = incomingUpdatedAtMs;
+        lastRealtimeUpdatedAtByTicketRef.current[ticketId] =
+          incomingUpdatedAtMs;
       }
 
       const currentTicket = recentTicketsRef.current.find(
@@ -652,12 +887,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
         knownTicketStateRef.current[ticketId] ??
         (currentTicket
           ? {
-            status: currentTicket.status,
-            priority: currentTicket.priority,
-            assigneeEmail: currentTicket.assignee?.email?.toLowerCase() ?? '',
-          }
+              status: currentTicket.status,
+              priority: currentTicket.priority,
+              assigneeEmail: currentTicket.assignee?.email?.toLowerCase() ?? "",
+            }
           : null);
-      if (!previousState && payload.reason !== 'ticket_created') {
+      if (!previousState && payload.reason !== "ticket_created") {
         void hydrateRealtimeTicketState(ticketId);
         return;
       }
@@ -665,12 +900,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
       const prevPriority = previousState?.priority;
       const nextStatus = payload.status ?? prevStatus;
       const nextPriority = payload.priority ?? prevPriority;
-      const prevAssigneeEmail = previousState?.assigneeEmail ?? '';
+      const prevAssigneeEmail = previousState?.assigneeEmail ?? "";
       const nextAssigneeEmail =
         payload.assignee?.email?.toLowerCase() ??
-        (Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
-          payload.assigneeId === null
-          ? ''
+        (Object.prototype.hasOwnProperty.call(payload, "assigneeId") &&
+        payload.assigneeId === null
+          ? ""
           : prevAssigneeEmail);
       const prevIsOpen = isOpenStatus(prevStatus);
       const nextIsOpen = isOpenStatus(nextStatus);
@@ -686,8 +921,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
       const nextUnassignedOpen = nextIsOpen && !nextAssigneeEmail;
 
       knownTicketStateRef.current[ticketId] = {
-        status: nextStatus ?? '',
-        priority: nextPriority ?? '',
+        status: nextStatus ?? "",
+        priority: nextPriority ?? "",
         assigneeEmail: nextAssigneeEmail,
       };
 
@@ -697,19 +932,21 @@ export function DashboardPage({ role }: DashboardPageProps) {
           return prev;
         }
         const patched: TicketRecord = { ...prev[index] };
-        if (typeof payload.status === 'string' && payload.status) {
-          patched.status = payload.status as import('../api/client').TicketStatus;
+        if (typeof payload.status === "string" && payload.status) {
+          patched.status =
+            payload.status as import("../api/client").TicketStatus;
         }
-        if (typeof payload.priority === 'string' && payload.priority) {
-          patched.priority = payload.priority as import('../api/client').TicketPriority;
+        if (typeof payload.priority === "string" && payload.priority) {
+          patched.priority =
+            payload.priority as import("../api/client").TicketPriority;
         }
-        if (typeof payload.updatedAt === 'string' && payload.updatedAt) {
+        if (typeof payload.updatedAt === "string" && payload.updatedAt) {
           patched.updatedAt = payload.updatedAt;
         }
         if (payload.assignedTeam?.id) {
           patched.assignedTeam = payload.assignedTeam;
         } else if (
-          Object.prototype.hasOwnProperty.call(payload, 'assignedTeamId') &&
+          Object.prototype.hasOwnProperty.call(payload, "assignedTeamId") &&
           payload.assignedTeamId === null
         ) {
           patched.assignedTeam = null;
@@ -717,7 +954,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         if (payload.assignee?.id) {
           patched.assignee = payload.assignee;
         } else if (
-          Object.prototype.hasOwnProperty.call(payload, 'assigneeId') &&
+          Object.prototype.hasOwnProperty.call(payload, "assigneeId") &&
           payload.assigneeId === null
         ) {
           patched.assignee = null;
@@ -725,7 +962,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         const next = [...prev];
         next[index] = patched;
         next.sort((a, b) =>
-          sort === 'oldest'
+          sort === "oldest"
             ? parseDateMillis(a.updatedAt) - parseDateMillis(b.updatedAt)
             : parseDateMillis(b.updatedAt) - parseDateMillis(a.updatedAt),
         );
@@ -740,7 +977,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         let assignedToMe = prev.assignedToMe;
         let resolvedByMe = prev.resolvedByMe;
 
-        if (payload.reason === 'ticket_created' && !prevStatus) {
+        if (payload.reason === "ticket_created" && !prevStatus) {
           total += 1;
           if (nextIsResolved) resolved += 1;
           else if (nextIsOpen) open += 1;
@@ -790,19 +1027,42 @@ export function DashboardPage({ role }: DashboardPageProps) {
         if (prev.length === 0 || !nextStatus) {
           return prev;
         }
-        const counts = new Map(prev.map((point) => [point.status, point.count]));
+        const counts = new Map(
+          prev.map((point) => [point.status, point.count]),
+        );
         if (prevStatus && prevStatus !== nextStatus) {
-          counts.set(prevStatus as import('../api/client').TicketStatus, Math.max(0, (counts.get(prevStatus as import('../api/client').TicketStatus) ?? 0) - 1));
-          counts.set(nextStatus as import('../api/client').TicketStatus, Math.max(0, (counts.get(nextStatus as import('../api/client').TicketStatus) ?? 0) + 1));
-        } else if (!prevStatus && payload.reason === 'ticket_created') {
-          counts.set(nextStatus as import('../api/client').TicketStatus, Math.max(0, (counts.get(nextStatus as import('../api/client').TicketStatus) ?? 0) + 1));
+          counts.set(
+            prevStatus as import("../api/client").TicketStatus,
+            Math.max(
+              0,
+              (counts.get(prevStatus as import("../api/client").TicketStatus) ??
+                0) - 1,
+            ),
+          );
+          counts.set(
+            nextStatus as import("../api/client").TicketStatus,
+            Math.max(
+              0,
+              (counts.get(nextStatus as import("../api/client").TicketStatus) ??
+                0) + 1,
+            ),
+          );
+        } else if (!prevStatus && payload.reason === "ticket_created") {
+          counts.set(
+            nextStatus as import("../api/client").TicketStatus,
+            Math.max(
+              0,
+              (counts.get(nextStatus as import("../api/client").TicketStatus) ??
+                0) + 1,
+            ),
+          );
         }
         const knownOrder = prev.map((point) => point.status);
         const appended = Array.from(counts.keys()).filter(
           (status) => !knownOrder.includes(status),
         );
         return [...knownOrder, ...appended].map((status) => ({
-          status: status as import('../api/client').TicketStatus,
+          status: status as import("../api/client").TicketStatus,
           count: Math.max(0, counts.get(status) ?? 0),
         }));
       });
@@ -811,20 +1071,37 @@ export function DashboardPage({ role }: DashboardPageProps) {
         if (prev.length === 0 || !nextPriority) {
           return prev;
         }
-        const counts = new Map(prev.map((point) => [point.priority, point.count]));
+        const counts = new Map(
+          prev.map((point) => [point.priority, point.count]),
+        );
         if (prevPriority && prevPriority !== nextPriority) {
           counts.set(
-            prevPriority as import('../api/client').TicketPriority,
-            Math.max(0, (counts.get(prevPriority as import('../api/client').TicketPriority) ?? 0) - 1),
+            prevPriority as import("../api/client").TicketPriority,
+            Math.max(
+              0,
+              (counts.get(
+                prevPriority as import("../api/client").TicketPriority,
+              ) ?? 0) - 1,
+            ),
           );
           counts.set(
-            nextPriority as import('../api/client').TicketPriority,
-            Math.max(0, (counts.get(nextPriority as import('../api/client').TicketPriority) ?? 0) + 1),
+            nextPriority as import("../api/client").TicketPriority,
+            Math.max(
+              0,
+              (counts.get(
+                nextPriority as import("../api/client").TicketPriority,
+              ) ?? 0) + 1,
+            ),
           );
-        } else if (!prevPriority && payload.reason === 'ticket_created') {
+        } else if (!prevPriority && payload.reason === "ticket_created") {
           counts.set(
-            nextPriority as import('../api/client').TicketPriority,
-            Math.max(0, (counts.get(nextPriority as import('../api/client').TicketPriority) ?? 0) + 1),
+            nextPriority as import("../api/client").TicketPriority,
+            Math.max(
+              0,
+              (counts.get(
+                nextPriority as import("../api/client").TicketPriority,
+              ) ?? 0) + 1,
+            ),
           );
         }
         const knownOrder = prev.map((point) => point.priority);
@@ -832,7 +1109,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
           (priority) => !knownOrder.includes(priority),
         );
         return [...knownOrder, ...appended].map((priority) => ({
-          priority: priority as import('../api/client').TicketPriority,
+          priority: priority as import("../api/client").TicketPriority,
           count: Math.max(0, counts.get(priority) ?? 0),
         }));
       });
@@ -844,7 +1121,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         if (index === -1) return prev;
         let openDelta = 0;
         let resolvedDelta = 0;
-        if (payload.reason === 'ticket_created' && !prevStatus && nextIsOpen) {
+        if (payload.reason === "ticket_created" && !prevStatus && nextIsOpen) {
           openDelta += 1;
         }
         if (prevStatus && nextStatus && prevStatus !== nextStatus) {
@@ -864,19 +1141,23 @@ export function DashboardPage({ role }: DashboardPageProps) {
       });
 
       setVolumeSeries((prev) => {
-        if (payload.reason !== 'ticket_created') return prev;
+        if (payload.reason !== "ticket_created") return prev;
         return incrementTodaySeries(prev, 1);
       });
 
       setReopenSeries((prev) => {
-        if (!nextStatus || nextStatus !== 'REOPENED' || prevStatus === 'REOPENED') {
+        if (
+          !nextStatus ||
+          nextStatus !== "REOPENED" ||
+          prevStatus === "REOPENED"
+        ) {
           return prev;
         }
         return incrementTodaySeries(prev, 1);
       });
 
       setTransfers((prev) => {
-        if (payload.reason !== 'transferred') {
+        if (payload.reason !== "transferred") {
           return prev;
         }
         return {
@@ -924,15 +1205,15 @@ export function DashboardPage({ role }: DashboardPageProps) {
         const updatedFrom = from.toISOString();
         const reportFrom = updatedFrom.slice(0, 10);
         const reportTo = new Date().toISOString().slice(0, 10);
-        const order = sort === 'oldest' ? 'asc' : 'desc';
+        const order = sort === "oldest" ? "asc" : "desc";
 
         if (isEmployee) {
           const [recentRes, counts] = await Promise.all([
             fetchTickets({
               pageSize: RECENT_TICKETS_COUNT,
-              sort: 'updatedAt',
+              sort: "updatedAt",
               order,
-              scope: 'created',
+              scope: "created",
               updatedFrom,
               includeTotal: false,
             }).catch(() => EMPTY_TICKETS),
@@ -971,62 +1252,89 @@ export function DashboardPage({ role }: DashboardPageProps) {
         } else {
           const counts = await fetchTicketCounts().catch(() => EMPTY_COUNTS);
 
-          const [recentRes, activityRes, statusRes, summaryRes, workloadRes, ageRes, reopenRes, categoryRes, teamSummaryRes, transferRes] =
-            await Promise.all([
-              isAgent
-                ? fetchTickets({
+          const [
+            recentRes,
+            activityRes,
+            statusRes,
+            summaryRes,
+            workloadRes,
+            ageRes,
+            reopenRes,
+            categoryRes,
+            teamSummaryRes,
+            transferRes,
+          ] = await Promise.all([
+            isAgent
+              ? fetchTickets({
                   pageSize: RECENT_TICKETS_COUNT,
-                  sort: 'updatedAt',
+                  sort: "updatedAt",
                   order,
-                  scope: 'assigned',
+                  scope: "assigned",
                   updatedFrom,
                   includeTotal: false,
                 }).catch(() => EMPTY_TICKETS)
-                : Promise.resolve(EMPTY_TICKETS),
-              fetchTicketActivity({
-                from: reportFrom,
-                to: reportTo,
-                ...(isAgent ? { scope: 'assigned' as const } : {}),
-              }).catch(() => ({ data: [] })),
-              isAgent
-                ? fetchTicketStatusBreakdown({
+              : Promise.resolve(EMPTY_TICKETS),
+            fetchTicketActivity({
+              from: reportFrom,
+              to: reportTo,
+              ...(isAgent ? { scope: "assigned" as const } : {}),
+            }).catch(() => ({ data: [] })),
+            isAgent
+              ? fetchTicketStatusBreakdown({
                   from: reportFrom,
                   to: reportTo,
-                  scope: 'assigned',
-                  dateField: 'updatedAt',
+                  scope: "assigned",
+                  dateField: "updatedAt",
                 }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] as TicketStatusPoint[] }),
-              isLead || isTeamAdmin || isOwner
-                ? fetchReportSummary({
+              : Promise.resolve({ data: [] as TicketStatusPoint[] }),
+            isLead || isTeamAdmin || isOwner
+              ? fetchReportSummary({
                   from: reportFrom,
                   to: reportTo,
-                  dateField: 'updatedAt',
+                  dateField: "updatedAt",
                 }).catch(() => EMPTY_REPORT_SUMMARY)
-                : Promise.resolve(EMPTY_REPORT_SUMMARY),
-              isLead || isTeamAdmin || isOwner
-                ? fetchReportAgentWorkload({ from: reportFrom, to: reportTo }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isTeamAdmin
-                ? fetchReportTicketsByAge({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isTeamAdmin || isOwner
-                ? fetchReportReopenRate({ from: reportFrom, to: reportTo }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isTeamAdmin
-                ? fetchReportTicketsByCategory({
+              : Promise.resolve(EMPTY_REPORT_SUMMARY),
+            isLead || isTeamAdmin || isOwner
+              ? fetchReportAgentWorkload({
                   from: reportFrom,
                   to: reportTo,
-                  statusGroup: 'open',
-                  dateField: 'updatedAt',
                 }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isOwner
-                ? fetchReportTeamSummary({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: [] }))
-                : Promise.resolve({ data: [] }),
-              isTeamAdmin || isOwner
-                ? fetchReportTransfers({ from: reportFrom, to: reportTo, dateField: 'updatedAt' }).catch(() => ({ data: { total: 0, series: [] } }))
-                : Promise.resolve({ data: { total: 0, series: [] } }),
-            ]);
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportTicketsByAge({
+                  from: reportFrom,
+                  to: reportTo,
+                  dateField: "updatedAt",
+                }).catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin || isOwner
+              ? fetchReportReopenRate({ from: reportFrom, to: reportTo }).catch(
+                  () => ({ data: [] }),
+                )
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin
+              ? fetchReportTicketsByCategory({
+                  from: reportFrom,
+                  to: reportTo,
+                  statusGroup: "open",
+                  dateField: "updatedAt",
+                }).catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isOwner
+              ? fetchReportTeamSummary({
+                  from: reportFrom,
+                  to: reportTo,
+                  dateField: "updatedAt",
+                }).catch(() => ({ data: [] }))
+              : Promise.resolve({ data: [] }),
+            isTeamAdmin || isOwner
+              ? fetchReportTransfers({
+                  from: reportFrom,
+                  to: reportTo,
+                  dateField: "updatedAt",
+                }).catch(() => ({ data: { total: 0, series: [] } }))
+              : Promise.resolve({ data: { total: 0, series: [] } }),
+          ]);
 
           if (!active) return;
 
@@ -1047,7 +1355,10 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
           setActivity(mapActivitySeries(activityRes.data, rangeDays));
           setStatusBreakdown(
-            (isAgent ? statusRes.data : summaryRes.ticketsByStatus.data) as import('../api/client').TicketStatusPoint[],
+            (isAgent
+              ? statusRes.data
+              : summaryRes.ticketsByStatus
+                  .data) as import("../api/client").TicketStatusPoint[],
           );
           setSlaCompliance({
             met: summaryRes.slaCompliance.data.met,
@@ -1088,7 +1399,10 @@ export function DashboardPage({ role }: DashboardPageProps) {
   const roleMeta = ROLE_META[role] ?? ROLE_META.EMPLOYEE;
 
   const activeAgents = useMemo(
-    () => agentWorkload.filter((item) => (item.assignedOpen ?? 0) > 0 || (item.inProgress ?? 0) > 0).length,
+    () =>
+      agentWorkload.filter(
+        (item) => (item.assignedOpen ?? 0) > 0 || (item.inProgress ?? 0) > 0,
+      ).length,
     [agentWorkload],
   );
 
@@ -1103,52 +1417,79 @@ export function DashboardPage({ role }: DashboardPageProps) {
   const kpis = useMemo<KpiItem[]>(() => {
     if (isEmployee) {
       return [
-        { label: 'My open tickets', value: stats.open, tone: 'blue' },
-        { label: 'My resolved & closed tickets', value: stats.resolved, tone: 'green' },
+        { label: "My open tickets", value: stats.open, tone: "blue" },
+        {
+          label: "My resolved & closed tickets",
+          value: stats.resolved,
+          tone: "green",
+        },
       ];
     }
 
     if (isAgent) {
       return [
-        { label: 'Total open tickets', value: stats.open, tone: 'blue' },
-        { label: 'Unassigned tickets', value: stats.unassigned, tone: 'gray' },
-        { label: 'Assigned to me', value: stats.assignedToMe, tone: 'purple' },
-        { label: 'Resolved by me', value: stats.resolvedByMe, tone: 'green' },
+        { label: "Total open tickets", value: stats.open, tone: "blue" },
+        { label: "Unassigned tickets", value: stats.unassigned, tone: "gray" },
+        { label: "Assigned to me", value: stats.assignedToMe, tone: "purple" },
+        { label: "Resolved by me", value: stats.resolvedByMe, tone: "green" },
       ];
     }
 
     if (isLead) {
       return [
-        { label: 'Total open tickets', value: stats.open, tone: 'blue' },
-        { label: 'Unassigned tickets', value: stats.unassigned, tone: 'orange' },
-        { label: 'Assigned to me', value: stats.assignedToMe, tone: 'purple' },
-        { label: 'Resolved by me', value: stats.resolvedByMe, tone: 'green' },
+        { label: "Total open tickets", value: stats.open, tone: "blue" },
+        {
+          label: "Unassigned tickets",
+          value: stats.unassigned,
+          tone: "orange",
+        },
+        { label: "Assigned to me", value: stats.assignedToMe, tone: "purple" },
+        { label: "Resolved by me", value: stats.resolvedByMe, tone: "green" },
       ];
     }
 
     if (isTeamAdmin) {
       return [
-        { label: 'Open tickets', value: stats.open, tone: 'blue' },
-        { label: 'At risk', value: stats.atRisk, helper: 'Near breach window', tone: 'orange' },
-        { label: 'Overdue', value: stats.overdue, helper: 'Breached SLA', tone: 'red' },
+        { label: "Open tickets", value: stats.open, tone: "blue" },
         {
-          label: 'Active agents',
+          label: "At risk",
+          value: stats.atRisk,
+          helper: "Near breach window",
+          tone: "orange",
+        },
+        {
+          label: "Overdue",
+          value: stats.overdue,
+          helper: "Breached SLA",
+          tone: "red",
+        },
+        {
+          label: "Active agents",
           value: activeAgents,
           helper: `${unassignedPercent}% unassigned`,
-          tone: 'purple',
+          tone: "purple",
         },
-        { label: 'Total requests', value: stats.total, tone: 'gray' },
+        { label: "Total requests", value: stats.total, tone: "gray" },
       ];
     }
 
     return [
-      { label: 'Open tickets', value: stats.open, tone: 'blue' },
-      { label: 'Closed tickets', value: stats.resolved, tone: 'green' },
-      { label: 'Total requests', value: stats.total, tone: 'gray' },
-      { label: 'Active agents', value: activeAgents, tone: 'purple' },
-      { label: 'Transfers', value: transfers.total, tone: 'orange' },
+      { label: "Open tickets", value: stats.open, tone: "blue" },
+      { label: "Closed tickets", value: stats.resolved, tone: "green" },
+      { label: "Total requests", value: stats.total, tone: "gray" },
+      { label: "Active agents", value: activeAgents, tone: "purple" },
+      { label: "Transfers", value: transfers.total, tone: "orange" },
     ];
-  }, [activeAgents, isAgent, isEmployee, isLead, isTeamAdmin, stats, transfers.total, unassignedPercent]);
+  }, [
+    activeAgents,
+    isAgent,
+    isEmployee,
+    isLead,
+    isTeamAdmin,
+    stats,
+    transfers.total,
+    unassignedPercent,
+  ]);
 
   return (
     <section className="min-h-full bg-[#f8fafc]">
@@ -1159,23 +1500,37 @@ export function DashboardPage({ role }: DashboardPageProps) {
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-
-
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-bold tracking-tight text-slate-900">{headerCtx.title}</h1>
-                  <p className="text-sm font-medium text-slate-500">{headerCtx.subtitle}</p>
-                  {refreshing ? <p className="mt-1 text-xs font-semibold text-blue-600">Refreshing data...</p> : null}
+                  <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                    {headerCtx.title}
+                  </h1>
+                  <p className="text-sm font-medium text-slate-500">
+                    {headerCtx.subtitle}
+                  </p>
+                  {refreshing ? (
+                    <p className="mt-1 text-xs font-semibold text-blue-600">
+                      Refreshing data...
+                    </p>
+                  ) : null}
                 </div>
               }
             />
           ) : (
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">{roleMeta.title}</h1>
-              <p className="text-sm font-medium text-slate-500">{roleMeta.subtitle}</p>
-              {refreshing ? <p className="mt-1 text-xs font-semibold text-blue-600">Refreshing data...</p> : null}
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                {roleMeta.title}
+              </h1>
+              <p className="text-sm font-medium text-slate-500">
+                {roleMeta.subtitle}
+              </p>
+              {refreshing ? (
+                <p className="mt-1 text-xs font-semibold text-blue-600">
+                  Refreshing data...
+                </p>
+              ) : null}
             </div>
           )}
         </div>
@@ -1188,13 +1543,19 @@ export function DashboardPage({ role }: DashboardPageProps) {
               <div className="lg:col-span-8">
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">My Requests</h2>
-                    <p className="text-sm text-slate-500 mt-1">Track the status of your submitted tickets</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                      My Requests
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Track the status of your submitted tickets
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <select
                       value={sort}
-                      onChange={(event) => setSort(event.target.value as 'recent' | 'oldest')}
+                      onChange={(event) =>
+                        setSort(event.target.value as "recent" | "oldest")
+                      }
                       className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
                     >
                       <option value="recent">Most recent</option>
@@ -1205,17 +1566,34 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
                 {loading ? (
                   <div className="space-y-4">
-                    {[1, 2, 3].map((i) => <div key={i} className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm" />)}
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm"
+                      />
+                    ))}
                   </div>
                 ) : recentTickets.length === 0 ? (
-                  <EmptyState title="No recent activity" description={`No recent activity found.`} compact />
+                  <EmptyState
+                    title="No recent activity"
+                    description={`No recent activity found.`}
+                    compact
+                  />
                 ) : (
                   <div className="space-y-4">
                     {recentTickets.map((ticket) => (
-                      <ModernTicketCard key={ticket.id} ticket={ticket} onClick={() => navigate(`/tickets/${ticket.id}`)} />
+                      <ModernTicketCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        onClick={() => navigate(`/tickets/${ticket.id}`)}
+                      />
                     ))}
                     <div className="pt-4 text-center">
-                      <button type="button" onClick={() => navigate('/tickets?scope=created')} className="text-sm font-semibold text-blue-600 transition hover:text-blue-700">
+                      <button
+                        type="button"
+                        onClick={() => navigate("/tickets?scope=created")}
+                        className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                      >
                         View my tickets →
                       </button>
                     </div>
@@ -1224,17 +1602,32 @@ export function DashboardPage({ role }: DashboardPageProps) {
               </div>
               <div className="space-y-6 lg:col-span-4">
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Quick Stats</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                    Quick Stats
+                  </h3>
                   <div className="space-y-5">
                     {kpis.map((item, idx) => {
                       const tone = kpiToneClass(item.tone);
                       return (
-                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                        <div
+                          key={idx}
+                          className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
+                        >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
-                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                            <div className="text-[14px] font-medium text-slate-500">
+                              {item.label}
+                            </div>
+                            {item.helper && (
+                              <div
+                                className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}
+                              >
+                                {item.helper}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                            {item.value}
+                          </div>
                         </div>
                       );
                     })}
@@ -1249,13 +1642,19 @@ export function DashboardPage({ role }: DashboardPageProps) {
               <div className="lg:col-span-8">
                 <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Your Action Items</h2>
-                    <p className="text-sm text-slate-500 mt-1">Review and resolve your assigned tickets</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                      Your Action Items
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Review and resolve your assigned tickets
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <select
                       value={sort}
-                      onChange={(event) => setSort(event.target.value as 'recent' | 'oldest')}
+                      onChange={(event) =>
+                        setSort(event.target.value as "recent" | "oldest")
+                      }
                       className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
                     >
                       <option value="recent">Most recent updates</option>
@@ -1266,17 +1665,34 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
                 {loading ? (
                   <div className="space-y-4">
-                    {[1, 2, 3].map((i) => <div key={i} className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm" />)}
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm"
+                      />
+                    ))}
                   </div>
                 ) : recentTickets.length === 0 ? (
-                  <EmptyState title="All caught up!" description="No active tickets require your attention." compact />
+                  <EmptyState
+                    title="All caught up!"
+                    description="No active tickets require your attention."
+                    compact
+                  />
                 ) : (
                   <div className="space-y-4">
                     {recentTickets.map((ticket) => (
-                      <ModernTicketCard key={ticket.id} ticket={ticket} onClick={() => navigate(`/tickets/${ticket.id}`)} />
+                      <ModernTicketCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        onClick={() => navigate(`/tickets/${ticket.id}`)}
+                      />
                     ))}
                     <div className="pt-4 text-center">
-                      <button type="button" onClick={() => navigate('/tickets')} className="text-sm font-semibold text-blue-600 transition hover:text-blue-700">
+                      <button
+                        type="button"
+                        onClick={() => navigate("/tickets")}
+                        className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                      >
                         View all tickets →
                       </button>
                     </div>
@@ -1285,19 +1701,33 @@ export function DashboardPage({ role }: DashboardPageProps) {
               </div>
 
               <div className="space-y-6 lg:col-span-4">
-
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Workload Vitals</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                    Workload Vitals
+                  </h3>
                   <div className="space-y-5">
                     {kpis.map((item, idx) => {
                       const tone = kpiToneClass(item.tone);
                       return (
-                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                        <div
+                          key={idx}
+                          className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
+                        >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
-                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                            <div className="text-[14px] font-medium text-slate-500">
+                              {item.label}
+                            </div>
+                            {item.helper && (
+                              <div
+                                className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}
+                              >
+                                {item.helper}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                            {item.value}
+                          </div>
                         </div>
                       );
                     })}
@@ -1305,7 +1735,9 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Activity Trend</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Activity Trend
+                  </h3>
                   {loading ? (
                     <div className="flex-1 animate-pulse rounded-xl bg-slate-50" />
                   ) : (
@@ -1316,7 +1748,9 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Queue Status</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Queue Status
+                  </h3>
                   {loading ? (
                     <div className="flex-1 animate-pulse rounded-xl bg-slate-50" />
                   ) : (
@@ -1325,7 +1759,6 @@ export function DashboardPage({ role }: DashboardPageProps) {
                     </div>
                   )}
                 </div>
-
               </div>
             </div>
           ) : null}
@@ -1335,12 +1768,18 @@ export function DashboardPage({ role }: DashboardPageProps) {
               <div className="space-y-6 lg:col-span-8">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Team Insights</h2>
-                    <p className="text-sm text-slate-500 mt-1">Monitor your team's workload and SLA compliance</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                      Team Insights
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Monitor your team's workload and SLA compliance
+                    </p>
                   </div>
                   <select
                     value={range}
-                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    onChange={(event) =>
+                      setRange(event.target.value as "3" | "7" | "30")
+                    }
                     className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
                   >
                     <option value="3">Last 3 days</option>
@@ -1350,26 +1789,57 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 min-h-[300px] flex flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Agent Workload</h3>
-                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadAgentWorkloadBarChart data={agentWorkload} /></div>}
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Agent Workload
+                  </h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                  ) : (
+                    <div className="flex-1 -mx-4">
+                      <LeadAgentWorkloadBarChart data={agentWorkload} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Status Distribution</h3>
-                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadStatusPieChart data={statusBreakdown} /></div>}
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                      Status Distribution
+                    </h3>
+                    {loading ? (
+                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    ) : (
+                      <div className="flex-1 -mx-4">
+                        <LeadStatusPieChart data={statusBreakdown} />
+                      </div>
+                    )}
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Agent Performance</h3>
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                      Agent Performance
+                    </h3>
                     <div className="flex-1">
-                      {loading ? <div className="animate-pulse bg-slate-50 h-32 rounded-xl" /> : agentPerformance.length === 0 ? <span className="text-sm text-slate-400">No data</span> : (
+                      {loading ? (
+                        <div className="animate-pulse bg-slate-50 h-32 rounded-xl" />
+                      ) : agentPerformance.length === 0 ? (
+                        <span className="text-sm text-slate-400">No data</span>
+                      ) : (
                         agentPerformance.slice(0, 4).map((agent) => (
-                          <div key={agent.userId} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
-                            <span className="font-semibold text-slate-900 text-[15px]">{agent.name}</span>
+                          <div
+                            key={agent.userId}
+                            className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0"
+                          >
+                            <span className="font-semibold text-slate-900 text-[15px]">
+                              {agent.name}
+                            </span>
                             <div className="flex gap-2 items-center text-sm">
-                              <span className="text-slate-500">{agent.ticketsResolved} res</span>
+                              <span className="text-slate-500">
+                                {agent.ticketsResolved} res
+                              </span>
                               <span className="font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">
-                                {agent.ticketsResolved > 0 ? `${Math.min(100, Math.round((agent.firstResponses / agent.ticketsResolved) * 100))}%` : '—'}
+                                {agent.ticketsResolved > 0
+                                  ? `${Math.min(100, Math.round((agent.firstResponses / agent.ticketsResolved) * 100))}%`
+                                  : "—"}
                               </span>
                             </div>
                           </div>
@@ -1382,17 +1852,32 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
               <div className="space-y-6 lg:col-span-4">
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Team Vitals</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                    Team Vitals
+                  </h3>
                   <div className="space-y-5">
                     {kpis.map((item, idx) => {
                       const tone = kpiToneClass(item.tone);
                       return (
-                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                        <div
+                          key={idx}
+                          className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
+                        >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
-                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                            <div className="text-[14px] font-medium text-slate-500">
+                              {item.label}
+                            </div>
+                            {item.helper && (
+                              <div
+                                className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}
+                              >
+                                {item.helper}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                            {item.value}
+                          </div>
                         </div>
                       );
                     })}
@@ -1400,8 +1885,22 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">SLA Performance</h3>
-                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadSlaBarChart data={{ met: slaCompliance.met, atRisk: slaCompliance.atRisk, breached: slaCompliance.breached }} /></div>}
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    SLA Performance
+                  </h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                  ) : (
+                    <div className="flex-1 -mx-4">
+                      <LeadSlaBarChart
+                        data={{
+                          met: slaCompliance.met,
+                          atRisk: slaCompliance.atRisk,
+                          breached: slaCompliance.breached,
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1412,12 +1911,18 @@ export function DashboardPage({ role }: DashboardPageProps) {
               <div className="space-y-6 lg:col-span-8">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Queue Operations</h2>
-                    <p className="text-sm text-slate-500 mt-1">Manage triage configurations and active queue health</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                      Queue Operations
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Manage triage configurations and active queue health
+                    </p>
                   </div>
                   <select
                     value={range}
-                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    onChange={(event) =>
+                      setRange(event.target.value as "3" | "7" | "30")
+                    }
                     className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
                   >
                     <option value="3">Last 3 days</option>
@@ -1430,45 +1935,106 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-red-200 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
-                    <h3 className="text-sm font-bold text-slate-700 mb-2">Breached SLA</h3>
-                    <div className="text-4xl font-bold tracking-tight text-red-600 mb-1">{stats.overdue}</div>
-                    <p className="text-[12px] font-semibold text-slate-500">Immediate attention</p>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2">
+                      Breached SLA
+                    </h3>
+                    <div className="text-4xl font-bold tracking-tight text-red-600 mb-1">
+                      {stats.overdue}
+                    </div>
+                    <p className="text-[12px] font-semibold text-slate-500">
+                      Immediate attention
+                    </p>
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-orange-200 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-orange-500" />
-                    <h3 className="text-sm font-bold text-slate-700 mb-2">At Risk</h3>
-                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">{stats.atRisk}</div>
-                    <p className="text-[12px] font-semibold text-slate-500">Approaching breach</p>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2">
+                      At Risk
+                    </h3>
+                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">
+                      {stats.atRisk}
+                    </div>
+                    <p className="text-[12px] font-semibold text-slate-500">
+                      Approaching breach
+                    </p>
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-blue-200 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-blue-500" />
-                    <h3 className="text-sm font-bold text-slate-700 mb-2">Unassigned</h3>
-                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">{stats.unassigned}</div>
-                    <p className="text-[12px] font-semibold text-slate-500">{unassignedPercent}% of open</p>
+                    <h3 className="text-sm font-bold text-slate-700 mb-2">
+                      Unassigned
+                    </h3>
+                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">
+                      {stats.unassigned}
+                    </div>
+                    <p className="text-[12px] font-semibold text-slate-500">
+                      {unassignedPercent}% of open
+                    </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Tickets by Age</h3>
-                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4 mt-2"><TicketsByAgeChart data={ageBreakdown} /></div>}
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                      Tickets by Age
+                    </h3>
+                    {loading ? (
+                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    ) : (
+                      <div className="flex-1 -mx-4 mt-2">
+                        <TicketsByAgeChart data={ageBreakdown} />
+                      </div>
+                    )}
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Reopen Trend</h3>
-                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4 mt-2">{reopenSeries.length > 0 ? <ReopenRateChart data={reopenSeries} /> : <span className="p-4 text-slate-400">No data</span>}</div>}
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                      Reopen Trend
+                    </h3>
+                    {loading ? (
+                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    ) : (
+                      <div className="flex-1 -mx-4 mt-2">
+                        {reopenSeries.length > 0 ? (
+                          <ReopenRateChart data={reopenSeries} />
+                        ) : (
+                          <span className="p-4 text-slate-400">No data</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Routing Exceptions & Categories</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Routing Exceptions & Categories
+                  </h3>
                   <div className="grid grid-cols-2 gap-8 text-sm">
                     <div className="space-y-4">
-                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">Emails not parsed</span><span className="font-bold text-red-600">0</span></div>
-                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">Auto-assigned</span><span className="font-bold text-blue-600">{stats.assignedToMe}</span></div>
-                      <div className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">Failed webhooks</span><span className="font-bold text-orange-600">0</span></div>
+                      <div className="flex justify-between border-b border-slate-50 pb-2">
+                        <span className="text-slate-600">
+                          Emails not parsed
+                        </span>
+                        <span className="font-bold text-red-600">0</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-50 pb-2">
+                        <span className="text-slate-600">Auto-assigned</span>
+                        <span className="font-bold text-blue-600">
+                          {stats.assignedToMe}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-50 pb-2">
+                        <span className="text-slate-600">Failed webhooks</span>
+                        <span className="font-bold text-orange-600">0</span>
+                      </div>
                     </div>
                     <div className="space-y-4 border-l border-slate-100 pl-8">
-                      {queueCategories.slice(0, 3).map(c => <div key={c.id} className="flex justify-between border-b border-slate-50 pb-2"><span className="text-slate-600">{c.name}</span><span className="font-bold">{c.count}</span></div>)}
+                      {queueCategories.slice(0, 3).map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex justify-between border-b border-slate-50 pb-2"
+                        >
+                          <span className="text-slate-600">{c.name}</span>
+                          <span className="font-bold">{c.count}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -1476,15 +2042,24 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
               <div className="space-y-6 lg:col-span-4">
                 <div className="bg-slate-900 rounded-[24px] p-6 shadow-[0_4px_20px_rgb(0,0,0,0.1)] border border-slate-800">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Admin Summary</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                    Admin Summary
+                  </h3>
                   <div className="space-y-5">
                     {kpis.map((item, idx) => {
                       return (
-                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-800 last:border-0 last:pb-0">
+                        <div
+                          key={idx}
+                          className="flex justify-between items-center pb-5 border-b border-slate-800 last:border-0 last:pb-0"
+                        >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-300">{item.label}</div>
+                            <div className="text-[14px] font-medium text-slate-300">
+                              {item.label}
+                            </div>
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-white">{item.value}</div>
+                          <div className="text-3xl font-bold tracking-tight text-white">
+                            {item.value}
+                          </div>
                         </div>
                       );
                     })}
@@ -1492,11 +2067,28 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Quick Settings</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Quick Settings
+                  </h3>
                   <div className="space-y-3">
-                    <button onClick={() => navigate('/routing')} className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition">⚙️ Routing Rules Mode</button>
-                    <button disabled className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed">⏱️ Business Hours Config</button>
-                    <button disabled className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed">⚡ Macros Library</button>
+                    <button
+                      onClick={() => navigate("/routing")}
+                      className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition"
+                    >
+                      ⚙️ Routing Rules Mode
+                    </button>
+                    <button
+                      disabled
+                      className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed"
+                    >
+                      ⏱️ Business Hours Config
+                    </button>
+                    <button
+                      disabled
+                      className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed"
+                    >
+                      ⚡ Macros Library
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1508,12 +2100,18 @@ export function DashboardPage({ role }: DashboardPageProps) {
               <div className="space-y-6 lg:col-span-8">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">Platform Overview</h2>
-                    <p className="text-sm text-slate-500 mt-1">Cross-team performance and business metrics</p>
+                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                      Platform Overview
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Cross-team performance and business metrics
+                    </p>
                   </div>
                   <select
                     value={range}
-                    onChange={(event) => setRange(event.target.value as '3' | '7' | '30')}
+                    onChange={(event) =>
+                      setRange(event.target.value as "3" | "7" | "30")
+                    }
                     className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
                   >
                     <option value="3">Last 3 days</option>
@@ -1524,39 +2122,82 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-slate-900 rounded-[24px] p-6 shadow-sm border border-slate-800 relative overflow-hidden">
-                    <h3 className="text-sm font-medium text-slate-400 mb-2">Total Open</h3>
-                    <div className="text-4xl font-bold tracking-tight text-white mb-1">{stats.open}</div>
-                    <p className="text-[12px] font-semibold text-blue-400">System wide</p>
+                    <h3 className="text-sm font-medium text-slate-400 mb-2">
+                      Total Open
+                    </h3>
+                    <div className="text-4xl font-bold tracking-tight text-white mb-1">
+                      {stats.open}
+                    </div>
+                    <p className="text-[12px] font-semibold text-blue-400">
+                      System wide
+                    </p>
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col justify-center items-center">
-                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">{transfers.total}</div>
-                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total Transfers</h3>
+                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">
+                      {transfers.total}
+                    </div>
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                      Total Transfers
+                    </h3>
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col justify-center items-center">
-                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">{reopenRate}%</div>
-                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">Reopen Rate</h3>
+                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">
+                      {reopenRate}%
+                    </div>
+                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                      Reopen Rate
+                    </h3>
                   </div>
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 min-h-[300px] flex flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Platform Activity</h3>
-                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><TicketVolumeChart data={volumeSeries} /></div>}
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Platform Activity
+                  </h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                  ) : (
+                    <div className="flex-1 -mx-4">
+                      <TicketVolumeChart data={volumeSeries} />
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Tickets by Priority</h3>
-                    {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><PriorityDonutChart data={priorityBreakdown} /></div>}
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                      Tickets by Priority
+                    </h3>
+                    {loading ? (
+                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    ) : (
+                      <div className="flex-1 -mx-4">
+                        <PriorityDonutChart data={priorityBreakdown} />
+                      </div>
+                    )}
                   </div>
                   <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Top Performers</h3>
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                      Top Performers
+                    </h3>
                     <div className="flex-1 space-y-4 pt-2">
-                      {loading ? <div className="animate-pulse bg-slate-50 h-32 rounded-xl" /> : agentPerformance.length === 0 ? <span className="text-sm text-slate-400">No data</span> : (
+                      {loading ? (
+                        <div className="animate-pulse bg-slate-50 h-32 rounded-xl" />
+                      ) : agentPerformance.length === 0 ? (
+                        <span className="text-sm text-slate-400">No data</span>
+                      ) : (
                         agentPerformance.slice(0, 4).map((agent, idx) => (
-                          <div key={agent.userId} className="flex justify-between items-center border-b border-slate-50 last:border-0 pb-3">
-                            <span className="font-semibold text-slate-900 text-[15px]">#{idx + 1} {agent.name}</span>
+                          <div
+                            key={agent.userId}
+                            className="flex justify-between items-center border-b border-slate-50 last:border-0 pb-3"
+                          >
+                            <span className="font-semibold text-slate-900 text-[15px]">
+                              #{idx + 1} {agent.name}
+                            </span>
                             <span className="font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded text-sm">
-                              {agent.avgFirstResponseHours == null ? '—' : `${agent.avgFirstResponseHours.toFixed(1)}h FRT`}
+                              {agent.avgFirstResponseHours == null
+                                ? "—"
+                                : `${agent.avgFirstResponseHours.toFixed(1)}h FRT`}
                             </span>
                           </div>
                         ))
@@ -1568,17 +2209,32 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
               <div className="space-y-6 lg:col-span-4">
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">Executive Vitals</h3>
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                    Executive Vitals
+                  </h3>
                   <div className="space-y-5">
                     {kpis.map((item, idx) => {
                       const tone = kpiToneClass(item.tone);
                       return (
-                        <div key={idx} className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0">
+                        <div
+                          key={idx}
+                          className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
+                        >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">{item.label}</div>
-                            {item.helper && <div className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}>{item.helper}</div>}
+                            <div className="text-[14px] font-medium text-slate-500">
+                              {item.label}
+                            </div>
+                            {item.helper && (
+                              <div
+                                className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}
+                              >
+                                {item.helper}
+                              </div>
+                            )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">{item.value}</div>
+                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                            {item.value}
+                          </div>
                         </div>
                       );
                     })}
@@ -1586,28 +2242,58 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">SLA Compliance</h3>
-                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : <div className="flex-1 -mx-4"><LeadSlaBarChart data={{ met: slaCompliance.met, atRisk: slaCompliance.atRisk, breached: slaCompliance.breached }} /></div>}
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    SLA Compliance
+                  </h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                  ) : (
+                    <div className="flex-1 -mx-4">
+                      <LeadSlaBarChart
+                        data={{
+                          met: slaCompliance.met,
+                          atRisk: slaCompliance.atRisk,
+                          breached: slaCompliance.breached,
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">Team Summary</h3>
-                  {loading ? <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" /> : (
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    Team Summary
+                  </h3>
+                  {loading ? (
+                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                  ) : (
                     <div className="flex-1 overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead className="border-b border-slate-100">
                           <tr>
-                            <th className="py-2 text-left font-semibold text-slate-500">Team</th>
-                            <th className="py-2 text-right font-semibold text-slate-500">Open</th>
-                            <th className="py-2 text-right font-semibold text-slate-500">SLA</th>
+                            <th className="py-2 text-left font-semibold text-slate-500">
+                              Team
+                            </th>
+                            <th className="py-2 text-right font-semibold text-slate-500">
+                              Open
+                            </th>
+                            <th className="py-2 text-right font-semibold text-slate-500">
+                              SLA
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                           {teamSummary.map((team) => (
                             <tr key={team.id}>
-                              <td className="py-3 font-medium text-slate-900">{team.name}</td>
-                              <td className="py-3 text-right font-bold text-slate-700">{team.open}</td>
-                              <td className="py-3 text-right font-bold text-green-600">{safePercent(team.resolved, team.total)}%</td>
+                              <td className="py-3 font-medium text-slate-900">
+                                {team.name}
+                              </td>
+                              <td className="py-3 text-right font-bold text-slate-700">
+                                {team.open}
+                              </td>
+                              <td className="py-3 text-right font-bold text-green-600">
+                                {safePercent(team.resolved, team.total)}%
+                              </td>
                             </tr>
                           ))}
                         </tbody>

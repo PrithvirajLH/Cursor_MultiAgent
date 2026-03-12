@@ -1,16 +1,16 @@
-import React, { type ComponentPropsWithoutRef, useMemo } from "react"
-import { AnimatePresence, motion } from "motion/react"
+import React, { type ComponentPropsWithoutRef, useMemo } from "react";
+import { AnimatePresence, motion } from "motion/react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 export function AnimatedListItem({
   children,
   staggerIndex = 0,
   staggerDelayMs = 50,
 }: {
-  children: React.ReactNode
-  staggerIndex?: number
-  staggerDelayMs?: number
+  children: React.ReactNode;
+  staggerIndex?: number;
+  staggerDelayMs?: number;
 }) {
   const animations: React.ComponentProps<typeof motion.div> = {
     initial: { scale: 0, opacity: 0 },
@@ -27,27 +27,32 @@ export function AnimatedListItem({
     },
     exit: { scale: 0, opacity: 0 },
     transition: { type: "spring", stiffness: 350, damping: 40 },
-  }
+  };
 
   return (
     <motion.div {...animations} layout className="mx-auto w-full">
       {children}
     </motion.div>
-  )
+  );
 }
 
 export interface AnimatedListProps extends ComponentPropsWithoutRef<"div"> {
-  children: React.ReactNode
+  children: React.ReactNode;
   /** Stagger delay in ms between each item's enter animation (default 50). */
-  staggerDelayMs?: number
+  staggerDelayMs?: number;
 }
 
 export const AnimatedList = React.memo(
-  ({ children, className, staggerDelayMs = 50, ...props }: AnimatedListProps) => {
+  ({
+    children,
+    className,
+    staggerDelayMs = 50,
+    ...props
+  }: AnimatedListProps) => {
     const childrenArray = useMemo(
       () => React.Children.toArray(children),
-      [children]
-    )
+      [children],
+    );
 
     return (
       <div
@@ -66,8 +71,8 @@ export const AnimatedList = React.memo(
           ))}
         </AnimatePresence>
       </div>
-    )
-  }
-)
+    );
+  },
+);
 
-AnimatedList.displayName = "AnimatedList"
+AnimatedList.displayName = "AnimatedList";

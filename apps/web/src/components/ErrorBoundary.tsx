@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 /* ——————————————————————————————————————————————————————————————
  * ErrorBoundary – generic React error boundary (class component)
@@ -35,7 +35,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // eslint-disable-next-line no-console
-    console.error('[ErrorBoundary] Caught:', error, errorInfo);
+    console.error("[ErrorBoundary] Caught:", error, errorInfo);
     this.props.onError?.(error, errorInfo);
   }
 
@@ -46,7 +46,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
   render() {
     if (this.state.error) {
       if (this.props.fallback) {
-        return this.props.fallback({ error: this.state.error, reset: this.reset });
+        return this.props.fallback({
+          error: this.state.error,
+          reset: this.reset,
+        });
       }
       return <DefaultFallback error={this.state.error} reset={this.reset} />;
     }
@@ -56,7 +59,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
 
 /* ——— Default fallback UI ——————————————————————————————————— */
 
-function DefaultFallback({ error, reset }: { error: Error; reset: () => void }) {
+function DefaultFallback({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
   return (
     <div className="flex min-h-[50vh] items-center justify-center px-4">
       <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-8 text-center shadow-lg">
@@ -118,88 +127,110 @@ function DefaultFallback({ error, reset }: { error: Error; reset: () => void }) 
  * context or router is available, so keep it self-contained.
  * ————————————————————————————————————————————————————————————— */
 
-export function AppCrashFallback({ error, reset }: { error: Error; reset: () => void }) {
+export function AppCrashFallback({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        backgroundColor: '#f8fafc',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+        backgroundColor: "#f8fafc",
         fontFamily:
           'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        padding: '1rem',
+        padding: "1rem",
       }}
     >
       <div
         style={{
-          maxWidth: '28rem',
-          width: '100%',
-          borderRadius: '1rem',
-          border: '1px solid #fecaca',
-          backgroundColor: '#fff',
-          padding: '2rem',
-          textAlign: 'center',
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,.1)',
+          maxWidth: "28rem",
+          width: "100%",
+          borderRadius: "1rem",
+          border: "1px solid #fecaca",
+          backgroundColor: "#fff",
+          padding: "2rem",
+          textAlign: "center",
+          boxShadow: "0 4px 6px -1px rgba(0,0,0,.1)",
         }}
       >
         <div
           style={{
-            width: '3.5rem',
-            height: '3.5rem',
-            margin: '0 auto 1rem',
-            borderRadius: '50%',
-            backgroundColor: '#fee2e2',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.5rem',
+            width: "3.5rem",
+            height: "3.5rem",
+            margin: "0 auto 1rem",
+            borderRadius: "50%",
+            backgroundColor: "#fee2e2",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.5rem",
           }}
           aria-hidden="true"
         >
           !
         </div>
 
-        <h1 style={{ fontSize: '1.125rem', fontWeight: 600, color: '#0f172a', margin: '0 0 .5rem' }}>
+        <h1
+          style={{
+            fontSize: "1.125rem",
+            fontWeight: 600,
+            color: "#0f172a",
+            margin: "0 0 .5rem",
+          }}
+        >
           Application Error
         </h1>
-        <p style={{ fontSize: '.875rem', color: '#475569', margin: '0 0 1.5rem' }}>
-          The application encountered a critical error and could not recover. Please reload the page.
+        <p
+          style={{
+            fontSize: ".875rem",
+            color: "#475569",
+            margin: "0 0 1.5rem",
+          }}
+        >
+          The application encountered a critical error and could not recover.
+          Please reload the page.
         </p>
 
         {import.meta.env.DEV && error?.message && (
           <pre
             style={{
-              maxHeight: '6rem',
-              overflow: 'auto',
-              borderRadius: '.5rem',
-              backgroundColor: '#fef2f2',
-              padding: '.75rem',
-              textAlign: 'left',
-              fontSize: '.75rem',
-              color: '#991b1b',
-              margin: '0 0 1.5rem',
+              maxHeight: "6rem",
+              overflow: "auto",
+              borderRadius: ".5rem",
+              backgroundColor: "#fef2f2",
+              padding: ".75rem",
+              textAlign: "left",
+              fontSize: ".75rem",
+              color: "#991b1b",
+              margin: "0 0 1.5rem",
             }}
           >
             {error.message}
           </pre>
         )}
 
-        <div style={{ display: 'flex', gap: '.75rem', justifyContent: 'center' }}>
+        <div
+          style={{ display: "flex", gap: ".75rem", justifyContent: "center" }}
+        >
           <button
             type="button"
             onClick={reset}
             style={{
-              height: '2.5rem',
-              padding: '0 1.25rem',
-              borderRadius: '.75rem',
-              border: 'none',
-              backgroundColor: '#2563eb',
-              color: '#fff',
-              fontSize: '.875rem',
+              height: "2.5rem",
+              padding: "0 1.25rem",
+              borderRadius: ".75rem",
+              border: "none",
+              backgroundColor: "#2563eb",
+              color: "#fff",
+              fontSize: ".875rem",
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: "pointer",
             }}
           >
             Try again
@@ -208,15 +239,15 @@ export function AppCrashFallback({ error, reset }: { error: Error; reset: () => 
             type="button"
             onClick={() => window.location.reload()}
             style={{
-              height: '2.5rem',
-              padding: '0 1.25rem',
-              borderRadius: '.75rem',
-              border: '1px solid #e2e8f0',
-              backgroundColor: '#fff',
-              color: '#334155',
-              fontSize: '.875rem',
+              height: "2.5rem",
+              padding: "0 1.25rem",
+              borderRadius: ".75rem",
+              border: "1px solid #e2e8f0",
+              backgroundColor: "#fff",
+              color: "#334155",
+              fontSize: ".875rem",
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: "pointer",
             }}
           >
             Reload page
@@ -232,7 +263,13 @@ export function AppCrashFallback({ error, reset }: { error: Error; reset: () => 
  * "Go to Dashboard" navigation.
  * ————————————————————————————————————————————————————————————— */
 
-export function RouteErrorFallback({ error, reset }: { error: Error; reset: () => void }) {
+export function RouteErrorFallback({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
       <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-8 text-center shadow-lg">
@@ -258,7 +295,8 @@ export function RouteErrorFallback({ error, reset }: { error: Error; reset: () =
           This page ran into an error
         </h2>
         <p className="mb-6 text-sm text-slate-600">
-          Something went wrong while loading this section. The rest of the app is still working.
+          Something went wrong while loading this section. The rest of the app
+          is still working.
         </p>
 
         {import.meta.env.DEV && error?.message && (

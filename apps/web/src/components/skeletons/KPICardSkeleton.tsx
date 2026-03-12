@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 
 /**
  * Skeleton that matches KPICard layout: icon (h-9 w-9 rounded-lg), value (text-xl), label (text-xs uppercase).
@@ -8,8 +8,8 @@ export function KPICardSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'relative flex items-center gap-2 rounded-lg border border-border/80 p-3 shadow-card bg-card',
-        className
+        "relative flex items-center gap-2 rounded-lg border border-border/80 p-3 shadow-card bg-card",
+        className,
       )}
       aria-hidden
     >

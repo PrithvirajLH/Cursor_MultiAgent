@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 
 /**
  * Skeleton for ticket grid card. Matches TicketsPage grid row:
@@ -14,8 +14,8 @@ export function TicketCardSkeleton({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 w-full rounded-2xl border border-border bg-card px-4 py-3',
-        className
+        "flex items-center gap-3 w-full rounded-2xl border border-border bg-card px-4 py-3",
+        className,
       )}
       aria-hidden
     >

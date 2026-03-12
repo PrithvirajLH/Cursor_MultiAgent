@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { createCategory, fetchCategories, type CategoryRef } from '../api/client';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useToast } from '../hooks/useToast';
-import { handleApiError } from '../utils/handleApiError';
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import {
+  createCategory,
+  fetchCategories,
+  type CategoryRef,
+} from "../api/client";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useToast } from "../hooks/useToast";
+import { handleApiError } from "../utils/handleApiError";
 
 type CategoryForm = {
   name: string;
@@ -19,17 +23,17 @@ function toSlug(input: string): string {
   return input
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
 function emptyForm(): CategoryForm {
   return {
-    name: '',
-    slug: '',
-    description: '',
-    parentId: '',
+    name: "",
+    slug: "",
+    description: "",
+    parentId: "",
     isActive: true,
   };
 }
@@ -74,7 +78,7 @@ export function NewCategoryPage() {
 
   async function handleSubmit() {
     if (!form.name.trim()) {
-      const message = 'Category name is required.';
+      const message = "Category name is required.";
       setError(message);
       toast.error(message);
       return;
@@ -85,13 +89,13 @@ export function NewCategoryPage() {
     try {
       await createCategory({
         name: form.name.trim(),
-        slug: (form.slug.trim() || toSlug(form.name)) || undefined,
+        slug: form.slug.trim() || toSlug(form.name) || undefined,
         description: form.description.trim() || undefined,
         parentId: form.parentId || undefined,
         isActive: form.isActive,
       });
-      toast.success('Category created.');
-      navigate('/categories');
+      toast.success("Category created.");
+      navigate("/categories");
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -112,8 +116,6 @@ export function NewCategoryPage() {
               title={headerValue.title}
               subtitle={headerValue.subtitle}
               currentEmail={headerValue.currentEmail}
-
-
               onOpenSearch={headerValue.onOpenSearch}
               notificationProps={headerValue.notificationProps}
               leftContent={
@@ -143,7 +145,7 @@ export function NewCategoryPage() {
       <div className="mx-auto w-full max-w-[900px] px-6 py-8">
         <button
           type="button"
-          onClick={() => navigate('/categories')}
+          onClick={() => navigate("/categories")}
           className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -203,7 +205,10 @@ export function NewCategoryPage() {
               <textarea
                 value={form.description}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
+                  setForm((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }))
                 }
                 rows={3}
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
@@ -219,7 +224,10 @@ export function NewCategoryPage() {
                 <select
                   value={form.parentId}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, parentId: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      parentId: event.target.value,
+                    }))
                   }
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   disabled={loading}
@@ -240,7 +248,8 @@ export function NewCategoryPage() {
                 <div className="flex-1">
                   <p className="text-sm font-medium text-slate-700">Active</p>
                   <p className="text-xs text-slate-500">
-                    Inactive categories are hidden from new tickets but kept for history.
+                    Inactive categories are hidden from new tickets but kept for
+                    history.
                   </p>
                 </div>
                 <label className="inline-flex items-center space-x-2">
@@ -248,7 +257,10 @@ export function NewCategoryPage() {
                     type="checkbox"
                     checked={form.isActive}
                     onChange={(event) =>
-                      setForm((prev) => ({ ...prev, isActive: event.target.checked }))
+                      setForm((prev) => ({
+                        ...prev,
+                        isActive: event.target.checked,
+                      }))
                     }
                     className="h-4 w-4 rounded text-blue-600"
                   />
@@ -260,12 +272,13 @@ export function NewCategoryPage() {
 
           <div className="flex items-center justify-between rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
             <span className="text-xs text-slate-400">
-              * Required fields. Categories are used across reports and ticket routing.
+              * Required fields. Categories are used across reports and ticket
+              routing.
             </span>
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate('/categories')}
+                onClick={() => navigate("/categories")}
                 disabled={saving}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -287,4 +300,3 @@ export function NewCategoryPage() {
     </section>
   );
 }
-

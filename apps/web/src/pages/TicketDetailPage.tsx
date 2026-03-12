@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, Clock3, Copy } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Check, Clock3, Copy } from "lucide-react";
 import {
   addTicketMessage,
   ApiError,
@@ -22,39 +29,42 @@ import {
   type TicketEvent,
   type TicketMessage,
   type TicketStatus,
-} from '../api/client';
-import { TicketConversation } from '../components/ticket-detail/TicketConversation';
-import { TicketTimeline } from '../components/ticket-detail/TicketTimeline';
-import { TicketAttachments } from '../components/ticket-detail/TicketAttachments';
-import { TicketSidebar, type ExpandedSections } from '../components/ticket-detail/TicketSidebar';
+} from "../api/client";
+import { TicketConversation } from "../components/ticket-detail/TicketConversation";
+import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
+import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
+import {
+  TicketSidebar,
+  type ExpandedSections,
+} from "../components/ticket-detail/TicketSidebar";
 import {
   formatChannel,
   formatPriority,
   priorityBadgeClass,
   statusBadgeClass,
-} from '../components/ticket-detail/utils';
-import { TopBar } from '../components/TopBar';
-import { TicketDetailSkeleton } from '../components/skeletons';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useTicketDataInvalidation } from '../contexts/TicketDataInvalidationContext';
-import { handleApiError } from '../utils/handleApiError';
-import type { Role } from '../types';
-import { copyToClipboard } from '../utils/clipboard';
-import { formatStatus, formatTicketId } from '../utils/format';
+} from "../components/ticket-detail/utils";
+import { TopBar } from "../components/TopBar";
+import { TicketDetailSkeleton } from "../components/skeletons";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
+import { handleApiError } from "../utils/handleApiError";
+import type { Role } from "../types";
+import { copyToClipboard } from "../utils/clipboard";
+import { formatStatus, formatTicketId } from "../utils/format";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   REALTIME_TICKET_TYPING_EVENT,
   type RealtimeTicketChangedEventPayload,
   type RealtimeTicketTypingEventPayload,
   type RealtimeTicketMessagePayload,
-} from '../realtime/events';
+} from "../realtime/events";
 
 /** Strips "Facility: ..." prefix from description so only the message is shown. */
 function stripFacilityFromDescription(description: string): string {
-  const lines = description.split('\n');
-  const firstLine = lines[0] ?? '';
-  if (firstLine.startsWith('Facility:')) {
-    return lines.slice(2).join('\n').trim();
+  const lines = description.split("\n");
+  const firstLine = lines[0] ?? "";
+  if (firstLine.startsWith("Facility:")) {
+    return lines.slice(2).join("\n").trim();
   }
   return description;
 }
@@ -67,7 +77,7 @@ type TypingUserEntry = {
 };
 
 type ConversationMessage = TicketMessage & {
-  localStatus?: 'sending' | 'sent' | 'failed';
+  localStatus?: "sending" | "sent" | "failed";
 };
 
 export function TicketDetailPage({
@@ -99,9 +109,13 @@ export function TicketDetailPage({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'conversation' | 'timeline' | 'attachments'>('conversation');
-  const [messageType, setMessageType] = useState<'PUBLIC' | 'INTERNAL'>('PUBLIC');
-  const [messageBody, setMessageBody] = useState('');
+  const [activeTab, setActiveTab] = useState<
+    "conversation" | "timeline" | "attachments"
+  >("conversation");
+  const [messageType, setMessageType] = useState<"PUBLIC" | "INTERNAL">(
+    "PUBLIC",
+  );
+  const [messageBody, setMessageBody] = useState("");
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -110,16 +124,19 @@ export function TicketDetailPage({
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
-  const [assignToId, setAssignToId] = useState('');
-  const [nextStatus, setNextStatus] = useState('');
-  const [transferTeamId, setTransferTeamId] = useState('');
-  const [transferAssigneeId, setTransferAssigneeId] = useState('');
+  const [assignToId, setAssignToId] = useState("");
+  const [nextStatus, setNextStatus] = useState("");
+  const [transferTeamId, setTransferTeamId] = useState("");
+  const [transferAssigneeId, setTransferAssigneeId] = useState("");
   const [transferMembers, setTransferMembers] = useState<TeamMember[]>([]);
 
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
 
-  const [copyToast, setCopyToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [copyToast, setCopyToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
     edit: true,
     followers: false,
@@ -127,7 +144,9 @@ export function TicketDetailPage({
     history: false,
   });
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
-  const [typingUsersById, setTypingUsersById] = useState<Record<string, TypingUserEntry>>({});
+  const [typingUsersById, setTypingUsersById] = useState<
+    Record<string, TypingUserEntry>
+  >({});
 
   /* ——— Refs ——— */
 
@@ -153,7 +172,8 @@ export function TicketDetailPage({
   const timelineTabRef = useRef<HTMLButtonElement | null>(null);
   const attachmentsTabRef = useRef<HTMLButtonElement | null>(null);
 
-  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } = useTicketDataInvalidation();
+  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
+    useTicketDataInvalidation();
 
   /* ——— Derived / memoized values (6.3) ——— */
 
@@ -161,11 +181,12 @@ export function TicketDetailPage({
   const statusEvents = useMemo(
     () =>
       events
-        .filter((event) => event.type === 'TICKET_STATUS_CHANGED')
+        .filter((event) => event.type === "TICKET_STATUS_CHANGED")
         .slice()
         .sort(
           (left, right) =>
-            new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+            new Date(right.createdAt).getTime() -
+            new Date(left.createdAt).getTime(),
         )
         .slice(0, 5),
     [events],
@@ -178,14 +199,17 @@ export function TicketDetailPage({
 
   const canManage = useMemo(() => {
     if (!ticket) return false;
-    if (role === 'OWNER') return true;
-    if (role === 'EMPLOYEE') return false;
-    if (role === 'LEAD' || role === 'TEAM_ADMIN') return isCurrentUserOnAssignedTeam;
+    if (role === "OWNER") return true;
+    if (role === "EMPLOYEE") return false;
+    if (role === "LEAD" || role === "TEAM_ADMIN")
+      return isCurrentUserOnAssignedTeam;
     const isAssignee = ticket.assignee?.email === currentEmail;
     return isCurrentUserOnAssignedTeam && (isAssignee || !ticket.assignee);
   }, [currentEmail, isCurrentUserOnAssignedTeam, role, ticket]);
 
-  const canUpload = ticket ? role !== 'EMPLOYEE' || ticket.requester?.email === currentEmail : false;
+  const canUpload = ticket
+    ? role !== "EMPLOYEE" || ticket.requester?.email === currentEmail
+    : false;
 
   const availableTransitions = useMemo(
     () => ticket?.allowedTransitions ?? [],
@@ -193,22 +217,28 @@ export function TicketDetailPage({
   );
 
   const quickEscalationTarget = useMemo(() => {
-    if (availableTransitions.includes('WAITING_ON_VENDOR')) return 'WAITING_ON_VENDOR';
-    if (availableTransitions.includes('TRIAGED')) return 'TRIAGED';
+    if (availableTransitions.includes("WAITING_ON_VENDOR"))
+      return "WAITING_ON_VENDOR";
+    if (availableTransitions.includes("TRIAGED")) return "TRIAGED";
     return null;
   }, [availableTransitions]);
   const typingUsers = useMemo(
     () =>
       Object.values(typingUsersById)
-        .sort((left, right) => left.displayName.localeCompare(right.displayName))
+        .sort((left, right) =>
+          left.displayName.localeCompare(right.displayName),
+        )
         .map(({ id, displayName, email }) => ({ id, displayName, email })),
     [typingUsersById],
   );
 
-  const headerTitle = headerCtx?.title ?? 'Ticket details';
+  const headerTitle = headerCtx?.title ?? "Ticket details";
   const currentUserId = headerCtx?.currentUser?.id ?? null;
 
-  const [tabIndicator, setTabIndicator] = useState<{ left: number; width: number } | null>(null);
+  const [tabIndicator, setTabIndicator] = useState<{
+    left: number;
+    width: number;
+  } | null>(null);
 
   useEffect(() => {
     ticketSnapshotRef.current = ticket;
@@ -216,7 +246,10 @@ export function TicketDetailPage({
       return;
     }
     const updatedAtMs = Date.parse(ticket.updatedAt);
-    if (Number.isFinite(updatedAtMs) && updatedAtMs > lastTicketUpdateAtMsRef.current) {
+    if (
+      Number.isFinite(updatedAtMs) &&
+      updatedAtMs > lastTicketUpdateAtMsRef.current
+    ) {
       lastTicketUpdateAtMsRef.current = updatedAtMs;
     }
   }, [ticket]);
@@ -224,11 +257,19 @@ export function TicketDetailPage({
   /* ——— Navigation (memoized, 6.3) ——— */
 
   const navigateBack = useCallback(() => {
-    const fromTicketsPath = (location.state as { fromTicketsPath?: string } | null)?.fromTicketsPath;
-    if (fromTicketsPath) { navigate(fromTicketsPath); return; }
+    const fromTicketsPath = (
+      location.state as { fromTicketsPath?: string } | null
+    )?.fromTicketsPath;
+    if (fromTicketsPath) {
+      navigate(fromTicketsPath);
+      return;
+    }
     const historyState = window.history.state as { idx?: number } | null;
-    if (typeof historyState?.idx === 'number' && historyState.idx > 0) { navigate(-1); return; }
-    navigate('/tickets');
+    if (typeof historyState?.idx === "number" && historyState.idx > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate("/tickets");
   }, [location.state, navigate]);
 
   const toTicketMessage = useCallback(
@@ -260,7 +301,8 @@ export function TicketDetailPage({
         appended = true;
         return [...prev, incoming].sort(
           (left, right) =>
-            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime(),
         );
       });
       if (appended) {
@@ -271,29 +313,27 @@ export function TicketDetailPage({
     [toTicketMessage],
   );
 
-  const appendRealtimeEvent = useCallback(
-    (event: TicketEvent) => {
-      if (seenRealtimeEventIdsRef.current.has(event.id)) {
-        return false;
+  const appendRealtimeEvent = useCallback((event: TicketEvent) => {
+    if (seenRealtimeEventIdsRef.current.has(event.id)) {
+      return false;
+    }
+    let appended = false;
+    setEvents((prev) => {
+      if (prev.some((existing) => existing.id === event.id)) {
+        return prev;
       }
-      let appended = false;
-      setEvents((prev) => {
-        if (prev.some((existing) => existing.id === event.id)) {
-          return prev;
-        }
-        appended = true;
-        return [...prev, event].sort(
-          (left, right) =>
-            new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
-        );
-      });
-      if (appended) {
-        seenRealtimeEventIdsRef.current.add(event.id);
-      }
-      return appended;
-    },
-    [],
-  );
+      appended = true;
+      return [...prev, event].sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() -
+          new Date(right.createdAt).getTime(),
+      );
+    });
+    if (appended) {
+      seenRealtimeEventIdsRef.current.add(event.id);
+    }
+    return appended;
+  }, []);
 
   const applyTicketRealtimePatch = useCallback(
     (payload: RealtimeTicketChangedEventPayload) => {
@@ -305,11 +345,11 @@ export function TicketDetailPage({
 
         const next = { ...prev };
         if (payload.status && payload.status !== next.status) {
-          next.status = payload.status as TicketDetail['status'];
+          next.status = payload.status as TicketDetail["status"];
           patched = true;
         }
         if (payload.priority && payload.priority !== next.priority) {
-          next.priority = payload.priority as TicketDetail['priority'];
+          next.priority = payload.priority as TicketDetail["priority"];
           patched = true;
         }
         if (payload.updatedAt && payload.updatedAt !== next.updatedAt) {
@@ -319,10 +359,7 @@ export function TicketDetailPage({
         if (payload.assignee && payload.assignee.id !== next.assignee?.id) {
           next.assignee = payload.assignee;
           patched = true;
-        } else if (
-          payload.assigneeId === null &&
-          next.assignee !== null
-        ) {
+        } else if (payload.assigneeId === null && next.assignee !== null) {
           next.assignee = null;
           patched = true;
         }
@@ -340,7 +377,7 @@ export function TicketDetailPage({
           patched = true;
         }
         if (
-          typeof payload.followerCount === 'number' &&
+          typeof payload.followerCount === "number" &&
           next.followers.length > payload.followerCount
         ) {
           next.followers = next.followers.slice(0, payload.followerCount);
@@ -369,11 +406,7 @@ export function TicketDetailPage({
   }, []);
 
   const setLocalTypingState = useCallback(
-    (
-      isTyping: boolean,
-      targetTicketId?: string | null,
-      forceEmit = false,
-    ) => {
+    (isTyping: boolean, targetTicketId?: string | null, forceEmit = false) => {
       const id = targetTicketId ?? ticketId;
       if (!id) {
         return;
@@ -406,7 +439,8 @@ export function TicketDetailPage({
     }
     const now = Date.now();
     const shouldEmitHeartbeat =
-      !localTypingActiveRef.current || now - lastTypingEmitAtRef.current >= 1500;
+      !localTypingActiveRef.current ||
+      now - lastTypingEmitAtRef.current >= 1500;
     setLocalTypingState(true, ticketId, shouldEmitHeartbeat);
     clearTypingIdleTimer();
     typingIdleTimerRef.current = window.setTimeout(() => {
@@ -416,38 +450,49 @@ export function TicketDetailPage({
 
   /* ——— Data loaders ——— */
 
-  const loadMessagesPage = useCallback(async (id: string, reset = false, clearOnReset = true) => {
-    const requestSeq = ++messageRequestSeqRef.current;
-    if (reset) {
-      if (clearOnReset) {
-        setMessages([]);
-        seenRealtimeMessageIdsRef.current.clear();
-      }
-      setMessageCursor(null);
-      setMessagesHasMore(false);
-    }
-    setMessagesLoading(true);
-    try {
-      const response = await fetchTicketMessages(id, {
-        cursor: reset ? undefined : messageCursor ?? undefined, take: 50,
-      });
-      if (messageRequestSeqRef.current !== requestSeq) return;
-      setMessages((prev) => (reset ? response.data : [...response.data, ...prev]));
-      for (const message of response.data) {
-        seenRealtimeMessageIdsRef.current.add(message.id);
-      }
-      setMessageCursor(response.nextCursor ?? null);
-      setMessagesHasMore(Boolean(response.nextCursor));
-    } catch {
-      if (messageRequestSeqRef.current === requestSeq && reset && clearOnReset) {
-        setMessages([]);
+  const loadMessagesPage = useCallback(
+    async (id: string, reset = false, clearOnReset = true) => {
+      const requestSeq = ++messageRequestSeqRef.current;
+      if (reset) {
+        if (clearOnReset) {
+          setMessages([]);
+          seenRealtimeMessageIdsRef.current.clear();
+        }
+        setMessageCursor(null);
         setMessagesHasMore(false);
-        seenRealtimeMessageIdsRef.current.clear();
       }
-    } finally {
-      if (messageRequestSeqRef.current === requestSeq) setMessagesLoading(false);
-    }
-  }, [messageCursor]);
+      setMessagesLoading(true);
+      try {
+        const response = await fetchTicketMessages(id, {
+          cursor: reset ? undefined : (messageCursor ?? undefined),
+          take: 50,
+        });
+        if (messageRequestSeqRef.current !== requestSeq) return;
+        setMessages((prev) =>
+          reset ? response.data : [...response.data, ...prev],
+        );
+        for (const message of response.data) {
+          seenRealtimeMessageIdsRef.current.add(message.id);
+        }
+        setMessageCursor(response.nextCursor ?? null);
+        setMessagesHasMore(Boolean(response.nextCursor));
+      } catch {
+        if (
+          messageRequestSeqRef.current === requestSeq &&
+          reset &&
+          clearOnReset
+        ) {
+          setMessages([]);
+          setMessagesHasMore(false);
+          seenRealtimeMessageIdsRef.current.clear();
+        }
+      } finally {
+        if (messageRequestSeqRef.current === requestSeq)
+          setMessagesLoading(false);
+      }
+    },
+    [messageCursor],
+  );
 
   const loadEventsPage = useCallback(
     async (id: string, reset = false, clearOnReset = true) => {
@@ -463,7 +508,8 @@ export function TicketDetailPage({
       setEventsLoading(true);
       try {
         const response = await fetchTicketEvents(id, {
-          cursor: reset ? undefined : eventCursor ?? undefined, take: 50,
+          cursor: reset ? undefined : (eventCursor ?? undefined),
+          take: 50,
         });
         if (eventRequestSeqRef.current !== requestSeq) return;
         setEvents((prev) => {
@@ -476,7 +522,11 @@ export function TicketDetailPage({
         setEventCursor(response.nextCursor ?? null);
         setEventsHasMore(Boolean(response.nextCursor));
       } catch {
-        if (eventRequestSeqRef.current === requestSeq && reset && clearOnReset) {
+        if (
+          eventRequestSeqRef.current === requestSeq &&
+          reset &&
+          clearOnReset
+        ) {
           setEvents([]);
           setEventsHasMore(false);
           seenRealtimeEventIdsRef.current.clear();
@@ -488,51 +538,67 @@ export function TicketDetailPage({
     [eventCursor],
   );
 
-  const loadTicketDetail = useCallback(async (id: string) => {
-    const requestSeq = ++detailRequestSeqRef.current;
-    const isNewTicket = activeTicketIdRef.current !== null && activeTicketIdRef.current !== id;
-    activeTicketIdRef.current = id;
+  const loadTicketDetail = useCallback(
+    async (id: string) => {
+      const requestSeq = ++detailRequestSeqRef.current;
+      const isNewTicket =
+        activeTicketIdRef.current !== null && activeTicketIdRef.current !== id;
+      activeTicketIdRef.current = id;
 
-    setLoadingDetail(true);
-    setTicketError(null);
-    setAccessDenied(false);
-    if (isNewTicket) {
-      setTicket(null); setMessages([]); setEvents([]);
-      setMessageCursor(null); setEventCursor(null);
-      setMessagesHasMore(false); setEventsHasMore(false);
-      seenRealtimeMessageIdsRef.current.clear();
-      seenRealtimeEventIdsRef.current.clear();
-      lastTicketUpdateAtMsRef.current = 0;
-    }
-    try {
-      const detail = await fetchTicketById(id);
-      if (detailRequestSeqRef.current !== requestSeq) return;
-      setTicket(detail);
-      await Promise.all([loadMessagesPage(id, true), loadEventsPage(id, true)]);
-    } catch (error) {
-      if (detailRequestSeqRef.current !== requestSeq) return;
-      if (error instanceof ApiError && error.status === 403) {
-        setAccessDenied(true);
-        setTicketError('You do not have access to this ticket.');
-      } else {
-        setTicketError(handleApiError(error));
+      setLoadingDetail(true);
+      setTicketError(null);
+      setAccessDenied(false);
+      if (isNewTicket) {
+        setTicket(null);
+        setMessages([]);
+        setEvents([]);
+        setMessageCursor(null);
+        setEventCursor(null);
+        setMessagesHasMore(false);
+        setEventsHasMore(false);
+        seenRealtimeMessageIdsRef.current.clear();
+        seenRealtimeEventIdsRef.current.clear();
+        lastTicketUpdateAtMsRef.current = 0;
       }
-      if (isNewTicket) setTicket(null);
-    } finally {
-      if (detailRequestSeqRef.current === requestSeq) setLoadingDetail(false);
-    }
-  }, [loadMessagesPage, loadEventsPage]);
+      try {
+        const detail = await fetchTicketById(id);
+        if (detailRequestSeqRef.current !== requestSeq) return;
+        setTicket(detail);
+        await Promise.all([
+          loadMessagesPage(id, true),
+          loadEventsPage(id, true),
+        ]);
+      } catch (error) {
+        if (detailRequestSeqRef.current !== requestSeq) return;
+        if (error instanceof ApiError && error.status === 403) {
+          setAccessDenied(true);
+          setTicketError("You do not have access to this ticket.");
+        } else {
+          setTicketError(handleApiError(error));
+        }
+        if (isNewTicket) setTicket(null);
+      } finally {
+        if (detailRequestSeqRef.current === requestSeq) setLoadingDetail(false);
+      }
+    },
+    [loadMessagesPage, loadEventsPage],
+  );
 
-  const refreshAfterMutation = useCallback(async (id: string, options?: { reloadEvents?: boolean }) => {
-    const shouldReloadEvents = options?.reloadEvents ?? false;
-    try {
-      const [detail] = await Promise.all([
-        fetchTicketById(id),
-        shouldReloadEvents ? loadEventsPage(id, true) : Promise.resolve(),
-      ]);
-      setTicket(detail);
-    } catch { /* optimistic update is already applied */ }
-  }, [loadEventsPage]);
+  const refreshAfterMutation = useCallback(
+    async (id: string, options?: { reloadEvents?: boolean }) => {
+      const shouldReloadEvents = options?.reloadEvents ?? false;
+      try {
+        const [detail] = await Promise.all([
+          fetchTicketById(id),
+          shouldReloadEvents ? loadEventsPage(id, true) : Promise.resolve(),
+        ]);
+        setTicket(detail);
+      } catch {
+        /* optimistic update is already applied */
+      }
+    },
+    [loadEventsPage],
+  );
 
   /* ——— Effects ——— */
 
@@ -546,14 +612,17 @@ export function TicketDetailPage({
     }
 
     const handleRealtimeTicketChanged = (event: Event) => {
-      const customEvent = event as CustomEvent<RealtimeTicketChangedEventPayload>;
+      const customEvent =
+        event as CustomEvent<RealtimeTicketChangedEventPayload>;
       const payload = customEvent.detail;
       if (!payload || payload.ticketId !== ticketId) {
         return;
       }
 
-      const incomingUpdatedAtMs = Number.isFinite(Date.parse(payload.updatedAt ?? ''))
-        ? Date.parse(payload.updatedAt ?? '')
+      const incomingUpdatedAtMs = Number.isFinite(
+        Date.parse(payload.updatedAt ?? ""),
+      )
+        ? Date.parse(payload.updatedAt ?? "")
         : null;
       if (
         incomingUpdatedAtMs !== null &&
@@ -572,16 +641,20 @@ export function TicketDetailPage({
       const ticketSnapshot = ticketSnapshotRef.current;
       const actorForEvent = payload.actor
         ? {
-          id: payload.actor.id,
-          email: payload.actor.email,
-          displayName: payload.actor.displayName,
-        }
+            id: payload.actor.id,
+            email: payload.actor.email,
+            displayName: payload.actor.displayName,
+          }
         : null;
 
       // Keep conversation stream and timeline in sync for this specific ticket.
-      if (payload.reason === 'message_added') {
+      if (payload.reason === "message_added") {
         // Skip self-authored message events: the local optimistic/send flow already updated UI.
-        if (payload.actorId && currentUserId && payload.actorId === currentUserId) {
+        if (
+          payload.actorId &&
+          currentUserId &&
+          payload.actorId === currentUserId
+        ) {
           return;
         }
 
@@ -590,7 +663,7 @@ export function TicketDetailPage({
           if (appended) {
             appendRealtimeEvent({
               id: `rt:msg:${payload.message.id}`,
-              type: 'MESSAGE_ADDED',
+              type: "MESSAGE_ADDED",
               createdAt: payload.message.createdAt || occurredAtIso,
               payload: {
                 type: payload.message.type,
@@ -608,22 +681,22 @@ export function TicketDetailPage({
 
         // Fallback for message events without inlined payload data.
         void loadMessagesPage(ticketId, true, false);
-        if (activeTab === 'timeline') {
+        if (activeTab === "timeline") {
           void loadEventsPage(ticketId, true, false);
         }
         return;
       }
 
       const shouldPatchInPlace =
-        payload.reason === 'attachment_added' ||
-        payload.reason === 'attachment_scan_status_changed' ||
-        payload.reason === 'followers_changed' ||
-        payload.reason === 'status_changed' ||
-        payload.reason === 'assigned' ||
-        payload.reason === 'transferred' ||
-        payload.reason === 'priority_changed' ||
-        payload.reason === 'ticket_created' ||
-        payload.reason === 'automation_rule_executed';
+        payload.reason === "attachment_added" ||
+        payload.reason === "attachment_scan_status_changed" ||
+        payload.reason === "followers_changed" ||
+        payload.reason === "status_changed" ||
+        payload.reason === "assigned" ||
+        payload.reason === "transferred" ||
+        payload.reason === "priority_changed" ||
+        payload.reason === "ticket_created" ||
+        payload.reason === "automation_rule_executed";
 
       if (!shouldPatchInPlace) {
         return;
@@ -631,10 +704,10 @@ export function TicketDetailPage({
 
       const patched = applyTicketRealtimePatch(payload);
 
-      if (payload.reason === 'ticket_created') {
+      if (payload.reason === "ticket_created") {
         appendRealtimeEvent({
           id: `rt:create:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'TICKET_CREATED',
+          type: "TICKET_CREATED",
           createdAt: occurredAtIso,
           payload: null,
           createdBy: actorForEvent,
@@ -642,14 +715,14 @@ export function TicketDetailPage({
       }
 
       if (
-        payload.reason === 'status_changed' &&
+        payload.reason === "status_changed" &&
         ticketSnapshot?.status &&
         payload.status &&
         ticketSnapshot.status !== payload.status
       ) {
         appendRealtimeEvent({
           id: `rt:status:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'TICKET_STATUS_CHANGED',
+          type: "TICKET_STATUS_CHANGED",
           createdAt: occurredAtIso,
           payload: {
             from: ticketSnapshot.status,
@@ -659,10 +732,10 @@ export function TicketDetailPage({
         });
       }
 
-      if (payload.reason === 'assigned') {
+      if (payload.reason === "assigned") {
         appendRealtimeEvent({
           id: `rt:assign:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'TICKET_ASSIGNED',
+          type: "TICKET_ASSIGNED",
           createdAt: occurredAtIso,
           payload: {
             assigneeId: payload.assigneeId ?? null,
@@ -678,7 +751,7 @@ export function TicketDetailPage({
         ) {
           appendRealtimeEvent({
             id: `rt:assign-status:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-            type: 'TICKET_STATUS_CHANGED',
+            type: "TICKET_STATUS_CHANGED",
             createdAt: occurredAtIso,
             payload: {
               from: ticketSnapshot.status,
@@ -689,10 +762,10 @@ export function TicketDetailPage({
         }
       }
 
-      if (payload.reason === 'transferred') {
+      if (payload.reason === "transferred") {
         appendRealtimeEvent({
           id: `rt:transfer:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'TICKET_TRANSFERRED',
+          type: "TICKET_TRANSFERRED",
           createdAt: occurredAtIso,
           payload: {
             fromTeamId: ticketSnapshot?.assignedTeam?.id ?? null,
@@ -709,7 +782,7 @@ export function TicketDetailPage({
         ) {
           appendRealtimeEvent({
             id: `rt:transfer-status:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-            type: 'TICKET_STATUS_CHANGED',
+            type: "TICKET_STATUS_CHANGED",
             createdAt: occurredAtIso,
             payload: {
               from: ticketSnapshot.status,
@@ -721,14 +794,14 @@ export function TicketDetailPage({
       }
 
       if (
-        payload.reason === 'priority_changed' &&
+        payload.reason === "priority_changed" &&
         ticketSnapshot?.priority &&
         payload.priority &&
         ticketSnapshot.priority !== payload.priority
       ) {
         appendRealtimeEvent({
           id: `rt:priority:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'TICKET_PRIORITY_CHANGED',
+          type: "TICKET_PRIORITY_CHANGED",
           createdAt: occurredAtIso,
           payload: {
             from: ticketSnapshot.priority,
@@ -738,20 +811,20 @@ export function TicketDetailPage({
         });
       }
 
-      if (payload.reason === 'attachment_added') {
+      if (payload.reason === "attachment_added") {
         appendRealtimeEvent({
           id: `rt:attachment:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'ATTACHMENT_ADDED',
+          type: "ATTACHMENT_ADDED",
           createdAt: occurredAtIso,
           payload: {},
           createdBy: actorForEvent,
         });
       }
 
-      if (payload.reason === 'attachment_scan_status_changed') {
+      if (payload.reason === "attachment_scan_status_changed") {
         appendRealtimeEvent({
           id: `rt:attachment-scan:${ticketId}:${payload.updatedAt ?? occurredAtIso}`,
-          type: 'ATTACHMENT_SCAN_STATUS_CHANGED',
+          type: "ATTACHMENT_SCAN_STATUS_CHANGED",
           createdAt: occurredAtIso,
           payload: {},
           createdBy: actorForEvent,
@@ -759,13 +832,13 @@ export function TicketDetailPage({
       }
 
       const requiresDetailHydration =
-        payload.reason === 'attachment_added' ||
-        payload.reason === 'attachment_scan_status_changed' ||
-        payload.reason === 'followers_changed';
+        payload.reason === "attachment_added" ||
+        payload.reason === "attachment_scan_status_changed" ||
+        payload.reason === "followers_changed";
       const hasPatchData =
-        typeof payload.status === 'string' ||
-        typeof payload.priority === 'string' ||
-        typeof payload.updatedAt === 'string' ||
+        typeof payload.status === "string" ||
+        typeof payload.priority === "string" ||
+        typeof payload.updatedAt === "string" ||
         payload.assigneeId !== undefined ||
         payload.assignedTeamId !== undefined ||
         payload.assignee !== undefined ||
@@ -807,7 +880,8 @@ export function TicketDetailPage({
     }
 
     const handleRealtimeTicketTyping = (event: Event) => {
-      const customEvent = event as CustomEvent<RealtimeTicketTypingEventPayload>;
+      const customEvent =
+        event as CustomEvent<RealtimeTicketTypingEventPayload>;
       const payload = customEvent.detail;
       if (!payload || payload.ticketId !== ticketId) {
         return;
@@ -821,8 +895,8 @@ export function TicketDetailPage({
         return;
       }
 
-      const occurredAtMs = Number.isFinite(Date.parse(payload.occurredAt ?? ''))
-        ? Date.parse(payload.occurredAt ?? '')
+      const occurredAtMs = Number.isFinite(Date.parse(payload.occurredAt ?? ""))
+        ? Date.parse(payload.occurredAt ?? "")
         : Date.now();
       const lastOccurredAtMs =
         lastTypingOccurredAtByActorRef.current[actorId] ?? 0;
@@ -843,8 +917,11 @@ export function TicketDetailPage({
         }
 
         const nextDisplayName =
-          payload.actorDisplayName || payload.actorEmail || existing?.displayName || 'Someone';
-        const nextEmail = payload.actorEmail || existing?.email || '';
+          payload.actorDisplayName ||
+          payload.actorEmail ||
+          existing?.displayName ||
+          "Someone";
+        const nextEmail = payload.actorEmail || existing?.email || "";
         return {
           ...prev,
           [actorId]: {
@@ -871,7 +948,10 @@ export function TicketDetailPage({
   }, [ticketId, currentUserId]);
 
   useEffect(() => {
-    if (!ticket?.assignedTeam?.id) { setTeamMembers([]); return; }
+    if (!ticket?.assignedTeam?.id) {
+      setTeamMembers([]);
+      return;
+    }
     setTeamMembers([]);
     setMembersLoading(true);
     fetchTeamMembers(ticket.assignedTeam.id)
@@ -881,8 +961,12 @@ export function TicketDetailPage({
   }, [ticket?.assignedTeam?.id]);
 
   useEffect(() => {
-    if (!transferTeamId) { setTransferMembers([]); setTransferAssigneeId(''); return; }
-    setTransferAssigneeId('');
+    if (!transferTeamId) {
+      setTransferMembers([]);
+      setTransferAssigneeId("");
+      return;
+    }
+    setTransferAssigneeId("");
     fetchTeamMembers(transferTeamId)
       .then((r) => setTransferMembers(r.data))
       .catch(() => setTransferMembers([]));
@@ -890,25 +974,28 @@ export function TicketDetailPage({
 
   useEffect(() => {
     if (!ticket) return;
-    setNextStatus(availableTransitions[0] ?? '');
-    setAssignToId('');
-    setTransferTeamId('');
-    setTransferAssigneeId('');
+    setNextStatus(availableTransitions[0] ?? "");
+    setAssignToId("");
+    setTransferTeamId("");
+    setTransferAssigneeId("");
   }, [ticket?.id, ticket?.status, availableTransitions]);
 
   // Scroll management for conversation
   useEffect(() => {
-    if (activeTab !== 'conversation') return;
+    if (activeTab !== "conversation") return;
     const el = conversationListRef.current;
     if (!el) return;
-    const onScroll = () => setShowJumpToLatest(el.scrollHeight - el.scrollTop - el.clientHeight > 250);
-    el.addEventListener('scroll', onScroll);
+    const onScroll = () =>
+      setShowJumpToLatest(
+        el.scrollHeight - el.scrollTop - el.clientHeight > 250,
+      );
+    el.addEventListener("scroll", onScroll);
     onScroll();
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => el.removeEventListener("scroll", onScroll);
   }, [activeTab, ticket?.id]);
 
   useEffect(() => {
-    if (activeTab !== 'conversation') return;
+    if (activeTab !== "conversation") return;
     const el = conversationListRef.current;
     if (el) {
       el.scrollTop = el.scrollHeight;
@@ -917,7 +1004,7 @@ export function TicketDetailPage({
   }, [ticket?.id, activeTab]);
 
   useEffect(() => {
-    if (activeTab !== 'conversation') return;
+    if (activeTab !== "conversation") return;
     const el = conversationListRef.current;
     if (!el) return;
     if (!hasInitialConversationScrollRef.current) {
@@ -931,10 +1018,11 @@ export function TicketDetailPage({
   }, [messages.length, activeTab]);
 
   useEffect(() => {
-    if (activeTab !== 'conversation') return;
+    if (activeTab !== "conversation") return;
     const el = conversationListRef.current;
     if (!el) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 180) el.scrollTop = el.scrollHeight;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight <= 180)
+      el.scrollTop = el.scrollHeight;
   }, [typingUsers.length, activeTab]);
 
   useEffect(() => {
@@ -977,13 +1065,15 @@ export function TicketDetailPage({
   }, [ticketId, clearTypingIdleTimer, publishTypingSignal]);
 
   useEffect(() => {
-    if (activeTab === 'conversation') {
+    if (activeTab === "conversation") {
       return;
     }
     stopTyping();
   }, [activeTab, stopTyping]);
 
-  useEffect(() => { if (role === 'EMPLOYEE') setMessageType('PUBLIC'); }, [role]);
+  useEffect(() => {
+    if (role === "EMPLOYEE") setMessageType("PUBLIC");
+  }, [role]);
 
   useEffect(() => {
     if (!copyToast) return;
@@ -998,25 +1088,49 @@ export function TicketDetailPage({
       const target = event.target as HTMLElement | null;
       if (
         target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
           target.isContentEditable)
       ) {
         return;
       }
       switch (event.key) {
-        case 'r': case 'R':
-          if (!event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); messageInputRef.current?.focus(); } break;
-        case 'a': case 'A':
-          if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage && !ticket?.assignee) { event.preventDefault(); void handleAssignSelf(); } break;
-        case 's': case 'S':
-          if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage) { event.preventDefault(); statusSelectRef.current?.focus(); } break;
-        case 'Escape': event.preventDefault(); navigateBack(); break;
+        case "r":
+        case "R":
+          if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault();
+            messageInputRef.current?.focus();
+          }
+          break;
+        case "a":
+        case "A":
+          if (
+            !event.ctrlKey &&
+            !event.metaKey &&
+            !event.altKey &&
+            canManage &&
+            !ticket?.assignee
+          ) {
+            event.preventDefault();
+            void handleAssignSelf();
+          }
+          break;
+        case "s":
+        case "S":
+          if (!event.ctrlKey && !event.metaKey && !event.altKey && canManage) {
+            event.preventDefault();
+            statusSelectRef.current?.focus();
+          }
+          break;
+        case "Escape":
+          event.preventDefault();
+          navigateBack();
+          break;
       }
     }
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [canManage, navigateBack, ticket?.assignee]);
 
   /* ——— Event handlers (memoized, 6.3) ——— */
@@ -1025,7 +1139,10 @@ export function TicketDetailPage({
     if (!ticketId) return;
     const url = `${window.location.origin}/tickets/${ticketId}`;
     const copied = await copyToClipboard(url);
-    setCopyToast({ message: copied ? 'Link copied to clipboard' : 'Could not copy link', type: copied ? 'success' : 'error' });
+    setCopyToast({
+      message: copied ? "Link copied to clipboard" : "Could not copy link",
+      type: copied ? "success" : "error",
+    });
   }, [ticketId]);
 
   const handleMessageBodyChange = useCallback(
@@ -1035,7 +1152,7 @@ export function TicketDetailPage({
       const el = messageInputRef.current;
       if (el) {
         const maxHeight = 180;
-        el.style.height = 'auto';
+        el.style.height = "auto";
         const nextHeight = Math.min(el.scrollHeight, maxHeight);
         el.style.height = `${nextHeight}px`;
       }
@@ -1069,30 +1186,31 @@ export function TicketDetailPage({
       type: messageType,
       createdAt: new Date().toISOString(),
       author: {
-        id: 'pending',
+        id: "pending",
         email: currentEmail,
-        displayName: currentEmail.split('@')[0] || 'You',
+        displayName: currentEmail.split("@")[0] || "You",
       },
-      localStatus: 'sending',
+      localStatus: "sending",
     };
     setMessages((prev) => [...prev, optimisticMessage]);
-    setMessageBody('');
+    setMessageBody("");
     if (messageInputRef.current) {
-      messageInputRef.current.style.height = '';
+      messageInputRef.current.style.height = "";
     }
 
     try {
-      const serverMessage = await addTicketMessage(ticketId, { body, type: messageType });
+      const serverMessage = await addTicketMessage(ticketId, {
+        body,
+        type: messageType,
+      });
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === optimisticId
-            ? { ...m, localStatus: 'sent' }
-            : m,
+          m.id === optimisticId ? { ...m, localStatus: "sent" } : m,
         ),
       );
       appendRealtimeEvent({
         id: `rt:msg:${serverMessage.id}`,
-        type: 'MESSAGE_ADDED',
+        type: "MESSAGE_ADDED",
         createdAt: serverMessage.createdAt,
         payload: {
           type: serverMessage.type,
@@ -1100,127 +1218,236 @@ export function TicketDetailPage({
         },
         createdBy: serverMessage.author,
       });
-      setCopyToast({ message: messageType === 'INTERNAL' ? 'Internal note added' : 'Reply sent', type: 'success' });
+      setCopyToast({
+        message:
+          messageType === "INTERNAL" ? "Internal note added" : "Reply sent",
+        type: "success",
+      });
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      setTicketError('Unable to send message.');
-      setCopyToast({ message: 'Unable to send message.', type: 'error' });
+      setTicketError("Unable to send message.");
+      setCopyToast({ message: "Unable to send message.", type: "error" });
     }
-  }, [messageBody, ticketId, ticket, messageType, currentEmail, appendRealtimeEvent, stopTyping]);
+  }, [
+    messageBody,
+    ticketId,
+    ticket,
+    messageType,
+    currentEmail,
+    appendRealtimeEvent,
+    stopTyping,
+  ]);
 
   const handleAssignSelf = useCallback(async () => {
     if (!ticket) return;
-    setActionError(null); setActionLoading(true);
+    setActionError(null);
+    setActionLoading(true);
     try {
       const updated = await assignTicket(ticket.id, {});
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void refreshAfterMutation(ticket.id);
-      setCopyToast({ message: 'Assigned to you.', type: 'success' });
-      notifyTicketAggregatesChanged(); notifyTicketReportsChanged();
-    } catch { setActionError('Unable to assign ticket.'); setCopyToast({ message: 'Unable to assign ticket.', type: 'error' }); }
-    finally { setActionLoading(false); }
-  }, [ticket, refreshAfterMutation, notifyTicketAggregatesChanged, notifyTicketReportsChanged]);
+      setCopyToast({ message: "Assigned to you.", type: "success" });
+      notifyTicketAggregatesChanged();
+      notifyTicketReportsChanged();
+    } catch {
+      setActionError("Unable to assign ticket.");
+      setCopyToast({ message: "Unable to assign ticket.", type: "error" });
+    } finally {
+      setActionLoading(false);
+    }
+  }, [
+    ticket,
+    refreshAfterMutation,
+    notifyTicketAggregatesChanged,
+    notifyTicketReportsChanged,
+  ]);
 
   const handleAssignMember = useCallback(async () => {
     if (!ticket || !assignToId) return;
-    setActionError(null); setActionLoading(true);
+    setActionError(null);
+    setActionLoading(true);
     try {
       const updated = await assignTicket(ticket.id, { assigneeId: assignToId });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void refreshAfterMutation(ticket.id);
-      setCopyToast({ message: 'Assignee updated.', type: 'success' });
-      notifyTicketAggregatesChanged(); notifyTicketReportsChanged();
-    } catch { setActionError('Unable to assign ticket.'); setCopyToast({ message: 'Unable to assign ticket.', type: 'error' }); }
-    finally { setActionLoading(false); }
-  }, [ticket, assignToId, refreshAfterMutation, notifyTicketAggregatesChanged, notifyTicketReportsChanged]);
-
-  const transitionTo = useCallback(async (targetStatus: string) => {
-    if (!ticket || !targetStatus || targetStatus === ticket.status) return;
-    const previousStatus = ticket.status;
-    setActionError(null); setActionLoading(true);
-
-    // Optimistic update (7.6 fix): update UI immediately, rollback on error
-    setTicket((prev) => (prev ? { ...prev, status: targetStatus as TicketDetail['status'] } : prev));
-    setCopyToast({ message: `Status updated to ${formatStatus(targetStatus)}.`, type: 'success' });
-
-    try {
-      const updated = await transitionTicket(ticket.id, { status: targetStatus as TicketStatus });
-      setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
-      void refreshAfterMutation(ticket.id);
+      setCopyToast({ message: "Assignee updated.", type: "success" });
       notifyTicketAggregatesChanged();
-      if (targetStatus === 'RESOLVED' || targetStatus === 'CLOSED') notifyTicketReportsChanged();
+      notifyTicketReportsChanged();
     } catch {
-      // Rollback optimistic update
-      setTicket((prev) => (prev ? { ...prev, status: previousStatus } : prev));
-      setActionError('Unable to change status.');
-      setCopyToast({ message: 'Unable to change status.', type: 'error' });
-    } finally { setActionLoading(false); }
-  }, [ticket, refreshAfterMutation, notifyTicketAggregatesChanged, notifyTicketReportsChanged]);
+      setActionError("Unable to assign ticket.");
+      setCopyToast({ message: "Unable to assign ticket.", type: "error" });
+    } finally {
+      setActionLoading(false);
+    }
+  }, [
+    ticket,
+    assignToId,
+    refreshAfterMutation,
+    notifyTicketAggregatesChanged,
+    notifyTicketReportsChanged,
+  ]);
 
-  const handleTransition = useCallback(() => transitionTo(nextStatus), [transitionTo, nextStatus]);
+  const transitionTo = useCallback(
+    async (targetStatus: string) => {
+      if (!ticket || !targetStatus || targetStatus === ticket.status) return;
+      const previousStatus = ticket.status;
+      setActionError(null);
+      setActionLoading(true);
+
+      // Optimistic update (7.6 fix): update UI immediately, rollback on error
+      setTicket((prev) =>
+        prev
+          ? { ...prev, status: targetStatus as TicketDetail["status"] }
+          : prev,
+      );
+      setCopyToast({
+        message: `Status updated to ${formatStatus(targetStatus)}.`,
+        type: "success",
+      });
+
+      try {
+        const updated = await transitionTicket(ticket.id, {
+          status: targetStatus as TicketStatus,
+        });
+        setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
+        void refreshAfterMutation(ticket.id);
+        notifyTicketAggregatesChanged();
+        if (targetStatus === "RESOLVED" || targetStatus === "CLOSED")
+          notifyTicketReportsChanged();
+      } catch {
+        // Rollback optimistic update
+        setTicket((prev) =>
+          prev ? { ...prev, status: previousStatus } : prev,
+        );
+        setActionError("Unable to change status.");
+        setCopyToast({ message: "Unable to change status.", type: "error" });
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [
+      ticket,
+      refreshAfterMutation,
+      notifyTicketAggregatesChanged,
+      notifyTicketReportsChanged,
+    ],
+  );
+
+  const handleTransition = useCallback(
+    () => transitionTo(nextStatus),
+    [transitionTo, nextStatus],
+  );
 
   const handleTransfer = useCallback(async () => {
     if (!ticket || !transferTeamId) return;
-    setActionError(null); setActionLoading(true);
+    setActionError(null);
+    setActionLoading(true);
     try {
-      const updated = await transferTicket(ticket.id, { newTeamId: transferTeamId, assigneeId: transferAssigneeId || undefined });
+      const updated = await transferTicket(ticket.id, {
+        newTeamId: transferTeamId,
+        assigneeId: transferAssigneeId || undefined,
+      });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
       void refreshAfterMutation(ticket.id);
-      setCopyToast({ message: 'Ticket transferred.', type: 'success' });
-      notifyTicketAggregatesChanged(); notifyTicketReportsChanged();
-    } catch { setActionError('Unable to transfer ticket.'); setCopyToast({ message: 'Unable to transfer ticket.', type: 'error' }); }
-    finally { setActionLoading(false); }
-  }, [ticket, transferTeamId, transferAssigneeId, refreshAfterMutation, notifyTicketAggregatesChanged, notifyTicketReportsChanged]);
+      setCopyToast({ message: "Ticket transferred.", type: "success" });
+      notifyTicketAggregatesChanged();
+      notifyTicketReportsChanged();
+    } catch {
+      setActionError("Unable to transfer ticket.");
+      setCopyToast({ message: "Unable to transfer ticket.", type: "error" });
+    } finally {
+      setActionLoading(false);
+    }
+  }, [
+    ticket,
+    transferTeamId,
+    transferAssigneeId,
+    refreshAfterMutation,
+    notifyTicketAggregatesChanged,
+    notifyTicketReportsChanged,
+  ]);
 
   const handleFollowToggle = useCallback(async () => {
     if (!ticket) return;
-    setFollowError(null); setFollowLoading(true);
+    setFollowError(null);
+    setFollowLoading(true);
     try {
-      if (isFollowing) await unfollowTicket(ticket.id); else await followTicket(ticket.id);
+      if (isFollowing) await unfollowTicket(ticket.id);
+      else await followTicket(ticket.id);
       void refreshAfterMutation(ticket.id);
-      setCopyToast({ message: isFollowing ? 'Unfollowed ticket.' : 'Following ticket.', type: 'success' });
-    } catch { setFollowError('Unable to update followers.'); setCopyToast({ message: 'Unable to update followers.', type: 'error' }); }
-    finally { setFollowLoading(false); }
+      setCopyToast({
+        message: isFollowing ? "Unfollowed ticket." : "Following ticket.",
+        type: "success",
+      });
+    } catch {
+      setFollowError("Unable to update followers.");
+      setCopyToast({ message: "Unable to update followers.", type: "error" });
+    } finally {
+      setFollowLoading(false);
+    }
   }, [ticket, isFollowing, refreshAfterMutation]);
 
-  const handleAttachmentUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    if (!ticketId) return;
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    setAttachmentError(null); setAttachmentUploading(true);
-    try {
-      for (const file of Array.from(files)) await uploadTicketAttachment(ticketId, file);
-      void refreshAfterMutation(ticketId);
-      setCopyToast({ message: 'Attachment uploaded.', type: 'success' });
-    } catch { setAttachmentError('Unable to upload attachment.'); setCopyToast({ message: 'Unable to upload attachment.', type: 'error' }); }
-    finally { setAttachmentUploading(false); event.target.value = ''; }
-  }, [ticketId, refreshAfterMutation]);
+  const handleAttachmentUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      if (!ticketId) return;
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+      setAttachmentError(null);
+      setAttachmentUploading(true);
+      try {
+        for (const file of Array.from(files))
+          await uploadTicketAttachment(ticketId, file);
+        void refreshAfterMutation(ticketId);
+        setCopyToast({ message: "Attachment uploaded.", type: "success" });
+      } catch {
+        setAttachmentError("Unable to upload attachment.");
+        setCopyToast({
+          message: "Unable to upload attachment.",
+          type: "error",
+        });
+      } finally {
+        setAttachmentUploading(false);
+        event.target.value = "";
+      }
+    },
+    [ticketId, refreshAfterMutation],
+  );
 
-  const handleAttachmentDownload = useCallback(async (attachmentId: string, fileName: string) => {
-    setAttachmentError(null);
-    try {
-      const blob = await downloadAttachment(attachmentId);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url; link.download = fileName;
-      document.body.appendChild(link); link.click(); link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to download attachment.';
-      setAttachmentError(message || 'Unable to download attachment.');
-    }
-  }, []);
+  const handleAttachmentDownload = useCallback(
+    async (attachmentId: string, fileName: string) => {
+      setAttachmentError(null);
+      try {
+        const blob = await downloadAttachment(attachmentId);
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to download attachment.";
+        setAttachmentError(message || "Unable to download attachment.");
+      }
+    },
+    [],
+  );
 
   const handleAttachmentView = useCallback(async (attachmentId: string) => {
     setAttachmentError(null);
     try {
       const blob = await downloadAttachment(attachmentId);
       const url = window.URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
+      window.open(url, "_blank", "noopener,noreferrer");
       window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to open attachment.';
-      setAttachmentError(message || 'Unable to open attachment.');
+      const message =
+        error instanceof Error ? error.message : "Unable to open attachment.";
+      setAttachmentError(message || "Unable to open attachment.");
     }
   }, []);
 
@@ -1229,7 +1456,10 @@ export function TicketDetailPage({
   }, []);
 
   const scrollToLatest = useCallback(() => {
-    conversationListRef.current?.scrollTo({ top: conversationListRef.current.scrollHeight, behavior: 'smooth' });
+    conversationListRef.current?.scrollTo({
+      top: conversationListRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, []);
 
   const conversationCount = messages.length;
@@ -1244,11 +1474,11 @@ export function TicketDetailPage({
 
     function updateIndicator() {
       let target: HTMLButtonElement | null = null;
-      if (activeTab === 'conversation') {
+      if (activeTab === "conversation") {
         target = conversationTabRef.current;
-      } else if (activeTab === 'timeline') {
+      } else if (activeTab === "timeline") {
         target = timelineTabRef.current;
-      } else if (activeTab === 'attachments') {
+      } else if (activeTab === "attachments") {
         target = attachmentsTabRef.current;
       }
       if (!target) {
@@ -1267,22 +1497,32 @@ export function TicketDetailPage({
     const handleResize = () => {
       updateIndicator();
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [activeTab]);
 
   /* ——— Render ——— */
 
   return (
-    <section className="flex h-screen flex-col bg-white animate-fade-in" title={headerTitle}>
+    <section
+      className="flex h-screen flex-col bg-white animate-fade-in"
+      title={headerTitle}
+    >
       {/* Toast notification */}
       {copyToast && (
         <div className="fixed right-4 top-4 z-50">
           <div
-            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${copyToast.type === 'success' ? 'border-emerald-200 text-slate-900' : 'border-rose-200 text-rose-700'
-              }`}
+            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${
+              copyToast.type === "success"
+                ? "border-emerald-200 text-slate-900"
+                : "border-rose-200 text-rose-700"
+            }`}
           >
-            {copyToast.type === 'success' ? <Check className="h-5 w-5 text-emerald-600" /> : <Clock3 className="h-5 w-5" />}
+            {copyToast.type === "success" ? (
+              <Check className="h-5 w-5 text-emerald-600" />
+            ) : (
+              <Clock3 className="h-5 w-5" />
+            )}
             <span className="text-sm font-medium">{copyToast.message}</span>
           </div>
         </div>
@@ -1293,10 +1533,11 @@ export function TicketDetailPage({
         <div className="mx-auto max-w-[1600px] px-6 py-3">
           <TopBar
             title={headerTitle}
-            subtitle={headerCtx?.subtitle ?? 'Review context, collaborate, and update workflow in one workspace.'}
+            subtitle={
+              headerCtx?.subtitle ??
+              "Review context, collaborate, and update workflow in one workspace."
+            }
             currentEmail={headerCtx?.currentEmail ?? currentEmail}
-
-
             onOpenSearch={headerCtx?.onOpenSearch}
             notificationProps={headerCtx?.notificationProps}
             leftAction={
@@ -1313,26 +1554,46 @@ export function TicketDetailPage({
             leftContent={
               ticket ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-slate-500">{formatTicketId(ticket)}</span>
-                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}>{formatStatus(ticket.status)}</span>
-                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}>{formatPriority(ticket.priority)}</span>
-                  <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">{formatChannel(ticket.channel)}</span>
+                  <span className="text-sm text-slate-500">
+                    {formatTicketId(ticket)}
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}
+                  >
+                    {formatStatus(ticket.status)}
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}
+                  >
+                    {formatPriority(ticket.priority)}
+                  </span>
+                  <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                    {formatChannel(ticket.channel)}
+                  </span>
                 </div>
               ) : (
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">Ticket details</h1>
-                  <p className="text-sm text-slate-500">Review context, collaborate, and update workflow in one workspace.</p>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    Ticket details
+                  </h1>
+                  <p className="text-sm text-slate-500">
+                    Review context, collaborate, and update workflow in one
+                    workspace.
+                  </p>
                 </div>
               )
             }
           />
         </div>
-
       </div>
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {ticketError && <p className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600 shadow-lg">{ticketError}</p>}
+        {ticketError && (
+          <p className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-md bg-red-50 px-4 py-2 text-sm text-red-600 shadow-lg">
+            {ticketError}
+          </p>
+        )}
         {accessDenied && (
           <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 rounded-md bg-amber-50 px-4 py-2 text-sm text-amber-900 shadow-lg">
             Switch to a user with access, or go back to the ticket list.
@@ -1355,7 +1616,8 @@ export function TicketDetailPage({
                         </h1>
                         {ticket.description ? (
                           <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
-                            {stripFacilityFromDescription(ticket.description) || 'No description provided.'}
+                            {stripFacilityFromDescription(ticket.description) ||
+                              "No description provided."}
                           </p>
                         ) : (
                           <p className="mt-2 text-[14px] leading-relaxed italic text-slate-500">
@@ -1401,20 +1663,22 @@ export function TicketDetailPage({
                     ref={conversationTabRef}
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === 'conversation'}
+                    aria-selected={activeTab === "conversation"}
                     aria-controls="panel-conversation"
-                    onClick={() => setActiveTab('conversation')}
-                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${activeTab === 'conversation'
-                      ? 'text-slate-50'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                    onClick={() => setActiveTab("conversation")}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                      activeTab === "conversation"
+                        ? "text-slate-50"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
                   >
                     <span>Conversation</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === 'conversation'
-                        ? 'bg-slate-800 text-slate-100'
-                        : 'bg-slate-200 text-slate-700'
-                        }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        activeTab === "conversation"
+                          ? "bg-slate-800 text-slate-100"
+                          : "bg-slate-200 text-slate-700"
+                      }`}
                     >
                       {conversationCount}
                     </span>
@@ -1424,20 +1688,22 @@ export function TicketDetailPage({
                     ref={attachmentsTabRef}
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === 'attachments'}
+                    aria-selected={activeTab === "attachments"}
                     aria-controls="panel-attachments"
-                    onClick={() => setActiveTab('attachments')}
-                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${activeTab === 'attachments'
-                      ? 'text-slate-50'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                    onClick={() => setActiveTab("attachments")}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                      activeTab === "attachments"
+                        ? "text-slate-50"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
                   >
                     <span>Attachments</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === 'attachments'
-                        ? 'bg-slate-800 text-slate-100'
-                        : 'bg-slate-200 text-slate-700'
-                        }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        activeTab === "attachments"
+                          ? "bg-slate-800 text-slate-100"
+                          : "bg-slate-200 text-slate-700"
+                      }`}
                     >
                       {attachmentsCount}
                     </span>
@@ -1447,20 +1713,22 @@ export function TicketDetailPage({
                     ref={timelineTabRef}
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === 'timeline'}
+                    aria-selected={activeTab === "timeline"}
                     aria-controls="panel-timeline"
-                    onClick={() => setActiveTab('timeline')}
-                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${activeTab === 'timeline'
-                      ? 'text-slate-50'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
+                    onClick={() => setActiveTab("timeline")}
+                    className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
+                      activeTab === "timeline"
+                        ? "text-slate-50"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
                   >
                     <span>Timeline</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${activeTab === 'timeline'
-                        ? 'bg-slate-800 text-slate-100'
-                        : 'bg-slate-200 text-slate-700'
-                        }`}
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        activeTab === "timeline"
+                          ? "bg-slate-800 text-slate-100"
+                          : "bg-slate-200 text-slate-700"
+                      }`}
                     >
                       {timelineCount}
                     </span>
@@ -1475,7 +1743,9 @@ export function TicketDetailPage({
                   <TicketDetailSkeleton count={5} className="flex-1" />
                 ) : null}
                 {!loadingDetail && !ticket && !accessDenied ? (
-                  <p className="p-6 text-sm text-slate-500">Ticket not found.</p>
+                  <p className="p-6 text-sm text-slate-500">
+                    Ticket not found.
+                  </p>
                 ) : null}
 
                 {ticket ? (
@@ -1483,11 +1753,12 @@ export function TicketDetailPage({
                     <div
                       id="panel-conversation"
                       role="tabpanel"
-                      aria-hidden={activeTab !== 'conversation'}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${activeTab === 'conversation'
-                        ? 'opacity-100 translate-y-0 pointer-events-auto'
-                        : 'opacity-0 translate-y-2 pointer-events-none'
-                        }`}
+                      aria-hidden={activeTab !== "conversation"}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
+                        activeTab === "conversation"
+                          ? "opacity-100 translate-y-0 pointer-events-auto"
+                          : "opacity-0 translate-y-2 pointer-events-none"
+                      }`}
                     >
                       <TicketConversation
                         ticket={ticket}
@@ -1503,9 +1774,13 @@ export function TicketDetailPage({
                         canManage={canManage}
                         canUpload={canUpload}
                         onReply={() => void handleReply()}
-                        onLoadMore={() => ticketId && void loadMessagesPage(ticketId)}
+                        onLoadMore={() =>
+                          ticketId && void loadMessagesPage(ticketId)
+                        }
                         onAttachmentUpload={handleAttachmentUpload}
-                        onAttachmentDownload={(id, name) => void handleAttachmentDownload(id, name)}
+                        onAttachmentDownload={(id, name) =>
+                          void handleAttachmentDownload(id, name)
+                        }
                         onAttachmentView={(id) => void handleAttachmentView(id)}
                         attachmentUploading={attachmentUploading}
                         attachmentError={attachmentError}
@@ -1521,15 +1796,18 @@ export function TicketDetailPage({
                     <div
                       id="panel-attachments"
                       role="tabpanel"
-                      aria-hidden={activeTab !== 'attachments'}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${activeTab === 'attachments'
-                        ? 'opacity-100 translate-y-0 pointer-events-auto'
-                        : 'opacity-0 translate-y-2 pointer-events-none'
-                        }`}
+                      aria-hidden={activeTab !== "attachments"}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
+                        activeTab === "attachments"
+                          ? "opacity-100 translate-y-0 pointer-events-auto"
+                          : "opacity-0 translate-y-2 pointer-events-none"
+                      }`}
                     >
                       <TicketAttachments
                         ticket={ticket}
-                        onDownloadAttachment={(id, name) => void handleAttachmentDownload(id, name)}
+                        onDownloadAttachment={(id, name) =>
+                          void handleAttachmentDownload(id, name)
+                        }
                         attachmentError={attachmentError}
                       />
                     </div>
@@ -1537,17 +1815,20 @@ export function TicketDetailPage({
                     <div
                       id="panel-timeline"
                       role="tabpanel"
-                      aria-hidden={activeTab !== 'timeline'}
-                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${activeTab === 'timeline'
-                        ? 'opacity-100 translate-y-0 pointer-events-auto'
-                        : 'opacity-0 translate-y-2 pointer-events-none'
-                        }`}
+                      aria-hidden={activeTab !== "timeline"}
+                      className={`absolute inset-0 flex flex-col transition-all duration-300 ease-out ${
+                        activeTab === "timeline"
+                          ? "opacity-100 translate-y-0 pointer-events-auto"
+                          : "opacity-0 translate-y-2 pointer-events-none"
+                      }`}
                     >
                       <TicketTimeline
                         events={events}
                         eventsHasMore={eventsHasMore}
                         eventsLoading={eventsLoading}
-                        onLoadMore={() => ticketId && void loadEventsPage(ticketId)}
+                        onLoadMore={() =>
+                          ticketId && void loadEventsPage(ticketId)
+                        }
                       />
                     </div>
                   </>

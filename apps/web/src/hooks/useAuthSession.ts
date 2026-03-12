@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 import {
   InteractionRequiredAuthError,
   PublicClientApplication,
   type AccountInfo,
   type AuthenticationResult,
-} from '@azure/msal-browser';
+} from "@azure/msal-browser";
 import {
   fetchCurrentUser,
   getDemoUserEmail,
@@ -13,7 +13,7 @@ import {
   syncCurrentUserProfile,
   type CurrentUserSession,
   type MicrosoftGraphProfile,
-} from '../api/client';
+} from "../api/client";
 
 type AuthState = {
   loading: boolean;
@@ -54,8 +54,8 @@ const logoutRedirectUri =
   (import.meta.env.VITE_AZURE_LOGOUT_REDIRECT_URI as string | undefined) ??
   window.location.origin;
 
-const oidcScopes = ['openid', 'profile', 'email'];
-const graphScopes = ['User.Read'];
+const oidcScopes = ["openid", "profile", "email"];
+const graphScopes = ["User.Read"];
 const loginRequest = {
   scopes: [...oidcScopes, ...graphScopes],
 };
@@ -67,37 +67,37 @@ const oidcRequest = {
 };
 
 const graphProfileFields = [
-  'id',
-  'displayName',
-  'givenName',
-  'surname',
-  'userPrincipalName',
-  'mail',
-  'jobTitle',
-  'mobilePhone',
-  'businessPhones',
-  'officeLocation',
-  'preferredLanguage',
-  'department',
-  'companyName',
-  'employeeId',
-  'employeeType',
-  'city',
-  'state',
-  'country',
-  'postalCode',
-  'streetAddress',
-  'usageLocation',
-  'mailNickname',
-].join(',');
+  "id",
+  "displayName",
+  "givenName",
+  "surname",
+  "userPrincipalName",
+  "mail",
+  "jobTitle",
+  "mobilePhone",
+  "businessPhones",
+  "officeLocation",
+  "preferredLanguage",
+  "department",
+  "companyName",
+  "employeeId",
+  "employeeType",
+  "city",
+  "state",
+  "country",
+  "postalCode",
+  "streetAddress",
+  "usageLocation",
+  "mailNickname",
+].join(",");
 
 const graphProfileEndpoint = `https://graph.microsoft.com/v1.0/me?$select=${graphProfileFields}`;
-const graphPhotoEndpoint = 'https://graph.microsoft.com/v1.0/me/photo/$value';
-const isE2EMode = import.meta.env.VITE_E2E_MODE === 'true';
+const graphPhotoEndpoint = "https://graph.microsoft.com/v1.0/me/photo/$value";
+const isE2EMode = import.meta.env.VITE_E2E_MODE === "true";
 const isLocalhost =
-  typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1');
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
 let easyAuthEndpointAvailable = false;
 
 let msalClient: PublicClientApplication | null = null;
@@ -118,7 +118,7 @@ function getMsalClient() {
       navigateToLoginRequestUrl: true,
     },
     cache: {
-      cacheLocation: 'sessionStorage',
+      cacheLocation: "sessionStorage",
       storeAuthStateInCookie: false,
     },
   });
@@ -133,14 +133,14 @@ function buildEasyAuthLogoutUrl() {
   return `/.auth/logout?post_logout_redirect_uri=${postLogoutRedirectUri}`;
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object';
+  return Boolean(value) && typeof value === "object";
 }
 function asEasyAuthClaim(value: unknown): EasyAuthClaim | null {
   if (!isRecord(value)) {
     return null;
   }
-  const typ = typeof value.typ === 'string' ? value.typ : '';
-  const val = typeof value.val === 'string' ? value.val : '';
+  const typ = typeof value.typ === "string" ? value.typ : "";
+  const val = typeof value.val === "string" ? value.val : "";
   if (!typ || !val) {
     return null;
   }
@@ -151,10 +151,11 @@ function asEasyAuthEntry(value: unknown): EasyAuthEntry | null {
     return null;
   }
   const providerName =
-    typeof value.provider_name === 'string' ? value.provider_name : undefined;
-  const idToken = typeof value.id_token === 'string' ? value.id_token : undefined;
+    typeof value.provider_name === "string" ? value.provider_name : undefined;
+  const idToken =
+    typeof value.id_token === "string" ? value.id_token : undefined;
   const accessToken =
-    typeof value.access_token === 'string' ? value.access_token : undefined;
+    typeof value.access_token === "string" ? value.access_token : undefined;
   const userClaims = Array.isArray(value.user_claims)
     ? value.user_claims
         .map((claim) => asEasyAuthClaim(claim))
@@ -171,17 +172,17 @@ function getEasyAuthEmail(entry: EasyAuthEntry) {
   const claims = entry.user_claims ?? [];
   const preferredClaim = claims.find(
     (claim) =>
-      claim.typ === 'preferred_username' ||
-      claim.typ === 'upn' ||
-      claim.typ === 'email',
+      claim.typ === "preferred_username" ||
+      claim.typ === "upn" ||
+      claim.typ === "email",
   );
   return preferredClaim?.val?.trim().toLowerCase() || null;
 }
 async function readEasyAuthIdentity(): Promise<EasyAuthIdentity | null> {
   try {
-    const response = await fetch('/.auth/me', {
-      method: 'GET',
-      credentials: 'include',
+    const response = await fetch("/.auth/me", {
+      method: "GET",
+      credentials: "include",
     });
     if (response.status === 401 || response.status === 403) {
       easyAuthEndpointAvailable = true;
@@ -202,8 +203,9 @@ async function readEasyAuthIdentity(): Promise<EasyAuthIdentity | null> {
       return null;
     }
     const preferredEntry =
-      entries.find((entry) => entry.provider_name === 'aad') ?? entries[0];
-    const token = preferredEntry.id_token ?? preferredEntry.access_token ?? null;
+      entries.find((entry) => entry.provider_name === "aad") ?? entries[0];
+    const token =
+      preferredEntry.id_token ?? preferredEntry.access_token ?? null;
     if (!token) {
       return null;
     }
@@ -223,11 +225,15 @@ async function initializeEasyAuthSession(): Promise<CurrentUserSession | null> {
   try {
     setAuthToken(identity.token);
     const me = await fetchCurrentUser();
-    const normalizedEmail = (me.data.email || identity.email || '').toLowerCase();
+    const normalizedEmail = (
+      me.data.email ||
+      identity.email ||
+      ""
+    ).toLowerCase();
     if (normalizedEmail) {
       setDemoUserEmail(normalizedEmail);
     } else {
-      setDemoUserEmail('');
+      setDemoUserEmail("");
     }
     return {
       ...me.data,
@@ -241,7 +247,7 @@ async function initializeEasyAuthSession(): Promise<CurrentUserSession | null> {
 }
 
 function asString(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
@@ -254,7 +260,7 @@ function asStringArray(value: unknown): string[] {
 }
 
 function normalizeGraphProfile(raw: unknown): MicrosoftGraphProfile | null {
-  if (!raw || typeof raw !== 'object') {
+  if (!raw || typeof raw !== "object") {
     return null;
   }
   const data = raw as Record<string, unknown>;
@@ -293,13 +299,14 @@ function toDataUrl(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      if (typeof reader.result === 'string') {
+      if (typeof reader.result === "string") {
         resolve(reader.result);
         return;
       }
-      reject(new Error('Failed to convert image to data URL'));
+      reject(new Error("Failed to convert image to data URL"));
     };
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image'));
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("Failed to read image"));
     reader.readAsDataURL(blob);
   });
 }
@@ -347,7 +354,7 @@ async function resolveTokens(
   redirectResult: AuthenticationResult | null,
   account: AccountInfo,
 ): Promise<ResolvedTokens> {
-  let idToken = redirectResult?.idToken ?? '';
+  let idToken = redirectResult?.idToken ?? "";
   let graphAccessToken = redirectResult?.accessToken ?? null;
 
   if (!idToken) {
@@ -370,7 +377,7 @@ async function resolveTokens(
   }
 
   if (!idToken) {
-    throw new Error('Failed to acquire ID token');
+    throw new Error("Failed to acquire ID token");
   }
 
   return { idToken, graphAccessToken };
@@ -387,7 +394,8 @@ export function useAuthSession() {
     if (isE2EMode) {
       setState((prev) => ({
         ...prev,
-        error: 'E2E mode uses a preselected demo persona. Set demoUserEmail before loading the app.',
+        error:
+          "E2E mode uses a preselected demo persona. Set demoUserEmail before loading the app.",
       }));
       return;
     }
@@ -406,12 +414,12 @@ export function useAuthSession() {
   const signOut = useCallback(async () => {
     if (isE2EMode) {
       setAuthToken(null);
-      setDemoUserEmail('');
+      setDemoUserEmail("");
       setState({ loading: false, user: null, error: null });
       return;
     }
     setAuthToken(null);
-    setDemoUserEmail('');
+    setDemoUserEmail("");
     setState({ loading: false, user: null, error: null });
 
     // In deployed App Service EasyAuth mode, logout must clear the EasyAuth cookie.
@@ -447,7 +455,8 @@ export function useAuthSession() {
               setState({
                 loading: false,
                 user: null,
-                error: 'Missing demo persona. Set demoUserEmail before opening the app in E2E mode.',
+                error:
+                  "Missing demo persona. Set demoUserEmail before opening the app in E2E mode.",
               });
             }
             return;
@@ -476,7 +485,7 @@ export function useAuthSession() {
               error:
                 error instanceof Error
                   ? error.message
-                  : 'Failed to initialize E2E authentication session',
+                  : "Failed to initialize E2E authentication session",
             });
           }
         }
@@ -504,7 +513,7 @@ export function useAuthSession() {
             loading: false,
             user: null,
             error:
-              'Missing Azure auth configuration. Set VITE_AZURE_TENANT_ID and VITE_AZURE_CLIENT_ID.',
+              "Missing Azure auth configuration. Set VITE_AZURE_TENANT_ID and VITE_AZURE_CLIENT_ID.",
           });
         }
         return;
@@ -522,7 +531,7 @@ export function useAuthSession() {
         if (!account) {
           if (isMounted) {
             setAuthToken(null);
-            setDemoUserEmail('');
+            setDemoUserEmail("");
             setState({ loading: false, user: null, error: null });
           }
           return;
@@ -549,14 +558,20 @@ export function useAuthSession() {
         ]);
 
         if (graphProfile.profile) {
-          await syncCurrentUserProfile(graphProfile.profile).catch(() => undefined);
+          await syncCurrentUserProfile(graphProfile.profile).catch(
+            () => undefined,
+          );
         }
 
-        const normalizedEmail = (me.data.email || account.username || '').toLowerCase();
+        const normalizedEmail = (
+          me.data.email ||
+          account.username ||
+          ""
+        ).toLowerCase();
         if (normalizedEmail) {
           setDemoUserEmail(normalizedEmail);
         } else {
-          setDemoUserEmail('');
+          setDemoUserEmail("");
         }
 
         const sessionUser: CurrentUserSession = {
@@ -575,14 +590,14 @@ export function useAuthSession() {
       } catch (error) {
         if (isMounted) {
           setAuthToken(null);
-          setDemoUserEmail('');
+          setDemoUserEmail("");
           setState({
             loading: false,
             user: null,
             error:
               error instanceof Error
                 ? error.message
-                : 'Failed to initialize Microsoft authentication',
+                : "Failed to initialize Microsoft authentication",
           });
         }
       }

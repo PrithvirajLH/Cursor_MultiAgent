@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Plus, ArrowLeft } from "lucide-react";
 import {
   createAutomationRule,
   fetchTeamMembers,
@@ -8,12 +8,12 @@ import {
   type AutomationCondition,
   type TeamMember,
   type TeamRef,
-} from '../api/client';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useToast } from '../hooks/useToast';
-import type { Role } from '../types';
-import { handleApiError } from '../utils/handleApiError';
+} from "../api/client";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useToast } from "../hooks/useToast";
+import type { Role } from "../types";
+import { handleApiError } from "../utils/handleApiError";
 
 type FlatCondition = {
   field: string;
@@ -44,50 +44,62 @@ type MemberOption = {
 };
 
 const TRIGGERS = [
-  { value: 'TICKET_CREATED', label: 'Ticket Created' },
-  { value: 'STATUS_CHANGED', label: 'Status Changed' },
-  { value: 'SLA_APPROACHING', label: 'SLA Approaching' },
-  { value: 'SLA_BREACHED', label: 'SLA Breached' },
+  { value: "TICKET_CREATED", label: "Ticket Created" },
+  { value: "STATUS_CHANGED", label: "Status Changed" },
+  { value: "SLA_APPROACHING", label: "SLA Approaching" },
+  { value: "SLA_BREACHED", label: "SLA Breached" },
 ];
 
 const CONDITION_FIELDS = [
-  'subject',
-  'description',
-  'priority',
-  'status',
-  'assignedTeamId',
-  'assigneeId',
-  'categoryId',
-  'requesterId',
+  "subject",
+  "description",
+  "priority",
+  "status",
+  "assignedTeamId",
+  "assigneeId",
+  "categoryId",
+  "requesterId",
 ];
 
-const CONDITION_OPS = ['contains', 'equals', 'notEquals', 'in', 'notIn', 'isEmpty', 'isNotEmpty'];
+const CONDITION_OPS = [
+  "contains",
+  "equals",
+  "notEquals",
+  "in",
+  "notIn",
+  "isEmpty",
+  "isNotEmpty",
+];
 
 const ACTION_TYPES = [
-  { value: 'set_status', label: 'Set Status' },
-  { value: 'assign_team', label: 'Assign Team' },
-  { value: 'assign_user', label: 'Assign User' },
-  { value: 'notify_team_lead', label: 'Notify Team Lead' },
-  { value: 'add_internal_note', label: 'Add Internal Note' },
-  { value: 'set_priority', label: 'Set Priority' },
+  { value: "set_status", label: "Set Status" },
+  { value: "assign_team", label: "Assign Team" },
+  { value: "assign_user", label: "Assign User" },
+  { value: "notify_team_lead", label: "Notify Team Lead" },
+  { value: "add_internal_note", label: "Add Internal Note" },
+  { value: "set_priority", label: "Set Priority" },
 ];
 
-const PRIORITY_OPTIONS = ['P1', 'P2', 'P3', 'P4'];
+const PRIORITY_OPTIONS = ["P1", "P2", "P3", "P4"];
 
 const STATUS_OPTIONS = [
-  'NEW',
-  'TRIAGED',
-  'ASSIGNED',
-  'IN_PROGRESS',
-  'WAITING_ON_REQUESTER',
-  'WAITING_ON_VENDOR',
-  'RESOLVED',
-  'CLOSED',
-  'REOPENED',
+  "NEW",
+  "TRIAGED",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "WAITING_ON_REQUESTER",
+  "WAITING_ON_VENDOR",
+  "RESOLVED",
+  "CLOSED",
+  "REOPENED",
 ];
 
-const EMPTY_CONDITION: FlatCondition = { field: 'status', op: 'equals', val: '' };
-const EMPTY_ACTION: FlatAction = { type: 'set_status', val: '' };
+const EMPTY_CONDITION: FlatCondition = {
+  field: "status",
+  op: "equals",
+  val: "",
+};
+const EMPTY_ACTION: FlatAction = { type: "set_status", val: "" };
 
 function toApiConditions(conditions: FlatCondition[]): AutomationCondition[] {
   // Convert flat condition rows into API-ready condition objects.
@@ -97,11 +109,11 @@ function toApiConditions(conditions: FlatCondition[]): AutomationCondition[] {
     const op = condition.op.trim();
     const val = condition.val.trim();
     if (!field || !op) return;
-    if (op !== 'isEmpty' && op !== 'isNotEmpty' && !val) return;
+    if (op !== "isEmpty" && op !== "isNotEmpty" && !val) return;
     next.push({
       field,
       operator: op,
-      value: op === 'isEmpty' || op === 'isNotEmpty' ? undefined : val,
+      value: op === "isEmpty" || op === "isNotEmpty" ? undefined : val,
     });
   });
   return next;
@@ -120,38 +132,38 @@ function toApiActions(
     const val = action.val.trim();
     if (!type) return;
 
-    if (type === 'notify_team_lead') {
-      next.push({ type: 'notify_team_lead' });
+    if (type === "notify_team_lead") {
+      next.push({ type: "notify_team_lead" });
       return;
     }
 
     if (!val) return;
 
-    if (type === 'assign_team') {
-      next.push({ type: 'assign_team', teamId: val });
+    if (type === "assign_team") {
+      next.push({ type: "assign_team", teamId: val });
       return;
     }
 
-    if (type === 'assign_user') {
-      if (role !== 'TEAM_ADMIN' || !teamId) return;
+    if (type === "assign_user") {
+      if (role !== "TEAM_ADMIN" || !teamId) return;
       const member = memberOptions.find((item) => item.id === val);
       if (!member) return;
-      next.push({ type: 'assign_user', userId: member.id, teamId });
+      next.push({ type: "assign_user", userId: member.id, teamId });
       return;
     }
 
-    if (type === 'set_priority') {
-      next.push({ type: 'set_priority', priority: val });
+    if (type === "set_priority") {
+      next.push({ type: "set_priority", priority: val });
       return;
     }
 
-    if (type === 'set_status') {
-      next.push({ type: 'set_status', status: val });
+    if (type === "set_status") {
+      next.push({ type: "set_status", status: val });
       return;
     }
 
-    if (type === 'add_internal_note') {
-      next.push({ type: 'add_internal_note', body: val });
+    if (type === "add_internal_note") {
+      next.push({ type: "add_internal_note", body: val });
     }
   });
   return next;
@@ -159,7 +171,7 @@ function toApiActions(
 
 function resolveTeamAdminScopeTeamId(teamsList: TeamRef[]): string {
   // Resolve the single-team scope id for team admins.
-  return teamsList.length === 1 ? teamsList[0].id : '';
+  return teamsList.length === 1 ? teamsList[0].id : "";
 }
 
 export function NewAutomationRulePage({
@@ -174,8 +186,10 @@ export function NewAutomationRulePage({
   const toast = useToast();
   const navigate = useNavigate();
 
-  const isTeamAdmin = role === 'TEAM_ADMIN';
-  const teamAdminScopeTeamId = isTeamAdmin ? resolveTeamAdminScopeTeamId(teamsList) : '';
+  const isTeamAdmin = role === "TEAM_ADMIN";
+  const teamAdminScopeTeamId = isTeamAdmin
+    ? resolveTeamAdminScopeTeamId(teamsList)
+    : "";
 
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -183,12 +197,12 @@ export function NewAutomationRulePage({
   const [error, setError] = useState<string | null>(null);
 
   const [form, setForm] = useState<AutomationForm>(() => ({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     enabled: true,
-    trigger: 'TICKET_CREATED',
+    trigger: "TICKET_CREATED",
     priority: 1,
-    teamId: isTeamAdmin ? teamAdminScopeTeamId : '',
+    teamId: isTeamAdmin ? teamAdminScopeTeamId : "",
     conditions: [{ ...EMPTY_CONDITION }],
     actions: [{ ...EMPTY_ACTION }],
   }));
@@ -225,10 +239,22 @@ export function NewAutomationRulePage({
     if (!form.name.trim()) return false;
     const conditions = toApiConditions(form.conditions);
     if (conditions.length === 0) return false;
-    const actions = toApiActions(form.actions, role, form.teamId, memberOptions);
+    const actions = toApiActions(
+      form.actions,
+      role,
+      form.teamId,
+      memberOptions,
+    );
     if (actions.length === 0) return false;
     return true;
-  }, [form.actions, form.conditions, form.name, form.teamId, memberOptions, role]);
+  }, [
+    form.actions,
+    form.conditions,
+    form.name,
+    form.teamId,
+    memberOptions,
+    role,
+  ]);
 
   function handleAddCondition() {
     // Append a new condition row.
@@ -244,12 +270,18 @@ export function NewAutomationRulePage({
       if (prev.conditions.length === 1) return prev;
       return {
         ...prev,
-        conditions: prev.conditions.filter((_, itemIndex) => itemIndex !== index),
+        conditions: prev.conditions.filter(
+          (_, itemIndex) => itemIndex !== index,
+        ),
       };
     });
   }
 
-  function handleUpdateCondition(index: number, key: keyof FlatCondition, value: string) {
+  function handleUpdateCondition(
+    index: number,
+    key: keyof FlatCondition,
+    value: string,
+  ) {
     // Update a specific field of a condition row.
     setForm((prev) => ({
       ...prev,
@@ -278,14 +310,18 @@ export function NewAutomationRulePage({
     });
   }
 
-  function handleUpdateAction(index: number, key: keyof FlatAction, value: string) {
+  function handleUpdateAction(
+    index: number,
+    key: keyof FlatAction,
+    value: string,
+  ) {
     // Update a specific field of an action row.
     setForm((prev) => ({
       ...prev,
       actions: prev.actions.map((action, itemIndex) =>
         itemIndex === index
-          ? key === 'type'
-            ? { ...action, type: value, val: '' }
+          ? key === "type"
+            ? { ...action, type: value, val: "" }
             : { ...action, [key]: value }
           : action,
       ),
@@ -296,7 +332,7 @@ export function NewAutomationRulePage({
     // Validate and submit the new automation rule to the API.
     const name = form.name.trim();
     if (!name) {
-      const message = 'Automation name is required.';
+      const message = "Automation name is required.";
       setError(message);
       toast.error(message);
       return;
@@ -304,15 +340,18 @@ export function NewAutomationRulePage({
 
     const conditions = toApiConditions(form.conditions);
     if (conditions.length === 0) {
-      const message = 'Add at least one valid condition.';
+      const message = "Add at least one valid condition.";
       setError(message);
       toast.error(message);
       return;
     }
 
     const teamId = isTeamAdmin ? teamAdminScopeTeamId : form.teamId.trim();
-    if (!teamId && form.actions.some((action) => action.type === 'assign_user')) {
-      const message = 'Assign user actions require a scoped team.';
+    if (
+      !teamId &&
+      form.actions.some((action) => action.type === "assign_user")
+    ) {
+      const message = "Assign user actions require a scoped team.";
       setError(message);
       toast.error(message);
       return;
@@ -320,7 +359,7 @@ export function NewAutomationRulePage({
 
     const actions = toApiActions(form.actions, role, teamId, memberOptions);
     if (actions.length === 0) {
-      const message = 'Add at least one valid action.';
+      const message = "Add at least one valid action.";
       setError(message);
       toast.error(message);
       return;
@@ -341,8 +380,8 @@ export function NewAutomationRulePage({
     setError(null);
     try {
       await createAutomationRule(payload);
-      toast.success('Automation rule created.');
-      navigate('/automation');
+      toast.success("Automation rule created.");
+      navigate("/automation");
     } catch (err) {
       const message = handleApiError(err);
       setError(message);
@@ -363,24 +402,28 @@ export function NewAutomationRulePage({
               title={headerValue.title}
               subtitle={headerValue.subtitle}
               currentEmail={headerValue.currentEmail}
-
-
               onOpenSearch={headerValue.onOpenSearch}
               notificationProps={headerValue.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">New Automation</h1>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    New Automation
+                  </h1>
                   <p className="mt-0.5 text-sm text-slate-500">
-                    Define triggers, conditions, and actions that run automatically on tickets.
+                    Define triggers, conditions, and actions that run
+                    automatically on tickets.
                   </p>
                 </div>
               }
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">New Automation</h1>
+              <h1 className="text-xl font-semibold text-slate-900">
+                New Automation
+              </h1>
               <p className="mt-0.5 text-sm text-slate-500">
-                Define triggers, conditions, and actions that run automatically on tickets.
+                Define triggers, conditions, and actions that run automatically
+                on tickets.
               </p>
             </div>
           )}
@@ -390,7 +433,7 @@ export function NewAutomationRulePage({
       <div className="mx-auto w-full max-w-[1000px] px-6 py-8">
         <button
           type="button"
-          onClick={() => navigate('/automation')}
+          onClick={() => navigate("/automation")}
           className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -405,10 +448,12 @@ export function NewAutomationRulePage({
 
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">Automation configuration</h2>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Automation configuration
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Automations are evaluated when their trigger fires. The first matching automation for a
-              ticket will run its actions.
+              Automations are evaluated when their trigger fires. The first
+              matching automation for a ticket will run its actions.
             </p>
           </div>
 
@@ -428,11 +473,16 @@ export function NewAutomationRulePage({
                 />
               </div>
               <div className="space-y-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Trigger</label>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Trigger
+                </label>
                 <select
                   value={form.trigger}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, trigger: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      trigger: event.target.value,
+                    }))
                   }
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                 >
@@ -458,7 +508,8 @@ export function NewAutomationRulePage({
                   className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-slate-500">
-                  Lower numbers run first. The first matching automation is used.
+                  Lower numbers run first. The first matching automation is
+                  used.
                 </p>
               </div>
             </div>
@@ -471,7 +522,10 @@ export function NewAutomationRulePage({
                 <textarea
                   value={form.description}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, description: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
                   }
                   rows={3}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
@@ -481,7 +535,9 @@ export function NewAutomationRulePage({
               <div className="flex flex-col justify-between gap-4">
                 <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-700">Rule status</p>
+                    <p className="text-sm font-medium text-slate-700">
+                      Rule status
+                    </p>
                     <p className="text-xs text-slate-500">
                       Disable to keep the automation configured but inactive.
                     </p>
@@ -491,7 +547,10 @@ export function NewAutomationRulePage({
                       type="checkbox"
                       checked={form.enabled}
                       onChange={(event) =>
-                        setForm((prev) => ({ ...prev, enabled: event.target.checked }))
+                        setForm((prev) => ({
+                          ...prev,
+                          enabled: event.target.checked,
+                        }))
                       }
                       className="peer sr-only"
                     />
@@ -508,7 +567,10 @@ export function NewAutomationRulePage({
                     <select
                       value={form.teamId}
                       onChange={(event) =>
-                        setForm((prev) => ({ ...prev, teamId: event.target.value }))
+                        setForm((prev) => ({
+                          ...prev,
+                          teamId: event.target.value,
+                        }))
                       }
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                     >
@@ -520,7 +582,8 @@ export function NewAutomationRulePage({
                       ))}
                     </select>
                     <p className="mt-1 text-xs text-slate-500">
-                      Limit this automation to a specific team, or leave as global.
+                      Limit this automation to a specific team, or leave as
+                      global.
                     </p>
                   </div>
                 )}
@@ -529,7 +592,9 @@ export function NewAutomationRulePage({
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">Conditions</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  Conditions
+                </p>
                 <span className="text-xs text-slate-400">
                   All conditions must match for the automation to run.
                 </span>
@@ -543,20 +608,26 @@ export function NewAutomationRulePage({
                     <select
                       value={condition.field}
                       onChange={(event) =>
-                        handleUpdateCondition(index, 'field', event.target.value)
+                        handleUpdateCondition(
+                          index,
+                          "field",
+                          event.target.value,
+                        )
                       }
                       className="min-w-[120px] flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Field…</option>
                       {CONDITION_FIELDS.map((field) => (
                         <option key={field} value={field}>
-                          {field.replace('_', ' ')}
+                          {field.replace("_", " ")}
                         </option>
                       ))}
                     </select>
                     <select
                       value={condition.op}
-                      onChange={(event) => handleUpdateCondition(index, 'op', event.target.value)}
+                      onChange={(event) =>
+                        handleUpdateCondition(index, "op", event.target.value)
+                      }
                       className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                     >
                       {CONDITION_OPS.map((op) => (
@@ -565,22 +636,32 @@ export function NewAutomationRulePage({
                         </option>
                       ))}
                     </select>
-                    {condition.op !== 'isEmpty' && condition.op !== 'isNotEmpty' && (
-                      <input
-                        value={condition.val}
-                        onChange={(event) =>
-                          handleUpdateCondition(index, 'val', event.target.value)
-                        }
-                        className="min-w-[140px] flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
-                        placeholder="value…"
-                      />
-                    )}
+                    {condition.op !== "isEmpty" &&
+                      condition.op !== "isNotEmpty" && (
+                        <input
+                          value={condition.val}
+                          onChange={(event) =>
+                            handleUpdateCondition(
+                              index,
+                              "val",
+                              event.target.value,
+                            )
+                          }
+                          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                          placeholder="value…"
+                        />
+                      )}
                     <button
                       type="button"
                       onClick={() => handleRemoveCondition(index)}
                       className="text-slate-400 hover:text-red-500"
                     >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -631,12 +712,12 @@ export function NewAutomationRulePage({
                     <select
                       value={action.type}
                       onChange={(event) =>
-                        handleUpdateAction(index, 'type', event.target.value)
+                        handleUpdateAction(index, "type", event.target.value)
                       }
                       className="min-w-[150px] rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                     >
                       {ACTION_TYPES.filter((item) =>
-                        item.value === 'assign_user' ? isTeamAdmin : true,
+                        item.value === "assign_user" ? isTeamAdmin : true,
                       ).map((item) => (
                         <option key={item.value} value={item.value}>
                           {item.label}
@@ -644,11 +725,11 @@ export function NewAutomationRulePage({
                       ))}
                     </select>
 
-                    {action.type === 'assign_team' && (
+                    {action.type === "assign_team" && (
                       <select
                         value={action.val}
                         onChange={(event) =>
-                          handleUpdateAction(index, 'val', event.target.value)
+                          handleUpdateAction(index, "val", event.target.value)
                         }
                         className="min-w-[160px] flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       >
@@ -661,21 +742,21 @@ export function NewAutomationRulePage({
                       </select>
                     )}
 
-                    {action.type === 'assign_user' && (
+                    {action.type === "assign_user" && (
                       <select
                         value={action.val}
                         onChange={(event) =>
-                          handleUpdateAction(index, 'val', event.target.value)
+                          handleUpdateAction(index, "val", event.target.value)
                         }
                         className="min-w-[160px] flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                         disabled={loadingMembers || !teamAdminScopeTeamId}
                       >
                         <option value="">
                           {loadingMembers
-                            ? 'Loading users…'
+                            ? "Loading users…"
                             : teamAdminScopeTeamId
-                            ? 'Select user…'
-                            : 'User assignment requires a scoped team.'}
+                              ? "Select user…"
+                              : "User assignment requires a scoped team."}
                         </option>
                         {memberOptions.map((user) => (
                           <option key={user.id} value={user.id}>
@@ -685,11 +766,11 @@ export function NewAutomationRulePage({
                       </select>
                     )}
 
-                    {action.type === 'set_priority' && (
+                    {action.type === "set_priority" && (
                       <select
                         value={action.val}
                         onChange={(event) =>
-                          handleUpdateAction(index, 'val', event.target.value)
+                          handleUpdateAction(index, "val", event.target.value)
                         }
                         className="min-w-[120px] rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       >
@@ -702,11 +783,11 @@ export function NewAutomationRulePage({
                       </select>
                     )}
 
-                    {action.type === 'set_status' && (
+                    {action.type === "set_status" && (
                       <select
                         value={action.val}
                         onChange={(event) =>
-                          handleUpdateAction(index, 'val', event.target.value)
+                          handleUpdateAction(index, "val", event.target.value)
                         }
                         className="min-w-[140px] rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                       >
@@ -719,18 +800,18 @@ export function NewAutomationRulePage({
                       </select>
                     )}
 
-                    {action.type === 'add_internal_note' && (
+                    {action.type === "add_internal_note" && (
                       <input
                         value={action.val}
                         onChange={(event) =>
-                          handleUpdateAction(index, 'val', event.target.value)
+                          handleUpdateAction(index, "val", event.target.value)
                         }
                         className="min-w-[160px] flex-1 rounded-lg border border-green-200 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                         placeholder="Note content…"
                       />
                     )}
 
-                    {action.type === 'notify_team_lead' && (
+                    {action.type === "notify_team_lead" && (
                       <span className="text-xs text-green-700">
                         Sends a notification to the scoped team&apos;s lead.
                       </span>
@@ -741,7 +822,12 @@ export function NewAutomationRulePage({
                       onClick={() => handleRemoveAction(index)}
                       className="text-slate-400 hover:text-red-500"
                     >
-                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -766,12 +852,13 @@ export function NewAutomationRulePage({
 
           <div className="flex items-center justify-between rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
             <span className="text-xs text-slate-400">
-              * Required fields. Automations are logged in the audit log when they run.
+              * Required fields. Automations are logged in the audit log when
+              they run.
             </span>
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => navigate('/automation')}
+                onClick={() => navigate("/automation")}
                 disabled={saving}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -792,4 +879,3 @@ export function NewAutomationRulePage({
     </section>
   );
 }
-

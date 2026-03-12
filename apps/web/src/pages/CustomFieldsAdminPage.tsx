@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlignLeft,
   Calendar,
@@ -9,9 +9,9 @@ import {
   Plus,
   Trash2,
   Type,
-  Users
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+  Users,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   fetchCategories,
   createCustomField,
@@ -21,19 +21,27 @@ import {
   updateCustomField,
   type CategoryRef,
   type CustomFieldRecord,
-  type TeamRef
-} from '../api/client';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+  type TeamRef,
+} from "../api/client";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import {
   REALTIME_ADMIN_CHANGED_EVENT,
   type RealtimeAdminChangedEventPayload,
-} from '../realtime/events';
-import type { Role } from '../types';
-import { handleApiError } from '../utils/handleApiError';
+} from "../realtime/events";
+import type { Role } from "../types";
+import { handleApiError } from "../utils/handleApiError";
 
-type UiFieldType = 'text' | 'textarea' | 'number' | 'dropdown' | 'multiselect' | 'checkbox' | 'date' | 'user';
+type UiFieldType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "dropdown"
+  | "multiselect"
+  | "checkbox"
+  | "date"
+  | "user";
 
 type FieldFormState = {
   id: string | null;
@@ -52,56 +60,85 @@ const FIELD_TYPES: Array<{
   apiType: string;
   icon: typeof Type;
 }> = [
-    { value: 'text', label: 'Short Text', apiType: 'TEXT', icon: Type },
-    { value: 'textarea', label: 'Long Text', apiType: 'TEXTAREA', icon: AlignLeft },
-    { value: 'number', label: 'Number', apiType: 'NUMBER', icon: Hash },
-    { value: 'dropdown', label: 'Dropdown', apiType: 'DROPDOWN', icon: ChevronDown },
-    { value: 'multiselect', label: 'Multi Select', apiType: 'MULTISELECT', icon: CheckSquare },
-    { value: 'checkbox', label: 'Checkbox', apiType: 'CHECKBOX', icon: CheckSquare },
-    { value: 'date', label: 'Date', apiType: 'DATE', icon: Calendar },
-    { value: 'user', label: 'User', apiType: 'USER', icon: Users }
-  ];
+  { value: "text", label: "Short Text", apiType: "TEXT", icon: Type },
+  {
+    value: "textarea",
+    label: "Long Text",
+    apiType: "TEXTAREA",
+    icon: AlignLeft,
+  },
+  { value: "number", label: "Number", apiType: "NUMBER", icon: Hash },
+  {
+    value: "dropdown",
+    label: "Dropdown",
+    apiType: "DROPDOWN",
+    icon: ChevronDown,
+  },
+  {
+    value: "multiselect",
+    label: "Multi Select",
+    apiType: "MULTISELECT",
+    icon: CheckSquare,
+  },
+  {
+    value: "checkbox",
+    label: "Checkbox",
+    apiType: "CHECKBOX",
+    icon: CheckSquare,
+  },
+  { value: "date", label: "Date", apiType: "DATE", icon: Calendar },
+  { value: "user", label: "User", apiType: "USER", icon: Users },
+];
 
 const API_TO_UI_TYPE: Record<string, UiFieldType> = {
-  TEXT: 'text',
-  TEXTAREA: 'textarea',
-  NUMBER: 'number',
-  DROPDOWN: 'dropdown',
-  MULTISELECT: 'multiselect',
-  CHECKBOX: 'checkbox',
-  DATE: 'date',
-  USER: 'user'
+  TEXT: "text",
+  TEXTAREA: "textarea",
+  NUMBER: "number",
+  DROPDOWN: "dropdown",
+  MULTISELECT: "multiselect",
+  CHECKBOX: "checkbox",
+  DATE: "date",
+  USER: "user",
 };
 
-const UI_TO_API_TYPE: Record<UiFieldType, string> = FIELD_TYPES.reduce((acc, type) => {
-  acc[type.value] = type.apiType;
-  return acc;
-}, {} as Record<UiFieldType, string>);
+const UI_TO_API_TYPE: Record<UiFieldType, string> = FIELD_TYPES.reduce(
+  (acc, type) => {
+    acc[type.value] = type.apiType;
+    return acc;
+  },
+  {} as Record<UiFieldType, string>,
+);
 
 function parseOptionLabels(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((option) => {
-      if (option && typeof option === 'object') {
-        if ('label' in option && typeof (option as { label?: unknown }).label === 'string') {
+      if (option && typeof option === "object") {
+        if (
+          "label" in option &&
+          typeof (option as { label?: unknown }).label === "string"
+        ) {
           return (option as { label: string }).label.trim();
         }
-        if ('value' in option && typeof (option as { value?: unknown }).value === 'string') {
+        if (
+          "value" in option &&
+          typeof (option as { value?: unknown }).value === "string"
+        ) {
           return (option as { value: string }).value.trim();
         }
       }
-      return String(option ?? '').trim();
+      return String(option ?? "").trim();
     })
     .filter(Boolean);
 }
 
 function fieldTypeLabel(fieldType: string): string {
-  const uiType = API_TO_UI_TYPE[fieldType] ?? 'text';
+  const uiType = API_TO_UI_TYPE[fieldType] ?? "text";
   return FIELD_TYPES.find((type) => type.value === uiType)?.label ?? fieldType;
 }
 
 function fieldTypeIcon(fieldType: string) {
-  const uiType = API_TO_UI_TYPE[fieldType] ?? 'text';
+  const uiType = API_TO_UI_TYPE[fieldType] ?? "text";
   return FIELD_TYPES.find((type) => type.value === uiType)?.icon ?? Type;
 }
 
@@ -109,37 +146,33 @@ function buildFormFromField(field: CustomFieldRecord): FieldFormState {
   return {
     id: field.id,
     label: field.name,
-    type: API_TO_UI_TYPE[field.fieldType] ?? 'text',
+    type: API_TO_UI_TYPE[field.fieldType] ?? "text",
     required: field.isRequired,
-    teamId: field.teamId ?? '',
+    teamId: field.teamId ?? "",
     options: parseOptionLabels(field.options),
     sortOrder: field.sortOrder,
-    categoryId: field.categoryId ?? ''
+    categoryId: field.categoryId ?? "",
   };
 }
 
-function createEmptyForm(teamId = ''): FieldFormState {
+function createEmptyForm(teamId = ""): FieldFormState {
   return {
     id: null,
-    label: '',
-    type: 'text',
+    label: "",
+    type: "text",
     required: false,
     teamId,
     options: [],
     sortOrder: 0,
-    categoryId: ''
+    categoryId: "",
   };
 }
 
-export function CustomFieldsAdminPage({
-  role
-}: {
-  role?: Role;
-}) {
+export function CustomFieldsAdminPage({ role }: { role?: Role }) {
   const navigate = useNavigate();
   const headerCtx = useHeaderContext();
-  const canEdit = role ? role === 'TEAM_ADMIN' || role === 'OWNER' : true;
-  const isTeamAdmin = role === 'TEAM_ADMIN';
+  const canEdit = role ? role === "TEAM_ADMIN" || role === "OWNER" : true;
+  const isTeamAdmin = role === "TEAM_ADMIN";
   const [fields, setFields] = useState<CustomFieldRecord[]>([]);
   const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
   const [categories, setCategories] = useState<CategoryRef[]>([]);
@@ -150,14 +183,16 @@ export function CustomFieldsAdminPage({
   const [notice, setNotice] = useState<string | null>(null);
 
   const [showEditor, setShowEditor] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<CustomFieldRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CustomFieldRecord | null>(
+    null,
+  );
   const [form, setForm] = useState<FieldFormState>(createEmptyForm());
   const editorDialogRef = useRef<HTMLDivElement>(null);
   const deleteDialogRef = useRef<HTMLDivElement>(null);
 
   const resolvedTeamAdminTeamId = useMemo(() => {
-    if (!isTeamAdmin) return '';
-    return teamsList.length === 1 ? teamsList[0].id : '';
+    if (!isTeamAdmin) return "";
+    return teamsList.length === 1 ? teamsList[0].id : "";
   }, [isTeamAdmin, teamsList]);
 
   useEffect(() => {
@@ -170,9 +205,9 @@ export function CustomFieldsAdminPage({
         .detail;
       const scope = payload?.scope;
       if (
-        scope !== 'custom_field' &&
-        scope !== 'category' &&
-        scope !== 'team'
+        scope !== "custom_field" &&
+        scope !== "category" &&
+        scope !== "team"
       ) {
         return;
       }
@@ -194,14 +229,15 @@ export function CustomFieldsAdminPage({
     setLoading(true);
     setError(null);
     try {
-      const [teamsResponse, fieldsResponse, categoriesResponse] = await Promise.all([
-        fetchTeams(),
-        fetchCustomFields(),
-        fetchCategories({ includeInactive: false })
-      ]);
+      const [teamsResponse, fieldsResponse, categoriesResponse] =
+        await Promise.all([
+          fetchTeams(),
+          fetchCustomFields(),
+          fetchCategories({ includeInactive: false }),
+        ]);
 
       const sortedFields = [...fieldsResponse.data].sort(
-        (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+        (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
       );
       setTeamsList(teamsResponse.data);
       setFields(sortedFields);
@@ -218,21 +254,26 @@ export function CustomFieldsAdminPage({
   }
 
   function categoryLabel(categoryId: string | null): string {
-    if (!categoryId) return 'All categories';
-    return categories.find((category) => category.id === categoryId)?.name ?? categoryId;
+    if (!categoryId) return "All categories";
+    return (
+      categories.find((category) => category.id === categoryId)?.name ??
+      categoryId
+    );
   }
 
   function canManageField(field: CustomFieldRecord): boolean {
     if (!canEdit) return false;
-    if (!role || role === 'OWNER') return true;
-    if (role === 'TEAM_ADMIN') {
-      return !!resolvedTeamAdminTeamId && field.teamId === resolvedTeamAdminTeamId;
+    if (!role || role === "OWNER") return true;
+    if (role === "TEAM_ADMIN") {
+      return (
+        !!resolvedTeamAdminTeamId && field.teamId === resolvedTeamAdminTeamId
+      );
     }
     return false;
   }
 
   function openCreate() {
-    navigate('/custom-fields/new');
+    navigate("/custom-fields/new");
   }
 
   function openEdit(field: CustomFieldRecord) {
@@ -260,39 +301,49 @@ export function CustomFieldsAdminPage({
   });
 
   function addOption() {
-    setForm((prev) => ({ ...prev, options: [...prev.options, ''] }));
+    setForm((prev) => ({ ...prev, options: [...prev.options, ""] }));
   }
 
   function removeOption(index: number) {
-    setForm((prev) => ({ ...prev, options: prev.options.filter((_, i) => i !== index) }));
+    setForm((prev) => ({
+      ...prev,
+      options: prev.options.filter((_, i) => i !== index),
+    }));
   }
 
   function updateOption(index: number, value: string) {
     setForm((prev) => ({
       ...prev,
-      options: prev.options.map((option, i) => (i === index ? value : option))
+      options: prev.options.map((option, i) => (i === index ? value : option)),
     }));
   }
 
   async function saveField() {
     if (!form.label.trim()) {
-      setError('Field label is required.');
+      setError("Field label is required.");
       return;
     }
     if (isTeamAdmin && !resolvedTeamAdminTeamId) {
-      setError('Team admin requires a primary team to manage custom fields.');
+      setError("Team admin requires a primary team to manage custom fields.");
       return;
     }
 
-    const trimmedOptions = form.options.map((option) => option.trim()).filter(Boolean);
-    if ((form.type === 'dropdown' || form.type === 'multiselect') && trimmedOptions.length === 0) {
-      setError('Dropdown and multi-select fields require at least one option.');
+    const trimmedOptions = form.options
+      .map((option) => option.trim())
+      .filter(Boolean);
+    if (
+      (form.type === "dropdown" || form.type === "multiselect") &&
+      trimmedOptions.length === 0
+    ) {
+      setError("Dropdown and multi-select fields require at least one option.");
       return;
     }
 
-    const scopedTeamId = isTeamAdmin ? resolvedTeamAdminTeamId : form.teamId || undefined;
+    const scopedTeamId = isTeamAdmin
+      ? resolvedTeamAdminTeamId
+      : form.teamId || undefined;
     const optionsPayload =
-      form.type === 'dropdown' || form.type === 'multiselect'
+      form.type === "dropdown" || form.type === "multiselect"
         ? trimmedOptions.map((option) => ({ value: option, label: option }))
         : undefined;
 
@@ -307,7 +358,7 @@ export function CustomFieldsAdminPage({
         sortOrder: Math.max(0, Number(form.sortOrder) || 0),
         teamId: scopedTeamId,
         categoryId: form.categoryId || undefined,
-        options: optionsPayload
+        options: optionsPayload,
       };
 
       if (form.id) {
@@ -319,20 +370,25 @@ export function CustomFieldsAdminPage({
           teamId: payload.teamId ?? null,
           categoryId: payload.categoryId ?? null,
           // Clear stale options when switching away from dropdown.
-          options: payload.options ?? null
+          options: payload.options ?? null,
         });
         setFields((prev) =>
           prev
             .map((field) => (field.id === updated.id ? updated : field))
-            .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+            .sort(
+              (a, b) =>
+                a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+            ),
         );
-        setNotice('Custom field updated.');
+        setNotice("Custom field updated.");
       } else {
         const created = await createCustomField(payload);
         setFields((prev) =>
-          [...prev, created].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+          [...prev, created].sort(
+            (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
+          ),
         );
-        setNotice('Custom field created.');
+        setNotice("Custom field created.");
       }
 
       closeEditor();
@@ -350,7 +406,7 @@ export function CustomFieldsAdminPage({
       await deleteCustomField(field.id);
       setFields((prev) => prev.filter((item) => item.id !== field.id));
       setDeleteTarget(null);
-      setNotice('Custom field deleted.');
+      setNotice("Custom field deleted.");
     } catch (err) {
       setError(handleApiError(err));
     }
@@ -365,21 +421,27 @@ export function CustomFieldsAdminPage({
               title={headerCtx.title}
               subtitle={headerCtx.subtitle}
               currentEmail={headerCtx.currentEmail}
-
-
               onOpenSearch={headerCtx.onOpenSearch}
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">Custom Fields</h1>
-                  <p className="mt-0.5 text-sm text-slate-500">Form fields and visibility.</p>
+                  <h1 className="text-xl font-semibold text-slate-900">
+                    Custom Fields
+                  </h1>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Form fields and visibility.
+                  </p>
                 </div>
               }
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">Custom Fields</h1>
-              <p className="mt-0.5 text-sm text-slate-500">Form fields and visibility.</p>
+              <h1 className="text-xl font-semibold text-slate-900">
+                Custom Fields
+              </h1>
+              <p className="mt-0.5 text-sm text-slate-500">
+                Form fields and visibility.
+              </p>
             </div>
           )}
         </div>
@@ -419,35 +481,60 @@ export function CustomFieldsAdminPage({
             <table className="w-full text-sm">
               <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
-                  {['Field Label', 'Type', 'Required', 'Category', 'Team Scope', 'Sort', 'Actions'].map(
-                    (heading) => (
-                      <th
-                        key={heading}
-                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
-                      >
-                        {heading}
-                      </th>
-                    )
-                  )}
+                  {[
+                    "Field Label",
+                    "Type",
+                    "Required",
+                    "Category",
+                    "Team Scope",
+                    "Sort",
+                    "Actions",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
-                    <tr key={`skel-${i}`} className="border-b border-slate-100 last:border-0">
-                      <td className="px-4 py-3"><div className="h-4 w-32 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-20 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-24 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-5 w-14 skeleton-shimmer rounded-full" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-20 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-16 skeleton-shimmer rounded" /></td>
-                      <td className="px-4 py-3"><div className="h-4 w-12 skeleton-shimmer rounded" /></td>
+                    <tr
+                      key={`skel-${i}`}
+                      className="border-b border-slate-100 last:border-0"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-32 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-20 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-24 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-5 w-14 skeleton-shimmer rounded-full" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-20 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-16 skeleton-shimmer rounded" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="h-4 w-12 skeleton-shimmer rounded" />
+                      </td>
                     </tr>
                   ))
                 ) : fields.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center">
-                      <p className="text-sm font-semibold text-slate-700">No custom fields</p>
+                      <p className="text-sm font-semibold text-slate-700">
+                        No custom fields
+                      </p>
                       <p className="mt-1 text-xs text-slate-400">
                         Create your first custom field to extend ticket forms.
                       </p>
@@ -457,14 +544,19 @@ export function CustomFieldsAdminPage({
                   fields.map((field) => {
                     const TypeIcon = fieldTypeIcon(field.fieldType);
                     return (
-                      <tr key={field.id} className="transition-colors hover:bg-slate-50">
+                      <tr
+                        key={field.id}
+                        className="transition-colors hover:bg-slate-50"
+                      >
                         <td className="px-4 py-3">
                           <div className="flex items-center space-x-2">
                             <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-purple-100">
                               <TypeIcon className="h-3.5 w-3.5 text-purple-600" />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-slate-900">{field.name}</p>
+                              <p className="text-sm font-semibold text-slate-900">
+                                {field.name}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -472,7 +564,8 @@ export function CustomFieldsAdminPage({
                           <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
                             {fieldTypeLabel(field.fieldType)}
                           </span>
-                          {(field.fieldType === 'DROPDOWN' || field.fieldType === 'MULTISELECT') && (
+                          {(field.fieldType === "DROPDOWN" ||
+                            field.fieldType === "MULTISELECT") && (
                             <p className="mt-0.5 text-xs text-slate-400">
                               {parseOptionLabels(field.options).length} options
                             </p>
@@ -484,11 +577,15 @@ export function CustomFieldsAdminPage({
                               Required
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">Optional</span>
+                            <span className="text-xs text-slate-400">
+                              Optional
+                            </span>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-xs text-slate-600">{categoryLabel(field.categoryId)}</span>
+                          <span className="text-xs text-slate-600">
+                            {categoryLabel(field.categoryId)}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           {field.teamId ? (
@@ -496,10 +593,14 @@ export function CustomFieldsAdminPage({
                               {teamLabel(field.teamId)}
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">All teams</span>
+                            <span className="text-xs text-slate-400">
+                              All teams
+                            </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-600">{field.sortOrder}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600">
+                          {field.sortOrder}
+                        </td>
                         <td className="px-4 py-3">
                           {canManageField(field) && (
                             <div className="flex items-center space-x-1">
@@ -520,7 +621,9 @@ export function CustomFieldsAdminPage({
                             </div>
                           )}
                           {!canManageField(field) && canEdit && (
-                            <span className="text-xs text-slate-400">Read-only</span>
+                            <span className="text-xs text-slate-400">
+                              Read-only
+                            </span>
                           )}
                         </td>
                       </tr>
@@ -550,30 +653,48 @@ export function CustomFieldsAdminPage({
       {showEditor && form.id && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) closeEditor(); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeEditor();
+          }}
         >
           <div
             ref={editorDialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={form.id ? 'Edit custom field' : 'Create custom field'}
+            aria-label={form.id ? "Edit custom field" : "Create custom field"}
             tabIndex={-1}
             className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <p className="text-base font-semibold text-slate-900">
-                {form.id ? 'Edit Custom Field' : 'Create Custom Field'}
+                {form.id ? "Edit Custom Field" : "Create Custom Field"}
               </p>
-              <button type="button" onClick={closeEditor} className="text-slate-400 hover:text-slate-600">
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-6">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Field Label *</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Field Label *
+                </label>
                 <input
                   value={form.label}
                   onChange={(event) =>
@@ -585,7 +706,9 @@ export function CustomFieldsAdminPage({
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-medium text-slate-700">Field Type</label>
+                <label className="mb-2 block text-xs font-medium text-slate-700">
+                  Field Type
+                </label>
                 <div className="grid grid-cols-3 gap-2">
                   {FIELD_TYPES.map((type) => {
                     const TypeIcon = type.icon;
@@ -598,13 +721,18 @@ export function CustomFieldsAdminPage({
                           setForm((prev) => ({
                             ...prev,
                             type: type.value,
-                            options: type.value === 'dropdown' || type.value === 'multiselect' ? prev.options : []
+                            options:
+                              type.value === "dropdown" ||
+                              type.value === "multiselect"
+                                ? prev.options
+                                : [],
                           }))
                         }
-                        className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${selected
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                          }`}
+                        className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${
+                          selected
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-slate-200 text-slate-600 hover:border-slate-300"
+                        }`}
                       >
                         <TypeIcon className="mb-1 h-5 w-5" />
                         {type.label}
@@ -614,15 +742,22 @@ export function CustomFieldsAdminPage({
                 </div>
               </div>
 
-              {(form.type === 'dropdown' || form.type === 'multiselect') && (
+              {(form.type === "dropdown" || form.type === "multiselect") && (
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-slate-700">Options</label>
+                  <label className="mb-2 block text-xs font-medium text-slate-700">
+                    Options
+                  </label>
                   <div className="space-y-1.5">
                     {form.options.map((option, index) => (
-                      <div key={`option-${index}`} className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+                      <div
+                        key={`option-${index}`}
+                        className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5"
+                      >
                         <input
                           value={option}
-                          onChange={(event) => updateOption(index, event.target.value)}
+                          onChange={(event) =>
+                            updateOption(index, event.target.value)
+                          }
                           className="flex-1 bg-transparent text-sm text-slate-700 outline-none"
                           placeholder="Option value"
                         />
@@ -648,11 +783,16 @@ export function CustomFieldsAdminPage({
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">Category Scope</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Category Scope
+                  </label>
                   <select
                     value={form.categoryId}
                     onChange={(event) =>
-                      setForm((prev) => ({ ...prev, categoryId: event.target.value }))
+                      setForm((prev) => ({
+                        ...prev,
+                        categoryId: event.target.value,
+                      }))
                     }
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   >
@@ -665,13 +805,18 @@ export function CustomFieldsAdminPage({
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">Sort Order</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                    Sort Order
+                  </label>
                   <input
                     type="number"
                     min={0}
                     value={form.sortOrder}
                     onChange={(event) =>
-                      setForm((prev) => ({ ...prev, sortOrder: Number(event.target.value) || 0 }))
+                      setForm((prev) => ({
+                        ...prev,
+                        sortOrder: Number(event.target.value) || 0,
+                      }))
                     }
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   />
@@ -679,10 +824,16 @@ export function CustomFieldsAdminPage({
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Team Scope</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700">
+                  Team Scope
+                </label>
                 {isTeamAdmin ? (
                   <input
-                    value={resolvedTeamAdminTeamId ? teamLabel(resolvedTeamAdminTeamId) : 'Primary team unavailable'}
+                    value={
+                      resolvedTeamAdminTeamId
+                        ? teamLabel(resolvedTeamAdminTeamId)
+                        : "Primary team unavailable"
+                    }
                     disabled
                     className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600"
                   />
@@ -690,7 +841,10 @@ export function CustomFieldsAdminPage({
                   <select
                     value={form.teamId}
                     onChange={(event) =>
-                      setForm((prev) => ({ ...prev, teamId: event.target.value }))
+                      setForm((prev) => ({
+                        ...prev,
+                        teamId: event.target.value,
+                      }))
                     }
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
                   >
@@ -707,13 +861,18 @@ export function CustomFieldsAdminPage({
               <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div>
                   <p className="text-sm font-medium text-slate-700">Required</p>
-                  <p className="text-xs text-slate-500">Must be filled before submitting</p>
+                  <p className="text-xs text-slate-500">
+                    Must be filled before submitting
+                  </p>
                 </div>
                 <input
                   type="checkbox"
                   checked={form.required}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, required: event.target.checked }))
+                    setForm((prev) => ({
+                      ...prev,
+                      required: event.target.checked,
+                    }))
                   }
                   className="h-4 w-4 rounded text-blue-600"
                 />
@@ -735,7 +894,7 @@ export function CustomFieldsAdminPage({
                 disabled={saving}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
-                {saving ? 'Saving...' : form.id ? 'Save Field' : 'Create Field'}
+                {saving ? "Saving..." : form.id ? "Save Field" : "Create Field"}
               </button>
             </div>
           </div>
@@ -745,7 +904,9 @@ export function CustomFieldsAdminPage({
       {deleteTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteTarget(null);
+          }}
         >
           <div
             ref={deleteDialogRef}
@@ -759,10 +920,13 @@ export function CustomFieldsAdminPage({
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <Trash2 className="h-5 w-5 text-red-600" />
               </div>
-              <h3 className="text-base font-semibold text-slate-900">Delete Custom Field</h3>
+              <h3 className="text-base font-semibold text-slate-900">
+                Delete Custom Field
+              </h3>
             </div>
             <p className="mb-5 text-sm leading-relaxed text-slate-600">
-              Delete "{deleteTarget.name}"? This will remove it from all tickets.
+              Delete "{deleteTarget.name}"? This will remove it from all
+              tickets.
             </p>
             <div className="flex justify-end space-x-3">
               <button

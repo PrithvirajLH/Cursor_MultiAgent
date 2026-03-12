@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react';
-import { negotiateRealtimeConnection } from '../api/client';
+import { useEffect, useRef } from "react";
+import { negotiateRealtimeConnection } from "../api/client";
 import type {
   RealtimeAdminChangedEventPayload,
   RealtimeTicketChangedEventPayload,
   RealtimeTicketTypingEventPayload,
-} from '../realtime/events';
-import { REALTIME_ADMIN_CHANGED_EVENT } from '../realtime/events';
+} from "../realtime/events";
+import { REALTIME_ADMIN_CHANGED_EVENT } from "../realtime/events";
 
 type RealtimeTicketPayload = RealtimeTicketChangedEventPayload;
 
@@ -40,46 +40,48 @@ function parseRealtimeEnvelope(raw: string): RealtimeEnvelope | null {
     return null;
   }
 
-  if (!parsed || typeof parsed !== 'object') {
+  if (!parsed || typeof parsed !== "object") {
     return null;
   }
 
   const candidate = parsed as Partial<RealtimeEnvelope>;
-  if (typeof candidate.event !== 'string') {
+  if (typeof candidate.event !== "string") {
     return null;
   }
 
   return {
     event: candidate.event,
     occurredAt:
-      typeof candidate.occurredAt === 'string' ? candidate.occurredAt : undefined,
+      typeof candidate.occurredAt === "string"
+        ? candidate.occurredAt
+        : undefined,
     payload: candidate.payload,
   };
 }
 
 function toTicketPayload(payload: unknown): RealtimeTicketPayload {
-  if (!payload || typeof payload !== 'object') {
+  if (!payload || typeof payload !== "object") {
     return {};
   }
   return payload as RealtimeTicketPayload;
 }
 
 function toNotificationPayload(payload: unknown): RealtimeNotificationPayload {
-  if (!payload || typeof payload !== 'object') {
+  if (!payload || typeof payload !== "object") {
     return {};
   }
   return payload as RealtimeNotificationPayload;
 }
 
 function toTicketTypingPayload(payload: unknown): RealtimeTicketTypingPayload {
-  if (!payload || typeof payload !== 'object') {
+  if (!payload || typeof payload !== "object") {
     return {};
   }
   return payload as RealtimeTicketTypingPayload;
 }
 
 function toAdminPayload(payload: unknown): RealtimeAdminPayload {
-  if (!payload || typeof payload !== 'object') {
+  if (!payload || typeof payload !== "object") {
     return {};
   }
   return payload as RealtimeAdminPayload;
@@ -137,7 +139,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
     };
 
     const handleEnvelope = (envelope: RealtimeEnvelope) => {
-      if (envelope.event === 'ticket.changed') {
+      if (envelope.event === "ticket.changed") {
         ticketCallbackRef.current?.({
           ...toTicketPayload(envelope.payload),
           occurredAt: envelope.occurredAt,
@@ -145,7 +147,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
         return;
       }
 
-      if (envelope.event === 'ticket.typing') {
+      if (envelope.event === "ticket.typing") {
         ticketTypingCallbackRef.current?.({
           ...toTicketTypingPayload(envelope.payload),
           occurredAt: envelope.occurredAt,
@@ -153,7 +155,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
         return;
       }
 
-      if (envelope.event === 'admin.changed') {
+      if (envelope.event === "admin.changed") {
         const payload = {
           ...toAdminPayload(envelope.payload),
           occurredAt: envelope.occurredAt,
@@ -167,8 +169,10 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
         return;
       }
 
-      if (envelope.event === 'notifications.updated') {
-        notificationCallbackRef.current?.(toNotificationPayload(envelope.payload));
+      if (envelope.event === "notifications.updated") {
+        notificationCallbackRef.current?.(
+          toNotificationPayload(envelope.payload),
+        );
       }
     };
 
@@ -198,7 +202,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
       };
 
       socket.onmessage = (event) => {
-        if (typeof event.data !== 'string') {
+        if (typeof event.data !== "string") {
           return;
         }
         const envelope = parseRealtimeEnvelope(event.data);

@@ -1,6 +1,6 @@
-import { useNavigate } from 'react-router-dom';
-import { FileQuestion } from 'lucide-react';
-import { EmptyState } from '../components/EmptyState';
+import { useNavigate } from "react-router-dom";
+import { FileQuestion } from "lucide-react";
+import { EmptyState } from "../components/EmptyState";
 
 export function NotFoundPage() {
   const navigate = useNavigate();
@@ -10,7 +10,10 @@ export function NotFoundPage() {
         icon={FileQuestion}
         title="Page not found"
         description="The page you're looking for doesn't exist or has been moved."
-        primaryAction={{ label: 'Go to Dashboard', onClick: () => navigate('/dashboard') }}
+        primaryAction={{
+          label: "Go to Dashboard",
+          onClick: () => navigate("/dashboard"),
+        }}
       />
     </section>
   );

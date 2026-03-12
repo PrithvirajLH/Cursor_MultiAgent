@@ -1,5 +1,5 @@
-import { createContext, useContext, type ReactNode } from 'react';
-import type { CurrentUserSession, NotificationRecord } from '../api/client';
+import { createContext, useContext, type ReactNode } from "react";
+import type { CurrentUserSession, NotificationRecord } from "../api/client";
 
 export type HeaderContextValue = {
   title: string;
@@ -29,7 +29,9 @@ export function HeaderProvider({
   value: HeaderContextValue;
   children: ReactNode;
 }) {
-  return <HeaderContext.Provider value={value}>{children}</HeaderContext.Provider>;
+  return (
+    <HeaderContext.Provider value={value}>{children}</HeaderContext.Provider>
+  );
 }
 
 /**

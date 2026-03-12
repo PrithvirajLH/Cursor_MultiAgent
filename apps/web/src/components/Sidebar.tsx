@@ -1,6 +1,12 @@
-import { memo, useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronLeft, ChevronRight, Plus, type LucideIcon } from 'lucide-react';
-import type { Role } from '../types';
+import { memo, useEffect, useRef, useState } from "react";
+import {
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  type LucideIcon,
+} from "lucide-react";
+import type { Role } from "../types";
 
 export type SidebarItem = {
   key: string;
@@ -21,7 +27,7 @@ export const Sidebar = memo(function Sidebar({
   className,
   showAdminSidebarTrigger = false,
   onOpenAdminSidebar,
-  hideCollapseToggle = false
+  hideCollapseToggle = false,
 }: {
   collapsed: boolean;
   onToggle?: () => void;
@@ -36,25 +42,37 @@ export const Sidebar = memo(function Sidebar({
   hideCollapseToggle?: boolean;
 }) {
   const navRef = useRef<HTMLElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState({ top: 0, height: 0, opacity: 0 });
+  const [indicatorStyle, setIndicatorStyle] = useState({
+    top: 0,
+    height: 0,
+    opacity: 0,
+  });
 
   useEffect(() => {
     // Use a small timeout to let the DOM settle, especially after expand/collapse
     const timer = setTimeout(() => {
       if (!navRef.current) return;
-      const activeEl = navRef.current.querySelector('[data-active="true"]') as HTMLElement;
+      const activeEl = navRef.current.querySelector(
+        '[data-active="true"]',
+      ) as HTMLElement;
       if (activeEl) {
         let topOffset = activeEl.offsetTop;
-        let pHeight = parseInt(activeEl.getAttribute('data-indicator-height') || '24', 10);
-        let pTopPadding = parseInt(activeEl.getAttribute('data-indicator-padding') || '8', 10);
+        let pHeight = parseInt(
+          activeEl.getAttribute("data-indicator-height") || "24",
+          10,
+        );
+        let pTopPadding = parseInt(
+          activeEl.getAttribute("data-indicator-padding") || "8",
+          10,
+        );
 
         setIndicatorStyle({
           top: topOffset + pTopPadding,
           height: pHeight,
-          opacity: 1
+          opacity: 1,
         });
       } else {
-        setIndicatorStyle(prev => ({ ...prev, opacity: 0 }));
+        setIndicatorStyle((prev) => ({ ...prev, opacity: 0 }));
       }
     }, 50);
     return () => clearTimeout(timer);
@@ -62,17 +80,23 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen border-r border-slate-800 bg-slate-900 p-5 flex flex-col transition-all duration-300 ${collapsed ? 'w-20' : 'w-64'
-        } ${className ?? ''}`}
+      className={`fixed left-0 top-0 h-screen border-r border-slate-800 bg-slate-900 p-5 flex flex-col transition-all duration-300 ${
+        collapsed ? "w-20" : "w-64"
+      } ${className ?? ""}`}
     >
       <div
-        className={`flex items-center pb-4 border-b border-slate-800 ${collapsed ? 'justify-center' : 'justify-start'
-          }`}
+        className={`flex items-center pb-4 border-b border-slate-800 ${
+          collapsed ? "justify-center" : "justify-start"
+        }`}
       >
         <div className="h-10 w-10 rounded-xl bg-blue-500 text-white flex items-center justify-center font-semibold shadow-sm">
           T
         </div>
-        {!collapsed && <p className="ml-3 text-[15px] font-bold tracking-tight text-white">Ticket</p>}
+        {!collapsed && (
+          <p className="ml-3 text-[15px] font-bold tracking-tight text-white">
+            Ticket
+          </p>
+        )}
       </div>
 
       <nav ref={navRef} className="mt-6 flex-1 space-y-1 relative">
@@ -88,12 +112,15 @@ export const Sidebar = memo(function Sidebar({
 
         {items.map((item) => {
           const isActive = activeKey === item.key;
-          const label = item.key === 'created' && currentRole === 'EMPLOYEE' ? 'My Tickets' : item.label;
+          const label =
+            item.key === "created" && currentRole === "EMPLOYEE"
+              ? "My Tickets"
+              : item.label;
           const showAdminArrow =
             !collapsed &&
-            item.key === 'admin' &&
+            item.key === "admin" &&
             showAdminSidebarTrigger &&
-            typeof onOpenAdminSidebar === 'function';
+            typeof onOpenAdminSidebar === "function";
           return (
             <div key={item.key}>
               <button
@@ -106,30 +133,39 @@ export const Sidebar = memo(function Sidebar({
                     ? () => onOpenAdminSidebar()
                     : () => onSelect(item.key)
                 }
-                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200 ${collapsed ? 'justify-center' : ''
-                  } ${isActive
-                    ? 'bg-slate-800 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
-                  }`}
+                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200 ${
+                  collapsed ? "justify-center" : ""
+                } ${
+                  isActive
+                    ? "bg-slate-800 text-white shadow-sm"
+                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                }`}
               >
                 <span className="flex-shrink-0">
-                  <item.icon className={`h-5 w-5 transition-colors ${isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
+                  <item.icon
+                    className={`h-5 w-5 transition-colors ${isActive ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"}`}
+                  />
                 </span>
                 {!collapsed && (
                   <span className="flex-1 text-left truncate flex items-center gap-2">
                     {label}
-                    {typeof item.badge === 'number' && item.badge > 0 && (
+                    {typeof item.badge === "number" && item.badge > 0 && (
                       <span
-                        className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold ${isActive ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'
-                          }`}
+                        className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                          isActive
+                            ? "bg-blue-500 text-white"
+                            : "bg-slate-700 text-slate-300"
+                        }`}
                       >
-                        {item.badge > 99 ? '99+' : item.badge}
+                        {item.badge > 99 ? "99+" : item.badge}
                       </span>
                     )}
                   </span>
                 )}
                 {!collapsed && showAdminArrow && (
-                  <ArrowRight className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-blue-400' : 'text-slate-600 group-hover:text-slate-400'}`} />
+                  <ArrowRight
+                    className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-blue-400" : "text-slate-600 group-hover:text-slate-400"}`}
+                  />
                 )}
               </button>
 
@@ -145,22 +181,29 @@ export const Sidebar = memo(function Sidebar({
                         data-indicator-height="20"
                         data-indicator-padding="6"
                         onClick={() => onSelect(child.key)}
-                        className={`relative w-full text-left text-[13px] font-medium px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${childActive
-                          ? 'bg-slate-800 text-white shadow-sm'
-                          : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                          }`}
+                        className={`relative w-full text-left text-[13px] font-medium px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
+                          childActive
+                            ? "bg-slate-800 text-white shadow-sm"
+                            : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+                        }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full transition-colors ${childActive ? 'bg-blue-400' : 'bg-slate-600'
-                            }`}
+                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                            childActive ? "bg-blue-400" : "bg-slate-600"
+                          }`}
                         />
-                        <span className="truncate flex-1" title={child.label}>{child.label}</span>
-                        {typeof child.badge === 'number' && child.badge > 0 && (
+                        <span className="truncate flex-1" title={child.label}>
+                          {child.label}
+                        </span>
+                        {typeof child.badge === "number" && child.badge > 0 && (
                           <span
-                            className={`flex-shrink-0 min-w-[1.25rem] h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${childActive ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'
-                              }`}
+                            className={`flex-shrink-0 min-w-[1.25rem] h-4 px-1 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                              childActive
+                                ? "bg-blue-500 text-white"
+                                : "bg-slate-700 text-slate-300"
+                            }`}
                           >
-                            {child.badge > 99 ? '99+' : child.badge}
+                            {child.badge > 99 ? "99+" : child.badge}
                           </span>
                         )}
                       </button>
@@ -178,7 +221,7 @@ export const Sidebar = memo(function Sidebar({
           <button
             type="button"
             onClick={onCreateTicket}
-            className={`w-full inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors ${collapsed ? 'justify-center' : ''}`}
+            className={`w-full inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors ${collapsed ? "justify-center" : ""}`}
           >
             <Plus className="h-5 w-5 flex-shrink-0" />
             {!collapsed && <span>New Ticket</span>}
@@ -193,9 +236,13 @@ export const Sidebar = memo(function Sidebar({
             type="button"
             onClick={onToggle}
             className="h-8 w-8 rounded-full border border-slate-700 bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
           </button>
         )}
       </div>

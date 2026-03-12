@@ -1,9 +1,9 @@
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle } from "lucide-react";
 
 type Action = { label: string; onClick: () => void };
 
 export function ErrorState({
-  title = 'Something went wrong',
+  title = "Something went wrong",
   description = "We couldn't load this content. Please try again.",
   onRetry,
   secondaryAction,
@@ -24,7 +24,10 @@ export function ErrorState({
       role="alert"
       aria-label={title}
     >
-      <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive" aria-hidden>
+      <span
+        className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+        aria-hidden
+      >
         <AlertCircle className="h-7 w-7" />
       </span>
       <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>

@@ -1,26 +1,26 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery } from "@tanstack/react-query";
 import {
   fetchReportSummary,
   fetchTicketCounts,
   fetchTicketMetrics,
-  type ReportQuery
-} from '../api/client';
-import type { Role } from '../types';
+  type ReportQuery,
+} from "../api/client";
+import type { Role } from "../types";
 
 export function useTicketCountsQuery(currentEmail: string) {
   return useQuery({
     // Include currentEmail in the key so each persona gets an isolated cache.
-    queryKey: ['ticketCounts', currentEmail],
+    queryKey: ["ticketCounts", currentEmail],
     queryFn: () => fetchTicketCounts(),
     // Ticket count aggregates are cheap to refetch and should feel fresh.
-    staleTime: 5_000
+    staleTime: 5_000,
   });
 }
 
 type DashboardMetricsKey = {
   role: Role;
-  range: '3' | '7' | '30';
-  sort: 'recent' | 'oldest';
+  range: "3" | "7" | "30";
+  sort: "recent" | "oldest";
 };
 
 /**
@@ -32,8 +32,8 @@ type DashboardMetricsKey = {
 export function useDashboardMetricsQuery(params: DashboardMetricsKey) {
   const { role, range, sort } = params;
   return useQuery({
-    queryKey: ['dashboardMetrics', role, range, sort],
-    queryFn: () => fetchTicketMetrics()
+    queryKey: ["dashboardMetrics", role, range, sort],
+    queryFn: () => fetchTicketMetrics(),
   });
 }
 
@@ -45,18 +45,16 @@ type ManagerMetricsKey = {
 export function useManagerMetricsQuery(params: ManagerMetricsKey) {
   const { dateRange, userScopeKey } = params;
   return useQuery({
-    queryKey: ['managerMetrics', dateRange, userScopeKey],
-    queryFn: () => fetchTicketMetrics()
+    queryKey: ["managerMetrics", dateRange, userScopeKey],
+    queryFn: () => fetchTicketMetrics(),
   });
 }
 
 export function useReportsQuery(reportQuery: ReportQuery) {
   return useQuery({
-    queryKey: ['reports', reportQuery],
+    queryKey: ["reports", reportQuery],
     queryFn: () => fetchReportSummary(reportQuery),
     // Reports can be moderately heavy; treat them as more static.
-    staleTime: 60_000
+    staleTime: 60_000,
   });
 }
-
-

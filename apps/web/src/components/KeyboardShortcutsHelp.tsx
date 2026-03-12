@@ -1,8 +1,8 @@
-import { useRef } from 'react';
-import { X } from 'lucide-react';
-import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import { useRef } from "react";
+import { X } from "lucide-react";
+import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 
-export type ShortcutContext = 'global' | 'tickets-list' | 'ticket-detail';
+export type ShortcutContext = "global" | "tickets-list" | "ticket-detail";
 
 type ShortcutItem = {
   keys: string[];
@@ -10,25 +10,25 @@ type ShortcutItem = {
 };
 
 const GLOBAL_SHORTCUTS: ShortcutItem[] = [
-  { keys: ['⌘', 'K'], description: 'Open command palette' },
-  { keys: ['Alt', 'N'], description: 'Create new ticket' },
-  { keys: ['⌘', '/'], description: 'Focus search' },
-  { keys: ['?'], description: 'Show keyboard shortcuts' }
+  { keys: ["⌘", "K"], description: "Open command palette" },
+  { keys: ["Alt", "N"], description: "Create new ticket" },
+  { keys: ["⌘", "/"], description: "Focus search" },
+  { keys: ["?"], description: "Show keyboard shortcuts" },
 ];
 
 const TICKETS_LIST_SHORTCUTS: ShortcutItem[] = [
-  { keys: ['J'], description: 'Next ticket' },
-  { keys: ['K'], description: 'Previous ticket' },
-  { keys: ['Enter'], description: 'Open selected ticket' },
-  { keys: ['X'], description: 'Toggle selection' },
-  { keys: ['Shift', 'X'], description: 'Select range' }
+  { keys: ["J"], description: "Next ticket" },
+  { keys: ["K"], description: "Previous ticket" },
+  { keys: ["Enter"], description: "Open selected ticket" },
+  { keys: ["X"], description: "Toggle selection" },
+  { keys: ["Shift", "X"], description: "Select range" },
 ];
 
 const TICKET_DETAIL_SHORTCUTS: ShortcutItem[] = [
-  { keys: ['R'], description: 'Focus reply' },
-  { keys: ['A'], description: 'Assign to me' },
-  { keys: ['S'], description: 'Open status dropdown' },
-  { keys: ['Esc'], description: 'Go back' }
+  { keys: ["R"], description: "Focus reply" },
+  { keys: ["A"], description: "Assign to me" },
+  { keys: ["S"], description: "Open status dropdown" },
+  { keys: ["Esc"], description: "Go back" },
 ];
 
 function ShortcutRow({ keys, description }: ShortcutItem) {
@@ -52,7 +52,7 @@ function ShortcutRow({ keys, description }: ShortcutItem) {
 export function KeyboardShortcutsHelp({
   open,
   onClose,
-  context
+  context,
 }: {
   open: boolean;
   onClose: () => void;
@@ -64,13 +64,15 @@ export function KeyboardShortcutsHelp({
 
   if (!open) return null;
 
-  const showTicketsList = context === 'tickets-list' || context === 'global';
-  const showTicketDetail = context === 'ticket-detail' || context === 'global';
+  const showTicketsList = context === "tickets-list" || context === "global";
+  const showTicketDetail = context === "ticket-detail" || context === "global";
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={dialogRef}
@@ -81,7 +83,9 @@ export function KeyboardShortcutsHelp({
         tabIndex={-1}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <h2 className="text-lg font-semibold text-slate-900">Keyboard shortcuts</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Keyboard shortcuts
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -99,7 +103,11 @@ export function KeyboardShortcutsHelp({
             </h3>
             <div className="divide-y divide-slate-100">
               {GLOBAL_SHORTCUTS.map((item) => (
-                <ShortcutRow key={item.description} keys={item.keys} description={item.description} />
+                <ShortcutRow
+                  key={item.description}
+                  keys={item.keys}
+                  description={item.description}
+                />
               ))}
             </div>
           </div>
@@ -111,7 +119,11 @@ export function KeyboardShortcutsHelp({
               </h3>
               <div className="divide-y divide-slate-100">
                 {TICKETS_LIST_SHORTCUTS.map((item) => (
-                  <ShortcutRow key={item.description} keys={item.keys} description={item.description} />
+                  <ShortcutRow
+                    key={item.description}
+                    keys={item.keys}
+                    description={item.description}
+                  />
                 ))}
               </div>
             </div>
@@ -124,7 +136,11 @@ export function KeyboardShortcutsHelp({
               </h3>
               <div className="divide-y divide-slate-100">
                 {TICKET_DETAIL_SHORTCUTS.map((item) => (
-                  <ShortcutRow key={item.description} keys={item.keys} description={item.description} />
+                  <ShortcutRow
+                    key={item.description}
+                    keys={item.keys}
+                    description={item.description}
+                  />
                 ))}
               </div>
             </div>
@@ -132,7 +148,11 @@ export function KeyboardShortcutsHelp({
         </div>
 
         <div className="border-t border-slate-200 px-4 py-2 text-xs text-slate-500">
-          Press <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50">?</kbd> anytime to show this help
+          Press{" "}
+          <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50">
+            ?
+          </kbd>{" "}
+          anytime to show this help
         </div>
       </div>
     </div>

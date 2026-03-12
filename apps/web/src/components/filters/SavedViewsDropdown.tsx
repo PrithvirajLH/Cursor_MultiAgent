@@ -1,12 +1,12 @@
-import { useCallback, useState } from 'react';
-import { ChevronDown, Save, Trash2 } from 'lucide-react';
+import { useCallback, useState } from "react";
+import { ChevronDown, Save, Trash2 } from "lucide-react";
 import {
   createSavedView,
   deleteSavedView,
   fetchSavedViews,
   type SavedViewRecord,
-} from '../../api/client';
-import type { TicketFilters } from '../../types';
+} from "../../api/client";
+import type { TicketFilters } from "../../types";
 
 export function SavedViewsDropdown({
   currentFilters,
@@ -23,7 +23,7 @@ export function SavedViewsDropdown({
   const [views, setViews] = useState<SavedViewRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saveName, setSaveName] = useState('');
+  const [saveName, setSaveName] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
 
   const loadViews = useCallback(async () => {
@@ -42,30 +42,38 @@ export function SavedViewsDropdown({
     if (!open) loadViews();
     setOpen(!open);
     setShowSaveInput(false);
-    setSaveName('');
+    setSaveName("");
   }
 
   function applyView(view: SavedViewRecord) {
     const raw = view.filters as Record<string, unknown>;
-    if (!raw || typeof raw !== 'object') return;
+    if (!raw || typeof raw !== "object") return;
     const partial: Partial<TicketFilters> = {
-      statusGroup: raw.statusGroup as TicketFilters['statusGroup'],
-      statuses: Array.isArray(raw.statuses) ? raw.statuses as string[] : [],
-      priorities: Array.isArray(raw.priorities) ? raw.priorities as string[] : [],
-      teamIds: Array.isArray(raw.teamIds) ? raw.teamIds as string[] : [],
-      assigneeIds: Array.isArray(raw.assigneeIds) ? raw.assigneeIds as string[] : [],
-      requesterIds: Array.isArray(raw.requesterIds) ? raw.requesterIds as string[] : [],
-      slaStatus: Array.isArray(raw.slaStatus) ? raw.slaStatus as TicketFilters['slaStatus'] : [],
-      createdFrom: typeof raw.createdFrom === 'string' ? raw.createdFrom : '',
-      createdTo: typeof raw.createdTo === 'string' ? raw.createdTo : '',
-      updatedFrom: typeof raw.updatedFrom === 'string' ? raw.updatedFrom : '',
-      updatedTo: typeof raw.updatedTo === 'string' ? raw.updatedTo : '',
-      dueFrom: typeof raw.dueFrom === 'string' ? raw.dueFrom : '',
-      dueTo: typeof raw.dueTo === 'string' ? raw.dueTo : '',
-      q: typeof raw.q === 'string' ? raw.q : '',
-      scope: (raw.scope as TicketFilters['scope']) ?? 'all',
-      sort: (raw.sort as TicketFilters['sort']) ?? 'updatedAt',
-      order: (raw.order as TicketFilters['order']) ?? 'desc',
+      statusGroup: raw.statusGroup as TicketFilters["statusGroup"],
+      statuses: Array.isArray(raw.statuses) ? (raw.statuses as string[]) : [],
+      priorities: Array.isArray(raw.priorities)
+        ? (raw.priorities as string[])
+        : [],
+      teamIds: Array.isArray(raw.teamIds) ? (raw.teamIds as string[]) : [],
+      assigneeIds: Array.isArray(raw.assigneeIds)
+        ? (raw.assigneeIds as string[])
+        : [],
+      requesterIds: Array.isArray(raw.requesterIds)
+        ? (raw.requesterIds as string[])
+        : [],
+      slaStatus: Array.isArray(raw.slaStatus)
+        ? (raw.slaStatus as TicketFilters["slaStatus"])
+        : [],
+      createdFrom: typeof raw.createdFrom === "string" ? raw.createdFrom : "",
+      createdTo: typeof raw.createdTo === "string" ? raw.createdTo : "",
+      updatedFrom: typeof raw.updatedFrom === "string" ? raw.updatedFrom : "",
+      updatedTo: typeof raw.updatedTo === "string" ? raw.updatedTo : "",
+      dueFrom: typeof raw.dueFrom === "string" ? raw.dueFrom : "",
+      dueTo: typeof raw.dueTo === "string" ? raw.dueTo : "",
+      q: typeof raw.q === "string" ? raw.q : "",
+      scope: (raw.scope as TicketFilters["scope"]) ?? "all",
+      sort: (raw.sort as TicketFilters["sort"]) ?? "updatedAt",
+      order: (raw.order as TicketFilters["order"]) ?? "desc",
     };
     onApplyFilters(partial);
     setOpen(false);
@@ -101,10 +109,10 @@ export function SavedViewsDropdown({
       await createSavedView({ name: saveName.trim(), filters: payload });
       onSaveSuccess?.();
       setShowSaveInput(false);
-      setSaveName('');
+      setSaveName("");
       loadViews();
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : 'Failed to save view');
+      onError?.(err instanceof Error ? err.message : "Failed to save view");
     } finally {
       setSaving(false);
     }
@@ -116,7 +124,7 @@ export function SavedViewsDropdown({
       await deleteSavedView(id);
       loadViews();
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : 'Failed to delete view');
+      onError?.(err instanceof Error ? err.message : "Failed to delete view");
     }
   }
 
@@ -128,11 +136,17 @@ export function SavedViewsDropdown({
         className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
       >
         Saved views
-        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" aria-hidden onClick={() => setOpen(false)} />
+          <div
+            className="fixed inset-0 z-10"
+            aria-hidden
+            onClick={() => setOpen(false)}
+          />
           <div className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-[16px] border border-slate-200 bg-white py-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
             {showSaveInput ? (
               <div className="px-3 py-2 space-y-3">
@@ -151,11 +165,14 @@ export function SavedViewsDropdown({
                     disabled={saving || !saveName.trim()}
                     className="rounded-lg bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm focus:ring-2 focus:ring-blue-500/50"
                   >
-                    {saving ? 'Saving…' : 'Save'}
+                    {saving ? "Saving…" : "Save"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setShowSaveInput(false); setSaveName(''); }}
+                    onClick={() => {
+                      setShowSaveInput(false);
+                      setSaveName("");
+                    }}
                     className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
                   >
                     Cancel
@@ -174,9 +191,13 @@ export function SavedViewsDropdown({
                 </button>
                 <div className="border-t border-slate-100" />
                 {loading ? (
-                  <p className="px-3 py-4 text-[12px] text-slate-500 text-center">Loading…</p>
+                  <p className="px-3 py-4 text-[12px] text-slate-500 text-center">
+                    Loading…
+                  </p>
                 ) : views.length === 0 ? (
-                  <p className="px-3 py-4 text-[12px] text-slate-500 text-center">No saved views</p>
+                  <p className="px-3 py-4 text-[12px] text-slate-500 text-center">
+                    No saved views
+                  </p>
                 ) : (
                   <ul className="max-h-48 overflow-y-auto">
                     {views.map((view) => (
@@ -189,7 +210,9 @@ export function SavedViewsDropdown({
                           >
                             {view.name}
                             {view.isDefault && (
-                              <span className="ml-1.5 text-[11px] font-medium text-slate-400">(default)</span>
+                              <span className="ml-1.5 text-[11px] font-medium text-slate-400">
+                                (default)
+                              </span>
                             )}
                           </button>
                           <button

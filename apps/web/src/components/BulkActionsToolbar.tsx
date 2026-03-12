@@ -1,30 +1,39 @@
-import { useState } from 'react';
-import { UserPlus } from 'lucide-react';
-import type { TeamRef } from '../api/client';
-import type { UserRef } from '../api/client';
-import { formatStatus } from '../utils/format';
+import { useState } from "react";
+import { UserPlus } from "lucide-react";
+import type { TeamRef } from "../api/client";
+import type { UserRef } from "../api/client";
+import { formatStatus } from "../utils/format";
 
 const STATUS_OPTIONS = [
-  'NEW',
-  'TRIAGED',
-  'ASSIGNED',
-  'IN_PROGRESS',
-  'WAITING_ON_REQUESTER',
-  'WAITING_ON_VENDOR',
-  'RESOLVED',
-  'CLOSED',
-  'REOPENED'
+  "NEW",
+  "TRIAGED",
+  "ASSIGNED",
+  "IN_PROGRESS",
+  "WAITING_ON_REQUESTER",
+  "WAITING_ON_VENDOR",
+  "RESOLVED",
+  "CLOSED",
+  "REOPENED",
 ];
 
-const PRIORITY_OPTIONS = ['P1', 'P2', 'P3', 'P4'];
+const PRIORITY_OPTIONS = ["P1", "P2", "P3", "P4"];
 
 type BulkActionsToolbarProps = {
   selectedCount: number;
   onClearSelection: () => void;
-  onBulkAssign: (assigneeId?: string) => Promise<{ success: number; failed: number }>;
-  onBulkTransfer: (newTeamId: string, assigneeId?: string) => Promise<{ success: number; failed: number }>;
-  onBulkStatus: (status: string) => Promise<{ success: number; failed: number }>;
-  onBulkPriority: (priority: string) => Promise<{ success: number; failed: number }>;
+  onBulkAssign: (
+    assigneeId?: string,
+  ) => Promise<{ success: number; failed: number }>;
+  onBulkTransfer: (
+    newTeamId: string,
+    assigneeId?: string,
+  ) => Promise<{ success: number; failed: number }>;
+  onBulkStatus: (
+    status: string,
+  ) => Promise<{ success: number; failed: number }>;
+  onBulkPriority: (
+    priority: string,
+  ) => Promise<{ success: number; failed: number }>;
   teamsList: TeamRef[];
   assignableUsers: UserRef[];
   onSuccess?: (message: string) => void;
@@ -41,14 +50,14 @@ export function BulkActionsToolbar({
   teamsList,
   assignableUsers,
   onSuccess,
-  onError
+  onError,
 }: BulkActionsToolbarProps) {
   const [loading, setLoading] = useState(false);
-  const [assignToId, setAssignToId] = useState('');
-  const [transferTeamId, setTransferTeamId] = useState('');
-  const [transferAssigneeId, setTransferAssigneeId] = useState('');
-  const [statusValue, setStatusValue] = useState('');
-  const [priorityValue, setPriorityValue] = useState('');
+  const [assignToId, setAssignToId] = useState("");
+  const [transferTeamId, setTransferTeamId] = useState("");
+  const [transferAssigneeId, setTransferAssigneeId] = useState("");
+  const [statusValue, setStatusValue] = useState("");
+  const [priorityValue, setPriorityValue] = useState("");
 
   async function handleBulkAssign(assigneeId?: string) {
     setLoading(true);
@@ -61,13 +70,17 @@ export function BulkActionsToolbar({
         onSuccess?.(`${result.success} assigned, ${result.failed} failed.`);
         onClearSelection();
       } else {
-        onError?.(result.failed === 1 ? 'Unable to assign ticket.' : `Unable to assign (${result.failed} failed).`);
+        onError?.(
+          result.failed === 1
+            ? "Unable to assign ticket."
+            : `Unable to assign (${result.failed} failed).`,
+        );
       }
     } catch {
-      onError?.('Unable to assign tickets.');
+      onError?.("Unable to assign tickets.");
     } finally {
       setLoading(false);
-      setAssignToId('');
+      setAssignToId("");
     }
   }
 
@@ -75,22 +88,25 @@ export function BulkActionsToolbar({
     if (!transferTeamId) return;
     setLoading(true);
     try {
-      const result = await onBulkTransfer(transferTeamId, transferAssigneeId || undefined);
+      const result = await onBulkTransfer(
+        transferTeamId,
+        transferAssigneeId || undefined,
+      );
       if (result.failed === 0) {
         onSuccess?.(`${result.success} ticket(s) transferred.`);
         onClearSelection();
-        setTransferTeamId('');
-        setTransferAssigneeId('');
+        setTransferTeamId("");
+        setTransferAssigneeId("");
       } else if (result.success > 0) {
         onSuccess?.(`${result.success} transferred, ${result.failed} failed.`);
         onClearSelection();
-        setTransferTeamId('');
-        setTransferAssigneeId('');
+        setTransferTeamId("");
+        setTransferAssigneeId("");
       } else {
         onError?.(`Transfer failed (${result.failed} ticket(s)).`);
       }
     } catch {
-      onError?.('Unable to transfer tickets.');
+      onError?.("Unable to transfer tickets.");
     } finally {
       setLoading(false);
     }
@@ -102,18 +118,20 @@ export function BulkActionsToolbar({
     try {
       const result = await onBulkStatus(statusValue);
       if (result.failed === 0) {
-        onSuccess?.(`${result.success} ticket(s) updated to ${formatStatus(statusValue)}.`);
+        onSuccess?.(
+          `${result.success} ticket(s) updated to ${formatStatus(statusValue)}.`,
+        );
         onClearSelection();
-        setStatusValue('');
+        setStatusValue("");
       } else if (result.success > 0) {
         onSuccess?.(`${result.success} updated, ${result.failed} failed.`);
         onClearSelection();
-        setStatusValue('');
+        setStatusValue("");
       } else {
         onError?.(`Status update failed (${result.failed} ticket(s)).`);
       }
     } catch {
-      onError?.('Unable to update status.');
+      onError?.("Unable to update status.");
     } finally {
       setLoading(false);
     }
@@ -127,19 +145,19 @@ export function BulkActionsToolbar({
       if (result.failed === 0) {
         onSuccess?.(`${result.success} ticket(s) set to ${priorityValue}.`);
         onClearSelection();
-        setPriorityValue('');
+        setPriorityValue("");
       } else if (result.success > 0) {
         onSuccess?.(`${result.success} updated, ${result.failed} failed.`);
         onClearSelection();
-        setPriorityValue('');
+        setPriorityValue("");
       } else {
         onError?.(`Priority update failed (${result.failed} ticket(s)).`);
       }
     } catch {
-      onError?.('Unable to update priority.');
+      onError?.("Unable to update priority.");
     } finally {
       setLoading(false);
-      setPriorityValue('');
+      setPriorityValue("");
     }
   }
 
@@ -148,7 +166,7 @@ export function BulkActionsToolbar({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-blue-900">
-          {selectedCount} ticket{selectedCount === 1 ? '' : 's'} selected
+            {selectedCount} ticket{selectedCount === 1 ? "" : "s"} selected
           </span>
           <button
             type="button"
@@ -289,7 +307,6 @@ export function BulkActionsToolbar({
             Transfer
           </button>
         </div>
-
       </div>
     </div>
   );

@@ -1,12 +1,20 @@
-import type { CustomFieldRecord, CustomFieldValueRecord, UserRef } from '../api/client';
+import type {
+  CustomFieldRecord,
+  CustomFieldValueRecord,
+  UserRef,
+} from "../api/client";
 
 function parseOptions(raw: unknown): { value: string; label: string }[] {
   if (Array.isArray(raw)) {
     return raw.map((item) => {
-      if (item && typeof item === 'object' && 'value' in item) {
+      if (item && typeof item === "object" && "value" in item) {
         return {
-          value: String((item as { value: unknown }).value ?? ''),
-          label: String((item as { label?: unknown }).label ?? (item as { value: unknown }).value ?? '')
+          value: String((item as { value: unknown }).value ?? ""),
+          label: String(
+            (item as { label?: unknown }).label ??
+              (item as { value: unknown }).value ??
+              "",
+          ),
         };
       }
       return { value: String(item), label: String(item) };
@@ -18,7 +26,7 @@ function parseOptions(raw: unknown): { value: string; label: string }[] {
 /** Display a single custom field value (read-only). */
 export function CustomFieldDisplay({
   field,
-  value
+  value,
 }: {
   field: CustomFieldRecord;
   value: string | null | undefined;
@@ -27,58 +35,87 @@ export function CustomFieldDisplay({
   const label = field.name;
   const isRequired = field.isRequired;
 
-  if (raw === null || raw === '') {
+  if (raw === null || raw === "") {
     return (
       <div className="flex flex-wrap gap-x-2 gap-y-1">
-        <span className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</span>
+        <span className="text-xs text-slate-500">
+          {label}
+          {isRequired ? " *" : ""}
+        </span>
         <span className="text-sm text-slate-400">—</span>
       </div>
     );
   }
 
   switch (field.fieldType) {
-    case 'CHECKBOX':
+    case "CHECKBOX":
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</span>
-          <span className="text-sm text-slate-700">{raw === 'true' || raw === '1' ? 'Yes' : 'No'}</span>
+          <span className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </span>
+          <span className="text-sm text-slate-700">
+            {raw === "true" || raw === "1" ? "Yes" : "No"}
+          </span>
         </div>
       );
-    case 'DATE':
+    case "DATE":
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</span>
+          <span className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </span>
           <span className="text-sm text-slate-700">{raw}</span>
         </div>
       );
-    case 'DROPDOWN':
-    case 'USER': {
+    case "DROPDOWN":
+    case "USER": {
       const options = parseOptions(field.options);
       const option = options.find((o) => o.value === raw);
       const display = option ? option.label : raw;
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</span>
+          <span className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </span>
           <span className="text-sm text-slate-700">{display}</span>
         </div>
       );
     }
-    case 'MULTISELECT': {
+    case "MULTISELECT": {
       const options = parseOptions(field.options);
-      const values = raw.split(',').map((v) => v.trim()).filter(Boolean);
-      const labels = values.map((v) => options.find((o) => o.value === v)?.label ?? v);
+      const values = raw
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+      const labels = values.map(
+        (v) => options.find((o) => o.value === v)?.label ?? v,
+      );
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</span>
-          <span className="text-sm text-slate-700">{labels.length ? labels.join(', ') : raw}</span>
+          <span className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </span>
+          <span className="text-sm text-slate-700">
+            {labels.length ? labels.join(", ") : raw}
+          </span>
         </div>
       );
     }
     default:
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</span>
-          <span className="text-sm text-slate-700 whitespace-pre-wrap">{raw}</span>
+          <span className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </span>
+          <span className="text-sm text-slate-700 whitespace-pre-wrap">
+            {raw}
+          </span>
         </div>
       );
   }
@@ -89,7 +126,7 @@ export function CustomFieldInput({
   field,
   value,
   onChange,
-  users = []
+  users = [],
 }: {
   field: CustomFieldRecord;
   value: string;
@@ -101,13 +138,17 @@ export function CustomFieldInput({
   const options = parseOptions(field.options);
   const inputId = `cf-input-${field.id}`;
 
-  const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm';
+  const inputClass =
+    "mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm";
 
   switch (field.fieldType) {
-    case 'TEXT':
+    case "TEXT":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <input
             id={inputId}
             type="text"
@@ -118,10 +159,13 @@ export function CustomFieldInput({
           />
         </div>
       );
-    case 'TEXTAREA':
+    case "TEXTAREA":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <textarea
             id={inputId}
             className={inputClass}
@@ -132,10 +176,13 @@ export function CustomFieldInput({
           />
         </div>
       );
-    case 'NUMBER':
+    case "NUMBER":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <input
             id={inputId}
             type="number"
@@ -146,10 +193,13 @@ export function CustomFieldInput({
           />
         </div>
       );
-    case 'DATE':
+    case "DATE":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <input
             id={inputId}
             type="date"
@@ -160,23 +210,29 @@ export function CustomFieldInput({
           />
         </div>
       );
-    case 'CHECKBOX':
+    case "CHECKBOX":
       return (
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
             id={inputId}
-            checked={value === 'true' || value === '1'}
-            onChange={(e) => onChange(e.target.checked ? 'true' : '')}
+            checked={value === "true" || value === "1"}
+            onChange={(e) => onChange(e.target.checked ? "true" : "")}
             className="rounded border-slate-300"
           />
-          <label htmlFor={inputId} className="text-sm text-slate-700">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-sm text-slate-700">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
         </div>
       );
-    case 'DROPDOWN':
+    case "DROPDOWN":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <select
             id={inputId}
             className={inputClass}
@@ -193,42 +249,56 @@ export function CustomFieldInput({
           </select>
         </div>
       );
-    case 'MULTISELECT': {
-      const selected = value ? value.split(',').map((v) => v.trim()).filter(Boolean) : [];
+    case "MULTISELECT": {
+      const selected = value
+        ? value
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean)
+        : [];
       function toggle(val: string) {
         const next = selected.includes(val)
           ? selected.filter((v) => v !== val)
           : [...selected, val];
-        onChange(next.join(','));
+        onChange(next.join(","));
       }
       return (
         <fieldset>
-          <legend className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</legend>
+          <legend className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </legend>
           <div className="mt-1 flex flex-wrap gap-2">
             {options.map((opt, index) => {
               const optionId = `${inputId}-${index}`;
               return (
-                <div key={opt.value} className="inline-flex items-center gap-1.5 text-sm text-slate-700">
-                <input
-                  id={optionId}
-                  type="checkbox"
-                  checked={selected.includes(opt.value)}
-                  onChange={() => toggle(opt.value)}
-                  className="rounded border-slate-300"
-                />
-                <label htmlFor={optionId}>{opt.label}</label>
-              </div>
+                <div
+                  key={opt.value}
+                  className="inline-flex items-center gap-1.5 text-sm text-slate-700"
+                >
+                  <input
+                    id={optionId}
+                    type="checkbox"
+                    checked={selected.includes(opt.value)}
+                    onChange={() => toggle(opt.value)}
+                    className="rounded border-slate-300"
+                  />
+                  <label htmlFor={optionId}>{opt.label}</label>
+                </div>
               );
             })}
           </div>
         </fieldset>
       );
     }
-    case 'USER':
+    case "USER":
       if (users.length === 0) {
         return (
           <div>
-            <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+            <label htmlFor={inputId} className="text-xs text-slate-500">
+              {label}
+              {isRequired ? " *" : ""}
+            </label>
             <input
               id={inputId}
               type="text"
@@ -243,7 +313,10 @@ export function CustomFieldInput({
       }
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <select
             id={inputId}
             className={inputClass}
@@ -263,7 +336,10 @@ export function CustomFieldInput({
     default:
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">{label}{isRequired ? ' *' : ''}</label>
+          <label htmlFor={inputId} className="text-xs text-slate-500">
+            {label}
+            {isRequired ? " *" : ""}
+          </label>
           <input
             id={inputId}
             type="text"
@@ -278,12 +354,20 @@ export function CustomFieldInput({
 }
 
 /** Render a list of custom field values (read-only) from ticket. */
-export function CustomFieldsDisplay({ values }: { values: CustomFieldValueRecord[] }) {
+export function CustomFieldsDisplay({
+  values,
+}: {
+  values: CustomFieldValueRecord[];
+}) {
   if (!values?.length) return null;
   return (
     <div className="space-y-2">
       {values.map((cv) => (
-        <CustomFieldDisplay key={cv.id} field={cv.customField} value={cv.value} />
+        <CustomFieldDisplay
+          key={cv.id}
+          field={cv.customField}
+          value={cv.value}
+        />
       ))}
     </div>
   );

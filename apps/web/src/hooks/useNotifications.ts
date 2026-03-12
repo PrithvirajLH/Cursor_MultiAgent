@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchNotifications,
   fetchUnreadNotificationCount,
   getDemoUserEmail,
   markAllNotificationsAsRead,
   markNotificationAsRead,
-  type NotificationRecord
-} from '../api/client';
+  type NotificationRecord,
+} from "../api/client";
 
 type UseNotificationsOptions = {
   /** Polling interval in milliseconds (default: 30000 = 30 seconds) */
@@ -25,7 +25,12 @@ type RealtimeNotificationUpdate = {
 };
 
 export function useNotifications(options: UseNotificationsOptions = {}) {
-  const { pollingInterval = 30000, enablePolling = true, pageSize = 20, userKey } = options;
+  const {
+    pollingInterval = 30000,
+    enablePolling = true,
+    pageSize = 20,
+    userKey,
+  } = options;
 
   const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -36,8 +41,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   // Track when userKey is synced to storage to prevent fetching with stale credentials
   const [userKeySynced, setUserKeySynced] = useState(false);
   const [isTabVisible, setIsTabVisible] = useState(() => {
-    if (typeof document === 'undefined') return true;
-    return document.visibilityState === 'visible';
+    if (typeof document === "undefined") return true;
+    return document.visibilityState === "visible";
   });
 
   const pollingRef = useRef<number | null>(null);
@@ -60,7 +65,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const fetchData = useCallback(
     async (pageNum: number = 1, append: boolean = false) => {
       if (!mountedRef.current) return;
-      
+
       // Guard: don't fetch until userKey is synced to storage
       if (!isUserKeySynced()) {
         return;
@@ -75,11 +80,14 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       try {
         const response = await fetchNotifications({
           page: pageNum,
-          pageSize
+          pageSize,
         });
 
         // Guard: don't apply results if user changed during request
-        if (!mountedRef.current || currentUserKeyRef.current !== requestUserKey) {
+        if (
+          !mountedRef.current ||
+          currentUserKeyRef.current !== requestUserKey
+        ) {
           return;
         }
 
@@ -94,25 +102,31 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         setPage(pageNum);
       } catch (err) {
         // Guard: don't apply error if user changed during request
-        if (!mountedRef.current || currentUserKeyRef.current !== requestUserKey) {
+        if (
+          !mountedRef.current ||
+          currentUserKeyRef.current !== requestUserKey
+        ) {
           return;
         }
-        setError('Failed to load notifications');
-        console.error('Failed to fetch notifications', err);
+        setError("Failed to load notifications");
+        console.error("Failed to fetch notifications", err);
       } finally {
         // Guard: don't update loading if user changed during request
-        if (mountedRef.current && currentUserKeyRef.current === requestUserKey) {
+        if (
+          mountedRef.current &&
+          currentUserKeyRef.current === requestUserKey
+        ) {
           setLoading(false);
         }
       }
     },
-    [pageSize, isUserKeySynced]
+    [pageSize, isUserKeySynced],
   );
 
   // Fetch just the unread count (lightweight polling) with request cancellation support
   const fetchCount = useCallback(async () => {
     if (!mountedRef.current) return;
-    
+
     // Guard: don't fetch until userKey is synced to storage
     if (!isUserKeySynced()) {
       return;
@@ -132,7 +146,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         setUnreadCount(response.count);
       }
     } catch (err) {
-      console.error('Failed to fetch unread count', err);
+      console.error("Failed to fetch unread count", err);
     } finally {
       countInFlightRef.current = false;
     }
@@ -153,7 +167,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const applyRealtimeUpdate = useCallback(
     (payload: RealtimeNotificationUpdate = {}) => {
       if (
-        typeof payload.unreadCount === 'number' &&
+        typeof payload.unreadCount === "number" &&
         Number.isFinite(payload.unreadCount)
       ) {
         setUnreadCount(Math.max(0, payload.unreadCount));
@@ -183,12 +197,14 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       // Optimistically update local state
       setNotifications((prev) =>
         prev.map((n) =>
-          n.id === notificationId ? { ...n, isRead: true, readAt: new Date().toISOString() } : n
-        )
+          n.id === notificationId
+            ? { ...n, isRead: true, readAt: new Date().toISOString() }
+            : n,
+        ),
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
-      console.error('Failed to mark notification as read', err);
+      console.error("Failed to mark notification as read", err);
     }
   }, []);
 
@@ -199,11 +215,15 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
       // Optimistically update local state
       setNotifications((prev) =>
-        prev.map((n) => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
+        prev.map((n) => ({
+          ...n,
+          isRead: true,
+          readAt: new Date().toISOString(),
+        })),
       );
       setUnreadCount(0);
     } catch (err) {
-      console.error('Failed to mark all notifications as read', err);
+      console.error("Failed to mark all notifications as read", err);
     }
   }, []);
 
@@ -223,10 +243,12 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
   // Pause polling when the tab is not visible to reduce background contention.
   useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const handleVisibility = () => setIsTabVisible(document.visibilityState === 'visible');
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    if (typeof document === "undefined") return;
+    const handleVisibility = () =>
+      setIsTabVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
   // Check if userKey is synced to storage and trigger fetch when ready.
@@ -252,7 +274,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   // Initial fetch and refetch when user changes and is synced
   useEffect(() => {
     mountedRef.current = true;
-    
+
     // Only fetch when userKey is synced to storage
     if (userKeySynced) {
       fetchData(1, false);
@@ -265,7 +287,12 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
 
   // Set up polling (only when user is synced)
   useEffect(() => {
-    if (!enablePolling || pollingInterval <= 0 || !userKeySynced || !isTabVisible) {
+    if (
+      !enablePolling ||
+      pollingInterval <= 0 ||
+      !userKeySynced ||
+      !isTabVisible
+    ) {
       return;
     }
 
@@ -301,6 +328,6 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     refresh,
     applyRealtimeUpdate,
     markAsRead,
-    markAllAsRead
+    markAllAsRead,
   };
 }

@@ -1,21 +1,21 @@
-import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate } from 'react-router-dom';
-import { TopBar } from '../components/TopBar';
-import { useHeaderContext } from '../contexts/HeaderContext';
-import { useToast } from '../hooks/useToast';
-import type { Role } from '../types';
-import type { TeamRef } from '../api/client';
-import { useCreateTicketForm } from '../hooks/useCreateTicketForm';
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useNavigate } from "react-router-dom";
+import { TopBar } from "../components/TopBar";
+import { useHeaderContext } from "../contexts/HeaderContext";
+import { useToast } from "../hooks/useToast";
+import type { Role } from "../types";
+import type { TeamRef } from "../api/client";
+import { useCreateTicketForm } from "../hooks/useCreateTicketForm";
 import {
   CREATE_TICKET_DESCRIPTION_MAX,
   CREATE_TICKET_SUBJECT_MAX,
   createTicketSchema,
   type CreateTicketFormData,
-} from '../schemas/createTicket';
-import { CustomFieldInput } from '../components/CustomFieldRenderer';
-import { Button } from '../components/ui/Button';
+} from "../schemas/createTicket";
+import { CustomFieldInput } from "../components/CustomFieldRenderer";
+import { Button } from "../components/ui/Button";
 
 type NewTicketPageProps = {
   role: Role;
@@ -29,14 +29,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
 
   const createTicketForm = useCreateTicketForm({
     onSuccess: () => {
-      toast.success('Ticket created successfully.');
+      toast.success("Ticket created successfully.");
     },
     toastSuccess: toast.success,
     toastError: toast.error,
   });
 
   function handleClose() {
-    navigate('/tickets');
+    navigate("/tickets");
   }
 
   const {
@@ -47,14 +47,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
     formState: { errors, isSubmitting },
   } = useForm<CreateTicketFormData>({
     resolver: zodResolver(createTicketSchema),
-    mode: 'onBlur',
+    mode: "onBlur",
     defaultValues: {
-      subject: '',
-      description: '',
-      priority: 'P3',
-      channel: 'PORTAL',
-      assignedTeamId: '',
-      categoryId: '',
+      subject: "",
+      description: "",
+      priority: "P3",
+      channel: "PORTAL",
+      assignedTeamId: "",
+      categoryId: "",
     },
   });
 
@@ -62,22 +62,22 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
     reset();
   }, [reset]);
 
-  const subjectValue = watch('subject');
-  const descriptionValue = watch('description');
-  const assignedTeamId = watch('assignedTeamId');
-  const categoryId = watch('categoryId');
+  const subjectValue = watch("subject");
+  const descriptionValue = watch("description");
+  const assignedTeamId = watch("assignedTeamId");
+  const categoryId = watch("categoryId");
 
   useEffect(() => {
     createTicketForm.setSelectedTeamId(assignedTeamId);
   }, [assignedTeamId, createTicketForm]);
 
   useEffect(() => {
-    createTicketForm.setSelectedCategoryId(categoryId ?? '');
+    createTicketForm.setSelectedCategoryId(categoryId ?? "");
   }, [categoryId, createTicketForm]);
 
   const currentUser = headerCtx?.currentUser ?? null;
   const initialFacility =
-    currentUser?.graphProfile?.officeLocation?.trim() ?? '';
+    currentUser?.graphProfile?.officeLocation?.trim() ?? "";
   const hasProfileFacility = initialFacility.length > 0;
   const [facility, setFacility] = useState(initialFacility);
 
@@ -98,10 +98,10 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
   const headerValue = headerCtx;
 
   const inputBase =
-    'w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20';
+    "w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
   const inputError =
-    'border-red-400 bg-red-50 focus:border-red-500 focus:ring-red-500/20';
-  const inputNormal = 'border-slate-300 bg-white hover:border-slate-400';
+    "border-red-400 bg-red-50 focus:border-red-500 focus:ring-red-500/20";
+  const inputNormal = "border-slate-300 bg-white hover:border-slate-400";
 
   return (
     <section className="min-h-full bg-slate-50">
@@ -112,14 +112,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
               title={headerValue.title}
               subtitle={headerValue.subtitle}
               currentEmail={headerValue.currentEmail}
-
-
               onOpenSearch={headerValue.onOpenSearch}
               notificationProps={headerValue.notificationProps}
             />
           ) : (
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">Create New Ticket</h1>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                Create New Ticket
+              </h1>
               <p className="text-sm font-medium text-slate-500">
                 Fill in the details below to raise a new request.
               </p>
@@ -132,13 +132,19 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Raise a new ticket</h2>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Raise a new ticket
+              </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Choose the department, add a clear subject, and describe the issue in detail.
+                Choose the department, add a clear subject, and describe the
+                issue in detail.
               </p>
             </div>
           </div>
-          <form className="space-y-6 px-6 py-6" onSubmit={handleSubmit(onSubmit)}>
+          <form
+            className="space-y-6 px-6 py-6"
+            onSubmit={handleSubmit(onSubmit)}
+          >
             {createTicketForm.error && (
               <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                 {createTicketForm.error}
@@ -158,7 +164,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                   className={`${inputBase} ${
                     errors.assignedTeamId ? inputError : inputNormal
                   }`}
-                  {...register('assignedTeamId')}
+                  {...register("assignedTeamId")}
                 >
                   <option value="">Select a department</option>
                   {teamsList.map((team) => (
@@ -180,13 +186,15 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     htmlFor="new-ticket-category"
                     className="mb-1.5 block text-sm font-medium text-slate-700"
                   >
-                    Category{' '}
-                    <span className="text-slate-400 font-normal">(optional)</span>
+                    Category{" "}
+                    <span className="text-slate-400 font-normal">
+                      (optional)
+                    </span>
                   </label>
                   <select
                     id="new-ticket-category"
                     className={`${inputBase} ${inputNormal}`}
-                    {...register('categoryId')}
+                    {...register("categoryId")}
                   >
                     <option value="">Select a category</option>
                     {createTicketForm.categories.map((cat) => (
@@ -208,7 +216,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 <input
                   id="new-ticket-facility"
                   className={`${inputBase} ${inputNormal} ${
-                    hasProfileFacility ? 'bg-slate-100 cursor-not-allowed' : ''
+                    hasProfileFacility ? "bg-slate-100 cursor-not-allowed" : ""
                   }`}
                   placeholder="e.g. HQ – 3rd Floor – East Wing"
                   value={facility}
@@ -232,8 +240,8 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                   <span
                     className={`text-xs ${
                       (subjectValue?.length ?? 0) > CREATE_TICKET_SUBJECT_MAX
-                        ? 'text-red-500 font-medium'
-                        : 'text-slate-400'
+                        ? "text-red-500 font-medium"
+                        : "text-slate-400"
                     }`}
                   >
                     {subjectValue?.length ?? 0}/{CREATE_TICKET_SUBJECT_MAX}
@@ -246,7 +254,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     errors.subject ? inputError : inputNormal
                   }`}
                   maxLength={CREATE_TICKET_SUBJECT_MAX}
-                  {...register('subject')}
+                  {...register("subject")}
                 />
                 {errors.subject && (
                   <p className="mt-1 text-sm text-red-600">
@@ -265,12 +273,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                   </label>
                   <span
                     className={`text-xs ${
-                      (descriptionValue?.length ?? 0) > CREATE_TICKET_DESCRIPTION_MAX
-                        ? 'text-red-500 font-medium'
-                        : 'text-slate-400'
+                      (descriptionValue?.length ?? 0) >
+                      CREATE_TICKET_DESCRIPTION_MAX
+                        ? "text-red-500 font-medium"
+                        : "text-slate-400"
                     }`}
                   >
-                    {descriptionValue?.length ?? 0}/{CREATE_TICKET_DESCRIPTION_MAX}
+                    {descriptionValue?.length ?? 0}/
+                    {CREATE_TICKET_DESCRIPTION_MAX}
                   </span>
                 </div>
                 <textarea
@@ -280,7 +290,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     errors.description ? inputError : inputNormal
                   }`}
                   maxLength={CREATE_TICKET_DESCRIPTION_MAX}
-                  {...register('description')}
+                  {...register("description")}
                 />
                 {errors.description && (
                   <p className="mt-1 text-sm text-red-600">
@@ -302,7 +312,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     className={`${inputBase} ${
                       errors.priority ? inputError : inputNormal
                     }`}
-                    {...register('priority')}
+                    {...register("priority")}
                   >
                     <option value="P1">P1 – Critical</option>
                     <option value="P2">P2 – High</option>
@@ -324,7 +334,8 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                   Additional information
                 </h3>
                 <p className="text-xs text-slate-500">
-                  These fields help your team route and solve the request faster.
+                  These fields help your team route and solve the request
+                  faster.
                 </p>
                 <div className="space-y-3">
                   {createTicketForm.customFields.map((field) => (
@@ -334,7 +345,9 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     >
                       <CustomFieldInput
                         field={field}
-                        value={createTicketForm.customFieldValues[field.id] ?? ''}
+                        value={
+                          createTicketForm.customFieldValues[field.id] ?? ""
+                        }
                         onChange={(value) =>
                           createTicketForm.onCustomFieldChange(field.id, value)
                         }
@@ -356,11 +369,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
               </Button>
               <div className="flex items-center gap-2">
                 <span className="hidden text-xs text-slate-400 sm:inline">
-                  Press <span className="rounded border border-slate-300 px-1">Enter</span>{' '}
+                  Press{" "}
+                  <span className="rounded border border-slate-300 px-1">
+                    Enter
+                  </span>{" "}
                   to submit
                 </span>
                 <Button type="submit" variant="primary" disabled={isSubmitting}>
-                  {isSubmitting ? 'Creating…' : 'Create Ticket'}
+                  {isSubmitting ? "Creating…" : "Create Ticket"}
                 </Button>
               </div>
             </div>
@@ -370,4 +386,3 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
     </section>
   );
 }
-

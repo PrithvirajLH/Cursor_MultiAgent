@@ -1,7 +1,7 @@
-import { Clock } from 'lucide-react';
-import { useCountdown } from '../hooks/useCountdown';
-import { RelativeTime } from './RelativeTime';
-import { formatDate, formatDateLong } from '../utils/format';
+import { Clock } from "lucide-react";
+import { useCountdown } from "../hooks/useCountdown";
+import { RelativeTime } from "./RelativeTime";
+import { formatDate, formatDateLong } from "../utils/format";
 
 type SlaTimerTicket = {
   createdAt: string;
@@ -14,7 +14,7 @@ type SlaTimerTicket = {
 };
 
 function formatRemaining(ms: number): string {
-  if (ms <= 0) return '0s';
+  if (ms <= 0) return "0s";
   const totalSeconds = Math.floor(ms / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -23,25 +23,32 @@ function formatRemaining(ms: number): string {
   if (hours > 0) parts.push(`${hours}h`);
   if (minutes > 0 || hours > 0) parts.push(`${minutes}m`);
   parts.push(`${seconds}s`);
-  return parts.join(' ');
+  return parts.join(" ");
 }
 
-type State = 'on_track' | 'caution' | 'at_risk' | 'breached' | 'paused' | 'met' | 'no_sla';
+type State =
+  | "on_track"
+  | "caution"
+  | "at_risk"
+  | "breached"
+  | "paused"
+  | "met"
+  | "no_sla";
 
 function getState(
   remainingMs: number | null,
   isPast: boolean,
   isPaused: boolean,
-  totalMs: number
+  totalMs: number,
 ): State {
-  if (isPaused) return 'paused';
-  if (remainingMs === null || totalMs <= 0) return 'no_sla';
-  if (isPast) return 'breached';
+  if (isPaused) return "paused";
+  if (remainingMs === null || totalMs <= 0) return "no_sla";
+  if (isPast) return "breached";
   const pct = (remainingMs / totalMs) * 100;
-  if (pct > 50) return 'on_track';
-  if (pct > 25) return 'caution';
-  if (pct > 0) return 'at_risk';
-  return 'breached';
+  if (pct > 50) return "on_track";
+  if (pct > 25) return "caution";
+  if (pct > 0) return "at_risk";
+  return "breached";
 }
 
 const STATE_STYLES: Record<
@@ -49,56 +56,62 @@ const STATE_STYLES: Record<
   { bar: string; text: string; pulse?: boolean; label: string }
 > = {
   on_track: {
-    bar: 'bg-emerald-500',
-    text: 'text-emerald-700',
-    label: 'On track'
+    bar: "bg-emerald-500",
+    text: "text-emerald-700",
+    label: "On track",
   },
   caution: {
-    bar: 'bg-amber-500',
-    text: 'text-amber-700',
-    label: 'Caution'
+    bar: "bg-amber-500",
+    text: "text-amber-700",
+    label: "Caution",
   },
   at_risk: {
-    bar: 'bg-orange-500',
-    text: 'text-orange-700',
+    bar: "bg-orange-500",
+    text: "text-orange-700",
     pulse: true,
-    label: 'At risk'
+    label: "At risk",
   },
   breached: {
-    bar: 'bg-rose-500',
-    text: 'text-rose-700',
-    label: 'Breached'
+    bar: "bg-rose-500",
+    text: "text-rose-700",
+    label: "Breached",
   },
   paused: {
-    bar: 'bg-slate-300',
-    text: 'text-slate-600',
-    label: 'Paused'
+    bar: "bg-slate-300",
+    text: "text-slate-600",
+    label: "Paused",
   },
   met: {
-    bar: 'bg-emerald-500',
-    text: 'text-emerald-700',
-    label: 'Met'
+    bar: "bg-emerald-500",
+    text: "text-emerald-700",
+    label: "Met",
   },
   no_sla: {
-    bar: 'bg-slate-200',
-    text: 'text-slate-500',
-    label: 'No SLA'
-  }
+    bar: "bg-slate-200",
+    text: "text-slate-500",
+    label: "No SLA",
+  },
 };
 
 type SlaCountdownTimerProps = {
-  type: 'first_response' | 'resolution';
+  type: "first_response" | "resolution";
   ticket: SlaTimerTicket | null;
   className?: string;
 };
 
-export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdownTimerProps) {
-  const isFirstResponse = type === 'first_response';
-  const title = isFirstResponse ? 'First Response SLA' : 'Resolution SLA';
+export function SlaCountdownTimer({
+  type,
+  ticket,
+  className = "",
+}: SlaCountdownTimerProps) {
+  const isFirstResponse = type === "first_response";
+  const title = isFirstResponse ? "First Response SLA" : "Resolution SLA";
 
   if (!ticket) {
     return (
-      <div className={`rounded-2xl border border-slate-200 bg-slate-50/80 p-4 ${className}`}>
+      <div
+        className={`rounded-2xl border border-slate-200 bg-slate-50/80 p-4 ${className}`}
+      >
         <p className="text-sm font-semibold text-slate-700">{title}</p>
         <p className="text-xs text-slate-500 mt-1">No SLA data</p>
       </div>
@@ -107,11 +120,14 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
 
   const isPaused =
     !isFirstResponse &&
-    (ticket.status === 'WAITING_ON_REQUESTER' || ticket.status === 'WAITING_ON_VENDOR');
+    (ticket.status === "WAITING_ON_REQUESTER" ||
+      ticket.status === "WAITING_ON_VENDOR");
 
   if (isFirstResponse && ticket.firstResponseAt) {
     return (
-      <div className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 ${className}`}>
+      <div
+        className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 ${className}`}
+      >
         <p className="text-sm font-semibold text-emerald-800">{title}</p>
         <p className="text-xs text-emerald-600 mt-1">Responded</p>
       </div>
@@ -120,7 +136,9 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
 
   if (!isFirstResponse && ticket.completedAt) {
     return (
-      <div className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 ${className}`}>
+      <div
+        className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 ${className}`}
+      >
         <p className="text-sm font-semibold text-emerald-800">{title}</p>
         <p className="text-xs text-emerald-600 mt-1">Met</p>
       </div>
@@ -130,7 +148,9 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
   const dueAt = isFirstResponse ? ticket.firstResponseDueAt : ticket.dueAt;
   if (!dueAt) {
     return (
-      <div className={`rounded-2xl border border-slate-200 bg-slate-50/80 p-4 ${className}`}>
+      <div
+        className={`rounded-2xl border border-slate-200 bg-slate-50/80 p-4 ${className}`}
+      >
         <p className="text-sm font-semibold text-slate-700">{title}</p>
         <p className="text-xs text-slate-500 mt-1">No SLA configured</p>
       </div>
@@ -146,7 +166,7 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
     isPaused ? null : (remainingMs ?? 0),
     isPast,
     isPaused,
-    totalMs
+    totalMs,
   );
   const styles = STATE_STYLES[state];
 
@@ -163,7 +183,7 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
   return (
     <div
       className={`rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-soft ${className} ${
-        styles.pulse ? 'animate-pulse' : ''
+        styles.pulse ? "animate-pulse" : ""
       }`}
       title={tooltipTitle}
     >
@@ -173,7 +193,10 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
           <Clock className="h-4 w-4 shrink-0" aria-hidden />
           <span className="text-xs font-medium">Paused</span>
           {ticket.slaPausedAt && (
-            <span className="text-xs text-slate-400" title={formatDateLong(ticket.slaPausedAt)}>
+            <span
+              className="text-xs text-slate-400"
+              title={formatDateLong(ticket.slaPausedAt)}
+            >
               since <RelativeTime value={ticket.slaPausedAt} />
             </span>
           )}
@@ -185,9 +208,9 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
             <span className="text-sm font-semibold tabular-nums">
               {remainingMs !== null
                 ? isPast
-                  ? 'Overdue'
+                  ? "Overdue"
                   : formatRemaining(remainingMs)
-                : '—'}
+                : "—"}
             </span>
           </div>
           {!hideProgressPercent && (
@@ -212,7 +235,9 @@ export function SlaCountdownTimer({ type, ticket, className = '' }: SlaCountdown
             <p className="mt-1 text-xs text-slate-500">
               Due {formatDate(dueAt)}
               {hasBeenPaused && (
-                <span className="ml-1 text-slate-400">(SLA was paused; % not shown)</span>
+                <span className="ml-1 text-slate-400">
+                  (SLA was paused; % not shown)
+                </span>
               )}
             </p>
           )}

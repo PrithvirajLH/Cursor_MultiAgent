@@ -1,16 +1,16 @@
-import { type FormEvent } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
-import type { CategoryRef, CustomFieldRecord, TeamRef } from '../api/client';
+import { type FormEvent } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import type { CategoryRef, CustomFieldRecord, TeamRef } from "../api/client";
 
 export const CUSTOM_FIELD_TYPES = [
-  { value: 'TEXT', label: 'Text (single line)' },
-  { value: 'TEXTAREA', label: 'Text Area (multi-line)' },
-  { value: 'NUMBER', label: 'Number' },
-  { value: 'DROPDOWN', label: 'Dropdown (single select)' },
-  { value: 'MULTISELECT', label: 'Multi-select' },
-  { value: 'DATE', label: 'Date' },
-  { value: 'CHECKBOX', label: 'Checkbox' },
-  { value: 'USER', label: 'User picker' }
+  { value: "TEXT", label: "Text (single line)" },
+  { value: "TEXTAREA", label: "Text Area (multi-line)" },
+  { value: "NUMBER", label: "Number" },
+  { value: "DROPDOWN", label: "Dropdown (single select)" },
+  { value: "MULTISELECT", label: "Multi-select" },
+  { value: "DATE", label: "Date" },
+  { value: "CHECKBOX", label: "Checkbox" },
+  { value: "USER", label: "User picker" },
 ] as const;
 
 export type CustomFieldFormState = {
@@ -26,10 +26,14 @@ export type CustomFieldFormState = {
 function parseOptions(raw: unknown): { value: string; label: string }[] {
   if (Array.isArray(raw)) {
     return raw.map((item) => {
-      if (item && typeof item === 'object' && 'value' in item) {
+      if (item && typeof item === "object" && "value" in item) {
         return {
-          value: String((item as { value: unknown }).value ?? ''),
-          label: String((item as { label?: unknown }).label ?? (item as { value: unknown }).value ?? '')
+          value: String((item as { value: unknown }).value ?? ""),
+          label: String(
+            (item as { label?: unknown }).label ??
+              (item as { value: unknown }).value ??
+              "",
+          ),
         };
       }
       return { value: String(item), label: String(item) };
@@ -38,16 +42,18 @@ function parseOptions(raw: unknown): { value: string; label: string }[] {
   return [];
 }
 
-export function customFieldToFormState(field: CustomFieldRecord | null): CustomFieldFormState {
+export function customFieldToFormState(
+  field: CustomFieldRecord | null,
+): CustomFieldFormState {
   if (!field) {
     return {
-      name: '',
-      fieldType: 'TEXT',
+      name: "",
+      fieldType: "TEXT",
       options: [],
       isRequired: false,
-      teamId: '',
-      categoryId: '',
-      sortOrder: 0
+      teamId: "",
+      categoryId: "",
+      sortOrder: 0,
     };
   }
   return {
@@ -55,15 +61,13 @@ export function customFieldToFormState(field: CustomFieldRecord | null): CustomF
     fieldType: field.fieldType,
     options: parseOptions(field.options),
     isRequired: field.isRequired,
-    teamId: field.teamId ?? '',
-    categoryId: field.categoryId ?? '',
-    sortOrder: field.sortOrder
+    teamId: field.teamId ?? "",
+    categoryId: field.categoryId ?? "",
+    sortOrder: field.sortOrder,
   };
 }
 
-export function formStateToPayload(
-  form: CustomFieldFormState
-): {
+export function formStateToPayload(form: CustomFieldFormState): {
   name: string;
   fieldType: string;
   options?: unknown;
@@ -84,14 +88,17 @@ export function formStateToPayload(
     name: form.name.trim(),
     fieldType: form.fieldType,
     isRequired: form.isRequired,
-    sortOrder: form.sortOrder
+    sortOrder: form.sortOrder,
   };
   if (form.teamId) payload.teamId = form.teamId;
   if (form.categoryId) payload.categoryId = form.categoryId;
-  if (form.fieldType === 'DROPDOWN' || form.fieldType === 'MULTISELECT') {
+  if (form.fieldType === "DROPDOWN" || form.fieldType === "MULTISELECT") {
     payload.options = form.options
-      .filter((o) => o.value.trim() !== '')
-      .map((o) => ({ value: o.value.trim(), label: o.label.trim() || o.value.trim() }));
+      .filter((o) => o.value.trim() !== "")
+      .map((o) => ({
+        value: o.value.trim(),
+        label: o.label.trim() || o.value.trim(),
+      }));
   }
   return payload;
 }
@@ -104,7 +111,7 @@ export function CustomFieldEditor({
   teamsList,
   categories,
   saving,
-  error
+  error,
 }: {
   form: CustomFieldFormState;
   onChange: (updates: Partial<CustomFieldFormState>) => void;
@@ -115,17 +122,18 @@ export function CustomFieldEditor({
   saving: boolean;
   error: string | null;
 }) {
-  const needsOptions = form.fieldType === 'DROPDOWN' || form.fieldType === 'MULTISELECT';
+  const needsOptions =
+    form.fieldType === "DROPDOWN" || form.fieldType === "MULTISELECT";
 
   function addOption() {
-    onChange({ options: [...form.options, { value: '', label: '' }] });
+    onChange({ options: [...form.options, { value: "", label: "" }] });
   }
 
   function removeOption(index: number) {
     onChange({ options: form.options.filter((_, i) => i !== index) });
   }
 
-  function updateOption(index: number, key: 'value' | 'label', value: string) {
+  function updateOption(index: number, key: "value" | "label", value: string) {
     const next = [...form.options];
     next[index] = { ...next[index], [key]: value };
     onChange({ options: next });
@@ -162,7 +170,9 @@ export function CustomFieldEditor({
       {needsOptions && (
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-xs text-slate-500">Options (value / label)</label>
+            <label className="text-xs text-slate-500">
+              Options (value / label)
+            </label>
             <button
               type="button"
               onClick={addOption}
@@ -177,13 +187,13 @@ export function CustomFieldEditor({
                 <input
                   className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5 text-sm"
                   value={opt.value}
-                  onChange={(e) => updateOption(i, 'value', e.target.value)}
+                  onChange={(e) => updateOption(i, "value", e.target.value)}
                   placeholder="Value"
                 />
                 <input
                   className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5 text-sm"
                   value={opt.label}
-                  onChange={(e) => updateOption(i, 'label', e.target.value)}
+                  onChange={(e) => updateOption(i, "label", e.target.value)}
                   placeholder="Label"
                 />
                 <button
@@ -197,7 +207,9 @@ export function CustomFieldEditor({
               </div>
             ))}
             {form.options.length === 0 && (
-              <p className="text-xs text-slate-400">No options yet. Add at least one for dropdown/multi-select.</p>
+              <p className="text-xs text-slate-400">
+                No options yet. Add at least one for dropdown/multi-select.
+              </p>
             )}
           </div>
         </div>
@@ -210,7 +222,10 @@ export function CustomFieldEditor({
           onChange={(e) => onChange({ isRequired: e.target.checked })}
           className="rounded border-slate-300"
         />
-        <label htmlFor="custom-field-required" className="text-sm text-slate-700">
+        <label
+          htmlFor="custom-field-required"
+          className="text-sm text-slate-700"
+        >
           Required
         </label>
       </div>
@@ -267,7 +282,7 @@ export function CustomFieldEditor({
           disabled={saving || !form.name.trim()}
           className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? "Saving…" : "Save"}
         </button>
       </div>
     </form>

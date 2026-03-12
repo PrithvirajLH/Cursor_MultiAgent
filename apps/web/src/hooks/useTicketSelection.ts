@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from "react";
 
 export function useTicketSelection(ticketIds: string[]) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -14,7 +14,7 @@ export function useTicketSelection(ticketIds: string[]) {
 
   const isSelected = useCallback(
     (id: string) => selectedIds.has(id),
-    [selectedIds]
+    [selectedIds],
   );
 
   const toggle = useCallback((id: string) => {
@@ -30,7 +30,8 @@ export function useTicketSelection(ticketIds: string[]) {
   }, []);
 
   const toggleAll = useCallback(() => {
-    const allSelected = ticketIds.length > 0 && ticketIds.every((id) => selectedIds.has(id));
+    const allSelected =
+      ticketIds.length > 0 && ticketIds.every((id) => selectedIds.has(id));
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
@@ -61,6 +62,6 @@ export function useTicketSelection(ticketIds: string[]) {
     toggle,
     toggleAll,
     selectAll,
-    clearSelection
+    clearSelection,
   };
 }
