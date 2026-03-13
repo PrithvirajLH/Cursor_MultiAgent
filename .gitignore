@@ -21,6 +21,7 @@ build/
 .vscode/
 .cursor/
 .agents/
+.claude/
 .cursorrules
 .cursorrules_*
 *.swp
