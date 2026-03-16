@@ -270,8 +270,8 @@ export function NewRoutingRulePage({
   const headerValue = headerCtx;
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerValue ? (
             <TopBar
@@ -282,10 +282,10 @@ export function NewRoutingRulePage({
               notificationProps={headerValue.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     New Routing Rule
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Define subject keywords and auto-assignment for incoming
                     tickets.
                   </p>
@@ -294,10 +294,10 @@ export function NewRoutingRulePage({
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 New Routing Rule
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Define subject keywords and auto-assignment for incoming
                 tickets.
               </p>
@@ -310,7 +310,7 @@ export function NewRoutingRulePage({
         <button
           type="button"
           onClick={() => navigate("/routing")}
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Back to routing rules</span>
@@ -322,12 +322,12 @@ export function NewRoutingRulePage({
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">
+        <div className="rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-lg font-semibold text-foreground">
               Rule configuration
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-muted-foreground">
               Rules are evaluated in order. The first matching rule wins.
             </p>
           </div>
@@ -335,7 +335,7 @@ export function NewRoutingRulePage({
           <div className="space-y-6 px-6 py-6">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Rule name <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -343,12 +343,12 @@ export function NewRoutingRulePage({
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, name: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="e.g. VIP Fast Lane"
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Priority
                 </label>
                 <input
@@ -361,20 +361,20 @@ export function NewRoutingRulePage({
                       priority: Number(event.target.value) || 1,
                     }))
                   }
-                  className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-24 rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Lower numbers run first. The first matching rule is used.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex items-center justify-between rounded-xl border border-border bg-muted px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-slate-700">
+                <p className="text-sm font-medium text-foreground">
                   Rule status
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Disable to keep the rule configured but inactive.
                 </p>
               </div>
@@ -390,17 +390,17 @@ export function NewRoutingRulePage({
                   }
                   className="peer sr-only"
                 />
-                <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600" />
+                <span className="absolute inset-0 cursor-pointer rounded-full bg-muted transition peer-checked:bg-primary" />
                 <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
               </label>
             </div>
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">
+                <p className="text-sm font-semibold text-foreground">
                   Subject keywords
                 </p>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   All keywords are matched against the ticket subject.
                 </span>
               </div>
@@ -408,12 +408,12 @@ export function NewRoutingRulePage({
                 {form.conditions.map((condition, index) => (
                   <div
                     key={`condition-${index}`}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5"
+                    className="flex items-center gap-2 rounded-xl border border-border bg-muted p-2.5"
                   >
-                    <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
+                    <span className="rounded-lg bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
                       subject
                     </span>
-                    <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
+                    <span className="rounded-lg bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
                       contains
                     </span>
                     <input
@@ -421,13 +421,13 @@ export function NewRoutingRulePage({
                       onChange={(event) =>
                         handleUpdateCondition(index, event.target.value)
                       }
-                      className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                       placeholder="keyword…"
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveCondition(index)}
-                      className="flex-shrink-0 text-slate-400 hover:text-red-500"
+                      className="flex-shrink-0 text-muted-foreground hover:text-red-500"
                     >
                       <svg
                         className="h-4 w-4"
@@ -448,7 +448,7 @@ export function NewRoutingRulePage({
                 <button
                   type="button"
                   onClick={handleAddCondition}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-blue-700"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Add keyword</span>
@@ -458,10 +458,10 @@ export function NewRoutingRulePage({
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">
+                <p className="text-sm font-semibold text-foreground">
                   Assignment
                 </p>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   Route matching tickets to the right{" "}
                   {assignmentMode === "member" ? "agent" : "team"}.
                 </span>
@@ -481,7 +481,7 @@ export function NewRoutingRulePage({
                       d="M13 10V3L4 14h7v7l9-11h-7z"
                     />
                   </svg>
-                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-blue-700">
+                  <span className="rounded-lg bg-card px-2 py-1 text-xs font-medium text-primary">
                     {assignmentMode === "member"
                       ? "Assign member"
                       : "Assign team"}
@@ -489,7 +489,7 @@ export function NewRoutingRulePage({
                   <select
                     value={form.actions[0]?.val ?? ""}
                     onChange={(event) => handleUpdateAction(event.target.value)}
-                    className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-primary/30 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     <option value="">
                       {assignmentMode === "member"
@@ -521,8 +521,8 @@ export function NewRoutingRulePage({
             </div>
           </div>
 
-          <div className="flex justify-between items-center border-t border-slate-200 bg-slate-50 px-6 py-4 rounded-b-2xl">
-            <span className="text-xs text-slate-400">
+          <div className="flex justify-between items-center border-t border-border bg-muted px-6 py-4 rounded-b-2xl">
+            <span className="text-xs text-muted-foreground">
               * Required fields. Press Enter to save quickly.
             </span>
             <div className="flex items-center gap-3">
@@ -530,7 +530,7 @@ export function NewRoutingRulePage({
                 type="button"
                 onClick={() => navigate("/routing")}
                 disabled={saving}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -538,7 +538,7 @@ export function NewRoutingRulePage({
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={saving || !canSubmit}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
               >
                 {saving ? "Saving…" : "Create rule"}
               </button>

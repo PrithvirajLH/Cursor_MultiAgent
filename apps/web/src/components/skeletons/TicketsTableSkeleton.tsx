@@ -12,14 +12,14 @@ export function TicketsTableSkeleton({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100",
+        "overflow-hidden rounded-[20px] border border-border bg-card shadow-card",
         className,
       )}
       aria-hidden
     >
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1180px]">
-          <thead className="border-b border-slate-100 bg-white">
+          <thead className="border-b border-border bg-card">
             <tr>
               {showCheckbox ? (
                 <th className="w-12 px-6 py-4 text-left">
@@ -52,9 +52,9 @@ export function TicketsTableSkeleton({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-border">
             {Array.from({ length: rowCount }).map((_, index) => (
-              <tr key={index} className="bg-white">
+              <tr key={index} className="bg-card">
                 {showCheckbox ? (
                   <td className="px-6 py-4">
                     <div className="h-4 w-4 rounded-sm skeleton-shimmer" />

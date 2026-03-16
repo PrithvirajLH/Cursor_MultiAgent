@@ -16,7 +16,7 @@ export function MessageBody({
   if (!html) {
     return (
       <p
-        className={`text-sm ${invert ? "text-slate-200" : "text-slate-600"} ${className}`}
+        className={`text-sm ${invert ? "text-foreground" : "text-muted-foreground"} ${className}`}
       >
         —
       </p>
@@ -27,7 +27,7 @@ export function MessageBody({
     "message-body text-sm max-w-none whitespace-pre-wrap break-words prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0";
   const colorClasses = invert
     ? "text-white prose-invert prose-a:text-sky-200"
-    : "text-slate-700 prose prose-slate";
+    : "text-foreground prose prose-invert";
 
   return (
     <div

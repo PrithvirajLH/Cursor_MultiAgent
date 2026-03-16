@@ -21,10 +21,10 @@ const CATEGORY_LABELS: Record<LogCategory, string> = {
 };
 
 const CATEGORY_COLORS: Record<LogCategory, string> = {
-  sla: "bg-blue-100 text-blue-700",
-  routing: "bg-green-100 text-green-700",
-  automation: "bg-amber-100 text-amber-700",
-  custom_fields: "bg-purple-100 text-purple-700",
+  sla: "bg-blue-500/10 text-blue-400",
+  routing: "bg-green-500/10 text-green-400",
+  automation: "bg-amber-500/10 text-amber-400",
+  custom_fields: "bg-purple-500/10 text-purple-400",
 };
 
 const EMPTY_CATEGORY_COUNTS: AuditLogCategoryCounts = {
@@ -463,8 +463,8 @@ export function AuditLogPage() {
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerCtx ? (
             <TopBar
@@ -475,10 +475,10 @@ export function AuditLogPage() {
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Audit Logs
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Track changes and activity.
                   </p>
                 </div>
@@ -486,10 +486,10 @@ export function AuditLogPage() {
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Audit Logs
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Track changes and activity.
               </p>
             </div>
@@ -507,9 +507,9 @@ export function AuditLogPage() {
                 setPage(1);
               }}
               placeholder="Search logs..."
-              className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground py-2 pl-9 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
             />
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           </div>
 
           <select
@@ -560,8 +560,8 @@ export function AuditLogPage() {
             ))}
           </select>
 
-          <label className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
-            <span className="text-xs font-medium text-slate-500">From</span>
+          <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">From</span>
             <input
               type="date"
               value={dateFrom}
@@ -569,12 +569,12 @@ export function AuditLogPage() {
                 setDateFrom(event.target.value);
                 setPage(1);
               }}
-              className="rounded border-0 p-0 text-sm text-slate-700 focus:ring-0"
+              className="rounded border-0 bg-transparent p-0 text-sm text-foreground focus:ring-0"
             />
           </label>
 
-          <label className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
-            <span className="text-xs font-medium text-slate-500">To</span>
+          <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">To</span>
             <input
               type="date"
               value={dateTo}
@@ -582,14 +582,14 @@ export function AuditLogPage() {
                 setDateTo(event.target.value);
                 setPage(1);
               }}
-              className="rounded border-0 p-0 text-sm text-slate-700 focus:ring-0"
+              className="rounded border-0 bg-transparent p-0 text-sm text-foreground focus:ring-0"
             />
           </label>
 
           <button
             type="button"
             onClick={clearFilters}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             Clear
           </button>
@@ -600,13 +600,13 @@ export function AuditLogPage() {
             onClick={() => {
               void exportCsv();
             }}
-            className="inline-flex items-center space-x-2 rounded-lg border border-blue-200 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+            className="inline-flex items-center space-x-2 rounded-lg border border-blue-200 px-3 py-2 text-sm text-primary hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
           >
             <Download className="h-4 w-4" />
             <span>{exporting ? "Exporting..." : "Export"}</span>
           </button>
 
-          <span className="ml-auto text-xs text-slate-400">
+          <span className="ml-auto text-xs text-muted-foreground">
             {categoryFilter === "all"
               ? `Page ${meta.page} of ${meta.totalPages} (${meta.total} total)`
               : `${filteredRows.length} of ${rows.length} entries on current page`}
@@ -623,7 +623,7 @@ export function AuditLogPage() {
                   prev === category ? "all" : category,
                 )
               }
-              className={`flex items-center space-x-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-all ${
+              className={`flex items-center space-x-3 rounded-xl border border-border bg-card p-3 text-left transition-all ${
                 categoryFilter === category ? "ring-2 ring-blue-500" : ""
               }`}
             >
@@ -641,10 +641,10 @@ export function AuditLogPage() {
                 </span>
               </div>
               <div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   {CATEGORY_LABELS[category]}
                 </p>
-                <p className="text-sm font-bold text-slate-900">
+                <p className="text-sm font-bold text-foreground">
                   {countsByCategory[category]}
                 </p>
               </div>
@@ -652,10 +652,10 @@ export function AuditLogPage() {
           ))}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           {loading ? (
             <>
-              <div className="flex items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-center gap-4 border-b border-border bg-muted px-4 py-3">
                 <div className="h-4 w-40 skeleton-shimmer rounded" />
                 <div className="h-4 w-24 skeleton-shimmer rounded" />
                 <div className="h-4 w-24 skeleton-shimmer rounded" />
@@ -665,7 +665,7 @@ export function AuditLogPage() {
               {Array.from({ length: 8 }).map((_, i) => (
                 <div
                   key={`row-skel-${i}`}
-                  className="flex items-center gap-4 border-b border-slate-100 px-4 py-3.5 last:border-0"
+                  className="flex items-center gap-4 border-b border-border px-4 py-3.5 last:border-0"
                 >
                   <div className="h-4 w-40 skeleton-shimmer rounded" />
                   <div className="h-4 w-24 skeleton-shimmer rounded" />
@@ -679,50 +679,50 @@ export function AuditLogPage() {
             <div className="p-6 text-sm text-red-600">{error}</div>
           ) : filteredRows.length === 0 ? (
             <div className="p-10 text-center">
-              <p className="text-sm font-semibold text-slate-700">
+              <p className="text-sm font-semibold text-foreground">
                 No matching log entries
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Try adjusting your filters.
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full table-fixed divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
+                <thead className="bg-muted">
                   <tr>
-                    <th className="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Date
                     </th>
-                    <th className="w-48 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="w-48 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       User
                     </th>
-                    <th className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Category
                     </th>
-                    <th className="w-48 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="w-48 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Event
                     </th>
-                    <th className="w-40 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="w-40 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Ticket
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Details
                     </th>
-                    <th className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <th className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Event ID
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-slate-100 bg-card">
                   {filteredRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 align-top text-xs text-slate-600">
+                    <tr key={row.id} className="hover:bg-muted">
+                      <td className="px-4 py-3 align-top text-xs text-muted-foreground">
                         {row.timestamp}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <p
-                          className="truncate font-medium text-slate-900"
+                          className="truncate font-medium text-foreground"
                           title={row.actor}
                         >
                           {row.actor}
@@ -735,7 +735,7 @@ export function AuditLogPage() {
                           {CATEGORY_LABELS[row.category]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 align-top text-slate-800">
+                      <td className="px-4 py-3 align-top text-foreground">
                         {row.action}
                       </td>
                       <td className="px-4 py-3 align-top">
@@ -747,12 +747,12 @@ export function AuditLogPage() {
                             {row.ticketDisplayId ?? `#${row.ticketNumber}`}
                           </Link>
                         ) : (
-                          <span className="text-slate-500">N/A</span>
+                          <span className="text-muted-foreground">N/A</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 align-top text-slate-700">
+                      <td className="px-4 py-3 align-top text-foreground">
                         <p
-                          className="line-clamp-2 font-medium text-slate-900"
+                          className="line-clamp-2 font-medium text-foreground"
                           title={row.details}
                         >
                           {row.details}
@@ -762,7 +762,7 @@ export function AuditLogPage() {
                             {row.detailChips.map((chip, index) => (
                               <span
                                 key={`${row.id}-chip-${index}`}
-                                className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                                className="rounded bg-accent px-2 py-0.5 text-xs text-foreground"
                                 title={chip}
                               >
                                 {chip}
@@ -774,7 +774,7 @@ export function AuditLogPage() {
                       <td className="px-4 py-3 align-top">
                         <span className="inline-flex items-center gap-1.5">
                           <span
-                            className="font-mono text-xs text-slate-500"
+                            className="font-mono text-xs text-muted-foreground"
                             title={row.id}
                           >
                             {row.id.slice(0, 8)}…
@@ -785,7 +785,7 @@ export function AuditLogPage() {
                             onClick={() => {
                               void navigator.clipboard.writeText(row.id);
                             }}
-                            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-muted-foreground transition-colors"
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -817,11 +817,11 @@ export function AuditLogPage() {
               type="button"
               onClick={() => setPage((prev) => Math.max(1, prev - 1))}
               disabled={page <= 1 || loading}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground"
             >
               Prev
             </button>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-muted-foreground">
               Page {meta.page} of {meta.totalPages}
             </span>
             <button
@@ -830,7 +830,7 @@ export function AuditLogPage() {
                 setPage((prev) => Math.min(meta.totalPages, prev + 1))
               }
               disabled={page >= meta.totalPages || loading}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground"
             >
               Next
             </button>
@@ -844,7 +844,7 @@ export function AuditLogPage() {
           </p>
         )}
 
-        <div className="mt-4 text-xs text-slate-400">
+        <div className="mt-4 text-xs text-muted-foreground">
           Tip: search keywords like <code>deleted</code>, <code>status</code>,
           or ticket IDs.
         </div>

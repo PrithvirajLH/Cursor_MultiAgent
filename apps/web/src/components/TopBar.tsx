@@ -66,54 +66,71 @@ export function ProfilePopoverPanel({
     <div
       id={panelId}
       ref={panelRef}
-      className="w-[380px] max-h-[70vh] overflow-y-auto rounded-[20px] border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgb(0,0,0,0.08)]"
+      className="w-[340px] max-h-[70vh] overflow-y-auto rounded-xl border shadow-elevated"
       role="dialog"
       aria-labelledby={titleId}
-      style={style}
+      style={{
+        ...style,
+        background: "hsl(var(--popover))",
+        borderColor: "hsl(var(--border))",
+      }}
     >
       <h2 id={titleId} className="sr-only">
         {PROFILE_POPOVER_TITLE}
       </h2>
-      <div className="mb-2 rounded-xl bg-slate-50 p-4">
+
+      {/* Profile header */}
+      <div className="p-4 border-b" style={{ borderColor: "hsl(var(--border))" }}>
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-semibold text-blue-700">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-glow-sm"
+            style={{
+              background: avatarDataUrl
+                ? "transparent"
+                : "linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217 91% 60%) 100%)",
+            }}
+          >
             {avatarDataUrl ? (
               <img
                 src={avatarDataUrl}
                 alt={avatarAlt}
-                className="h-10 w-10 rounded-full object-cover"
+                className="h-10 w-10 rounded-xl object-cover"
               />
             ) : (
-              avatarInitials
+              <span style={{ color: "hsl(var(--primary-foreground))" }}>
+                {avatarInitials}
+              </span>
             )}
           </div>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900">
+            <p className="truncate text-sm font-semibold text-foreground">
               {displayName}
             </p>
-            <p className="truncate text-xs text-slate-500">{email}</p>
+            <p className="truncate text-xs text-muted-foreground">{email}</p>
           </div>
         </div>
       </div>
-      <div className="px-2 py-2">
-        <div className="space-y-2">
-          {profileRows.map((row) => (
-            <div
-              key={row.label}
-              className="grid grid-cols-[120px_minmax(0,1fr)] gap-2 text-xs"
-            >
-              <span className="font-medium text-slate-500">{row.label}</span>
-              <span className="break-words text-slate-700">{row.value}</span>
-            </div>
-          ))}
-        </div>
+
+      {/* Profile rows */}
+      <div className="p-4 space-y-3">
+        {profileRows.map((row) => (
+          <div
+            key={row.label}
+            className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 text-xs"
+          >
+            <span className="font-medium text-muted-foreground">{row.label}</span>
+            <span className="break-words text-foreground/80">{row.value}</span>
+          </div>
+        ))}
       </div>
+
+      {/* Sign out */}
       {onSignOut && (
-        <div className="mt-2 border-t border-slate-100 px-2 pt-2">
+        <div className="p-2 border-t" style={{ borderColor: "hsl(var(--border))" }}>
           <button
             type="button"
             onClick={onSignOut}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
           >
             <LogOut className="h-4 w-4 shrink-0" />
             Sign out
@@ -143,9 +160,7 @@ export function TopBar({
   onOpenSearch?: () => void;
   notificationProps?: NotificationProps;
   leftAction?: ReactNode;
-  /** When provided, replaces the default title+subtitle block (e.g. ticket overview). */
   leftContent?: ReactNode;
-  /** Current user from auth session; when set, avatar opens a user menu with details. */
   user?: CurrentUserSession | null;
   onSignOut?: () => void;
 }) {
@@ -192,7 +207,7 @@ export function TopBar({
   useLayoutEffect(() => {
     if (!userMenuOpen || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
-    const menuWidth = 384; // w-96
+    const menuWidth = 340;
     const padding = 8;
     const left = Math.max(
       padding,
@@ -228,15 +243,16 @@ export function TopBar({
 
   return (
     <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      {/* Left: title + nav toggle */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {resolvedOpenNavigation && (
           <button
             type="button"
             onClick={resolvedOpenNavigation}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 lg:hidden"
+            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-white/20 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 lg:hidden"
             aria-label="Open navigation"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-4 w-4" />
           </button>
         )}
         {leftAction}
@@ -244,25 +260,32 @@ export function TopBar({
           leftContent
         ) : (
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold leading-tight text-slate-900">
+            <h1 className="truncate text-[19px] font-semibold leading-tight tracking-tight text-foreground">
               {title}
             </h1>
-            <p className="mt-0.5 truncate text-sm leading-snug text-slate-500">
-              {subtitle}
-            </p>
+            {subtitle && (
+              <p className="mt-0.5 truncate text-[13px] leading-snug text-muted-foreground">
+                {subtitle}
+              </p>
+            )}
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Right: search + notifications + avatar */}
+      <div className="flex flex-wrap items-center gap-2">
         {onOpenSearch && (
           <button
             type="button"
             onClick={onOpenSearch}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-            aria-label="Search"
+            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-card text-muted-foreground text-[13px] transition-all hover:border-white/20 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            aria-label="Search (⌘K)"
           >
-            <Search className="h-4 w-4" />
+            <Search className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Search</span>
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-white/35">
+              ⌘K
+            </kbd>
           </button>
         )}
 
@@ -281,12 +304,17 @@ export function TopBar({
           />
         )}
 
+        {/* Avatar / user menu */}
         <div className="relative">
           <button
             ref={triggerRef}
             type="button"
             onClick={() => setUserMenuOpen((open) => !open)}
-            className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-blue-600 text-sm font-semibold text-white shadow-sm ring-2 ring-transparent transition hover:bg-blue-700 hover:ring-blue-500/20 focus:outline-none"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-[13px] font-bold text-white transition-all ring-2 ring-transparent hover:ring-[hsl(var(--primary)/0.3)] focus:outline-none shadow-glow-sm"
+            style={{
+              background:
+                "linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217 91% 60%) 100%)",
+            }}
             aria-label="Account"
             aria-expanded={userMenuOpen}
             aria-haspopup="dialog"
@@ -295,15 +323,13 @@ export function TopBar({
             {resolvedUser?.avatarDataUrl ? (
               <img
                 src={resolvedUser.avatarDataUrl}
-                alt={
-                  resolvedUser.displayName ||
-                  resolvedUser.email ||
-                  "User avatar"
-                }
-                className="h-full w-full rounded-[12px] object-cover"
+                alt={resolvedUser.displayName || resolvedUser.email || "User avatar"}
+                className="h-full w-full rounded-xl object-cover"
               />
             ) : (
-              avatarInitials
+              <span style={{ color: "hsl(var(--primary-foreground))" }}>
+                {avatarInitials}
+              </span>
             )}
           </button>
 

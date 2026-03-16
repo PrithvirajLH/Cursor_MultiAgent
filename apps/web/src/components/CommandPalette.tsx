@@ -377,7 +377,7 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-slate-900/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -391,12 +391,12 @@ export function CommandPalette({
         tabIndex={-1}
       >
         {/* Search Header */}
-        <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
-          <Search className="h-5 w-5 text-slate-400 flex-shrink-0" />
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
+          <Search className="h-5 w-5 text-muted-foreground flex-shrink-0" />
           <input
             ref={inputRef}
             type="text"
-            className="flex-1 bg-transparent text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none"
+            className="flex-1 bg-transparent text-lg text-foreground placeholder:text-muted-foreground focus:outline-none"
             placeholder="Search tickets, navigate, or type a command..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -404,12 +404,12 @@ export function CommandPalette({
             aria-label="Search"
           />
           {loading && (
-            <div className="h-5 w-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+            <div className="h-5 w-5 border-2 border-white/20 border-t-foreground/60 rounded-full animate-spin" />
           )}
           <button
             type="button"
             onClick={onClose}
-            className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+            className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-white/[0.06]"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -422,13 +422,13 @@ export function CommandPalette({
           {!query.trim() && recentSearches.length > 0 && (
             <div className="mb-2">
               <div className="flex items-center justify-between px-3 py-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Recent Searches
                 </span>
                 <button
                   type="button"
                   onClick={onClearRecent}
-                  className="text-xs text-slate-400 hover:text-slate-600"
+                  className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Clear
                 </button>
@@ -445,14 +445,14 @@ export function CommandPalette({
                       handleSelect({ type: "recent", data: search })
                     }
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? "bg-slate-100" : "hover:bg-slate-50"
+                      isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
                   >
-                    <History className="h-4 w-4 text-slate-400" />
-                    <span className="flex-1 text-sm text-slate-700">
+                    <History className="h-4 w-4 text-muted-foreground" />
+                    <span className="flex-1 text-sm text-foreground/80">
                       {search.query}
                     </span>
-                    <ArrowRight className="h-4 w-4 text-slate-300" />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground/50" />
                   </button>
                 );
               })}
@@ -463,7 +463,7 @@ export function CommandPalette({
           {filteredActions.length > 0 && (
             <div className="mb-2">
               <div className="px-3 py-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Actions
                 </span>
               </div>
@@ -482,16 +482,16 @@ export function CommandPalette({
                       handleSelect({ type: "action", data: action })
                     }
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? "bg-slate-100" : "hover:bg-slate-50"
+                      isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center">
-                      <Icon className="h-4 w-4 text-white" />
+                    <div className="h-8 w-8 rounded-lg bg-primary/15 flex items-center justify-center">
+                      <Icon className="h-4 w-4 text-primary" />
                     </div>
-                    <span className="flex-1 text-sm font-medium text-slate-900">
+                    <span className="flex-1 text-sm font-medium text-foreground">
                       {action.label}
                     </span>
-                    <kbd className="hidden sm:inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-500">
+                    <kbd className="hidden sm:inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-0.5 text-xs text-muted-foreground">
                       Alt + N
                     </kbd>
                   </button>
@@ -504,7 +504,7 @@ export function CommandPalette({
           {filteredPages.length > 0 && (
             <div className="mb-2">
               <div className="px-3 py-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Pages
                 </span>
               </div>
@@ -521,16 +521,16 @@ export function CommandPalette({
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: "page", data: page })}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? "bg-slate-100" : "hover:bg-slate-50"
+                      isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center">
-                      <Icon className="h-4 w-4 text-slate-600" />
+                    <div className="h-8 w-8 rounded-lg bg-white/[0.07] flex items-center justify-center">
+                      <Icon className="h-4 w-4 text-foreground/60" />
                     </div>
-                    <span className="flex-1 text-sm text-slate-700">
+                    <span className="flex-1 text-sm text-foreground/80">
                       {page.label}
                     </span>
-                    <ArrowRight className="h-4 w-4 text-slate-300" />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground/50" />
                   </button>
                 );
               })}
@@ -541,7 +541,7 @@ export function CommandPalette({
           {results?.tickets && results.tickets.length > 0 && (
             <div className="mb-2">
               <div className="px-3 py-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Tickets
                 </span>
               </div>
@@ -559,17 +559,17 @@ export function CommandPalette({
                       handleSelect({ type: "ticket", data: ticket })
                     }
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? "bg-slate-100" : "hover:bg-slate-50"
+                      isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <Ticket className="h-4 w-4 text-blue-600" />
+                    <div className="h-8 w-8 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                      <Ticket className="h-4 w-4 text-blue-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {ticket.subject}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-muted-foreground">
                         {formatTicketId(ticket)} · {ticket.status} ·{" "}
                         {ticket.assignedTeam?.name ?? "Unassigned"}
                       </p>
@@ -589,7 +589,7 @@ export function CommandPalette({
           {results?.teams && results.teams.length > 0 && (
             <div className="mb-2">
               <div className="px-3 py-1.5">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Teams
                 </span>
               </div>
@@ -605,13 +605,13 @@ export function CommandPalette({
                     data-selected={isSelected}
                     onClick={() => handleSelect({ type: "team", data: team })}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition ${
-                      isSelected ? "bg-slate-100" : "hover:bg-slate-50"
+                      isSelected ? "bg-white/[0.08]" : "hover:bg-white/[0.04]"
                     }`}
                   >
-                    <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                      <Users className="h-4 w-4 text-emerald-600" />
+                    <div className="h-8 w-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                      <Users className="h-4 w-4 text-emerald-400" />
                     </div>
-                    <span className="flex-1 text-sm text-slate-700">
+                    <span className="flex-1 text-sm text-foreground/80">
                       {team.name}
                     </span>
                   </button>
@@ -627,10 +627,10 @@ export function CommandPalette({
             !results?.teams?.length &&
             filteredPages.length === 0 &&
             filteredActions.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-                <Search className="h-10 w-10 text-slate-300 mb-3" />
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <Search className="h-10 w-10 text-muted-foreground/40 mb-3" />
                 <p className="text-sm">No results found for "{query}"</p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-muted-foreground/70 mt-1">
                   Try a different search term
                 </p>
               </div>
@@ -638,36 +638,36 @@ export function CommandPalette({
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
+        <div className="border-t border-border px-4 py-2 flex items-center justify-between text-xs text-muted-foreground">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50">
+              <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
                 ↑
               </kbd>
-              <kbd className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50">
+              <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
                 ↓
               </kbd>
               to navigate
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50">
+              <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
                 ↵
               </kbd>
               to select
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50">
+              <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
                 esc
               </kbd>
               to close
             </span>
           </div>
           <span className="hidden sm:inline">
-            <kbd className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50">
+            <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
               ⌘
             </kbd>{" "}
             +{" "}
-            <kbd className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50">
+            <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
               K
             </kbd>
           </span>

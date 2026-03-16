@@ -1522,16 +1522,16 @@ export function TicketDetailPage({
 
   return (
     <section
-      className="flex h-screen flex-col bg-white animate-fade-in"
+      className="flex h-screen flex-col bg-card animate-fade-in"
       title={headerTitle}
     >
       {/* Toast notification */}
       {copyToast && (
         <div className="fixed right-4 top-4 z-50">
           <div
-            className={`flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-lg ${
+            className={`flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-lg ${
               copyToast.type === "success"
-                ? "border-emerald-200 text-slate-900"
+                ? "border-emerald-200 text-foreground"
                 : "border-rose-200 text-rose-700"
             }`}
           >
@@ -1546,7 +1546,7 @@ export function TicketDetailPage({
       )}
 
       {/* Sticky header */}
-      <div className="shrink-0 z-40 border-b border-slate-200 bg-white">
+      <div className="shrink-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-3">
           <TopBar
             title={headerTitle}
@@ -1561,7 +1561,7 @@ export function TicketDetailPage({
               <button
                 type="button"
                 onClick={navigateBack}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-foreground hover:bg-accent hover:text-foreground"
                 aria-label="Back"
                 title="Back"
               >
@@ -1571,7 +1571,7 @@ export function TicketDetailPage({
             leftContent={
               ticket ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm text-muted-foreground">
                     {formatTicketId(ticket)}
                   </span>
                   <span
@@ -1590,10 +1590,10 @@ export function TicketDetailPage({
                 </div>
               ) : (
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Ticket details
                   </h1>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Review context, collaborate, and update workflow in one
                     workspace.
                   </p>
@@ -1624,20 +1624,20 @@ export function TicketDetailPage({
               {/* Integrated Subject Header */}
               {ticket && (
                 <div className="px-6 pt-6 pb-0">
-                  <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50 px-5 py-4 shadow-sm sm:px-7 sm:py-5">
-                    <div className="pointer-events-none absolute inset-y-0 right-[-80px] hidden w-64 rounded-full bg-gradient-to-l from-sky-200/40 to-transparent blur-3xl sm:block" />
+                  <div className="relative overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 shadow-sm sm:px-7 sm:py-5">
+                    <div className="pointer-events-none absolute inset-y-0 right-[-80px] hidden w-64 rounded-full bg-gradient-to-l from-cyan-500/10 to-transparent blur-3xl sm:block" />
                     <div className="flex items-start justify-between gap-6">
                       <div className="min-w-0">
-                        <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+                        <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                           {ticket.subject}
                         </h1>
                         {ticket.description ? (
-                          <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                          <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
                             {stripFacilityFromDescription(ticket.description) ||
                               "No description provided."}
                           </p>
                         ) : (
-                          <p className="mt-2 text-[14px] leading-relaxed italic text-slate-500">
+                          <p className="mt-2 text-[14px] leading-relaxed italic text-muted-foreground">
                             No description provided.
                           </p>
                         )}
@@ -1646,11 +1646,11 @@ export function TicketDetailPage({
                         <button
                           type="button"
                           onClick={() => void handleCopyLink()}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/90 text-foreground shadow-sm transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/30"
                           title="Copy ticket link"
                           aria-label="Copy ticket link"
                         >
-                          <Copy className="h-4 w-4 text-slate-500" />
+                          <Copy className="h-4 w-4 text-muted-foreground" />
                         </button>
                       </div>
                     </div>
@@ -1659,10 +1659,10 @@ export function TicketDetailPage({
               )}
 
               {/* Tab bar – Aceternity-style segmented tabs with sliding indicator */}
-              <div className="shrink-0 flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-3">
+              <div className="shrink-0 flex items-center justify-between gap-4 border-b border-border px-6 py-3">
                 <div
                   ref={tabsContainerRef}
-                  className="relative inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100/70 p-1 text-xs shadow-sm"
+                  className="relative inline-flex items-center gap-1 rounded-full border border-border bg-accent/70 p-1 text-xs shadow-sm"
                   role="tablist"
                   aria-label="Ticket views"
                   aria-orientation="horizontal"
@@ -1697,7 +1697,7 @@ export function TicketDetailPage({
                     className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
                       activeTab === "conversation"
                         ? "text-slate-50"
-                        : "text-slate-600 hover:text-slate-900"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <span>Conversation</span>
@@ -1705,7 +1705,7 @@ export function TicketDetailPage({
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                         activeTab === "conversation"
                           ? "bg-slate-800 text-slate-100"
-                          : "bg-slate-200 text-slate-700"
+                          : "bg-accent text-foreground"
                       }`}
                     >
                       {conversationCount}
@@ -1732,7 +1732,7 @@ export function TicketDetailPage({
                     className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
                       activeTab === "attachments"
                         ? "text-slate-50"
-                        : "text-slate-600 hover:text-slate-900"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <span>Attachments</span>
@@ -1740,7 +1740,7 @@ export function TicketDetailPage({
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                         activeTab === "attachments"
                           ? "bg-slate-800 text-slate-100"
-                          : "bg-slate-200 text-slate-700"
+                          : "bg-accent text-foreground"
                       }`}
                     >
                       {attachmentsCount}
@@ -1765,7 +1765,7 @@ export function TicketDetailPage({
                     className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-colors ${
                       activeTab === "timeline"
                         ? "text-slate-50"
-                        : "text-slate-600 hover:text-slate-900"
+                        : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <span>Timeline</span>
@@ -1773,23 +1773,23 @@ export function TicketDetailPage({
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                         activeTab === "timeline"
                           ? "bg-slate-800 text-slate-100"
-                          : "bg-slate-200 text-slate-700"
+                          : "bg-accent text-foreground"
                       }`}
                     >
                       {timelineCount}
                     </span>
                   </button>
                 </div>
-                <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex" />
+                <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex" />
               </div>
 
               {/* Tab content with smooth cross-fade motion */}
-              <div className="relative flex flex-1 min-h-0 bg-[#fafafa]">
+              <div className="relative flex flex-1 min-h-0 bg-background">
                 {loadingDetail && !ticket ? (
                   <TicketDetailSkeleton count={5} className="flex-1" />
                 ) : null}
                 {!loadingDetail && !ticket && !accessDenied ? (
-                  <p className="p-6 text-sm text-slate-500">
+                  <p className="p-6 text-sm text-muted-foreground">
                     Ticket not found.
                   </p>
                 ) : null}

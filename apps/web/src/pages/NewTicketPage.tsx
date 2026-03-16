@@ -98,14 +98,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
   const headerValue = headerCtx;
 
   const inputBase =
-    "w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20";
+    "w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/20";
   const inputError =
     "border-red-400 bg-red-50 focus:border-red-500 focus:ring-red-500/20";
-  const inputNormal = "border-slate-300 bg-white hover:border-slate-400";
+  const inputNormal = "border-border bg-card hover:border-border";
 
   return (
-    <section className="min-h-full bg-slate-50">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
           {headerValue ? (
             <TopBar
@@ -117,10 +117,10 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
             />
           ) : (
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
                 Create New Ticket
               </h1>
-              <p className="text-sm font-medium text-slate-500">
+              <p className="text-sm font-medium text-muted-foreground">
                 Fill in the details below to raise a new request.
               </p>
             </div>
@@ -129,13 +129,13 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
       </div>
 
       <div className="mx-auto w-full max-w-[900px] px-6 py-8">
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-foreground">
                 Raise a new ticket
               </h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Choose the department, add a clear subject, and describe the
                 issue in detail.
               </p>
@@ -155,7 +155,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
               <div>
                 <label
                   htmlFor="new-ticket-team"
-                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                  className="mb-1.5 block text-sm font-medium text-foreground"
                 >
                   Department <span className="text-red-500">*</span>
                 </label>
@@ -184,10 +184,10 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 <div>
                   <label
                     htmlFor="new-ticket-category"
-                    className="mb-1.5 block text-sm font-medium text-slate-700"
+                    className="mb-1.5 block text-sm font-medium text-foreground"
                   >
                     Category{" "}
-                    <span className="text-slate-400 font-normal">
+                    <span className="text-muted-foreground font-normal">
                       (optional)
                     </span>
                   </label>
@@ -209,14 +209,14 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
               <div>
                 <label
                   htmlFor="new-ticket-facility"
-                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                  className="mb-1.5 block text-sm font-medium text-foreground"
                 >
                   Facility / Office location
                 </label>
                 <input
                   id="new-ticket-facility"
                   className={`${inputBase} ${inputNormal} ${
-                    hasProfileFacility ? "bg-slate-100 cursor-not-allowed" : ""
+                    hasProfileFacility ? "bg-accent cursor-not-allowed" : ""
                   }`}
                   placeholder="e.g. HQ – 3rd Floor – East Wing"
                   value={facility}
@@ -233,7 +233,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 <div className="mb-1.5 flex items-center justify-between">
                   <label
                     htmlFor="new-ticket-subject"
-                    className="block text-sm font-medium text-slate-700"
+                    className="block text-sm font-medium text-foreground"
                   >
                     Subject <span className="text-red-500">*</span>
                   </label>
@@ -241,7 +241,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     className={`text-xs ${
                       (subjectValue?.length ?? 0) > CREATE_TICKET_SUBJECT_MAX
                         ? "text-red-500 font-medium"
-                        : "text-slate-400"
+                        : "text-muted-foreground"
                     }`}
                   >
                     {subjectValue?.length ?? 0}/{CREATE_TICKET_SUBJECT_MAX}
@@ -267,7 +267,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 <div className="mb-1.5 flex items-center justify-between">
                   <label
                     htmlFor="new-ticket-description"
-                    className="block text-sm font-medium text-slate-700"
+                    className="block text-sm font-medium text-foreground"
                   >
                     Description <span className="text-red-500">*</span>
                   </label>
@@ -276,7 +276,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                       (descriptionValue?.length ?? 0) >
                       CREATE_TICKET_DESCRIPTION_MAX
                         ? "text-red-500 font-medium"
-                        : "text-slate-400"
+                        : "text-muted-foreground"
                     }`}
                   >
                     {descriptionValue?.length ?? 0}/
@@ -303,7 +303,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 <div>
                   <label
                     htmlFor="new-ticket-priority"
-                    className="mb-1.5 block text-sm font-medium text-slate-700"
+                    className="mb-1.5 block text-sm font-medium text-foreground"
                   >
                     Priority
                   </label>
@@ -329,11 +329,11 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
             </div>
 
             {createTicketForm.customFields.length > 0 && (
-              <div className="space-y-4 border-t border-slate-200 pt-6">
-                <h3 className="text-sm font-semibold text-slate-900">
+              <div className="space-y-4 border-t border-border pt-6">
+                <h3 className="text-sm font-semibold text-foreground">
                   Additional information
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   These fields help your team route and solve the request
                   faster.
                 </p>
@@ -341,7 +341,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                   {createTicketForm.customFields.map((field) => (
                     <div
                       key={field.id}
-                      className="rounded-lg border border-slate-200 bg-slate-50/60 p-4"
+                      className="rounded-lg border border-border bg-muted/60 p-4"
                     >
                       <CustomFieldInput
                         field={field}
@@ -358,7 +358,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
               </div>
             )}
 
-            <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+            <div className="flex items-center justify-between border-t border-border pt-4">
               <Button
                 type="button"
                 variant="secondary"
@@ -368,9 +368,9 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                 Cancel
               </Button>
               <div className="flex items-center gap-2">
-                <span className="hidden text-xs text-slate-400 sm:inline">
+                <span className="hidden text-xs text-muted-foreground sm:inline">
                   Press{" "}
-                  <span className="rounded border border-slate-300 px-1">
+                  <span className="rounded border border-border px-1">
                     Enter
                   </span>{" "}
                   to submit

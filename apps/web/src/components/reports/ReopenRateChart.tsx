@@ -13,6 +13,17 @@ type Point = { date: string; count: number };
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+const GRID_STROKE   = "rgba(255,255,255,0.07)";
+const TICK_FILL     = "#94a3b8";
+const TOOLTIP_STYLE: React.CSSProperties = {
+  borderRadius: "10px",
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "hsl(222,40%,13%)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+  fontSize: "12px",
+  color: "hsl(213,45%,91%)",
+};
+
 function dayLabel(date: string) {
   const d = new Date(`${date}T00:00:00Z`);
   return d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
@@ -20,17 +31,13 @@ function dayLabel(date: string) {
 
 function shortDateLabel(date: string) {
   const d = new Date(`${date}T00:00:00Z`);
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 export function ReopenRateChart({ data }: { data: Point[] }) {
   if (data.length === 0) {
     return (
-      <div className="h-[200px] flex items-center justify-center text-sm text-slate-500">
+      <div className="h-[200px] flex items-center justify-center text-sm text-muted-foreground">
         No reopen data in range
       </div>
     );
@@ -43,7 +50,7 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
   }));
 
   const total = data.reduce((sum, item) => sum + item.count, 0);
-  const avg = total / Math.max(1, data.length);
+  const avg   = total / Math.max(1, data.length);
 
   const byDay = DAY_ORDER.map((day) => ({
     day,
@@ -57,39 +64,23 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
     <div className="w-full">
       <div className="h-[200px] w-full min-h-0 overflow-visible">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={chartData}
-            margin={{ top: 5, right: 5, left: 0, bottom: 5 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="short" tick={{ fontSize: 11 }} stroke="#64748b" />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              stroke="#64748b"
-              allowDecimals={false}
-            />
+          <LineChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+            <XAxis dataKey="short" tick={{ fontSize: 11, fill: TICK_FILL }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: TICK_FILL }} axisLine={false} tickLine={false} allowDecimals={false} />
             <Tooltip
               formatter={(value: number | undefined) => [value ?? 0, "Reopens"]}
               labelFormatter={(_, payload) => payload[0]?.payload?.date ?? ""}
-              contentStyle={{
-                fontSize: 12,
-                borderRadius: "12px",
-                border: "1px solid #e2e8f0",
-                boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
-              }}
+              contentStyle={TOOLTIP_STYLE}
             />
-            <ReferenceLine
-              y={avg}
-              stroke="#94a3b8"
-              strokeDasharray="4 4"
-              ifOverflow="extendDomain"
-            />
+            <ReferenceLine y={avg} stroke="rgba(148,163,184,0.4)" strokeDasharray="4 4" ifOverflow="extendDomain" />
             <Line
               type="monotone"
               dataKey="count"
-              stroke="#0f172a"
+              stroke="#fbbf24"
               strokeWidth={2}
-              dot={{ r: 3 }}
+              dot={{ r: 3, fill: "#fbbf24", strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: "#fbbf24", strokeWidth: 0 }}
               animationBegin={0}
               animationDuration={800}
               animationEasing="ease-out"
@@ -97,22 +88,23 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
       <div className="mt-3">
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-slate-100">
+        <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: "hsl(var(--muted))" }}>
           {byDay.map((row) => {
             const width = Math.max(0, (row.count / dayTotal) * 100);
             return (
               <span
                 key={row.day}
-                style={{ width: `${width}%` }}
-                className="h-full bg-slate-300"
+                style={{ width: `${width}%`, background: "rgba(251,191,36,0.6)" }}
+                className="h-full"
               />
             );
           })}
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between text-[11px] text-muted-foreground">
-          <span>Average rate: {avg.toFixed(1)} / day</span>
-          <span>Reopens by day</span>
+          <span>Average: {avg.toFixed(1)} reopens / day</span>
+          <span>Distribution by day of week</span>
         </div>
       </div>
     </div>

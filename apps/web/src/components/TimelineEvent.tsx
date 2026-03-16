@@ -22,7 +22,7 @@ type TimelineEventProps = {
 function eventIcon(type: string) {
   switch (type) {
     case "TICKET_CREATED":
-      return <TicketIcon className="h-4 w-4 text-slate-600" />;
+      return <TicketIcon className="h-4 w-4 text-muted-foreground" />;
     case "TICKET_STATUS_CHANGED":
       return <ArrowRightLeft className="h-4 w-4 text-blue-600" />;
     case "TICKET_ASSIGNED":
@@ -33,15 +33,15 @@ function eventIcon(type: string) {
     case "PRIORITY_BUMPED":
       return <Flag className="h-4 w-4 text-amber-600" />;
     case "MESSAGE_ADDED":
-      return <MessageSquare className="h-4 w-4 text-slate-600" />;
+      return <MessageSquare className="h-4 w-4 text-muted-foreground" />;
     case "ATTACHMENT_ADDED":
-      return <FileUp className="h-4 w-4 text-slate-500" />;
+      return <FileUp className="h-4 w-4 text-muted-foreground" />;
     case "SLA_BREACHED":
       return <AlertTriangle className="h-4 w-4 text-red-600" />;
     case "SLA_AT_RISK":
       return <Clock className="h-4 w-4 text-amber-600" />;
     default:
-      return <TicketIcon className="h-4 w-4 text-slate-500" />;
+      return <TicketIcon className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
@@ -138,26 +138,26 @@ export function TimelineEvent({ event, message, ticket }: TimelineEventProps) {
 
   return (
     <div className="flex gap-3 py-3 first:pt-0">
-      <div className="flex-shrink-0 mt-0.5 h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+      <div className="flex-shrink-0 mt-0.5 h-8 w-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground">
           <RelativeTime value={event.createdAt} />
           {subtitle && (
             <span
-              className="text-slate-400 ml-1"
+              className="text-muted-foreground ml-1"
               title={formatDate(event.createdAt)}
             >
               · {subtitle}
             </span>
           )}
         </p>
-        <p className="text-sm font-medium text-slate-900 mt-0.5">{title}</p>
+        <p className="text-sm font-medium text-foreground mt-0.5">{title}</p>
         {event.type === "MESSAGE_ADDED" &&
           messageBody != null &&
           messageBody !== "" && (
-            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-700">
+            <div className="mt-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-sm text-foreground">
               <MessageBody body={messageBody} />
             </div>
           )}

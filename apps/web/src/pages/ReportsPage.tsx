@@ -288,7 +288,7 @@ function savedViewDescription(filters: ReportsFilters): string {
 }
 
 function toneForMetric(value: number, target: number, hasData = true): string {
-  if (!hasData || (value === 0 && target > 0)) return "text-slate-400";
+  if (!hasData || (value === 0 && target > 0)) return "text-muted-foreground";
   if (value >= target) return "text-green-600";
   if (value >= target - 5) return "text-amber-600";
   return "text-red-600";
@@ -308,7 +308,7 @@ function StatCard({
   tone?: "blue" | "green" | "amber" | "red" | "purple" | "gray";
 }) {
   const toneMap: Record<string, { bg: string; icon: string; ring: string }> = {
-    blue: { bg: "bg-blue-50", icon: "text-blue-600", ring: "ring-blue-200" },
+    blue: { bg: "bg-blue-50", icon: "text-primary", ring: "ring-blue-200" },
     green: {
       bg: "bg-green-50",
       icon: "text-green-600",
@@ -325,16 +325,16 @@ function StatCard({
       icon: "text-purple-600",
       ring: "ring-purple-200",
     },
-    gray: { bg: "bg-slate-50", icon: "text-slate-600", ring: "ring-slate-200" },
+    gray: { bg: "bg-muted", icon: "text-muted-foreground", ring: "ring-slate-200" },
   };
   const palette = toneMap[tone] ?? toneMap.blue;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+    <div className="rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium text-slate-500">{label}</p>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
           <p className={`mt-1 text-2xl font-bold ${palette.icon}`}>{value}</p>
-          {sub ? <p className="mt-1 text-xs text-slate-500">{sub}</p> : null}
+          {sub ? <p className="mt-1 text-xs text-muted-foreground">{sub}</p> : null}
         </div>
         <div
           className={`flex h-10 w-10 items-center justify-center rounded-xl ring-1 ${palette.bg} ${palette.ring}`}
@@ -416,6 +416,7 @@ function MiniBars({
             width={Math.max(barWidth - 6, 2)}
             height={barHeight}
             rx="3"
+            fill="currentColor"
           />
         );
       })}
@@ -459,9 +460,9 @@ function Donut({
         </g>
       </svg>
       <div>
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-xl font-bold text-slate-900">{toPercent(clamped)}</p>
-        <p className="text-xs text-slate-400">{sub}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-xl font-bold text-foreground">{toPercent(clamped)}</p>
+        <p className="text-xs text-muted-foreground">{sub}</p>
       </div>
     </div>
   );
@@ -479,11 +480,11 @@ function CardShell({
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+    <div className="overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div>
-          <p className="text-sm font-semibold text-slate-900">{title}</p>
-          {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
+          <p className="text-sm font-semibold text-foreground">{title}</p>
+          {sub ? <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p> : null}
         </div>
         {right}
       </div>
@@ -494,7 +495,7 @@ function CardShell({
 
 function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
   return (
-    <span className="inline-flex items-center space-x-2 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+    <span className="inline-flex items-center space-x-2 rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
       <span>{label}</span>
       {onRemove ? (
         <button
@@ -523,7 +524,7 @@ function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
 
 function EmptyData({ label }: { label: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+    <div className="rounded-xl border border-dashed border-border bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
       {label}
     </div>
   );
@@ -1438,8 +1439,8 @@ export function ReportsPage({ role }: { role: Role }) {
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerCtx ? (
             <TopBar
@@ -1450,10 +1451,10 @@ export function ReportsPage({ role }: { role: Role }) {
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Reports
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Analytics and insights for your helpdesk.
                   </p>
                 </div>
@@ -1461,8 +1462,8 @@ export function ReportsPage({ role }: { role: Role }) {
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">Reports</h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <h1 className="text-xl font-semibold text-foreground">Reports</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Analytics and insights for your helpdesk.
               </p>
             </div>
@@ -1478,15 +1479,15 @@ export function ReportsPage({ role }: { role: Role }) {
         ) : null}
 
         <div className="max-w-[560px]">
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="rounded-xl border border-border bg-card p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Saved views
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <select
                 value={activeView}
                 onChange={(event) => applyView(event.target.value)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="" disabled>
                   {savedViews.length > 0
@@ -1507,8 +1508,8 @@ export function ReportsPage({ role }: { role: Role }) {
                 disabled={!canSaveViews}
                 className={`rounded-lg px-3 py-2 text-sm font-medium ${
                   canSaveViews
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "cursor-not-allowed border border-slate-300 bg-slate-100 text-slate-400"
+                    ? "bg-primary text-white hover:bg-primary/90"
+                    : "cursor-not-allowed border border-border bg-accent text-muted-foreground"
                 }`}
               >
                 Save current
@@ -1516,22 +1517,22 @@ export function ReportsPage({ role }: { role: Role }) {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
               >
                 Reset
               </button>
             </div>
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-muted-foreground">
               {savedViews.find((view) => view.id === activeView)?.desc ??
                 "No saved view selected."}
             </p>
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Date range
               </label>
               <select
@@ -1542,7 +1543,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     range: event.target.value as RangeKey,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="last_7">Last 7 days</option>
                 <option value="last_14">Last 14 days</option>
@@ -1551,7 +1552,7 @@ export function ReportsPage({ role }: { role: Role }) {
               </select>
             </div>
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Team
               </label>
               <select
@@ -1562,7 +1563,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     teamId: event.target.value,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All teams</option>
                 {teams.map((team) => (
@@ -1573,7 +1574,7 @@ export function ReportsPage({ role }: { role: Role }) {
               </select>
             </div>
             <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Channel
               </label>
               <select
@@ -1584,7 +1585,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     channel: event.target.value,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All channels</option>
                 {CHANNELS.map((channel) => (
@@ -1595,7 +1596,7 @@ export function ReportsPage({ role }: { role: Role }) {
               </select>
             </div>
             <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Status
               </label>
               <select
@@ -1606,7 +1607,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     status: event.target.value,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All status</option>
                 {STATUSES.map((status) => (
@@ -1617,7 +1618,7 @@ export function ReportsPage({ role }: { role: Role }) {
               </select>
             </div>
             <div className="min-w-[160px]">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Priority
               </label>
               <select
@@ -1628,7 +1629,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     priority: event.target.value as PriorityFilter,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All priority</option>
                 <option value="critical">critical</option>
@@ -1638,7 +1639,7 @@ export function ReportsPage({ role }: { role: Role }) {
               </select>
             </div>
             <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Assignee
               </label>
               <select
@@ -1649,7 +1650,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     assignee: event.target.value,
                   }))
                 }
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="all">All assignees</option>
                 {assignees.map((assignee) => (
@@ -1663,8 +1664,8 @@ export function ReportsPage({ role }: { role: Role }) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white px-4 pt-3">
-          <div className="flex flex-wrap gap-6 border-b border-slate-200">
+        <div className="rounded-xl border border-border bg-card px-4 pt-3">
+          <div className="flex flex-wrap gap-6 border-b border-border">
             {[
               ["overview", "Overview"],
               ["sla", "SLA"],
@@ -1680,8 +1681,8 @@ export function ReportsPage({ role }: { role: Role }) {
                 onClick={() => setTab(id as ReportsTab)}
                 className={`pb-3 text-sm font-medium transition-all ${
                   tab === id
-                    ? "border-b-2 border-blue-600 text-blue-600"
-                    : "border-b-2 border-transparent text-slate-500 hover:text-slate-700"
+                    ? "border-b-2 border-blue-600 text-primary"
+                    : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {label}
@@ -1696,7 +1697,7 @@ export function ReportsPage({ role }: { role: Role }) {
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div
                       key={`stat-skel-${i}`}
-                      className="rounded-xl border border-slate-200 bg-white p-4"
+                      className="rounded-xl border border-border bg-card p-4"
                     >
                       <div className="mb-3 h-4 w-24 skeleton-shimmer rounded" />
                       <div className="mb-2 h-7 w-16 skeleton-shimmer rounded" />
@@ -1705,11 +1706,11 @@ export function ReportsPage({ role }: { role: Role }) {
                   ))}
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 bg-white p-6 h-72">
+                  <div className="rounded-xl border border-border bg-card p-6 h-72">
                     <div className="mb-4 h-5 w-32 skeleton-shimmer rounded" />
                     <div className="h-3/4 w-full skeleton-shimmer rounded-lg" />
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-6 h-72">
+                  <div className="rounded-xl border border-border bg-card p-6 h-72">
                     <div className="mb-4 h-5 w-32 skeleton-shimmer rounded" />
                     <div className="h-3/4 w-full skeleton-shimmer rounded-lg" />
                   </div>
@@ -1764,23 +1765,23 @@ export function ReportsPage({ role }: { role: Role }) {
                       title="Volume vs solved"
                       sub="Daily trend. Compare uses current UI state."
                       right={
-                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                        <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
                           Daily
                         </span>
                       }
                     >
                       <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="rounded-xl border border-border bg-muted p-4">
                           <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-slate-800">
+                            <p className="text-sm font-semibold text-foreground">
                               Inbound
                             </p>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-muted-foreground">
                               {inboundSeries.length} pts
                             </span>
                           </div>
                           {hasInboundSeries ? (
-                            <div className="text-blue-600">
+                            <div className="text-primary">
                               <MiniBars points={inboundSeries} />
                             </div>
                           ) : (
@@ -1793,8 +1794,8 @@ export function ReportsPage({ role }: { role: Role }) {
                             </div>
                           )}
                           <div className="mt-3 flex items-center justify-between text-xs">
-                            <span className="text-slate-500">Avg/day</span>
-                            <span className="font-semibold text-slate-700">
+                            <span className="text-muted-foreground">Avg/day</span>
+                            <span className="font-semibold text-foreground">
                               {hasInboundSeries
                                 ? Math.round(
                                     inboundSeries.reduce(
@@ -1806,17 +1807,17 @@ export function ReportsPage({ role }: { role: Role }) {
                             </span>
                           </div>
                         </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="rounded-xl border border-border bg-muted p-4">
                           <div className="mb-2 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-slate-800">
+                            <p className="text-sm font-semibold text-foreground">
                               Solved
                             </p>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-xs text-muted-foreground">
                               {solvedSeriesSafe.length} pts
                             </span>
                           </div>
                           {hasSolvedSeries ? (
-                            <div className="text-green-600">
+                            <div className="text-emerald-400">
                               <MiniBars points={solvedSeriesSafe} />
                             </div>
                           ) : (
@@ -1829,8 +1830,8 @@ export function ReportsPage({ role }: { role: Role }) {
                             </div>
                           )}
                           <div className="mt-3 flex items-center justify-between text-xs">
-                            <span className="text-slate-500">Avg/day</span>
-                            <span className="font-semibold text-slate-700">
+                            <span className="text-muted-foreground">Avg/day</span>
+                            <span className="font-semibold text-foreground">
                               {hasSolvedSeries
                                 ? Math.round(
                                     solvedSeriesSafe.reduce(
@@ -1852,7 +1853,7 @@ export function ReportsPage({ role }: { role: Role }) {
                       sub="First response and resolution compliance."
                     >
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="text-blue-600">
+                        <div className="text-primary">
                           <Donut
                             value={kpis.frSla}
                             label="First response"
@@ -1867,11 +1868,11 @@ export function ReportsPage({ role }: { role: Role }) {
                           />
                         </div>
                       </div>
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-xs text-slate-500">
+                      <div className="mt-4 rounded-xl border border-border bg-muted p-3">
+                        <p className="text-xs text-muted-foreground">
                           At-risk tickets (est.)
                         </p>
-                        <p className="mt-1 text-xl font-bold text-slate-900">
+                        <p className="mt-1 text-xl font-bold text-foreground">
                           {Math.max(
                             0,
                             Math.round(
@@ -1879,7 +1880,7 @@ export function ReportsPage({ role }: { role: Role }) {
                             ),
                           )}
                         </p>
-                        <p className="mt-1 text-xs text-slate-400">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Based on active backlog and current SLA trends.
                         </p>
                       </div>
@@ -1894,14 +1895,14 @@ export function ReportsPage({ role }: { role: Role }) {
                           {topCategories.map((category) => (
                             <div
                               key={category.name}
-                              className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-slate-50"
+                              className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-muted"
                             >
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-slate-800">
+                                <p className="truncate text-sm font-medium text-foreground">
                                   {category.name}
                                 </p>
                               </div>
-                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
                                 {category.count}
                               </span>
                             </div>
@@ -1923,16 +1924,16 @@ export function ReportsPage({ role }: { role: Role }) {
             {tab === "sla" ? (
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs text-slate-500">First response SLA</p>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <p className="text-xs text-muted-foreground">First response SLA</p>
                     <p
                       className={`mt-1 text-3xl font-bold ${toneForMetric(kpis.frSla, 95)}`}
                     >
                       {kpis.frSla.toFixed(1)}%
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">Target 95%</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Target 95%</p>
                     {hasInboundSeries ? (
-                      <div className="mt-3 text-blue-600">
+                      <div className="mt-3 text-primary">
                         <SparkArea points={inboundSeries.slice(-12)} />
                       </div>
                     ) : (
@@ -1941,14 +1942,14 @@ export function ReportsPage({ role }: { role: Role }) {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs text-slate-500">Resolution SLA</p>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <p className="text-xs text-muted-foreground">Resolution SLA</p>
                     <p
                       className={`mt-1 text-3xl font-bold ${toneForMetric(kpis.resSla, 92)}`}
                     >
                       {kpis.resSla.toFixed(1)}%
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">Target 92%</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Target 92%</p>
                     {hasSolvedSeries ? (
                       <div className="mt-3 text-indigo-600">
                         <SparkArea points={solvedSeriesSafe.slice(-12)} />
@@ -1959,15 +1960,15 @@ export function ReportsPage({ role }: { role: Role }) {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs text-slate-500">Breaches</p>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <p className="text-xs text-muted-foreground">Breaches</p>
                     <p className="mt-1 text-3xl font-bold text-red-600">
                       {slaData
                         ? slaData.firstResponseBreached +
                           slaData.resolutionBreached
                         : 0}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       In current scope
                     </p>
                     <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3">
@@ -1994,7 +1995,7 @@ export function ReportsPage({ role }: { role: Role }) {
                   {hasSlaBreaches ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50">
+                        <thead className="border-b border-border bg-muted">
                           <tr>
                             {[
                               "Ticket",
@@ -2006,35 +2007,35 @@ export function ReportsPage({ role }: { role: Role }) {
                             ].map((heading) => (
                               <th
                                 key={heading}
-                                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
+                                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                               >
                                 {heading}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-border">
                           {slaBreachesData.map((row) => (
                             <tr
                               key={row.ticketId}
-                              className="hover:bg-slate-50"
+                              className="hover:bg-muted"
                             >
-                              <td className="px-4 py-3 font-semibold text-slate-900">
+                              <td className="px-4 py-3 font-semibold text-foreground">
                                 {row.ticket}
                               </td>
-                              <td className="px-4 py-3 text-slate-700">
+                              <td className="px-4 py-3 text-foreground">
                                 {row.team}
                               </td>
-                              <td className="px-4 py-3 text-slate-700">
+                              <td className="px-4 py-3 text-foreground">
                                 {row.priority}
                               </td>
-                              <td className="px-4 py-3 text-slate-700">
+                              <td className="px-4 py-3 text-foreground">
                                 {row.stage}
                               </td>
                               <td className="px-4 py-3 font-semibold text-red-600">
                                 {formatDuration(row.breachSeconds)}
                               </td>
-                              <td className="px-4 py-3 text-slate-600">
+                              <td className="px-4 py-3 text-muted-foreground">
                                 {row.reason}
                               </td>
                             </tr>
@@ -2063,15 +2064,15 @@ export function ReportsPage({ role }: { role: Role }) {
                       sub="Daily trend"
                     >
                       <div className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-sm font-semibold text-slate-800">
+                        <div className="rounded-xl border border-border bg-muted p-4">
+                          <p className="text-sm font-semibold text-foreground">
                             Inbound
                           </p>
-                          <p className="mb-2 text-xs text-slate-400">
+                          <p className="mb-2 text-xs text-muted-foreground">
                             Tickets/day
                           </p>
                           {hasInboundSeries ? (
-                            <div className="text-blue-600">
+                            <div className="text-primary">
                               <MiniBars points={inboundSeries} />
                             </div>
                           ) : (
@@ -2080,15 +2081,15 @@ export function ReportsPage({ role }: { role: Role }) {
                             </div>
                           )}
                         </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-sm font-semibold text-slate-800">
+                        <div className="rounded-xl border border-border bg-muted p-4">
+                          <p className="text-sm font-semibold text-foreground">
                             Solved
                           </p>
-                          <p className="mb-2 text-xs text-slate-400">
+                          <p className="mb-2 text-xs text-muted-foreground">
                             Tickets/day
                           </p>
                           {hasSolvedSeries ? (
-                            <div className="text-green-600">
+                            <div className="text-emerald-400">
                               <MiniBars points={solvedSeriesSafe} />
                             </div>
                           ) : (
@@ -2097,11 +2098,11 @@ export function ReportsPage({ role }: { role: Role }) {
                             </div>
                           )}
                         </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-sm font-semibold text-slate-800">
+                        <div className="rounded-xl border border-border bg-muted p-4">
+                          <p className="text-sm font-semibold text-foreground">
                             Backlog
                           </p>
-                          <p className="mb-2 text-xs text-slate-400">
+                          <p className="mb-2 text-xs text-muted-foreground">
                             Open tickets
                           </p>
                           {hasBacklogSeries ? (
@@ -2125,19 +2126,19 @@ export function ReportsPage({ role }: { role: Role }) {
                           {channelBreakdownData.map((row) => (
                             <div
                               key={row.channel}
-                              className="rounded-lg px-3 py-2 hover:bg-slate-50"
+                              className="rounded-lg px-3 py-2 hover:bg-muted"
                             >
                               <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium text-slate-800">
+                                <span className="font-medium text-foreground">
                                   {row.label}
                                 </span>
-                                <span className="text-slate-600">
+                                <span className="text-muted-foreground">
                                   {toPercent(row.percent)}
                                 </span>
                               </div>
-                              <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                              <div className="mt-2 h-2 w-full rounded-full bg-accent">
                                 <div
-                                  className="h-2 rounded-full bg-blue-600"
+                                  className="h-2 rounded-full bg-primary"
                                   style={{ width: `${row.percent}%` }}
                                 />
                               </div>
@@ -2161,12 +2162,12 @@ export function ReportsPage({ role }: { role: Role }) {
                           {peakDays.map((row) => (
                             <div
                               key={`${row.d}-${row.v}`}
-                              className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+                              className="flex items-center justify-between rounded-xl border border-border bg-muted px-3 py-2"
                             >
-                              <span className="text-sm font-medium text-slate-700">
+                              <span className="text-sm font-medium text-foreground">
                                 {row.d}
                               </span>
-                              <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                              <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
                                 {row.v}
                               </span>
                             </div>
@@ -2190,16 +2191,16 @@ export function ReportsPage({ role }: { role: Role }) {
             {tab === "agents" ? (
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs text-slate-500">Avg handle time</p>
-                    <p className="mt-1 text-3xl font-bold text-slate-900">
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <p className="text-xs text-muted-foreground">Avg handle time</p>
+                    <p className="mt-1 text-3xl font-bold text-foreground">
                       {kpis.avgHandleMin.toFixed(1)}m
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Lower is better
                     </p>
                     {hasInboundSeries ? (
-                      <div className="mt-3 text-slate-700">
+                      <div className="mt-3 text-foreground">
                         <SparkArea points={inboundSeries.slice(-12)} />
                       </div>
                     ) : (
@@ -2208,8 +2209,8 @@ export function ReportsPage({ role }: { role: Role }) {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs text-slate-500">Quality score</p>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <p className="text-xs text-muted-foreground">Quality score</p>
                     <p className="mt-1 text-3xl font-bold text-green-600">
                       {Math.max(
                         0,
@@ -2219,7 +2220,7 @@ export function ReportsPage({ role }: { role: Role }) {
                         ),
                       )}
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Composite: SLA + reopen trend
                     </p>
                     <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
@@ -2229,12 +2230,12 @@ export function ReportsPage({ role }: { role: Role }) {
                       </p>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-slate-200 bg-white p-5">
-                    <p className="text-xs text-slate-500">Reopen rate</p>
+                  <div className="rounded-xl border border-border bg-card p-5">
+                    <p className="text-xs text-muted-foreground">Reopen rate</p>
                     <p className="mt-1 text-3xl font-bold text-amber-600">
                       {reopenRate.toFixed(1)}%
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Target {"<="} 3%
                     </p>
                     {reopenData.length > 0 ? (
@@ -2258,7 +2259,7 @@ export function ReportsPage({ role }: { role: Role }) {
                   {hasAgentRows ? (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50">
+                        <thead className="border-b border-border bg-muted">
                           <tr>
                             {[
                               "Agent",
@@ -2270,26 +2271,26 @@ export function ReportsPage({ role }: { role: Role }) {
                             ].map((heading) => (
                               <th
                                 key={heading}
-                                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
+                                className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                               >
                                 {heading}
                               </th>
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-border">
                           {[...agentRows]
                             .sort((a, b) => b.solved - a.solved)
                             .map((row) => (
-                              <tr key={row.name} className="hover:bg-slate-50">
-                                <td className="px-4 py-3 font-semibold text-slate-900">
+                              <tr key={row.name} className="hover:bg-muted">
+                                <td className="px-4 py-3 font-semibold text-foreground">
                                   {row.name}
                                 </td>
-                                <td className="px-4 py-3 text-slate-700">
+                                <td className="px-4 py-3 text-foreground">
                                   {row.team}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                                  <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
                                     {row.solved}
                                   </span>
                                 </td>
@@ -2303,7 +2304,7 @@ export function ReportsPage({ role }: { role: Role }) {
                                 >
                                   {toPercent(row.res)}
                                 </td>
-                                <td className="px-4 py-3 font-semibold text-slate-900">
+                                <td className="px-4 py-3 font-semibold text-foreground">
                                   {row.csat == null
                                     ? "--"
                                     : row.csat.toFixed(1)}
@@ -2327,7 +2328,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     <CardShell title="CSAT trend" sub="Average rating per day.">
                       <div className="mb-2 flex items-end justify-between">
                         <div>
-                          <p className="text-xs text-slate-500">Average</p>
+                          <p className="text-xs text-muted-foreground">Average</p>
                           <p className="mt-1 text-3xl font-bold text-purple-600">
                             {csatAverage == null
                               ? "--"
@@ -2347,7 +2348,7 @@ export function ReportsPage({ role }: { role: Role }) {
                               )}
                             />
                           </div>
-                          <p className="mt-3 text-xs text-slate-400">
+                          <p className="mt-3 text-xs text-muted-foreground">
                             {csatResponses} responses in current scope.
                           </p>
                         </>
@@ -2363,14 +2364,14 @@ export function ReportsPage({ role }: { role: Role }) {
                           {csatDriversData.map((row) => (
                             <div key={row.label}>
                               <div className="flex items-center justify-between text-sm">
-                                <span className="text-slate-700">
+                                <span className="text-foreground">
                                   {row.label}
                                 </span>
-                                <span className="text-slate-600">
+                                <span className="text-muted-foreground">
                                   {toPercent(row.percent)}
                                 </span>
                               </div>
-                              <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                              <div className="mt-2 h-2 w-full rounded-full bg-accent">
                                 <div
                                   className="h-2 rounded-full bg-purple-600"
                                   style={{ width: `${row.percent}%` }}
@@ -2392,7 +2393,7 @@ export function ReportsPage({ role }: { role: Role }) {
                           {csatTagsData.map((row) => (
                             <span
                               key={row.tag}
-                              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                              className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground"
                             >
                               #{row.tag} ({row.count})
                             </span>
@@ -2420,17 +2421,17 @@ export function ReportsPage({ role }: { role: Role }) {
                           {ageBuckets.map((bucket) => (
                             <div
                               key={bucket.bucket}
-                              className="rounded-lg px-3 py-2 hover:bg-slate-50"
+                              className="rounded-lg px-3 py-2 hover:bg-muted"
                             >
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-slate-800">
+                                <span className="text-sm font-medium text-foreground">
                                   {bucket.bucket}
                                 </span>
-                                <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                                <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
                                   {bucket.count}
                                 </span>
                               </div>
-                              <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
+                              <div className="mt-2 h-2 w-full rounded-full bg-accent">
                                 <div
                                   className="h-2 rounded-full bg-amber-600"
                                   style={{
@@ -2496,11 +2497,11 @@ export function ReportsPage({ role }: { role: Role }) {
                     sub="CSV/XLSX/JSON/PDF snapshot"
                   >
                     <div className="space-y-3">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-sm font-semibold text-slate-900">
+                      <div className="rounded-xl border border-border bg-muted p-4">
+                        <p className="text-sm font-semibold text-foreground">
                           One-time export
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Use current scope and filters.
                         </p>
                         <button
@@ -2509,30 +2510,30 @@ export function ReportsPage({ role }: { role: Role }) {
                           disabled={!canExport}
                           className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${
                             canExport
-                              ? "bg-blue-600 text-white hover:bg-blue-700"
-                              : "cursor-not-allowed bg-slate-100 text-slate-400"
+                              ? "bg-primary text-white hover:bg-primary/90"
+                              : "cursor-not-allowed bg-accent text-muted-foreground"
                           }`}
                         >
                           Open export
                         </button>
                       </div>
-                      <div className="rounded-xl border border-slate-200 bg-white p-4">
-                        <p className="text-sm font-semibold text-slate-900">
+                      <div className="rounded-xl border border-border bg-card p-4">
+                        <p className="text-sm font-semibold text-foreground">
                           Share link
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Share the current report view URL.
                         </p>
                         <div className="mt-3 flex items-center gap-2">
                           <input
                             readOnly
                             value={shareLink}
-                            className="flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+                            className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
                           />
                           <button
                             type="button"
                             onClick={copyShareLink}
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+                            className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
                           >
                             Copy
                           </button>
@@ -2544,11 +2545,11 @@ export function ReportsPage({ role }: { role: Role }) {
                   <CardShell title="Schedules" sub="Email summaries">
                     <div className="space-y-3">
                       <EmptyData label="No schedules are configured." />
-                      <div className="rounded-xl border border-slate-200 bg-white p-4">
-                        <p className="text-sm font-semibold text-slate-900">
+                      <div className="rounded-xl border border-border bg-card p-4">
+                        <p className="text-sm font-semibold text-foreground">
                           Create schedule
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Requires Team Admin+
                         </p>
                         <button
@@ -2563,8 +2564,8 @@ export function ReportsPage({ role }: { role: Role }) {
                           disabled={!canSaveViews}
                           className={`mt-3 rounded-lg px-4 py-2 text-sm font-medium ${
                             canSaveViews
-                              ? "bg-blue-600 text-white hover:bg-blue-700"
-                              : "cursor-not-allowed bg-slate-100 text-slate-400"
+                              ? "bg-primary text-white hover:bg-primary/90"
+                              : "cursor-not-allowed bg-accent text-muted-foreground"
                           }`}
                         >
                           New schedule
@@ -2592,21 +2593,21 @@ export function ReportsPage({ role }: { role: Role }) {
             aria-modal="true"
             aria-label="Export report"
             tabIndex={-1}
-            className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl"
+            className="flex max-h-[92vh] w-full max-w-xl flex-col rounded-xl bg-card shadow-2xl"
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div>
-                <p className="text-base font-semibold text-slate-900">
+                <p className="text-base font-semibold text-foreground">
                   Export report
                 </p>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   Choose dataset and format
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowExportModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-muted-foreground hover:text-muted-foreground"
               >
                 <svg
                   className="h-5 w-5"
@@ -2624,11 +2625,11 @@ export function ReportsPage({ role }: { role: Role }) {
               </button>
             </div>
             <div className="space-y-4 overflow-y-auto p-6">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-800">
+              <div className="rounded-xl border border-border bg-muted p-4">
+                <p className="text-sm font-semibold text-foreground">
                   Current scope
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   {exportScopeLabel}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -2677,32 +2678,32 @@ export function ReportsPage({ role }: { role: Role }) {
                   <button
                     key={dataset.key}
                     type="button"
-                    className="rounded-xl border border-slate-200 p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50"
+                    className="rounded-xl border border-border p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50"
                   >
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-foreground">
                       {dataset.label}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-muted-foreground">
                       {dataset.desc}
                     </p>
                   </button>
                 ))}
               </div>
 
-              <div className="rounded-xl border border-slate-200 p-4">
-                <p className="text-sm font-semibold text-slate-900">Format</p>
+              <div className="rounded-xl border border-border p-4">
+                <p className="text-sm font-semibold text-foreground">Format</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {["CSV", "XLSX", "PDF (summary)", "JSON"].map((format) => (
                     <button
                       key={format}
                       type="button"
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+                      className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
                     >
                       {format}
                     </button>
                   ))}
                 </div>
-                <p className="mt-3 text-xs text-slate-400">
+                <p className="mt-3 text-xs text-muted-foreground">
                   PDF exports a snapshot of the dashboard cards and tables.
                 </p>
               </div>
@@ -2711,7 +2712,7 @@ export function ReportsPage({ role }: { role: Role }) {
                 <button
                   type="button"
                   onClick={() => setShowExportModal(false)}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
                 >
                   Cancel
                 </button>
@@ -2721,7 +2722,7 @@ export function ReportsPage({ role }: { role: Role }) {
                     setShowExportModal(false);
                     toast.success("Export started");
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
                 >
                   <Download className="h-4 w-4" />
                   Export

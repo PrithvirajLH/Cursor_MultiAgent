@@ -410,12 +410,12 @@ export const RichTextEditor = forwardRef<
 
   return (
     <div className={`relative ${className}`}>
-      <div className="flex items-center gap-1 border-b border-slate-200 bg-slate-50/80 px-2 py-1">
+      <div className="flex items-center gap-1 border-b border-border bg-muted/80 px-2 py-1">
         <button
           type="button"
           onMouseDown={handleToolbarMouseDown}
           onClick={() => execCmd("bold")}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Bold"
           aria-label="Bold"
         >
@@ -425,7 +425,7 @@ export const RichTextEditor = forwardRef<
           type="button"
           onMouseDown={handleToolbarMouseDown}
           onClick={() => execCmd("italic")}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Italic"
           aria-label="Italic"
         >
@@ -435,7 +435,7 @@ export const RichTextEditor = forwardRef<
           type="button"
           onMouseDown={handleToolbarMouseDown}
           onClick={() => execCmd("insertUnorderedList")}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Bullet list"
           aria-label="Bullet list"
         >
@@ -445,7 +445,7 @@ export const RichTextEditor = forwardRef<
           type="button"
           onMouseDown={handleToolbarMouseDown}
           onClick={() => execCmd("insertOrderedList")}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Numbered list"
           aria-label="Numbered list"
         >
@@ -455,7 +455,7 @@ export const RichTextEditor = forwardRef<
           type="button"
           onMouseDown={handleToolbarMouseDown}
           onClick={() => execCmd("formatBlock", "pre")}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Code block"
           aria-label="Code block"
         >
@@ -468,17 +468,17 @@ export const RichTextEditor = forwardRef<
             const url = window.prompt("Link URL:", "https://");
             if (url) execCmd("createLink", url);
           }}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Link"
           aria-label="Link"
         >
           <Link2 className="h-4 w-4" />
         </button>
-        <div className="mx-1 w-px bg-slate-200" />
+        <div className="mx-1 w-px bg-border" />
         <button
           type="button"
           onClick={() => setShowCanned(true)}
-          className="rounded p-1.5 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Insert template"
           aria-label="Insert template"
         >
@@ -486,10 +486,10 @@ export const RichTextEditor = forwardRef<
         </button>
       </div>
 
-      <div className="relative border border-t-0 border-slate-200 bg-white">
+      <div className="relative border border-t-0 border-border bg-card">
         {isEmpty && (
           <div
-            className="pointer-events-none absolute left-3 top-3 text-sm text-slate-400"
+            className="pointer-events-none absolute left-3 top-3 text-sm text-muted-foreground"
             aria-hidden
           >
             {placeholder}
@@ -499,7 +499,7 @@ export const RichTextEditor = forwardRef<
           ref={editableRef}
           contentEditable
           suppressContentEditableWarning
-          className="min-h-[80px] max-h-[288px] overflow-y-auto p-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:ring-inset"
+          className="min-h-[80px] max-h-[288px] overflow-y-auto p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-inset"
           style={{
             minHeight: `${minRows * 24}px`,
             maxHeight: `${maxRows * 24}px`,

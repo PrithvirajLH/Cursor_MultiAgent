@@ -168,7 +168,7 @@ function Toggle({
         onChange={(event) => onChange(event.target.checked)}
         className="peer sr-only"
       />
-      <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600 peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
+      <span className="absolute inset-0 cursor-pointer rounded-full bg-muted transition peer-checked:bg-primary peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
       <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
     </label>
   );
@@ -199,7 +199,7 @@ function ConfirmDeleteModal({
         aria-modal="true"
         aria-label="Delete routing rule"
         tabIndex={-1}
-        className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+        className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl"
       >
         <div className="mb-3 flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
@@ -217,18 +217,18 @@ function ConfirmDeleteModal({
               />
             </svg>
           </div>
-          <h3 className="text-base font-semibold text-slate-900">
+          <h3 className="text-base font-semibold text-foreground">
             Delete Routing Rule
           </h3>
         </div>
-        <p className="mb-5 text-sm leading-relaxed text-slate-600">
+        <p className="mb-5 text-sm leading-relaxed text-muted-foreground">
           Delete "{ruleName}"? This cannot be undone.
         </p>
         <div className="flex justify-end space-x-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
           >
             Cancel
           </button>
@@ -302,14 +302,14 @@ function RuleEditorModal({
         aria-modal="true"
         aria-label={isNew ? "Create routing rule" : "Edit routing rule"}
         tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-card shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <p className="text-base font-semibold text-slate-900">
+            <p className="text-base font-semibold text-foreground">
               {isNew ? "Create Routing Rule" : "Edit Routing Rule"}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Define subject keywords and target{" "}
               {assignmentMode === "member" ? "team member" : "team"}
             </p>
@@ -317,7 +317,7 @@ function RuleEditorModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600"
+            className="text-muted-foreground hover:text-muted-foreground"
           >
             <svg
               className="h-5 w-5"
@@ -338,13 +338,13 @@ function RuleEditorModal({
         <div className="flex-1 space-y-5 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Rule Name *
               </label>
               <input
                 value={form.name}
                 onChange={(event) => onChange({ name: event.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 placeholder="e.g. VIP Fast Lane"
               />
             </div>
@@ -354,17 +354,17 @@ function RuleEditorModal({
                   checked={form.enabled}
                   onChange={(value) => onChange({ enabled: value })}
                 />
-                <span className="text-sm text-slate-700">Enabled</span>
+                <span className="text-sm text-foreground">Enabled</span>
               </div>
             </div>
           </div>
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">
+              <p className="text-sm font-semibold text-foreground">
                 Subject Keywords
               </p>
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-muted-foreground">
                 All keywords are matched against the ticket subject
               </span>
             </div>
@@ -372,12 +372,12 @@ function RuleEditorModal({
               {form.conditions.map((condition, index) => (
                 <div
                   key={`condition-${index}`}
-                  className="flex items-center space-x-2 rounded-xl border border-slate-200 bg-slate-50 p-2.5"
+                  className="flex items-center space-x-2 rounded-xl border border-border bg-muted p-2.5"
                 >
-                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
+                  <span className="rounded-lg bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
                     subject
                   </span>
-                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-slate-500">
+                  <span className="rounded-lg bg-card px-2 py-1 text-xs font-medium text-muted-foreground">
                     contains
                   </span>
                   <input
@@ -385,13 +385,13 @@ function RuleEditorModal({
                     onChange={(event) =>
                       onUpdateCondition(index, "val", event.target.value)
                     }
-                    className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     placeholder="keyword..."
                   />
                   <button
                     type="button"
                     onClick={() => onRemoveCondition(index)}
-                    className="flex-shrink-0 text-slate-400 hover:text-red-500"
+                    className="flex-shrink-0 text-muted-foreground hover:text-red-500"
                   >
                     <svg
                       className="h-4 w-4"
@@ -412,7 +412,7 @@ function RuleEditorModal({
               <button
                 type="button"
                 onClick={onAddCondition}
-                className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                className="flex items-center space-x-1 text-xs font-medium text-primary hover:text-blue-700"
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -434,8 +434,8 @@ function RuleEditorModal({
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">Assignment</p>
-              <span className="text-xs text-slate-400">
+              <p className="text-sm font-semibold text-foreground">Assignment</p>
+              <span className="text-xs text-muted-foreground">
                 Persisted backend field
               </span>
             </div>
@@ -458,7 +458,7 @@ function RuleEditorModal({
                       d="M13 10V3L4 14h7v7l9-11h-7z"
                     />
                   </svg>
-                  <span className="rounded-lg bg-white px-2 py-1 text-xs font-medium text-blue-700">
+                  <span className="rounded-lg bg-card px-2 py-1 text-xs font-medium text-primary">
                     {assignmentMode === "member"
                       ? "Assign Member"
                       : "Assign Team"}
@@ -468,7 +468,7 @@ function RuleEditorModal({
                     onChange={(event) =>
                       onUpdateAction(index, "val", event.target.value)
                     }
-                    className="flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-primary/30 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     <option value="">
                       {assignmentMode === "member"
@@ -498,12 +498,12 @@ function RuleEditorModal({
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex justify-end space-x-3 rounded-b-xl border-t border-border bg-muted px-6 py-4">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
           </button>
@@ -511,7 +511,7 @@ function RuleEditorModal({
             type="button"
             onClick={onSubmit}
             disabled={loading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
           >
             {loading ? "Saving..." : isNew ? "Create Rule" : "Save Changes"}
           </button>
@@ -881,8 +881,8 @@ export function RoutingRulesPage({
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerCtx ? (
             <TopBar
@@ -893,10 +893,10 @@ export function RoutingRulesPage({
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Routing Rules
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Auto-assign{" "}
                     {assignmentMode === "member" ? "team members" : "teams"} and
                     priorities using ticket conditions.
@@ -906,10 +906,10 @@ export function RoutingRulesPage({
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Routing Rules
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Auto-assign{" "}
                 {assignmentMode === "member" ? "team members" : "teams"} and
                 priorities using ticket conditions.
@@ -928,14 +928,14 @@ export function RoutingRulesPage({
 
         <div className="mb-5 flex items-center justify-between">
           <div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted-foreground">
               Rules are evaluated in order. The first matching rule wins.
             </p>
           </div>
           <button
             type="button"
             onClick={openCreateModal}
-            className="flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+            className="flex items-center space-x-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
             <span>New Rule</span>
@@ -947,7 +947,7 @@ export function RoutingRulesPage({
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={`rule-skel-${i}`}
-                className="rounded-xl border border-slate-200 bg-white p-5"
+                className="rounded-xl border border-border bg-card p-5"
               >
                 <div className="flex items-center justify-between">
                   <div className="space-y-2">
@@ -971,7 +971,7 @@ export function RoutingRulesPage({
               return (
                 <div
                   key={rule.id}
-                  className={`rounded-xl border bg-white p-4 transition-all duration-200 hover:shadow-md ${
+                  className={`rounded-xl border bg-card p-4 transition-all duration-200 hover:shadow-md ${
                     !rule.isActive ? "opacity-60" : ""
                   }`}
                 >
@@ -980,7 +980,7 @@ export function RoutingRulesPage({
                       <div className="flex flex-col items-center pt-1">
                         <div className="cursor-grab opacity-40 transition-opacity hover:opacity-80">
                           <svg
-                            className="h-4 w-4 text-slate-400"
+                            className="h-4 w-4 text-muted-foreground"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -993,32 +993,32 @@ export function RoutingRulesPage({
                             />
                           </svg>
                         </div>
-                        <span className="mt-1 text-xs font-medium text-slate-400">
+                        <span className="mt-1 text-xs font-medium text-muted-foreground">
                           #{index + 1}
                         </span>
                       </div>
                       <div>
                         <div className="mb-2 flex items-center space-x-2">
-                          <span className="text-sm font-semibold text-slate-900">
+                          <span className="text-sm font-semibold text-foreground">
                             {rule.name}
                           </span>
                           {!rule.isActive && (
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                            <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-muted-foreground">
                               Disabled
                             </span>
                           )}
                         </div>
 
                         <div className="mb-2 flex flex-wrap gap-1.5">
-                          <span className="mt-0.5 text-xs font-medium text-slate-400">
+                          <span className="mt-0.5 text-xs font-medium text-muted-foreground">
                             IF
                           </span>
                           {meta.conditions.map((condition, conditionIndex) => (
                             <span
                               key={`${rule.id}-condition-${conditionIndex}`}
-                              className="inline-flex items-center rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                              className="inline-flex items-center rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground"
                             >
-                              <span className="text-slate-500">
+                              <span className="text-muted-foreground">
                                 {condition.field.replace("_", " ")}
                               </span>
                               &nbsp;
@@ -1060,7 +1060,7 @@ export function RoutingRulesPage({
                       <button
                         type="button"
                         onClick={() => openEditModal(rule)}
-                        className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                        className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
                       >
                         <svg
                           className="h-4 w-4"
@@ -1079,7 +1079,7 @@ export function RoutingRulesPage({
                       <button
                         type="button"
                         onClick={() => setDeleteTarget(rule)}
-                        className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
                       >
                         <svg
                           className="h-4 w-4"
@@ -1102,11 +1102,11 @@ export function RoutingRulesPage({
             })}
 
             {sortedRules.length === 0 && (
-              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center">
-                <p className="text-sm font-semibold text-slate-700">
+              <div className="rounded-xl border border-border bg-card p-8 text-center">
+                <p className="text-sm font-semibold text-foreground">
                   No routing rules
                 </p>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Create your first rule to automatically assign and prioritize
                   incoming tickets.
                 </p>
@@ -1116,7 +1116,7 @@ export function RoutingRulesPage({
             <button
               type="button"
               onClick={openCreateModal}
-              className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600"
+              className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-blue-300 hover:text-primary"
             >
               <svg
                 className="h-4 w-4"

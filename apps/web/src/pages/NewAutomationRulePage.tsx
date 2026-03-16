@@ -394,8 +394,8 @@ export function NewAutomationRulePage({
   const headerValue = headerCtx;
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerValue ? (
             <TopBar
@@ -406,10 +406,10 @@ export function NewAutomationRulePage({
               notificationProps={headerValue.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     New Automation
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Define triggers, conditions, and actions that run
                     automatically on tickets.
                   </p>
@@ -418,10 +418,10 @@ export function NewAutomationRulePage({
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 New Automation
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Define triggers, conditions, and actions that run automatically
                 on tickets.
               </p>
@@ -434,24 +434,24 @@ export function NewAutomationRulePage({
         <button
           type="button"
           onClick={() => navigate("/automation")}
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Back to automations</span>
         </button>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">
+        <div className="rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-lg font-semibold text-foreground">
               Automation configuration
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-muted-foreground">
               Automations are evaluated when their trigger fires. The first
               matching automation for a ticket will run its actions.
             </p>
@@ -460,7 +460,7 @@ export function NewAutomationRulePage({
           <div className="space-y-6 px-6 py-6">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Automation name <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -468,12 +468,12 @@ export function NewAutomationRulePage({
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, name: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="e.g. Auto-close resolved tickets after 5 days"
                 />
               </div>
               <div className="space-y-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Trigger
                 </label>
                 <select
@@ -484,7 +484,7 @@ export function NewAutomationRulePage({
                       trigger: event.target.value,
                     }))
                   }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 >
                   {TRIGGERS.map((trigger) => (
                     <option key={trigger.value} value={trigger.value}>
@@ -492,7 +492,7 @@ export function NewAutomationRulePage({
                     </option>
                   ))}
                 </select>
-                <label className="mb-1 mt-3 block text-sm font-medium text-slate-700">
+                <label className="mb-1 mt-3 block text-sm font-medium text-foreground">
                   Priority
                 </label>
                 <input
@@ -505,9 +505,9 @@ export function NewAutomationRulePage({
                       priority: Number(event.target.value) || 1,
                     }))
                   }
-                  className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-24 rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Lower numbers run first. The first matching automation is
                   used.
                 </p>
@@ -516,8 +516,8 @@ export function NewAutomationRulePage({
 
             <div className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Description <span className="text-slate-400">(optional)</span>
+                <label className="mb-1 block text-sm font-medium text-foreground">
+                  Description <span className="text-muted-foreground">(optional)</span>
                 </label>
                 <textarea
                   value={form.description}
@@ -528,17 +528,17 @@ export function NewAutomationRulePage({
                     }))
                   }
                   rows={3}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="Explain what this automation does so your team can understand it at a glance."
                 />
               </div>
               <div className="flex flex-col justify-between gap-4">
-                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex items-center justify-between rounded-xl border border-border bg-muted px-4 py-3">
                   <div>
-                    <p className="text-sm font-medium text-slate-700">
+                    <p className="text-sm font-medium text-foreground">
                       Rule status
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-muted-foreground">
                       Disable to keep the automation configured but inactive.
                     </p>
                   </div>
@@ -554,14 +554,14 @@ export function NewAutomationRulePage({
                       }
                       className="peer sr-only"
                     />
-                    <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600" />
+                    <span className="absolute inset-0 cursor-pointer rounded-full bg-muted transition peer-checked:bg-primary" />
                     <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
                   </label>
                 </div>
 
                 {!isTeamAdmin && (
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                    <label className="mb-1 block text-sm font-medium text-foreground">
                       Scope
                     </label>
                     <select
@@ -572,7 +572,7 @@ export function NewAutomationRulePage({
                           teamId: event.target.value,
                         }))
                       }
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Global (all teams)</option>
                       {teamsList.map((team) => (
@@ -581,7 +581,7 @@ export function NewAutomationRulePage({
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Limit this automation to a specific team, or leave as
                       global.
                     </p>
@@ -592,10 +592,10 @@ export function NewAutomationRulePage({
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">
+                <p className="text-sm font-semibold text-foreground">
                   Conditions
                 </p>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   All conditions must match for the automation to run.
                 </span>
               </div>
@@ -603,7 +603,7 @@ export function NewAutomationRulePage({
                 {form.conditions.map((condition, index) => (
                   <div
                     key={`condition-${index}`}
-                    className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5"
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted p-2.5"
                   >
                     <select
                       value={condition.field}
@@ -614,7 +614,7 @@ export function NewAutomationRulePage({
                           event.target.value,
                         )
                       }
-                      className="min-w-[120px] flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="min-w-[120px] flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Field…</option>
                       {CONDITION_FIELDS.map((field) => (
@@ -628,7 +628,7 @@ export function NewAutomationRulePage({
                       onChange={(event) =>
                         handleUpdateCondition(index, "op", event.target.value)
                       }
-                      className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="w-28 rounded-lg border border-border bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       {CONDITION_OPS.map((op) => (
                         <option key={op} value={op}>
@@ -647,14 +647,14 @@ export function NewAutomationRulePage({
                               event.target.value,
                             )
                           }
-                          className="min-w-[140px] flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                          className="min-w-[140px] flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                           placeholder="value…"
                         />
                       )}
                     <button
                       type="button"
                       onClick={() => handleRemoveCondition(index)}
-                      className="text-slate-400 hover:text-red-500"
+                      className="text-muted-foreground hover:text-red-500"
                     >
                       <svg
                         className="h-4 w-4"
@@ -675,7 +675,7 @@ export function NewAutomationRulePage({
                 <button
                   type="button"
                   onClick={handleAddCondition}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Add condition</span>
@@ -685,8 +685,8 @@ export function NewAutomationRulePage({
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">Actions</p>
-                <span className="text-xs text-slate-400">
+                <p className="text-sm font-semibold text-foreground">Actions</p>
+                <span className="text-xs text-muted-foreground">
                   Actions run in order when the conditions match.
                 </span>
               </div>
@@ -694,7 +694,7 @@ export function NewAutomationRulePage({
                 {form.actions.map((action, index) => (
                   <div
                     key={`action-${index}`}
-                    className="flex flex-wrap items-center gap-2 rounded-lg border border-green-100 bg-green-50 p-2.5"
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 p-2.5"
                   >
                     <svg
                       className="h-4 w-4 flex-shrink-0 text-green-500"
@@ -714,7 +714,7 @@ export function NewAutomationRulePage({
                       onChange={(event) =>
                         handleUpdateAction(index, "type", event.target.value)
                       }
-                      className="min-w-[150px] rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="min-w-[150px] rounded-lg border border-green-500/20 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       {ACTION_TYPES.filter((item) =>
                         item.value === "assign_user" ? isTeamAdmin : true,
@@ -731,7 +731,7 @@ export function NewAutomationRulePage({
                         onChange={(event) =>
                           handleUpdateAction(index, "val", event.target.value)
                         }
-                        className="min-w-[160px] flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="min-w-[160px] flex-1 rounded-lg border border-green-500/20 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                       >
                         <option value="">Select team…</option>
                         {teamsList.map((team) => (
@@ -748,7 +748,7 @@ export function NewAutomationRulePage({
                         onChange={(event) =>
                           handleUpdateAction(index, "val", event.target.value)
                         }
-                        className="min-w-[160px] flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="min-w-[160px] flex-1 rounded-lg border border-green-500/20 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                         disabled={loadingMembers || !teamAdminScopeTeamId}
                       >
                         <option value="">
@@ -772,7 +772,7 @@ export function NewAutomationRulePage({
                         onChange={(event) =>
                           handleUpdateAction(index, "val", event.target.value)
                         }
-                        className="min-w-[120px] rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="min-w-[120px] rounded-lg border border-green-500/20 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                       >
                         <option value="">Select priority…</option>
                         {PRIORITY_OPTIONS.map((priority) => (
@@ -789,7 +789,7 @@ export function NewAutomationRulePage({
                         onChange={(event) =>
                           handleUpdateAction(index, "val", event.target.value)
                         }
-                        className="min-w-[140px] rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="min-w-[140px] rounded-lg border border-green-500/20 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                       >
                         <option value="">Select status…</option>
                         {STATUS_OPTIONS.map((status) => (
@@ -806,13 +806,13 @@ export function NewAutomationRulePage({
                         onChange={(event) =>
                           handleUpdateAction(index, "val", event.target.value)
                         }
-                        className="min-w-[160px] flex-1 rounded-lg border border-green-200 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                        className="min-w-[160px] flex-1 rounded-lg border border-green-500/20 bg-card text-foreground px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                         placeholder="Note content…"
                       />
                     )}
 
                     {action.type === "notify_team_lead" && (
-                      <span className="text-xs text-green-700">
+                      <span className="text-xs text-green-400">
                         Sends a notification to the scoped team&apos;s lead.
                       </span>
                     )}
@@ -820,7 +820,7 @@ export function NewAutomationRulePage({
                     <button
                       type="button"
                       onClick={() => handleRemoveAction(index)}
-                      className="text-slate-400 hover:text-red-500"
+                      className="text-muted-foreground hover:text-red-500"
                     >
                       <svg
                         className="h-4 w-4"
@@ -841,7 +841,7 @@ export function NewAutomationRulePage({
                 <button
                   type="button"
                   onClick={handleAddAction}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-green-700 hover:text-green-800"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-green-400 hover:text-green-300"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Add action</span>
@@ -850,8 +850,8 @@ export function NewAutomationRulePage({
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
-            <span className="text-xs text-slate-400">
+          <div className="flex items-center justify-between rounded-b-2xl border-t border-border bg-muted px-6 py-4">
+            <span className="text-xs text-muted-foreground">
               * Required fields. Automations are logged in the audit log when
               they run.
             </span>
@@ -860,7 +860,7 @@ export function NewAutomationRulePage({
                 type="button"
                 onClick={() => navigate("/automation")}
                 disabled={saving}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -868,7 +868,7 @@ export function NewAutomationRulePage({
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={saving || !canSubmit}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
               >
                 Create automation
               </button>

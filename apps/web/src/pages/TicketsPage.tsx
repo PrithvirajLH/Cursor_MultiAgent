@@ -1032,8 +1032,8 @@ export function TicketsPage({
   }, [listMeta]);
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -1044,10 +1044,10 @@ export function TicketsPage({
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Tickets
                   </h1>
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm text-muted-foreground">
                     ({totalCount} tickets)
                   </span>
                 </div>
@@ -1056,10 +1056,10 @@ export function TicketsPage({
           ) : (
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl font-semibold text-slate-900">
+                <h1 className="text-xl font-semibold text-foreground">
                   Tickets
                 </h1>
-                <span className="text-sm text-slate-500">
+                <span className="text-sm text-muted-foreground">
                   ({totalCount} tickets)
                 </span>
               </div>
@@ -1068,10 +1068,10 @@ export function TicketsPage({
         </div>
       </div>
 
-      <div className="border-b border-slate-200 bg-white">
+      <div className="border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
+            <div className="flex items-center gap-2 border-r border-border pr-4">
               {(["all", "open", "resolved"] as StatusFilter[]).map((value) => (
                 <button
                   key={value}
@@ -1084,8 +1084,8 @@ export function TicketsPage({
                   }
                   className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                     (filters.statusGroup ?? "all") === value
-                      ? "bg-blue-600 text-white"
-                      : "text-slate-700 hover:bg-slate-100"
+                      ? "bg-primary text-white"
+                      : "text-foreground hover:bg-accent"
                   }`}
                 >
                   {value === "all"
@@ -1098,14 +1098,14 @@ export function TicketsPage({
             </div>
 
             <div className="relative min-w-[240px] flex-1 max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchDraft}
                 onChange={(event) => setSearchDraft(event.target.value)}
                 placeholder="Search by ticket ID, subject, or description..."
-                className="h-10 w-full rounded-xl border border-slate-200 bg-white shadow-sm pl-9 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
+                className="h-10 w-full rounded-xl border border-border bg-card shadow-sm pl-9 pr-3 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
               />
             </div>
 
@@ -1118,7 +1118,7 @@ export function TicketsPage({
                     assigneeIds: event.target.value ? [event.target.value] : [],
                   })
                 }
-                className="h-10 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
+                className="h-10 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
               >
                 <option value="">
                   {usersLoading ? "Loading users..." : "Assignee"}
@@ -1139,7 +1139,7 @@ export function TicketsPage({
                   priorities: event.target.value ? [event.target.value] : [],
                 })
               }
-              className="h-10 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
+              className="h-10 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
             >
               <option value="">Priority</option>
               <option value="P1">P1</option>
@@ -1164,7 +1164,7 @@ export function TicketsPage({
                 if (preset === "completed_desc")
                   setFilters({ sort: "completedAt", order: "desc" });
               }}
-              className="h-10 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all"
+              className="h-10 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
             >
               <option value="updated_desc">Sort: Newest</option>
               <option value="updated_asc">Sort: Oldest</option>
@@ -1177,7 +1177,7 @@ export function TicketsPage({
               <button
                 type="button"
                 onClick={openAdvancedFilters}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white shadow-sm px-3 text-sm text-slate-700 transition-all hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground transition-all hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/30"
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 Advanced
@@ -1193,7 +1193,7 @@ export function TicketsPage({
               <button
                 type="button"
                 onClick={onCreateTicket}
-                className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-all hover:bg-blue-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                className="ml-auto inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white transition-all hover:bg-primary/90 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-ring/50"
               >
                 <Plus className="h-4 w-4" />
                 New Ticket
@@ -1204,7 +1204,7 @@ export function TicketsPage({
       </div>
 
       <div className="mx-auto max-w-[1600px] p-6 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto">
-        <p className="text-sm text-slate-600">{countLabel}</p>
+        <p className="text-sm text-muted-foreground">{countLabel}</p>
 
         {selection.isSomeSelected && role !== "EMPLOYEE" ? (
           <div className="mt-4">
@@ -1267,7 +1267,7 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && tickets.length > 0 ? (
-          <div className="mt-4 overflow-hidden rounded-[20px] bg-white border border-slate-200 shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
+          <div className="mt-4 overflow-hidden rounded-[20px] bg-card border border-border shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
             <TicketTableView
               tickets={tickets}
               role={role}
@@ -1290,14 +1290,14 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && listMeta && listMeta.total > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-b-[20px] border border-t-0 border-slate-200 bg-slate-50 px-6 py-4">
-            <div className="text-sm text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-b-[20px] border border-t-0 border-border bg-muted px-6 py-4">
+            <div className="text-sm text-foreground">
               Showing <span className="font-medium">{pageStart}</span> to{" "}
               <span className="font-medium">{pageEnd}</span> of{" "}
               <span className="font-medium">{listMeta.total}</span> results
             </div>
             <div className="flex items-center gap-2">
-              <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+              <label className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground">
                 Rows
                 <select
                   value={filters.pageSize}
@@ -1307,7 +1307,7 @@ export function TicketsPage({
                       page: 1,
                     })
                   }
-                  className="bg-transparent text-sm text-slate-700 focus:outline-none"
+                  className="bg-transparent text-sm text-foreground focus:outline-none"
                 >
                   <option value={20}>20</option>
                   <option value={50}>50</option>
@@ -1319,7 +1319,7 @@ export function TicketsPage({
                 type="button"
                 disabled={listMeta.page <= 1}
                 onClick={() => setFilters({ page: listMeta.page - 1 })}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Previous
               </button>
@@ -1331,8 +1331,8 @@ export function TicketsPage({
                   onClick={() => setFilters({ page })}
                   className={`rounded-md px-3 py-2 text-sm ${
                     page === listMeta.page
-                      ? "bg-blue-600 text-white"
-                      : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                      ? "bg-primary text-white"
+                      : "border border-border bg-card text-foreground hover:bg-accent"
                   }`}
                 >
                   {page}
@@ -1343,7 +1343,7 @@ export function TicketsPage({
                 type="button"
                 disabled={listMeta.page >= listMeta.totalPages}
                 onClick={() => setFilters({ page: listMeta.page + 1 })}
-                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
               </button>
@@ -1362,17 +1362,17 @@ export function TicketsPage({
             role="dialog"
             aria-modal="true"
             tabIndex={-1}
-            className="h-full w-full max-w-md overflow-y-auto bg-white shadow-2xl animate-slide-in-right"
+            className="h-full w-full max-w-md overflow-y-auto bg-card shadow-2xl animate-slide-in-right"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-              <h2 className="text-lg font-semibold text-slate-900">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-6 py-4">
+              <h2 className="text-lg font-semibold text-foreground">
                 Advanced Filters
               </h2>
               <button
                 type="button"
                 onClick={closeAdvancedFilters}
-                className="rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 aria-label="Close advanced filters"
               >
                 <X className="h-5 w-5" />
@@ -1398,11 +1398,11 @@ export function TicketsPage({
               />
             </div>
 
-            <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-4">
+            <div className="sticky bottom-0 flex items-center justify-between border-t border-border bg-card px-6 py-4">
               <button
                 type="button"
                 onClick={clearAdvancedDraft}
-                className="text-sm text-slate-600 transition-colors hover:text-slate-900"
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
                 Clear all
               </button>
@@ -1410,14 +1410,14 @@ export function TicketsPage({
                 <button
                   type="button"
                   onClick={closeAdvancedFilters}
-                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                  className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={applyAdvancedDraft}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
                 >
                   Apply Filters
                 </button>

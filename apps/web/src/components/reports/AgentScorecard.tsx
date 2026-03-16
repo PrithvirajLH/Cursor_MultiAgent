@@ -7,7 +7,7 @@ export function AgentScorecard({
 }) {
   if (data.length === 0) {
     return (
-      <p className="text-sm text-slate-500 py-4">
+      <p className="text-sm text-muted-foreground py-4">
         No agent activity in the selected range.
       </p>
     );
@@ -16,7 +16,7 @@ export function AgentScorecard({
     <div className="w-full max-w-full min-w-0 overflow-x-auto">
       <table className="w-full min-w-[480px] text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-left text-slate-600">
+          <tr className="border-b border-border text-left text-muted-foreground">
             <th className="pb-2 pr-4 font-medium">Agent</th>
             <th className="pb-2 pr-4 font-medium text-right">Resolved</th>
             <th className="pb-2 pr-4 font-medium text-right">
@@ -32,20 +32,20 @@ export function AgentScorecard({
         </thead>
         <tbody>
           {data.map((row) => (
-            <tr key={row.userId} className="border-b border-slate-100">
-              <td className="py-3 pr-4 font-medium text-slate-900">
+            <tr key={row.userId} className="border-b border-border/50">
+              <td className="py-3 pr-4 font-medium text-foreground">
                 {row.name || row.email || row.userId}
               </td>
-              <td className="py-3 pr-4 text-right text-slate-700">
+              <td className="py-3 pr-4 text-right text-foreground/80">
                 {row.ticketsResolved}
               </td>
-              <td className="py-3 pr-4 text-right text-slate-700">
+              <td className="py-3 pr-4 text-right text-foreground/80">
                 {row.avgResolutionHours != null ? row.avgResolutionHours : "—"}
               </td>
-              <td className="py-3 pr-4 text-right text-slate-700">
+              <td className="py-3 pr-4 text-right text-foreground/80">
                 {row.firstResponses}
               </td>
-              <td className="py-3 text-right text-slate-700">
+              <td className="py-3 text-right text-foreground/80">
                 {row.avgFirstResponseHours != null
                   ? row.avgFirstResponseHours
                   : "—"}

@@ -84,7 +84,7 @@ export function FilterPanel({
     return (
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-slate-700">
+          <label className="block text-sm font-medium text-foreground">
             Saved Views
           </label>
           <div className="mt-2">
@@ -98,14 +98,14 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Status
           </label>
           <div className="mt-2 space-y-2">
             {STATUS_OPTIONS.map((option) => (
               <label
                 key={option.value}
-                className="flex items-center gap-2 text-[13px] text-slate-700"
+                className="flex items-center gap-2 text-[13px] text-foreground"
               >
                 <input
                   type="checkbox"
@@ -124,14 +124,14 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Priority
           </label>
           <div className="mt-2 space-y-2">
             {PRIORITY_OPTIONS.map((option) => (
               <label
                 key={option.value}
-                className="flex items-center gap-2 text-[13px] text-slate-700"
+                className="flex items-center gap-2 text-[13px] text-foreground"
               >
                 <input
                   type="checkbox"
@@ -151,7 +151,7 @@ export function FilterPanel({
 
         {showTeamFilter ? (
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Team
             </label>
             <select
@@ -174,7 +174,7 @@ export function FilterPanel({
         ) : null}
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Assignee
           </label>
           <select
@@ -196,7 +196,7 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Requester
           </label>
           <select
@@ -218,14 +218,14 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             SLA Status
           </label>
           <div className="mt-2 space-y-2">
             {SLA_STATUS_OPTIONS.map((option) => (
               <label
                 key={option.value}
-                className="flex items-center gap-2 text-[13px] text-slate-700"
+                className="flex items-center gap-2 text-[13px] text-foreground"
               >
                 <input
                   type="checkbox"
@@ -249,7 +249,7 @@ export function FilterPanel({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Created Date
           </label>
           <div className="mt-2 space-y-2">
@@ -259,7 +259,7 @@ export function FilterPanel({
               onChange={(event) =>
                 setFilters({ createdFrom: event.target.value })
               }
-              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
             <input
               type="date"
@@ -267,13 +267,13 @@ export function FilterPanel({
               onChange={(event) =>
                 setFilters({ createdTo: event.target.value })
               }
-              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Updated Date
           </label>
           <div className="mt-2 space-y-2">
@@ -283,7 +283,7 @@ export function FilterPanel({
               onChange={(event) =>
                 setFilters({ updatedFrom: event.target.value })
               }
-              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
             <input
               type="date"
@@ -291,13 +291,13 @@ export function FilterPanel({
               onChange={(event) =>
                 setFilters({ updatedTo: event.target.value })
               }
-              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Due Date
           </label>
           <div className="mt-2 space-y-2">
@@ -305,19 +305,19 @@ export function FilterPanel({
               type="date"
               value={filters.dueFrom}
               onChange={(event) => setFilters({ dueFrom: event.target.value })}
-              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
             <input
               type="date"
               value={filters.dueTo}
               onChange={(event) => setFilters({ dueTo: event.target.value })}
-              className="h-10 w-full rounded-md border border-gray-300 px-3 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Contains
           </label>
           <input
@@ -325,7 +325,7 @@ export function FilterPanel({
             value={filters.q}
             onChange={(event) => setFilters({ q: event.target.value })}
             placeholder="Subject or description..."
-            className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+            className="mt-2 h-10 w-full rounded-xl border border-border bg-popover px-3 text-[13px] text-foreground shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
           />
         </div>
       </div>
@@ -333,13 +333,13 @@ export function FilterPanel({
   }
 
   return (
-    <div className="rounded-[20px] border border-slate-200 bg-white p-5 shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
+    <div className="rounded-[20px] border border-border bg-popover p-5 shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-border">
       <div className="flex flex-wrap items-center gap-2">
         <div>
-          <h4 className="text-[15px] font-semibold text-slate-900 tracking-tight">
+          <h4 className="text-[15px] font-semibold text-foreground tracking-tight">
             Advanced filters
           </h4>
-          <p className="text-[13px] text-slate-500 mt-0.5">
+          <p className="text-[13px] text-muted-foreground mt-0.5">
             Refine by status, ownership, SLA, and dates.
           </p>
         </div>
@@ -348,7 +348,7 @@ export function FilterPanel({
             <button
               type="button"
               onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-popover px-3 py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             >
               <X className="h-4 w-4" />
               Clear all
@@ -358,7 +358,7 @@ export function FilterPanel({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-popover px-3 py-1.5 text-[13px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             >
               Close
             </button>

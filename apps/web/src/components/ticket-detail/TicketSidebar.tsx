@@ -109,11 +109,11 @@ export const TicketSidebar = memo(function TicketSidebar(
   })();
 
   return (
-    <aside className="flex h-full flex-col gap-3 bg-slate-50/70 px-3 pt-3 pb-6 text-[13px] text-slate-700">
+    <aside className="flex h-full flex-col gap-3 bg-background px-3 pt-3 pb-6 text-[13px] text-foreground">
       {/* Properties card */}
-      <div className="flex flex-col overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h3 className="text-[13px] font-semibold text-slate-900">
+      <div className="flex flex-col overflow-visible rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="text-[13px] font-semibold text-foreground">
             Properties
           </h3>
           <div className="flex items-center gap-2">
@@ -122,14 +122,14 @@ export const TicketSidebar = memo(function TicketSidebar(
                 {followers.slice(0, 3).map((f) => (
                   <div
                     key={f.id}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white ring-2 ring-slate-50 shadow-sm"
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary ring-2 ring-card shadow-sm"
                     title={f.user.displayName}
                   >
                     {initialsFor(f.user.displayName)}
                   </div>
                 ))}
                 {followers.length > 3 && (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700 ring-2 ring-slate-50 shadow-sm">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground ring-2 ring-card shadow-sm">
                     +{followers.length - 3}
                   </div>
                 )}
@@ -138,10 +138,10 @@ export const TicketSidebar = memo(function TicketSidebar(
             <button
               onClick={onFollowToggle}
               disabled={followLoading}
-              className={`flex h-7 w-7 items-center justify-center rounded-full border text-slate-500 transition-all ${
+              className={`flex h-7 w-7 items-center justify-center rounded-full border text-muted-foreground transition-all ${
                 isFollowing
-                  ? "border-blue-200 bg-blue-50 text-blue-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 group"
-                  : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700"
+                  ? "border-primary/30 bg-primary/10 text-primary hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400 group"
+                  : "border-border bg-card hover:border-border/80 hover:bg-muted hover:text-foreground"
               }`}
               title={isFollowing ? "Unfollow" : "Follow"}
             >
@@ -158,18 +158,18 @@ export const TicketSidebar = memo(function TicketSidebar(
         </div>
 
         {actionError && (
-          <div className="mx-5 mt-3 rounded-lg bg-rose-50 p-2 text-[12px] font-medium text-rose-600">
+          <div className="mx-5 mt-3 rounded-lg bg-rose-500/10 p-2 text-[12px] font-medium text-rose-400">
             {actionError}
           </div>
         )}
         {followError && (
-          <div className="mx-5 mt-2 rounded-lg bg-rose-50 p-2 text-[12px] font-medium text-rose-600">
+          <div className="mx-5 mt-2 rounded-lg bg-rose-500/10 p-2 text-[12px] font-medium text-rose-400">
             {followError}
           </div>
         )}
 
         {/* Property List */}
-        <div className="mt-3 space-y-0.5 border-t border-slate-100 bg-slate-50/60 p-2">
+        <div className="mt-3 space-y-0.5 border-t border-border bg-card/50 p-2">
           <PropertyRow label="Status">
             {canManage && availableTransitions.length > 0 ? (
               <InlineSelect
@@ -212,14 +212,14 @@ export const TicketSidebar = memo(function TicketSidebar(
                   disabled={actionLoading || membersLoading}
                   renderValue={() =>
                     ticket.assignee ? (
-                      <div className="flex items-center gap-1.5 text-slate-900 truncate font-medium">
+                      <div className="flex items-center gap-1.5 text-foreground truncate font-medium">
                         <Avatar name={ticket.assignee.displayName} />
                         <span className="truncate">
                           {ticket.assignee.displayName}
                         </span>
                       </div>
                     ) : (
-                      <span className="text-slate-400 font-medium">
+                      <span className="text-muted-foreground font-medium">
                         Unassigned
                       </span>
                     )
@@ -229,7 +229,7 @@ export const TicketSidebar = memo(function TicketSidebar(
                   <button
                     onClick={onAssignMember}
                     disabled={actionLoading}
-                    className="h-6 px-2.5 bg-blue-600 text-white rounded text-[11px] font-semibold hover:bg-blue-700 shadow-sm shrink-0"
+                    className="h-6 px-2.5 bg-primary text-primary-foreground rounded text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
                   >
                     Save
                   </button>
@@ -238,14 +238,14 @@ export const TicketSidebar = memo(function TicketSidebar(
                   <button
                     onClick={onAssignSelf}
                     disabled={actionLoading}
-                    className="hidden group-hover/assign:flex absolute right-0 bg-white shadow-sm ring-1 ring-slate-200 h-6 px-2 text-[11px] font-semibold text-slate-600 items-center rounded-md hover:text-blue-600"
+                    className="hidden group-hover/assign:flex absolute right-0 bg-card shadow-sm ring-1 ring-border h-6 px-2 text-[11px] font-semibold text-muted-foreground items-center rounded-md hover:text-primary"
                   >
                     Assign to me
                   </button>
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 text-slate-900 truncate px-1.5 font-medium">
+              <div className="flex items-center gap-1.5 text-foreground truncate px-1.5 font-medium">
                 {ticket.assignee ? (
                   <>
                     <Avatar name={ticket.assignee.displayName} />
@@ -254,7 +254,7 @@ export const TicketSidebar = memo(function TicketSidebar(
                     </span>
                   </>
                 ) : (
-                  <span className="text-slate-400">Unassigned</span>
+                  <span className="text-muted-foreground">Unassigned</span>
                 )}
               </div>
             )}
@@ -278,11 +278,11 @@ export const TicketSidebar = memo(function TicketSidebar(
                       teamsList.find((t) => t.id === val)?.name ||
                       ticket.assignedTeam?.name;
                     return label ? (
-                      <span className="text-slate-900 font-medium truncate">
+                      <span className="text-foreground font-medium truncate">
                         {label}
                       </span>
                     ) : (
-                      <span className="text-slate-400 font-medium">None</span>
+                      <span className="text-muted-foreground font-medium">None</span>
                     );
                   }}
                 />
@@ -291,14 +291,14 @@ export const TicketSidebar = memo(function TicketSidebar(
                     <button
                       onClick={onTransfer}
                       disabled={actionLoading}
-                      className="h-6 px-2.5 bg-blue-600 text-white rounded text-[11px] font-semibold hover:bg-blue-700 shadow-sm shrink-0"
+                      className="h-6 px-2.5 bg-primary text-primary-foreground rounded text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
                     >
                       Set
                     </button>
                   )}
               </div>
             ) : (
-              <span className="text-slate-900 truncate px-1.5 font-medium">
+              <span className="text-foreground truncate px-1.5 font-medium">
                 {ticket.assignedTeam?.name ?? "None"}
               </span>
             )}
@@ -313,7 +313,7 @@ export const TicketSidebar = memo(function TicketSidebar(
           </PropertyRow>
 
           <PropertyRow label="Category">
-            <span className="text-slate-900 truncate px-1.5 font-medium">
+            <span className="text-foreground truncate px-1.5 font-medium">
               {ticket.category?.name ?? "None"}
             </span>
           </PropertyRow>
@@ -321,9 +321,9 @@ export const TicketSidebar = memo(function TicketSidebar(
       </div>
 
       {/* SLAs */}
-      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-sm">
         <div className="flex items-center justify-between mb-2">
-          <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5" /> SLAs
           </h4>
           <span
@@ -339,8 +339,8 @@ export const TicketSidebar = memo(function TicketSidebar(
       </div>
 
       {/* Details */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
           Details
         </h4>
         <div className="space-y-2.5">
@@ -360,8 +360,8 @@ export const TicketSidebar = memo(function TicketSidebar(
 
       {/* Custom Fields */}
       {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
             Custom Fields
           </h4>
           <div className="space-y-3">
@@ -371,30 +371,30 @@ export const TicketSidebar = memo(function TicketSidebar(
       )}
 
       {/* History */}
-      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-sm">
         <button
           type="button"
           onClick={() => toggleSection("history")}
-          className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-slate-50"
+          className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-muted/30"
         >
           <div className="flex flex-col gap-0.5">
-            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
               Status History
             </h4>
             {statusEvents.length > 0 && (
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-muted-foreground">
                 Showing last {statusEvents.length} change
                 {statusEvents.length > 1 ? "s" : ""} • Full history in{" "}
-                <span className="font-semibold text-slate-600">Timeline</span>
+                <span className="font-semibold text-foreground">Timeline</span>
               </span>
             )}
           </div>
           <ChevronDown
-            className={`h-3.5 w-3.5 text-slate-400 transition-transform ${expandedSections.history ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.history ? "rotate-180" : ""}`}
           />
         </button>
         {statusEvents.length === 0 ? (
-          <p className="text-xs text-slate-500 italic">
+          <p className="text-xs text-muted-foreground italic">
             No status changes recorded yet.
           </p>
         ) : null}
@@ -417,27 +417,27 @@ export const TicketSidebar = memo(function TicketSidebar(
               return (
                 <div key={event.id} className="flex gap-3 text-xs">
                   <div className="flex flex-col items-center pt-1">
-                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                    <div className="h-2 w-2 rounded-full bg-primary" />
                     {!isLast && (
-                      <div className="mt-1 h-full w-px bg-slate-200" />
+                      <div className="mt-1 h-full w-px bg-border" />
                     )}
                   </div>
-                  <div className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                  <div className="flex-1 rounded-lg border border-border bg-card/80 px-3 py-2 shadow-sm">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           {fromLabel}
                         </span>
-                        <span className="text-[10px] text-slate-400">to</span>
+                        <span className="text-[10px] text-muted-foreground">to</span>
                         <StatusBadge status={toStatus} />
                       </div>
-                      <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
                         <RelativeTime value={event.createdAt} />
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-muted-foreground">
                       Changed by{" "}
-                      <span className="font-medium text-slate-700">
+                      <span className="font-medium text-foreground">
                         {actor}
                       </span>
                     </div>
@@ -462,8 +462,8 @@ function PropertyRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center px-3 py-1.5 min-h-[36px] group/row rounded-lg hover:bg-slate-100/50 transition-colors">
-      <div className="w-1/3 shrink-0 text-slate-500 font-medium select-none">
+    <div className="flex items-center px-3 py-1.5 min-h-[36px] group/row rounded-lg hover:bg-muted/30 transition-colors">
+      <div className="w-1/3 shrink-0 text-muted-foreground font-medium select-none">
         {label}
       </div>
       <div className="w-2/3 min-w-0 flex items-center">{children}</div>
@@ -474,8 +474,8 @@ function PropertyRow({
 function DetailText({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex justify-between items-start gap-4 text-xs">
-      <span className="text-slate-500 font-medium">{label}</span>
-      <span className="text-slate-900 font-medium text-right break-words">
+      <span className="text-muted-foreground font-medium">{label}</span>
+      <span className="text-foreground font-medium text-right break-words">
         {value}
       </span>
     </div>
@@ -489,17 +489,14 @@ function SlaRow({
   label: string;
   sla: { label: string; tone: string; detail: ReactNode };
 }) {
-  // Translate the old card styling to a cleaner row
-  // tone is typically text-emerald-xxx, text-rose-xxx, etc.
-  // We extract the base color name for the background.
   const isDanger = sla.tone.includes("rose") || sla.tone.includes("red");
   const isWarning = sla.tone.includes("amber") || sla.tone.includes("yellow");
   const isSuccess = sla.tone.includes("emerald") || sla.tone.includes("green");
 
-  let bgClass = "bg-slate-50 border-slate-200";
-  if (isDanger) bgClass = "bg-rose-50 border-rose-200";
-  if (isWarning) bgClass = "bg-amber-50 border-amber-200";
-  if (isSuccess) bgClass = "bg-emerald-50 border-emerald-200";
+  let bgClass = "bg-card border-border";
+  if (isDanger) bgClass = "bg-rose-500/10 border-rose-500/30";
+  if (isWarning) bgClass = "bg-amber-500/10 border-amber-500/30";
+  if (isSuccess) bgClass = "bg-emerald-500/10 border-emerald-500/30";
 
   const dotClass = isDanger
     ? "bg-rose-500"
@@ -507,7 +504,7 @@ function SlaRow({
       ? "bg-amber-500"
       : isSuccess
         ? "bg-emerald-500"
-        : "bg-slate-400";
+        : "bg-muted-foreground";
 
   return (
     <div
@@ -516,16 +513,16 @@ function SlaRow({
       <div className="flex items-start gap-2">
         <span className={`mt-1 h-2 w-2 rounded-full ${dotClass}`} />
         <div className="flex flex-col gap-0.5">
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
             {label}
           </span>
-          <span className="text-[11px] text-slate-600 font-medium">
+          <span className="text-[11px] text-muted-foreground font-medium">
             {sla.detail}
           </span>
         </div>
       </div>
       <div
-        className={`text-[12px] font-bold ${sla.tone} bg-white/80 px-2.5 py-1 rounded-md shadow-sm border border-white/60`}
+        className={`text-[12px] font-bold ${sla.tone} bg-background/80 px-2.5 py-1 rounded-md shadow-sm border border-border/60`}
       >
         {sla.label}
       </div>
@@ -537,15 +534,15 @@ function StatusBadge({ status }: { status: string }) {
   const getColors = () => {
     switch (status) {
       case "OPEN":
-        return "bg-blue-100 text-blue-700 border-blue-200";
+        return "bg-blue-500/10 text-blue-400 border-blue-500/30";
       case "IN_PROGRESS":
-        return "bg-amber-100 text-amber-700 border-amber-200";
+        return "bg-amber-500/10 text-amber-400 border-amber-500/30";
       case "RESOLVED":
-        return "bg-emerald-100 text-emerald-700 border-emerald-200";
+        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
       case "CLOSED":
-        return "bg-slate-100 text-slate-600 border-slate-200";
+        return "bg-muted text-muted-foreground border-border";
       default:
-        return "bg-slate-100 text-slate-700 border-slate-200";
+        return "bg-muted text-foreground border-border";
     }
   };
   return (
@@ -559,7 +556,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function Avatar({ name }: { name: string }) {
   return (
-    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[9px] font-bold text-white shadow-sm ring-1 ring-slate-100">
+    <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[9px] font-bold text-primary shadow-sm ring-1 ring-border">
       {initialsFor(name)}
     </div>
   );
@@ -613,21 +610,21 @@ function InlineSelect({
         className={`flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 ${
           disabled
             ? "pointer-events-none"
-            : "bg-slate-50 border border-slate-200 hover:bg-white hover:shadow-sm focus:ring-2 focus:ring-blue-500/40"
+            : "bg-muted border border-border hover:bg-muted/80 hover:shadow-sm focus:ring-2 focus:ring-primary/40"
         }`}
       >
         <span className="truncate">
           {selectedOption ? (
             renderValue(value)
           ) : (
-            <span className="text-slate-400 font-medium">
+            <span className="text-muted-foreground font-medium">
               {placeholder || "Select..."}
             </span>
           )}
         </span>
         {!disabled && (
           <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
           />
         )}
       </button>
@@ -635,7 +632,7 @@ function InlineSelect({
       {isOpen && (
         <ul
           role="listbox"
-          className="absolute left-0 top-full z-[70] mt-1 max-h-60 min-w-full w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl ring-1 ring-black ring-opacity-5 focus:outline-none"
+          className="absolute left-0 top-full z-[70] mt-1 max-h-60 min-w-full w-56 overflow-y-auto rounded-xl border border-border bg-popover py-1.5 shadow-xl ring-1 ring-black/10 focus:outline-none"
         >
           {options.map((option) => (
             <li
@@ -646,8 +643,8 @@ function InlineSelect({
               }}
               className={`relative cursor-pointer select-none py-1.5 pl-3 pr-9 text-sm transition-colors ${
                 value === option.value
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-700 hover:bg-slate-50"
+                  ? "bg-primary/10 text-primary"
+                  : "text-foreground hover:bg-muted"
               }`}
             >
               <div className="flex items-center gap-2 truncate">
@@ -659,7 +656,7 @@ function InlineSelect({
                 </span>
               </div>
               {value === option.value && (
-                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-blue-600">
+                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-primary">
                   <Check className="h-4 w-4" aria-hidden="true" />
                 </span>
               )}

@@ -50,14 +50,14 @@ export function MultiSelectFilter({
 
   return (
     <div className="space-y-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <div className="relative">
         <button
           type="button"
           onClick={() => setOpen((prev) => !prev)}
-          className="flex h-10 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 text-[13px] text-slate-700 hover:bg-slate-50 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+          className="flex h-10 w-full items-center justify-between rounded-xl border border-border bg-popover px-3 text-[13px] text-foreground hover:bg-muted shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         >
           <span className="truncate">{summary}</span>
           <ChevronDown
@@ -71,7 +71,7 @@ export function MultiSelectFilter({
               aria-hidden
               onClick={() => setOpen(false)}
             />
-            <div className="absolute left-0 top-full z-20 mt-1.5 w-full min-w-[220px] rounded-[16px] border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+            <div className="absolute left-0 top-full z-20 mt-1.5 w-full min-w-[220px] rounded-[16px] border border-border bg-popover p-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
               {searchable && (
                 <div className="relative mb-2">
                   <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -80,7 +80,7 @@ export function MultiSelectFilter({
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search..."
-                    className="h-8 w-full rounded-md border border-slate-200 bg-slate-50 pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white transition-colors"
+                    className="h-8 w-full rounded-md border border-border bg-muted pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-popover transition-colors"
                   />
                 </div>
               )}
@@ -95,7 +95,7 @@ export function MultiSelectFilter({
                       className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors ${
                         checked
                           ? "bg-blue-50 text-blue-700 font-medium"
-                          : "text-slate-700 hover:bg-slate-50"
+                          : "text-foreground hover:bg-muted"
                       }`}
                     >
                       <span className="truncate">{opt.label}</span>
@@ -104,19 +104,19 @@ export function MultiSelectFilter({
                   );
                 })}
                 {filteredOptions.length === 0 ? (
-                  <p className="px-2 py-2 text-xs text-slate-500 text-center">
+                  <p className="px-2 py-2 text-xs text-muted-foreground text-center">
                     No matches
                   </p>
                 ) : null}
               </div>
-              <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2">
+              <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     onChange([]);
                     setSearch("");
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 >
                   <X className="h-3.5 w-3.5" />
                   Clear
@@ -124,7 +124,7 @@ export function MultiSelectFilter({
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-all"
+                  className="rounded-lg border border-border bg-popover px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-muted hover:border-border shadow-sm transition-all"
                 >
                   Done
                 </button>

@@ -312,12 +312,12 @@ function ToggleSwitch({
         onChange={(event) => onChange(event.target.checked)}
       />
       <span
-        className={`absolute inset-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-blue-600 ${
+        className={`absolute inset-0 rounded-full bg-muted transition-colors peer-checked:bg-primary ${
           disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
         }`}
       />
       <span
-        className={`absolute left-[3px] h-[18px] w-[18px] rounded-full bg-white transition-transform peer-checked:translate-x-5 ${
+        className={`absolute left-[3px] h-[18px] w-[18px] rounded-full bg-card transition-transform peer-checked:translate-x-5 ${
           disabled ? "cursor-not-allowed" : "cursor-pointer"
         }`}
       />
@@ -350,7 +350,7 @@ function DeleteModal({
         aria-modal="true"
         aria-label="Delete SLA policy"
         tabIndex={-1}
-        className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
+        className="w-full max-w-md rounded-lg bg-card p-6 shadow-xl"
       >
         <div className="mb-4 flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
@@ -369,22 +369,22 @@ function DeleteModal({
             </svg>
           </div>
           <div>
-            <h3 className="text-base font-semibold text-slate-900">
+            <h3 className="text-base font-semibold text-foreground">
               Delete SLA Policy
             </h3>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-muted-foreground">
               This action cannot be undone.
             </p>
           </div>
         </div>
-        <p className="mb-6 text-sm text-slate-700">
+        <p className="mb-6 text-sm text-foreground">
           Are you sure you want to delete <strong>{policy.name}</strong>?
         </p>
         <div className="flex justify-end space-x-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
           >
             Cancel
           </button>
@@ -549,14 +549,14 @@ function PolicyModal({
         aria-modal="true"
         aria-label={isNew ? "Create SLA policy" : "Edit SLA policy"}
         tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl"
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-card shadow-xl"
       >
-        <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-slate-200 bg-white px-6 py-4">
+        <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-border bg-card px-6 py-4">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">
+            <h2 className="text-base font-semibold text-foreground">
               {isNew ? "Create SLA Policy" : "Edit SLA Policy"}
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               {isNew
                 ? "Configure response and resolution targets"
                 : `Editing "${form.name || "Untitled policy"}"`}
@@ -565,7 +565,7 @@ function PolicyModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600"
+            className="text-muted-foreground hover:text-muted-foreground"
           >
             <svg
               className="h-5 w-5"
@@ -586,7 +586,7 @@ function PolicyModal({
         <div className="flex-1 space-y-6 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Policy Name *
               </label>
               <input
@@ -596,16 +596,16 @@ function PolicyModal({
                   setForm((prev) => ({ ...prev, name: event.target.value }))
                 }
                 placeholder="e.g. Enterprise SLA"
-                className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                  errors.name ? "border-red-400" : "border-slate-300"
-                } ${!canEdit ? "cursor-not-allowed bg-slate-100" : ""}`}
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+                  errors.name ? "border-red-400" : "border-border"
+                } ${!canEdit ? "cursor-not-allowed bg-accent" : ""}`}
               />
               {errors.name && (
                 <p className="mt-1 text-xs text-red-500">{errors.name}</p>
               )}
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Description
               </label>
               <input
@@ -618,14 +618,14 @@ function PolicyModal({
                   }))
                 }
                 placeholder="Brief description..."
-                className={`w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                  !canEdit ? "cursor-not-allowed bg-slate-100" : ""
+                className={`w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+                  !canEdit ? "cursor-not-allowed bg-accent" : ""
                 }`}
               />
             </div>
           </div>
 
-          <div className="border-b border-slate-200">
+          <div className="border-b border-border">
             <div className="flex space-x-6">
               {sections.map((section) => (
                 <button
@@ -634,8 +634,8 @@ function PolicyModal({
                   onClick={() => setActiveSection(section.id)}
                   className={`pb-3 text-sm font-medium ${
                     activeSection === section.id
-                      ? "border-b-2 border-blue-600 text-blue-600"
-                      : "text-slate-500 hover:text-slate-700"
+                      ? "border-b-2 border-blue-600 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {section.label}
@@ -647,7 +647,7 @@ function PolicyModal({
           {activeSection === "targets" && (
             <div>
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-muted-foreground">
                   Set first response and resolution time targets per priority
                   level.
                 </p>
@@ -659,29 +659,29 @@ function PolicyModal({
                       setForm((prev) => ({ ...prev, businessHours: next }))
                     }
                   />
-                  <span className="text-sm text-slate-700">
+                  <span className="text-sm text-foreground">
                     Business hours only
                   </span>
                 </div>
               </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+              <div className="overflow-hidden rounded-xl border border-border bg-muted">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-100">
+                  <thead className="border-b border-border bg-accent">
                     <tr>
-                      <th className="w-28 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      <th className="w-28 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Priority
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         First Response (hours)
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Resolution (hours)
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody className="divide-y divide-border">
                     {PRIORITIES.map((priority) => (
-                      <tr key={priority} className="bg-white">
+                      <tr key={priority} className="bg-card">
                         <td className="px-4 py-3">
                           <span
                             className={`rounded-lg px-2 py-1 text-xs font-medium ${PRIORITY_META[priority].color}`}
@@ -704,13 +704,13 @@ function PolicyModal({
                                   event.target.value,
                                 )
                               }
-                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
+                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
                                 errors[`${priority}_fr`]
                                   ? "border-red-400"
-                                  : "border-slate-300"
-                              } ${!canEdit ? "cursor-not-allowed bg-slate-100" : ""}`}
+                                  : "border-border"
+                              } ${!canEdit ? "cursor-not-allowed bg-accent" : ""}`}
                             />
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted-foreground">
                               = {fmtHours(form.targets[priority].firstResponse)}
                             </span>
                           </div>
@@ -735,13 +735,13 @@ function PolicyModal({
                                   event.target.value,
                                 )
                               }
-                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
+                              className={`w-24 rounded-lg border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
                                 errors[`${priority}_res`]
                                   ? "border-red-400"
-                                  : "border-slate-300"
-                              } ${!canEdit ? "cursor-not-allowed bg-slate-100" : ""}`}
+                                  : "border-border"
+                              } ${!canEdit ? "cursor-not-allowed bg-accent" : ""}`}
                             />
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted-foreground">
                               = {fmtHours(form.targets[priority].resolution)}
                             </span>
                           </div>
@@ -757,7 +757,7 @@ function PolicyModal({
                 </table>
               </div>
               {form.businessHours && (
-                <p className="mt-2 flex items-center space-x-1 text-xs text-slate-500">
+                <p className="mt-2 flex items-center space-x-1 text-xs text-muted-foreground">
                   <svg
                     className="h-3.5 w-3.5 text-blue-500"
                     fill="none"
@@ -783,10 +783,10 @@ function PolicyModal({
           {activeSection === "teams" && (
             <div className="space-y-5">
               <div>
-                <p className="mb-2 text-sm font-medium text-slate-700">
+                <p className="mb-2 text-sm font-medium text-foreground">
                   Apply to Teams
                 </p>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-muted-foreground">
                   Select which teams this SLA policy governs. A team can only
                   have one active policy.
                 </p>
@@ -804,8 +804,8 @@ function PolicyModal({
                       key={team.id}
                       className={`flex cursor-pointer items-center space-x-3 rounded-lg border p-3 transition-all ${
                         form.appliedTeamIds.includes(team.id)
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-slate-200 bg-white hover:border-slate-300"
+                          ? "border-primary bg-blue-50"
+                          : "border-border bg-card hover:border-border"
                       } ${!canEdit || teamScopeLocked ? "cursor-not-allowed opacity-60" : ""}`}
                     >
                       <input
@@ -813,21 +813,21 @@ function PolicyModal({
                         disabled={!canEdit || teamScopeLocked}
                         checked={form.appliedTeamIds.includes(team.id)}
                         onChange={() => toggleTeam(team.id, team.name)}
-                        className="h-4 w-4 rounded text-blue-600"
+                        className="h-4 w-4 rounded text-primary"
                       />
-                      <span className="text-sm font-medium text-slate-700">
+                      <span className="text-sm font-medium text-foreground">
                         {team.name}
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between rounded-xl border border-border bg-muted p-4">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-foreground">
                     Set as Default Policy
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     Applied to teams with no explicit policy assigned.
                   </p>
                 </div>
@@ -839,18 +839,18 @@ function PolicyModal({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between rounded-xl border border-border bg-muted p-4">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-foreground">
                     Policy Status
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     Disabled policies are not enforced on any tickets.
                   </p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <span
-                    className={`text-sm font-medium ${form.enabled ? "text-green-600" : "text-slate-400"}`}
+                    className={`text-sm font-medium ${form.enabled ? "text-green-600" : "text-muted-foreground"}`}
                   >
                     {form.enabled ? "Enabled" : "Disabled"}
                   </span>
@@ -868,12 +868,12 @@ function PolicyModal({
 
           {activeSection === "escalation" && (
             <div className="space-y-5">
-              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between rounded-xl border border-border bg-muted p-4">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">
+                  <p className="text-sm font-medium text-foreground">
                     Enable Escalation
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     Automatically escalate tickets approaching SLA breach.
                   </p>
                 </div>
@@ -887,8 +887,8 @@ function PolicyModal({
               </div>
 
               {form.escalation && (
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <label className="mb-1 block text-sm font-medium text-foreground">
                     Escalate when SLA is{" "}
                     <strong>{form.escalationAfter}%</strong> elapsed
                   </label>
@@ -906,26 +906,26 @@ function PolicyModal({
                           escalationAfter: Number(event.target.value),
                         }))
                       }
-                      className={`h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-slate-200 accent-blue-600 ${
+                      className={`h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-accent accent-blue-600 ${
                         !canEdit ? "cursor-not-allowed opacity-70" : ""
                       }`}
                     />
-                    <span className="w-10 text-right text-sm font-semibold text-blue-600">
+                    <span className="w-10 text-right text-sm font-semibold text-primary">
                       {form.escalationAfter}%
                     </span>
                   </div>
-                  <div className="mt-1 flex justify-between text-xs text-slate-400">
+                  <div className="mt-1 flex justify-between text-xs text-muted-foreground">
                     <span>50% (early)</span>
                     <span>95% (late)</span>
                   </div>
                 </div>
               )}
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="mb-3 text-sm font-medium text-slate-700">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="mb-3 text-sm font-medium text-foreground">
                   Breach Notifications
                 </p>
-                <p className="mb-3 text-xs text-slate-500">
+                <p className="mb-3 text-xs text-muted-foreground">
                   Notify these roles when an SLA is breached or at risk.
                 </p>
                 <div className="space-y-2">
@@ -939,9 +939,9 @@ function PolicyModal({
                         disabled={!canEdit}
                         checked={form.breachNotify.includes(option.value)}
                         onChange={() => toggleNotify(option.value)}
-                        className="h-4 w-4 rounded text-blue-600"
+                        className="h-4 w-4 rounded text-primary"
                       />
-                      <span className="text-sm text-slate-700">
+                      <span className="text-sm text-foreground">
                         {option.label}
                       </span>
                     </label>
@@ -952,13 +952,13 @@ function PolicyModal({
           )}
         </div>
 
-        <div className="sticky bottom-0 flex items-center justify-between rounded-b-lg border-t border-slate-200 bg-slate-50 px-6 py-4">
-          <p className="text-xs text-slate-400">* Required fields</p>
+        <div className="sticky bottom-0 flex items-center justify-between rounded-b-lg border-t border-border bg-muted px-6 py-4">
+          <p className="text-xs text-muted-foreground">* Required fields</p>
           <div className="flex space-x-3">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent"
             >
               Cancel
             </button>
@@ -966,7 +966,7 @@ function PolicyModal({
               type="button"
               onClick={handleSubmit}
               disabled={!canEdit || saving}
-              className="flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="flex items-center space-x-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
             >
               <svg
                 className="h-4 w-4"
@@ -1025,8 +1025,8 @@ function BusinessHoursEditor({
             key={day}
             className={`flex min-w-0 flex-wrap items-center gap-2 rounded-lg border p-3 transition-all sm:flex-nowrap sm:gap-4 ${
               value.enabled
-                ? "border-slate-200 bg-white"
-                : "border-slate-200 bg-slate-50 opacity-60"
+                ? "border-border bg-card"
+                : "border-border bg-muted opacity-60"
             }`}
           >
             <ToggleSwitch
@@ -1034,7 +1034,7 @@ function BusinessHoursEditor({
               disabled={disabled}
               onChange={() => onToggleDay(day)}
             />
-            <span className="w-24 flex-shrink-0 text-sm font-medium text-slate-700">
+            <span className="w-24 flex-shrink-0 text-sm font-medium text-foreground">
               {day}
             </span>
             {value.enabled ? (
@@ -1046,11 +1046,11 @@ function BusinessHoursEditor({
                   onChange={(event) =>
                     onUpdateTime(day, "start", event.target.value)
                   }
-                  className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                    disabled ? "cursor-not-allowed bg-slate-100" : ""
+                  className={`min-w-0 rounded-lg border border-border px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+                    disabled ? "cursor-not-allowed bg-accent" : ""
                   }`}
                 />
-                <span className="text-sm text-slate-400">to</span>
+                <span className="text-sm text-muted-foreground">to</span>
                 <input
                   type="time"
                   disabled={disabled}
@@ -1058,14 +1058,14 @@ function BusinessHoursEditor({
                   onChange={(event) =>
                     onUpdateTime(day, "end", event.target.value)
                   }
-                  className={`min-w-0 rounded-lg border border-slate-300 px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                    disabled ? "cursor-not-allowed bg-slate-100" : ""
+                  className={`min-w-0 rounded-lg border border-border px-2 py-1 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+                    disabled ? "cursor-not-allowed bg-accent" : ""
                   }`}
                 />
-                <span className="text-xs text-slate-400">({duration})</span>
+                <span className="text-xs text-muted-foreground">({duration})</span>
               </div>
             ) : (
-              <span className="text-sm italic text-slate-400">Closed</span>
+              <span className="text-sm italic text-muted-foreground">Closed</span>
             )}
           </div>
         );
@@ -1102,22 +1102,22 @@ function HolidayManager({
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         On holidays, SLA timers are paused (treated as non-business time).
       </p>
       <div className="space-y-2">
         {holidays.map((holiday) => (
           <div
             key={`${holiday.date}-${holiday.name}`}
-            className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 transition hover:bg-slate-100"
+            className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 transition hover:bg-accent"
           >
             <div className="flex items-center space-x-3">
               <span className="text-lg">H</span>
               <div>
-                <p className="text-sm font-medium text-slate-800">
+                <p className="text-sm font-medium text-foreground">
                   {holiday.name}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   {new Date(`${holiday.date}T00:00:00`).toLocaleDateString(
                     "en-US",
                     {
@@ -1133,7 +1133,7 @@ function HolidayManager({
               type="button"
               disabled={disabled}
               onClick={() => removeHoliday(holiday)}
-              className="rounded p-1 text-slate-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded p-1 text-muted-foreground hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <svg
                 className="h-4 w-4"
@@ -1152,14 +1152,14 @@ function HolidayManager({
           </div>
         ))}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-border pt-2">
         <input
           value={newName}
           disabled={disabled}
           onChange={(event) => setNewName(event.target.value)}
           placeholder="Holiday name"
-          className={`min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-            disabled ? "cursor-not-allowed bg-slate-100" : ""
+          className={`min-w-0 flex-1 rounded-lg border border-border px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+            disabled ? "cursor-not-allowed bg-accent" : ""
           }`}
         />
         <input
@@ -1167,15 +1167,15 @@ function HolidayManager({
           value={newDate}
           disabled={disabled}
           onChange={(event) => setNewDate(event.target.value)}
-          className={`min-w-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-            disabled ? "cursor-not-allowed bg-slate-100" : ""
+          className={`min-w-0 rounded-lg border border-border px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+            disabled ? "cursor-not-allowed bg-accent" : ""
           }`}
         />
         <button
           type="button"
           disabled={disabled || !newName.trim() || !newDate}
           onClick={addHoliday}
-          className="flex-shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="flex-shrink-0 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
         >
           Add
         </button>
@@ -1530,8 +1530,8 @@ export function SlaSettingsPage({
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -1543,7 +1543,7 @@ export function SlaSettingsPage({
               leftContent={
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-xl font-semibold text-slate-900">
+                    <h1 className="text-xl font-semibold text-foreground">
                       SLA Settings
                     </h1>
                     {isReadOnly && (
@@ -1552,7 +1552,7 @@ export function SlaSettingsPage({
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Manage response and resolution targets across all teams.
                   </p>
                 </div>
@@ -1561,7 +1561,7 @@ export function SlaSettingsPage({
           ) : (
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-xl font-semibold text-slate-900">
+                <h1 className="text-xl font-semibold text-foreground">
                   SLA Settings
                 </h1>
                 {isReadOnly && (
@@ -1570,14 +1570,14 @@ export function SlaSettingsPage({
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Manage response and resolution targets across all teams.
               </p>
             </div>
           )}
         </div>
 
-        <div className="border-t border-slate-200 bg-white">
+        <div className="border-t border-border bg-card">
           <div className="mx-auto max-w-[1600px] px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="flex space-x-6">
@@ -1604,8 +1604,8 @@ export function SlaSettingsPage({
                     onClick={() => setActiveTab(tab.id as TabKey)}
                     className={`-mb-px flex items-center space-x-1.5 border-b-2 pb-3 text-sm font-medium transition-colors ${
                       activeTab === tab.id
-                        ? "border-blue-600 text-blue-600"
-                        : "border-transparent text-slate-500 hover:text-slate-700"
+                        ? "border-blue-600 text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <svg
@@ -1629,7 +1629,7 @@ export function SlaSettingsPage({
                 <button
                   type="button"
                   onClick={handleCreate}
-                  className="flex items-center space-x-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="flex items-center space-x-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
                 >
                   <Plus className="h-4 w-4" />
                   <span>New Policy</span>
@@ -1654,7 +1654,7 @@ export function SlaSettingsPage({
                 {
                   label: "Total Policies",
                   value: policies.length,
-                  color: "text-blue-600",
+                  color: "text-primary",
                   bg: "bg-blue-50",
                 },
                 {
@@ -1688,11 +1688,11 @@ export function SlaSettingsPage({
               ].map((kpi) => (
                 <div
                   key={kpi.label}
-                  className="card rounded-xl border border-slate-200 bg-white p-4"
+                  className="card rounded-xl border border-border bg-card p-4"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium text-slate-500">
+                      <p className="text-xs font-medium text-muted-foreground">
                         {kpi.label}
                       </p>
                       <p className={`mt-0.5 text-2xl font-bold ${kpi.color}`}>
@@ -1722,9 +1722,9 @@ export function SlaSettingsPage({
             </div>
 
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-900">
+              <h3 className="text-sm font-semibold text-foreground">
                 All Policies{" "}
-                <span className="ml-1 font-normal text-slate-400">
+                <span className="ml-1 font-normal text-muted-foreground">
                   ({filteredPolicies.length})
                 </span>
               </h3>
@@ -1734,10 +1734,10 @@ export function SlaSettingsPage({
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="Search policies..."
-                  className="w-56 rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-56 rounded-lg border border-border bg-card text-foreground py-1.5 pl-9 pr-3 text-sm placeholder:text-muted-foreground focus:border-transparent focus:ring-2 focus:ring-ring"
                 />
                 <svg
-                  className="absolute left-3 top-2 h-4 w-4 text-slate-400"
+                  className="absolute left-3 top-2 h-4 w-4 text-muted-foreground"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1759,7 +1759,7 @@ export function SlaSettingsPage({
                     {Array.from({ length: 3 }).map((_, i) => (
                       <div
                         key={`policy-skel-${i}`}
-                        className="rounded-xl border border-slate-200 bg-white p-5"
+                        className="rounded-xl border border-border bg-card p-5"
                       >
                         <div className="flex items-center justify-between">
                           <div className="space-y-2">
@@ -1774,7 +1774,7 @@ export function SlaSettingsPage({
                 )}
 
                 {!loadingLive && filteredPolicies.length === 0 && (
-                  <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-sm text-slate-400">
+                  <div className="rounded-xl border border-border bg-card py-12 text-center text-sm text-muted-foreground">
                     No policies match your search.
                   </div>
                 )}
@@ -1783,16 +1783,16 @@ export function SlaSettingsPage({
                   <div
                     key={policy.id}
                     onClick={() => setSelectedPolicyId(policy.id)}
-                    className={`cursor-pointer rounded-lg border-2 bg-white p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm ${
+                    className={`cursor-pointer rounded-lg border-2 bg-card p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm ${
                       selectedPolicyId === policy.id
-                        ? "border-blue-500 bg-blue-50/60"
-                        : "border-slate-200"
+                        ? "border-primary bg-blue-50/60"
+                        : "border-border"
                     }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-slate-900">
+                          <span className="truncate text-sm font-semibold text-foreground">
                             {policy.name}
                           </span>
                           {policy.isDefault && (
@@ -1801,7 +1801,7 @@ export function SlaSettingsPage({
                             </span>
                           )}
                           {!policy.enabled && (
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                            <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-muted-foreground">
                               Disabled
                             </span>
                           )}
@@ -1809,13 +1809,13 @@ export function SlaSettingsPage({
                             Live
                           </span>
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {policy.description}
                         </p>
                         <div className="mt-2 flex items-center space-x-3">
                           {policy.compliance > 0 && (
                             <div className="flex items-center space-x-1.5">
-                              <div className="h-1.5 w-16 rounded-full bg-slate-200">
+                              <div className="h-1.5 w-16 rounded-full bg-accent">
                                 <div
                                   className={`h-1.5 rounded-full ${complianceBg(policy.compliance)}`}
                                   style={{ width: `${policy.compliance}%` }}
@@ -1828,7 +1828,7 @@ export function SlaSettingsPage({
                               </span>
                             </div>
                           )}
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-muted-foreground">
                             {policy.appliedTo.length} team
                             {policy.appliedTo.length !== 1 ? "s" : ""}
                           </span>
@@ -1843,7 +1843,7 @@ export function SlaSettingsPage({
                           <button
                             type="button"
                             onClick={() => handleEdit(policy)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                            className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
                           >
                             <svg
                               className="h-4 w-4"
@@ -1863,7 +1863,7 @@ export function SlaSettingsPage({
                             type="button"
                             disabled={role !== "OWNER" && policy.isDefault}
                             onClick={() => handleDelete(policy)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             <svg
                               className="h-4 w-4"
@@ -1883,16 +1883,16 @@ export function SlaSettingsPage({
                       )}
                     </div>
 
-                    <div className="mt-3 grid grid-cols-4 gap-1 border-t border-slate-100 pt-3">
+                    <div className="mt-3 grid grid-cols-4 gap-1 border-t border-border pt-3">
                       {PRIORITIES.map((priority) => (
                         <div key={priority} className="text-center">
                           <span
                             className={`mb-1 inline-block h-2 w-2 rounded-full ${PRIORITY_META[priority].dot}`}
                           />
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             {PRIORITY_META[priority].label}
                           </p>
-                          <p className="text-xs font-semibold text-slate-700">
+                          <p className="text-xs font-semibold text-foreground">
                             {fmtHours(policy.targets[priority].resolution)}
                           </p>
                         </div>
@@ -1904,12 +1904,12 @@ export function SlaSettingsPage({
 
               <div className="lg:col-span-7">
                 {selectedPolicy ? (
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                    <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                  <div className="overflow-hidden rounded-xl border border-border bg-card">
+                    <div className="flex items-center justify-between border-b border-border px-5 py-4">
                       <div className="flex items-center space-x-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100">
                           <svg
-                            className="h-4 w-4 text-blue-600"
+                            className="h-4 w-4 text-primary"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -1923,10 +1923,10 @@ export function SlaSettingsPage({
                           </svg>
                         </div>
                         <div>
-                          <h3 className="text-sm font-semibold text-slate-900">
+                          <h3 className="text-sm font-semibold text-foreground">
                             {selectedPolicy.name}
                           </h3>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             {selectedPolicy.description}
                           </p>
                         </div>
@@ -1940,7 +1940,7 @@ export function SlaSettingsPage({
                             <button
                               type="button"
                               onClick={() => handleEdit(selectedPolicy)}
-                              className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                              className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-primary hover:bg-blue-50"
                             >
                               Edit
                             </button>
@@ -1951,9 +1951,9 @@ export function SlaSettingsPage({
 
                     <div className="space-y-5 p-5">
                       {selectedPolicy.compliance > 0 && (
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="rounded-xl border border-border bg-muted p-4">
                           <div className="mb-2 flex items-center justify-between">
-                            <span className="text-xs font-medium text-slate-600">
+                            <span className="text-xs font-medium text-muted-foreground">
                               SLA Compliance (Last 30d)
                             </span>
                             <span
@@ -1962,7 +1962,7 @@ export function SlaSettingsPage({
                               {selectedPolicy.compliance}%
                             </span>
                           </div>
-                          <div className="h-2 w-full rounded-full bg-slate-200">
+                          <div className="h-2 w-full rounded-full bg-accent">
                             <div
                               className={`h-2 rounded-full ${complianceBg(selectedPolicy.compliance)}`}
                               style={{ width: `${selectedPolicy.compliance}%` }}
@@ -1972,44 +1972,44 @@ export function SlaSettingsPage({
                       )}
 
                       <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground">
                           SLA Targets
                         </p>
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                        <div className="overflow-hidden rounded-xl border border-border bg-muted">
                           <table className="w-full text-sm">
-                            <thead className="border-b border-slate-200 bg-slate-100">
+                            <thead className="border-b border-border bg-accent">
                               <tr>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">
+                                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
                                   Priority
                                 </th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">
+                                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
                                   1st Response
                                 </th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-500">
+                                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
                                   Resolution
                                 </th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-border">
                               {PRIORITIES.map((priority) => (
-                                <tr key={priority} className="bg-white">
+                                <tr key={priority} className="bg-card">
                                   <td className="px-3 py-2">
                                     <div className="flex items-center space-x-2">
                                       <span
                                         className={`h-2 w-2 rounded-full ${PRIORITY_META[priority].dot}`}
                                       />
-                                      <span className="text-xs font-medium text-slate-700">
+                                      <span className="text-xs font-medium text-foreground">
                                         {PRIORITY_META[priority].label}
                                       </span>
                                     </div>
                                   </td>
-                                  <td className="px-3 py-2 text-xs font-medium text-slate-700">
+                                  <td className="px-3 py-2 text-xs font-medium text-foreground">
                                     {fmtHours(
                                       selectedPolicy.targets[priority]
                                         .firstResponse,
                                     )}
                                   </td>
-                                  <td className="px-3 py-2 text-xs font-medium text-slate-700">
+                                  <td className="px-3 py-2 text-xs font-medium text-foreground">
                                     {fmtHours(
                                       selectedPolicy.targets[priority]
                                         .resolution,
@@ -2023,19 +2023,19 @@ export function SlaSettingsPage({
                       </div>
 
                       <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground">
                           Configuration
                         </p>
                         <div className="flex flex-wrap gap-2">
                           <span
-                            className={`rounded-lg px-2 py-1 text-xs font-medium ${selectedPolicy.businessHours ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}
+                            className={`rounded-lg px-2 py-1 text-xs font-medium ${selectedPolicy.businessHours ? "bg-indigo-500/10 text-indigo-400" : "bg-accent text-muted-foreground"}`}
                           >
                             {selectedPolicy.businessHours
                               ? "Business Hours"
                               : "24/7"}
                           </span>
                           <span
-                            className={`rounded-lg px-2 py-1 text-xs font-medium ${selectedPolicy.escalation ? "bg-orange-100 text-orange-700" : "bg-slate-100 text-slate-600"}`}
+                            className={`rounded-lg px-2 py-1 text-xs font-medium ${selectedPolicy.escalation ? "bg-orange-500/10 text-orange-400" : "bg-accent text-muted-foreground"}`}
                           >
                             {selectedPolicy.escalation
                               ? `Escalate at ${selectedPolicy.escalationAfter}%`
@@ -2044,7 +2044,7 @@ export function SlaSettingsPage({
                           {selectedPolicy.breachNotify.map((notify) => (
                             <span
                               key={notify}
-                              className="rounded-lg bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700"
+                              className="rounded-lg bg-purple-500/10 px-2 py-1 text-xs font-medium text-purple-400"
                             >
                               {
                                 NOTIFY_OPTIONS.find(
@@ -2057,11 +2057,11 @@ export function SlaSettingsPage({
                       </div>
 
                       <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-700">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-foreground">
                           Applied To
                         </p>
                         {selectedPolicy.appliedTo.length === 0 ? (
-                          <p className="text-xs italic text-slate-400">
+                          <p className="text-xs italic text-muted-foreground">
                             Not applied to any teams
                           </p>
                         ) : (
@@ -2078,16 +2078,16 @@ export function SlaSettingsPage({
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-muted-foreground">
                         Created {selectedPolicy.createdAt}
                       </p>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                  <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-card p-8 text-center">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
                       <svg
-                        className="h-6 w-6 text-slate-400"
+                        className="h-6 w-6 text-muted-foreground"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -2100,10 +2100,10 @@ export function SlaSettingsPage({
                         />
                       </svg>
                     </div>
-                    <p className="text-sm font-medium text-slate-600">
+                    <p className="text-sm font-medium text-muted-foreground">
                       Select a policy to view details
                     </p>
-                    <p className="mt-1 text-xs text-slate-400">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Click any policy card on the left to inspect its
                       configuration.
                     </p>
@@ -2112,25 +2112,25 @@ export function SlaSettingsPage({
               </div>
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 px-5 py-4">
-                <h3 className="text-sm font-semibold text-slate-900">
+            <div className="mt-6 overflow-hidden rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-5 py-4">
+                <h3 className="text-sm font-semibold text-foreground">
                   Team-Policy Assignment
                 </h3>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-muted-foreground">
                   Overview of which SLA policy is active for each team.
                 </p>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border">
                 {teamAssignment.map(({ team, policy }) => (
                   <div
                     key={team.id}
-                    className="flex items-center justify-between px-5 py-3 hover:bg-slate-50"
+                    className="flex items-center justify-between px-5 py-3 hover:bg-muted"
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent">
                         <svg
-                          className="h-4 w-4 text-slate-500"
+                          className="h-4 w-4 text-muted-foreground"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -2143,7 +2143,7 @@ export function SlaSettingsPage({
                           />
                         </svg>
                       </div>
-                      <span className="text-sm font-medium text-slate-900">
+                      <span className="text-sm font-medium text-foreground">
                         {team.name}
                       </span>
                     </div>
@@ -2162,7 +2162,7 @@ export function SlaSettingsPage({
                           )}
                         </>
                       ) : (
-                        <span className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                        <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-muted-foreground">
                           Using default policy
                         </span>
                       )}
@@ -2177,8 +2177,8 @@ export function SlaSettingsPage({
         {activeTab === "overview" && (
           <div className="space-y-5">
             <div className="grid gap-5 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-5 md:col-span-2">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-xl border border-border bg-card p-5 md:col-span-2">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   SLA Outcome Breakdown - Last 30 Days
                 </h3>
                 <div className="space-y-4">
@@ -2208,15 +2208,15 @@ export function SlaSettingsPage({
                             <span
                               className={`h-2.5 w-2.5 rounded-full ${row.color}`}
                             />
-                            <span className="font-medium text-slate-700">
+                            <span className="font-medium text-foreground">
                               {row.label}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-500">
+                            <span className="text-muted-foreground">
                               Met: {row.met}
                             </span>
-                            <span className="text-slate-500">
+                            <span className="text-muted-foreground">
                               Breached: {row.breached}
                             </span>
                             <span
@@ -2226,7 +2226,7 @@ export function SlaSettingsPage({
                             </span>
                           </div>
                         </div>
-                        <div className="h-3 w-full rounded-full bg-slate-100">
+                        <div className="h-3 w-full rounded-full bg-accent">
                           <div
                             className={`h-3 rounded-full ${row.color}`}
                             style={{ width: `${metPercent}%` }}
@@ -2238,12 +2238,12 @@ export function SlaSettingsPage({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-xl border border-border bg-card p-5">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Breach Summary
                 </h3>
                 {overviewLoading && (
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     Loading report data...
                   </p>
                 )}
@@ -2279,7 +2279,7 @@ export function SlaSettingsPage({
                         key={item.label}
                         className={`flex items-center justify-between rounded-lg p-3 ${item.bg}`}
                       >
-                        <span className="text-xs text-slate-700">
+                        <span className="text-xs text-foreground">
                           {item.label}
                         </span>
                         <span className={`text-base font-bold ${item.color}`}>
@@ -2290,8 +2290,8 @@ export function SlaSettingsPage({
                   </div>
                 )}
 
-                <div className="mt-4 border-t border-slate-100 pt-4">
-                  <div className="flex justify-between text-xs text-slate-500">
+                <div className="mt-4 border-t border-border pt-4">
+                  <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Overall</span>
                     <span
                       className={`font-semibold ${complianceColor(overallCompliance)}`}
@@ -2299,7 +2299,7 @@ export function SlaSettingsPage({
                       {overallCompliance}% compliant
                     </span>
                   </div>
-                  <div className="mt-1.5 h-2 w-full rounded-full bg-slate-100">
+                  <div className="mt-1.5 h-2 w-full rounded-full bg-accent">
                     <div
                       className={`h-2 rounded-full ${complianceBg(overallCompliance)}`}
                       style={{ width: `${overallCompliance}%` }}
@@ -2314,12 +2314,12 @@ export function SlaSettingsPage({
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5">
-              <h3 className="mb-4 text-sm font-semibold text-slate-900">
+            <div className="rounded-xl border border-border bg-card p-5">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">
                 Compliance by Priority (Last 30 Days)
               </h3>
               {priorityOverviewData.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   No priority SLA data available.
                 </p>
               ) : (
@@ -2338,15 +2338,15 @@ export function SlaSettingsPage({
                             <span
                               className={`h-2.5 w-2.5 rounded-full ${PRIORITY_META[key].dot}`}
                             />
-                            <span className="font-medium text-slate-700">
+                            <span className="font-medium text-foreground">
                               {label}
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-500">
+                            <span className="text-muted-foreground">
                               Met: {item.met}
                             </span>
-                            <span className="text-slate-500">
+                            <span className="text-muted-foreground">
                               Breached: {item.breached}
                             </span>
                             <span
@@ -2356,7 +2356,7 @@ export function SlaSettingsPage({
                             </span>
                           </div>
                         </div>
-                        <div className="h-2.5 w-full rounded-full bg-slate-100">
+                        <div className="h-2.5 w-full rounded-full bg-accent">
                           <div
                             className={`h-2.5 rounded-full ${complianceBg(metPercent)}`}
                             style={{ width: `${metPercent}%` }}
@@ -2369,21 +2369,21 @@ export function SlaSettingsPage({
               )}
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 px-5 py-4">
-                <h3 className="text-sm font-semibold text-slate-900">
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="border-b border-border px-5 py-4">
+                <h3 className="text-sm font-semibold text-foreground">
                   Policy Performance
                 </h3>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50">
+                  <thead className="border-b border-border bg-muted">
                     <tr>
                       {["Policy", "Status", "Teams", "Compliance"].map(
                         (heading) => (
                           <th
                             key={heading}
-                            className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600"
+                            className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                           >
                             {heading}
                           </th>
@@ -2391,12 +2391,12 @@ export function SlaSettingsPage({
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-border">
                     {policies.map((policy) => (
-                      <tr key={policy.id} className="hover:bg-slate-50">
+                      <tr key={policy.id} className="hover:bg-muted">
                         <td className="px-5 py-3">
                           <div className="flex items-center space-x-2">
-                            <span className="text-sm font-medium text-slate-900">
+                            <span className="text-sm font-medium text-foreground">
                               {policy.name}
                             </span>
                             {policy.isDefault && (
@@ -2408,20 +2408,20 @@ export function SlaSettingsPage({
                               Live
                             </span>
                           </div>
-                          <p className="mt-0.5 text-xs text-slate-400">
+                          <p className="mt-0.5 text-xs text-muted-foreground">
                             {policy.description}
                           </p>
                         </td>
                         <td className="px-5 py-3">
                           <span
-                            className={`rounded-lg px-2 py-1 text-xs font-medium ${policy.enabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}
+                            className={`rounded-lg px-2 py-1 text-xs font-medium ${policy.enabled ? "bg-green-100 text-green-700" : "bg-accent text-muted-foreground"}`}
                           >
                             {policy.enabled ? "Active" : "Disabled"}
                           </span>
                         </td>
-                        <td className="px-5 py-3 text-sm text-slate-700">
+                        <td className="px-5 py-3 text-sm text-foreground">
                           {policy.appliedTo.length === 0 ? (
-                            <span className="italic text-slate-400">None</span>
+                            <span className="italic text-muted-foreground">None</span>
                           ) : (
                             policy.appliedTo.join(", ")
                           )}
@@ -2429,7 +2429,7 @@ export function SlaSettingsPage({
                         <td className="px-5 py-3">
                           {policy.compliance > 0 ? (
                             <div className="flex items-center space-x-2">
-                              <div className="h-1.5 w-16 rounded-full bg-slate-200">
+                              <div className="h-1.5 w-16 rounded-full bg-accent">
                                 <div
                                   className={`h-1.5 rounded-full ${complianceBg(policy.compliance)}`}
                                   style={{ width: `${policy.compliance}%` }}
@@ -2442,7 +2442,7 @@ export function SlaSettingsPage({
                               </span>
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-400">-</span>
+                            <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </td>
                       </tr>
@@ -2462,7 +2462,7 @@ export function SlaSettingsPage({
               </div>
             )}
             {businessLoading && (
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
+              <div className="rounded-xl border border-border bg-card p-5">
                 <div className="space-y-4">
                   <div className="h-5 w-48 skeleton-shimmer rounded" />
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -2480,17 +2480,17 @@ export function SlaSettingsPage({
               </div>
             )}
             <div className="grid grid-cols-1 gap-5 sm:gap-6 md:gap-8 lg:gap-10 md:grid-cols-2">
-              <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 px-4 py-3 sm:px-5 sm:py-4">
-                  <h3 className="text-sm font-semibold text-slate-900">
+              <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+                <div className="border-b border-border px-4 py-3 sm:px-5 sm:py-4">
+                  <h3 className="text-sm font-semibold text-foreground">
                     Working Hours
                   </h3>
-                  <p className="mt-0.5 text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     SLA timers only tick during active hours on enabled days.
                   </p>
                 </div>
-                <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
-                  <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                <div className="border-b border-border px-4 py-3 sm:px-5">
+                  <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Timezone
                   </label>
                   <input
@@ -2499,8 +2499,8 @@ export function SlaSettingsPage({
                     onChange={(event) =>
                       setBusinessTimezone(event.target.value)
                     }
-                    className={`mt-1 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500 ${
-                      !canEdit ? "cursor-not-allowed bg-slate-100" : ""
+                    className={`mt-1 w-full rounded-lg border border-border px-3 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring ${
+                      !canEdit ? "cursor-not-allowed bg-accent" : ""
                     }`}
                     placeholder="e.g. UTC"
                   />
@@ -2525,8 +2525,8 @@ export function SlaSettingsPage({
                 </div>
               </div>
 
-              <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="min-w-0 rounded-xl border border-border bg-card p-4 sm:p-5">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Holidays
                 </h3>
                 <HolidayManager
@@ -2560,7 +2560,7 @@ export function SlaSettingsPage({
                   type="button"
                   disabled={businessSaving}
                   onClick={handleSaveBusinessHours}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
                 >
                   {businessSaving ? "Saving..." : "Save Business Hours"}
                 </button>

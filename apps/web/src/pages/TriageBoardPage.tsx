@@ -56,8 +56,8 @@ const TRIAGE_COLUMNS: Array<{
   { key: "TRIAGED", label: "Triaged" },
   { key: "ASSIGNED", label: "Assigned" },
   { key: "IN_PROGRESS", label: "In Progress" },
-  { key: "WAITING_ON_CUSTOMER", label: "Waiting on Customer" },
-  { key: "WAITING_ON_THIRDPARTY", label: "Waiting on Thirdparty" },
+  { key: "WAITING_ON_REQUESTER", label: "Waiting on Requester" },
+  { key: "WAITING_ON_VENDOR", label: "Waiting on Vendor" },
   { key: "REOPENED", label: "Reopened" },
 ];
 const TRIAGE_COLUMN_KEYS = TRIAGE_COLUMNS.map((column) => column.key);
@@ -869,8 +869,8 @@ export function TriageBoardPage({
   }, [filteredTickets]);
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -881,10 +881,10 @@ export function TriageBoardPage({
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Triage Board
                   </h1>
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm text-muted-foreground">
                     ({filteredTickets.length} tickets)
                   </span>
                 </div>
@@ -892,10 +892,10 @@ export function TriageBoardPage({
             />
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Triage Board
               </h1>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm text-muted-foreground">
                 ({filteredTickets.length} tickets)
               </span>
             </div>
@@ -911,13 +911,13 @@ export function TriageBoardPage({
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[260px] flex-1 max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search by ID, subject, requester, or team..."
-              className="h-10 w-full rounded-md border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring/30"
             />
           </div>
 
@@ -925,7 +925,7 @@ export function TriageBoardPage({
             <select
               value={teamFilterId}
               onChange={(event) => setTeamFilterId(event.target.value)}
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+              className="h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
             >
               <option value="all">All teams</option>
               {teamsList.map((team) => (
@@ -945,7 +945,7 @@ export function TriageBoardPage({
                   setTeamFilterId("all");
                 }
               }}
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 transition-colors hover:bg-slate-100"
+              className="h-10 rounded-md border border-border bg-card px-3 text-sm text-foreground transition-colors hover:bg-accent"
             >
               Clear
             </button>
@@ -957,11 +957,11 @@ export function TriageBoardPage({
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={`col-skel-${i}`} className="w-80 flex-shrink-0">
                 <div className="mb-3 h-5 w-28 skeleton-shimmer rounded" />
-                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="space-y-3 rounded-xl border border-border bg-muted p-3">
                   {Array.from({ length: 3 }).map((_, j) => (
                     <div
                       key={`card-skel-${i}-${j}`}
-                      className="rounded-lg border border-slate-200 bg-white p-4"
+                      className="rounded-lg border border-border bg-card p-4"
                     >
                       <div className="mb-2 h-4 w-3/4 skeleton-shimmer rounded" />
                       <div className="mb-3 h-3 w-1/2 skeleton-shimmer rounded" />
@@ -993,24 +993,24 @@ export function TriageBoardPage({
                   >
                     <div className="mb-4 flex items-center justify-between">
                       <div className="flex items-center space-x-2">
-                        <h2 className="text-sm font-semibold text-slate-900">
+                        <h2 className="text-sm font-semibold text-foreground">
                           {column.label}
                         </h2>
-                        <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-slate-100 px-2 text-xs font-medium text-slate-700">
+                        <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-accent px-2 text-xs font-medium text-foreground">
                           {columnTickets.length}
                         </span>
                       </div>
                     </div>
 
                     <div
-                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-slate-50 p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-slate-100 [&::-webkit-scrollbar]:w-1.5 ${
+                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-muted p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-muted [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-accent [&::-webkit-scrollbar]:w-1.5 ${
                         dragOverColumn === column.key
-                          ? "border-blue-500 bg-blue-100/60"
-                          : "border-slate-200"
+                          ? "border-primary bg-blue-100/60"
+                          : "border-border"
                       }`}
                     >
                       {columnTickets.length === 0 ? (
-                        <div className="py-8 text-center text-sm text-slate-400">
+                        <div className="py-8 text-center text-sm text-muted-foreground">
                           No tickets
                         </div>
                       ) : (
@@ -1041,7 +1041,7 @@ export function TriageBoardPage({
                               }
                               onDragEnd={handleDragEnd}
                               onClick={() => handleCardClick(ticket.id)}
-                              className={`mb-2 cursor-grab rounded-lg border border-slate-200 bg-white p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
+                              className={`mb-2 cursor-grab overflow-hidden rounded-lg border border-border bg-card p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:cursor-grabbing ${
                                 draggingTicketId === ticket.id
                                   ? "opacity-50"
                                   : ""
@@ -1050,7 +1050,7 @@ export function TriageBoardPage({
                               <div className="mb-1 flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="mb-1 flex items-center gap-2">
-                                    <span className="truncate text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    <span className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                       {formatTicketId(ticket)}
                                     </span>
                                     <span
@@ -1064,7 +1064,7 @@ export function TriageBoardPage({
                                       {sla.label}
                                     </span>
                                   </div>
-                                  <h3 className="truncate text-sm font-medium text-slate-900">
+                                  <h3 className="truncate text-sm font-medium text-foreground">
                                     {ticket.subject}
                                   </h3>
                                 </div>
@@ -1077,7 +1077,7 @@ export function TriageBoardPage({
                                     onClick={(event) =>
                                       toggleCardMenu(event, ticket.id)
                                     }
-                                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                    className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-muted-foreground"
                                     aria-label="Ticket actions"
                                   >
                                     <MoreVertical className="h-4 w-4" />
@@ -1085,22 +1085,22 @@ export function TriageBoardPage({
                                 </div>
                               </div>
 
-                              <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-600">
+                              <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                                 <span className="truncate">
                                   {ticket.requester?.displayName ??
                                     "Requester unknown"}
                                 </span>
-                                <span className="text-slate-400">•</span>
+                                <span className="text-muted-foreground">•</span>
                                 <span className="truncate">
                                   {ticket.assignedTeam?.name ??
                                     "Unassigned team"}
                                 </span>
-                                <span className="text-slate-400">•</span>
+                                <span className="text-muted-foreground">•</span>
                                 {ticket.assignee ? (
                                   <button
                                     type="button"
                                     onClick={(event) => event.stopPropagation()}
-                                    className="group inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 hover:bg-slate-200"
+                                    className="group inline-flex items-center gap-1 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"
                                     title={assigneeName}
                                   >
                                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[9px] font-bold text-white shadow-sm ring-1 ring-slate-100">
@@ -1111,7 +1111,7 @@ export function TriageBoardPage({
                                     </span>
                                   </button>
                                 ) : (
-                                  <span className="text-slate-400">
+                                  <span className="text-muted-foreground">
                                     Unassigned
                                   </span>
                                 )}
@@ -1122,7 +1122,7 @@ export function TriageBoardPage({
                                   {tags.map((tag) => (
                                     <span
                                       key={tag}
-                                      className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700"
+                                      className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-[11px] text-foreground"
                                     >
                                       {tag}
                                     </span>
@@ -1130,10 +1130,10 @@ export function TriageBoardPage({
                                 </div>
                               )}
 
-                              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+                              <div className="mt-2 flex min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
                                 {possibleMoves.length > 0 && (
                                   <div
-                                    className="relative flex-1"
+                                    className="relative min-w-0 flex-1"
                                     onClick={(event) => event.stopPropagation()}
                                     onKeyDown={(event) =>
                                       event.stopPropagation()
@@ -1141,7 +1141,7 @@ export function TriageBoardPage({
                                   >
                                     <button
                                       type="button"
-                                      className="flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 bg-slate-50 border border-slate-200 hover:bg-white hover:shadow-sm focus:ring-2 focus:ring-blue-500/40"
+                                      className="flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 bg-muted border border-border hover:bg-accent hover:shadow-sm focus:ring-2 focus:ring-ring/40"
                                     >
                                       <span className="truncate">
                                         <span
@@ -1150,7 +1150,7 @@ export function TriageBoardPage({
                                           {formatStatus(ticket.status)}
                                         </span>
                                       </span>
-                                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform" />
+                                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform" />
                                     </button>
                                     <select
                                       id={`triage-move-${ticket.id}`}
@@ -1186,7 +1186,7 @@ export function TriageBoardPage({
                                   </div>
                                 )}
 
-                                <span className="whitespace-nowrap text-right">
+                                <span className="shrink-0 whitespace-nowrap text-right">
                                   Updated{" "}
                                   <RelativeTime value={ticket.updatedAt} />
                                 </span>
@@ -1234,7 +1234,7 @@ export function TriageBoardPage({
             return createPortal(
               <div
                 data-card-menu
-                className="w-52 rounded-md border border-slate-200 bg-white py-1 shadow-lg"
+                className="w-52 rounded-md border border-border bg-card py-1 shadow-lg"
                 style={{
                   position: "fixed",
                   top: menuAnchor.top,
@@ -1246,17 +1246,17 @@ export function TriageBoardPage({
                   <button
                     type="button"
                     onClick={(e) => toggleSubmenu(e, ticket, "assign")}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-accent"
                   >
                     <span className="flex items-center gap-2">
                       <UserPlus className="h-4 w-4" />
                       <span>Assign to...</span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-slate-500" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </button>
                   {isAssignSubmenuOpen && (
                     <div
-                      className={`absolute top-0 z-20 min-w-52 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                      className={`absolute top-0 z-20 min-w-52 rounded-md border border-border bg-card py-1 shadow-lg ${submenuPositionClass}`}
                     >
                       <button
                         type="button"
@@ -1266,19 +1266,19 @@ export function TriageBoardPage({
                           void handleAssignSelf(ticket);
                         }}
                         disabled={isTicketActionInProgress(ticket.id)}
-                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
+                        className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
                       >
                         <UserPlus className="h-4 w-4" />
                         <span>Assign to me</span>
                       </button>
-                      <div className="my-1 border-t border-slate-100" />
+                      <div className="my-1 border-t border-border" />
                       {!teamId && (
-                        <p className="px-4 py-2 text-xs text-slate-500">
+                        <p className="px-4 py-2 text-xs text-muted-foreground">
                           No team on ticket
                         </p>
                       )}
                       {teamId && teamMembersState?.loading && (
-                        <p className="px-4 py-2 text-xs text-slate-500">
+                        <p className="px-4 py-2 text-xs text-muted-foreground">
                           Loading members...
                         </p>
                       )}
@@ -1302,7 +1302,7 @@ export function TriageBoardPage({
                               );
                             }}
                             disabled={isTicketActionInProgress(ticket.id)}
-                            className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
+                            className="block w-full px-4 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
                           >
                             {member.user.displayName}
                           </button>
@@ -1315,17 +1315,17 @@ export function TriageBoardPage({
                   <button
                     type="button"
                     onClick={(e) => toggleSubmenu(e, ticket, "priority")}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-accent"
                   >
                     <span className="flex items-center gap-2">
                       <Tag className="h-4 w-4" />
                       <span>Edit priority</span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-slate-500" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </button>
                   {isPrioritySubmenuOpen && (
                     <div
-                      className={`absolute top-0 z-20 min-w-44 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                      className={`absolute top-0 z-20 min-w-44 rounded-md border border-border bg-card py-1 shadow-lg ${submenuPositionClass}`}
                     >
                       {PRIORITY_OPTIONS.map((option) => (
                         <button
@@ -1341,7 +1341,7 @@ export function TriageBoardPage({
                             );
                           }}
                           disabled={isTicketActionInProgress(ticket.id)}
-                          className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
+                          className="block w-full px-4 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
                         >
                           {option.label}
                         </button>
@@ -1354,20 +1354,20 @@ export function TriageBoardPage({
                   <button
                     type="button"
                     onClick={(e) => toggleSubmenu(e, ticket, "move")}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-accent"
                   >
                     <span className="flex items-center gap-2">
                       <ChevronRight className="h-4 w-4" />
                       <span>Move to</span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-slate-500" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </button>
                   {isMoveSubmenuOpen && (
                     <div
-                      className={`absolute top-0 z-20 min-w-56 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                      className={`absolute top-0 z-20 min-w-56 rounded-md border border-border bg-card py-1 shadow-lg ${submenuPositionClass}`}
                     >
                       {possibleMoves.length === 0 && (
-                        <p className="px-4 py-2 text-xs text-slate-500">
+                        <p className="px-4 py-2 text-xs text-muted-foreground">
                           No valid moves
                         </p>
                       )}
@@ -1381,7 +1381,7 @@ export function TriageBoardPage({
                             void handleTransition(ticket.id, status);
                           }}
                           disabled={isTicketActionInProgress(ticket.id)}
-                          className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50"
+                          className="block w-full px-4 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
                         >
                           {formatStatus(status)}
                         </button>
@@ -1394,17 +1394,17 @@ export function TriageBoardPage({
                   <button
                     type="button"
                     onClick={(e) => toggleSubmenu(e, ticket, "transfer")}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-100"
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-accent"
                   >
                     <span className="flex items-center gap-2">
                       <ArrowLeftRight className="h-4 w-4" />
                       <span>Transfer</span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-slate-500" />
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </button>
                   {isTransferSubmenuOpen && (
                     <div
-                      className={`absolute top-0 z-20 min-w-56 rounded-md border border-slate-200 bg-white py-1 shadow-lg ${submenuPositionClass}`}
+                      className={`absolute top-0 z-20 min-w-56 rounded-md border border-border bg-card py-1 shadow-lg ${submenuPositionClass}`}
                     >
                       {teamsList.map((team) => (
                         <button
@@ -1419,7 +1419,7 @@ export function TriageBoardPage({
                             isTicketActionInProgress(ticket.id) ||
                             team.id === ticket.assignedTeam?.id
                           }
-                          className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="block w-full px-4 py-2 text-left text-sm hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {team.name}
                         </button>
@@ -1435,7 +1435,7 @@ export function TriageBoardPage({
                     closeMenus();
                     handleCardClick(ticket.id);
                   }}
-                  className="flex w-full items-center space-x-2 border-t border-slate-100 px-4 py-2 text-left text-sm hover:bg-slate-100"
+                  className="flex w-full items-center space-x-2 border-t border-border px-4 py-2 text-left text-sm hover:bg-accent"
                 >
                   <Eye className="h-4 w-4" />
                   <span>View details</span>

@@ -37,7 +37,7 @@ export const TicketTimeline = memo(function TicketTimeline({
       <div className="mt-5 max-h-[660px] space-y-4 overflow-y-auto">
         {eventsError ? (
           <div
-            className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-left"
+            className="rounded-xl border border-amber-200 bg-amber-500/10 p-4 text-left"
             role="alert"
           >
             <p className="text-sm font-semibold text-amber-950">
@@ -47,7 +47,7 @@ export const TicketTimeline = memo(function TicketTimeline({
             <button
               type="button"
               onClick={onRetryLoad}
-              className="mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
+              className="mt-3 inline-flex rounded-lg border border-amber-300 bg-card px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
             >
               Retry loading timeline
             </button>
@@ -55,7 +55,7 @@ export const TicketTimeline = memo(function TicketTimeline({
         ) : null}
 
         {events.length === 0 && !eventsLoading && !eventsError ? (
-          <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             No events yet.
           </div>
         ) : null}
@@ -68,27 +68,27 @@ export const TicketTimeline = memo(function TicketTimeline({
                 <div
                   className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
                     eventKind === "message"
-                      ? "border-blue-200 bg-blue-50"
+                      ? "border-blue-200 bg-primary/10"
                       : eventKind === "internal"
-                        ? "border-amber-200 bg-amber-50"
-                        : "border-slate-200 bg-slate-100"
+                        ? "border-amber-200 bg-amber-500/10"
+                        : "border-border bg-muted"
                   }`}
                 >
                   {eventKind === "message" || eventKind === "internal" ? (
-                    <MessageSquare className="h-4 w-4 text-slate-600" />
+                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Clock3 className="h-4 w-4 text-slate-600" />
+                    <Clock3 className="h-4 w-4 text-muted-foreground" />
                   )}
                 </div>
                 {index < events.length - 1 ? (
-                  <div className="absolute left-1/2 top-9 h-6 w-px -translate-x-1/2 bg-slate-200" />
+                  <div className="absolute left-1/2 top-9 h-6 w-px -translate-x-1/2 bg-accent" />
                 ) : null}
               </div>
               <div className="pt-1">
-                <p className="text-sm text-slate-900">
+                <p className="text-sm text-foreground">
                   {formatEventText(event)}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   <RelativeTime value={event.createdAt} />
                 </p>
               </div>

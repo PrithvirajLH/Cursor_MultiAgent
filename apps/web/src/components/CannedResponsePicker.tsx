@@ -67,20 +67,20 @@ export function CannedResponsePicker({
       />
       <div
         ref={dialogRef}
-        className={`fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-slate-200 bg-white shadow-xl ${className}`}
+        className={`fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-popover shadow-xl ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label="Insert canned response"
         tabIndex={-1}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-900">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-foreground">
             Insert template
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -88,13 +88,13 @@ export function CannedResponsePicker({
         </div>
         <div className="max-h-72 overflow-auto p-2">
           {loading && (
-            <p className="py-4 text-center text-sm text-slate-500">Loading…</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">Loading…</p>
           )}
           {error && (
             <p className="py-4 text-center text-sm text-red-600">{error}</p>
           )}
           {!loading && !error && list.length === 0 && (
-            <p className="py-4 text-center text-sm text-slate-500">
+            <p className="py-4 text-center text-sm text-muted-foreground">
               No templates saved.
             </p>
           )}
@@ -104,7 +104,7 @@ export function CannedResponsePicker({
                 <li key={item.id}>
                   <button
                     type="button"
-                    className="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    className="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       const content = substituteVariables(
@@ -117,8 +117,8 @@ export function CannedResponsePicker({
                   >
                     <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-slate-900">{item.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
+                      <p className="font-medium text-foreground">{item.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         {item.content.slice(0, 80)}
                         {item.content.length > 80 ? "…" : ""}
                       </p>

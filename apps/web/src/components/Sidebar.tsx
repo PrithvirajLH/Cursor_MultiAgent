@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from "react";
+import { memo } from "react";
 import {
   ArrowRight,
   ChevronLeft,
@@ -41,166 +41,134 @@ export const Sidebar = memo(function Sidebar({
   onOpenAdminSidebar?: () => void;
   hideCollapseToggle?: boolean;
 }) {
-  const navRef = useRef<HTMLElement>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState({
-    top: 0,
-    height: 0,
-    opacity: 0,
-  });
-
-  useEffect(() => {
-    // Use a small timeout to let the DOM settle, especially after expand/collapse
-    const timer = setTimeout(() => {
-      if (!navRef.current) return;
-      const activeEl = navRef.current.querySelector(
-        '[data-active="true"]',
-      ) as HTMLElement;
-      if (activeEl) {
-        let topOffset = activeEl.offsetTop;
-        let pHeight = parseInt(
-          activeEl.getAttribute("data-indicator-height") || "24",
-          10,
-        );
-        let pTopPadding = parseInt(
-          activeEl.getAttribute("data-indicator-padding") || "8",
-          10,
-        );
-
-        setIndicatorStyle({
-          top: topOffset + pTopPadding,
-          height: pHeight,
-          opacity: 1,
-        });
-      } else {
-        setIndicatorStyle((prev) => ({ ...prev, opacity: 0 }));
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [activeKey, collapsed, items]);
-
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen border-r border-slate-800 bg-slate-900 p-5 flex flex-col transition-all duration-300 ${
-        collapsed ? "w-20" : "w-64"
+      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 border-r border-white/[0.07] ${
+        collapsed ? "w-[72px]" : "w-[248px]"
       } ${className ?? ""}`}
+      style={{ background: "hsl(222 52% 7%)" }}
     >
+      {/* ── Brand ── */}
       <div
-        className={`flex items-center pb-4 border-b border-slate-800 ${
-          collapsed ? "justify-center" : "justify-start"
+        className={`flex items-center px-4 py-[18px] border-b border-white/[0.07] flex-shrink-0 ${
+          collapsed ? "justify-center" : "gap-3"
         }`}
       >
-        <div className="h-10 w-10 rounded-xl bg-blue-500 text-white flex items-center justify-center font-semibold shadow-sm">
+        <div className="flex-shrink-0 h-8 w-8 rounded-lg flex items-center justify-center font-bold text-[13px] text-white shadow-lg shadow-cyan-500/20"
+          style={{ background: "linear-gradient(135deg, #14d4f4 0%, #3b82f6 100%)" }}
+        >
           T
         </div>
         {!collapsed && (
-          <p className="ml-3 text-[15px] font-bold tracking-tight text-white">
+          <span className="text-[15px] font-semibold tracking-tight text-white/90">
             Ticket
-          </p>
+          </span>
         )}
       </div>
 
-      <nav ref={navRef} className="mt-6 flex-1 space-y-1 relative">
-        <div
-          className="absolute left-[-20px] w-1 rounded-r-full bg-blue-500 transition-all duration-300 [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] z-10"
-          style={{
-            top: indicatorStyle.top,
-            height: indicatorStyle.height,
-            opacity: indicatorStyle.opacity,
-          }}
-          aria-hidden="true"
-        />
-
+      {/* ── Navigation ── */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3 space-y-0.5">
         {items.map((item) => {
           const isActive = activeKey === item.key;
           const label =
             item.key === "created" && currentRole === "EMPLOYEE"
               ? "My Tickets"
               : item.label;
-          const showAdminArrow =
-            !collapsed &&
+          const isAdminTrigger =
             item.key === "admin" &&
             showAdminSidebarTrigger &&
             typeof onOpenAdminSidebar === "function";
+
           return (
             <div key={item.key}>
               <button
                 type="button"
-                data-active={isActive}
-                data-indicator-height="24"
-                data-indicator-padding="8"
                 onClick={
-                  showAdminArrow && onOpenAdminSidebar
-                    ? () => onOpenAdminSidebar()
+                  isAdminTrigger && onOpenAdminSidebar
+                    ? onOpenAdminSidebar
                     : () => onSelect(item.key)
                 }
-                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200 ${
+                title={collapsed ? label : undefined}
+                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150 ${
                   collapsed ? "justify-center" : ""
                 } ${
                   isActive
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                    ? "bg-white/[0.09] text-white"
+                    : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
                 }`}
               >
-                <span className="flex-shrink-0">
-                  <item.icon
-                    className={`h-5 w-5 transition-colors ${isActive ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"}`}
+                {/* Active left-bar indicator */}
+                {isActive && (
+                  <span
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                    style={{ background: "hsl(var(--primary))" }}
+                    aria-hidden="true"
                   />
-                </span>
+                )}
+
+                <item.icon
+                  className={`flex-shrink-0 h-[18px] w-[18px] transition-colors duration-150 ${
+                    isActive
+                      ? "text-[hsl(var(--primary))]"
+                      : "text-white/30 group-hover:text-white/55"
+                  }`}
+                />
+
                 {!collapsed && (
-                  <span className="flex-1 text-left truncate flex items-center justify-between pr-2">
-                    <span className="flex items-center gap-2">{label}</span>
+                  <>
+                    <span className="flex-1 text-left truncate">{label}</span>
+
                     {typeof item.badge === "number" && item.badge > 0 && (
                       <span
-                        className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        className={`flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-bold tabular-nums ${
                           isActive
-                            ? "bg-blue-500 text-white"
-                            : "bg-slate-700 text-slate-300 group-hover:bg-slate-600 group-hover:text-white transition-colors"
+                            ? "bg-[hsl(var(--primary)/0.2)] text-[hsl(var(--primary))]"
+                            : "bg-white/[0.09] text-white/40 group-hover:text-white/60"
                         }`}
                       >
                         {item.badge > 99 ? "99+" : item.badge}
                       </span>
                     )}
-                  </span>
-                )}
-                {!collapsed && showAdminArrow && (
-                  <ArrowRight
-                    className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-blue-400" : "text-slate-600 group-hover:text-slate-400"}`}
-                  />
+
+                    {isAdminTrigger && (
+                      <ArrowRight className="h-3.5 w-3.5 flex-shrink-0 text-white/25 group-hover:text-white/45 transition-colors" />
+                    )}
+                  </>
                 )}
               </button>
 
+              {/* Children */}
               {!collapsed && item.children && item.children.length > 0 && (
-                <div className="mt-1.5 ml-11 space-y-1 border-l border-slate-700/50 pl-3">
+                <div className="mt-0.5 ml-9 pl-3 border-l border-white/[0.08] space-y-0.5">
                   {item.children.map((child) => {
                     const childActive = activeKey === child.key;
                     return (
                       <button
                         key={child.key}
                         type="button"
-                        data-active={childActive}
-                        data-indicator-height="20"
-                        data-indicator-padding="6"
                         onClick={() => onSelect(child.key)}
-                        className={`relative w-full text-left text-[13px] font-medium px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-2 ${
+                        className={`w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${
                           childActive
-                            ? "bg-slate-800 text-white shadow-sm"
-                            : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+                            ? "text-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]"
+                            : "text-white/35 hover:text-white/62 hover:bg-white/[0.05]"
                         }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full transition-colors ${
-                            childActive ? "bg-blue-400" : "bg-slate-600"
+                          className={`h-1.5 w-1.5 rounded-full flex-shrink-0 transition-colors ${
+                            childActive
+                              ? "bg-[hsl(var(--primary))]"
+                              : "bg-white/20"
                           }`}
                         />
-                        <span className="truncate flex-1" title={child.label}>
+                        <span className="flex-1 truncate text-left">
                           {child.label}
                         </span>
                         {typeof child.badge === "number" && child.badge > 0 && (
                           <span
-                            className={`flex-shrink-0 min-w-[1.25rem] h-5 px-1.5 rounded-full flex items-center justify-between text-[10px] font-bold ${
+                            className={`text-[10px] font-bold tabular-nums ${
                               childActive
-                                ? "bg-blue-500 text-white"
-                                : "bg-slate-700 text-slate-300 group-hover:bg-slate-600 group-hover:text-white transition-colors"
+                                ? "text-[hsl(var(--primary))]"
+                                : "text-white/30"
                             }`}
                           >
                             {child.badge > 99 ? "99+" : child.badge}
@@ -216,36 +184,48 @@ export const Sidebar = memo(function Sidebar({
         })}
       </nav>
 
+      {/* ── New Ticket ── */}
       {onCreateTicket && (
-        <div className="mt-4">
+        <div className="px-2.5 pb-2.5">
           <button
             type="button"
             onClick={onCreateTicket}
-            className={`w-full inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors ${collapsed ? "justify-center" : ""}`}
+            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-[13px] font-semibold text-white transition-all duration-150 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 ${
+              collapsed ? "justify-center" : ""
+            }`}
+            style={{
+              background: "linear-gradient(135deg, hsl(193 95% 55% / 0.85) 0%, hsl(217 91% 60% / 0.85) 100%)",
+            }}
+            title={collapsed ? "New Ticket" : undefined}
           >
-            <Plus className="h-5 w-5 flex-shrink-0" />
+            <Plus className="h-4 w-4 flex-shrink-0" />
             {!collapsed && <span>New Ticket</span>}
           </button>
         </div>
       )}
 
-      <div className="mt-6 border-t border-slate-800 pt-4 flex items-center justify-between">
-        {!collapsed && <span />}
-        {!hideCollapseToggle && (
+      {/* ── Collapse Toggle ── */}
+      {!hideCollapseToggle && (
+        <div className="px-2.5 pb-4 pt-2 border-t border-white/[0.07] flex-shrink-0">
           <button
             type="button"
             onClick={onToggle}
-            className="h-8 w-8 rounded-full border border-slate-700 bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium text-white/28 hover:text-white/55 hover:bg-white/[0.06] transition-all duration-150 ${
+              collapsed ? "justify-center" : ""
+            }`}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
             ) : (
-              <ChevronLeft className="h-4 w-4" />
+              <>
+                <ChevronLeft className="h-4 w-4" />
+                <span>Collapse</span>
+              </>
             )}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 });

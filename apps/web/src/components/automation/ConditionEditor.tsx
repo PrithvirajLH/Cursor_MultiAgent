@@ -67,9 +67,9 @@ export function ConditionEditor({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 p-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 p-2 text-sm">
       <select
-        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+        className="rounded border border-border bg-card px-2 py-1 text-xs"
         value={field}
         onChange={(e) => onChange({ ...condition, field: e.target.value })}
       >
@@ -80,7 +80,7 @@ export function ConditionEditor({
         ))}
       </select>
       <select
-        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+        className="rounded border border-border bg-card px-2 py-1 text-xs"
         value={operator}
         onChange={(e) => onChange({ ...condition, operator: e.target.value })}
       >
@@ -94,7 +94,7 @@ export function ConditionEditor({
         <>
           {field === "priority" && (
             <select
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+              className="rounded border border-border bg-card px-2 py-1 text-xs"
               value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
@@ -110,7 +110,7 @@ export function ConditionEditor({
           )}
           {field === "status" && (
             <select
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+              className="rounded border border-border bg-card px-2 py-1 text-xs"
               value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
@@ -126,7 +126,7 @@ export function ConditionEditor({
           )}
           {field === "assignedTeamId" && (
             <select
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+              className="rounded border border-border bg-card px-2 py-1 text-xs"
               value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
@@ -142,7 +142,7 @@ export function ConditionEditor({
           )}
           {field === "assigneeId" && (
             <select
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs min-w-[140px]"
+              className="rounded border border-border bg-card px-2 py-1 text-xs min-w-[140px]"
               value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
@@ -158,7 +158,7 @@ export function ConditionEditor({
           )}
           {field === "categoryId" && (
             <select
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+              className="rounded border border-border bg-card px-2 py-1 text-xs"
               value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
               onChange={(e) =>
                 setValue(isMulti ? [e.target.value] : e.target.value)
@@ -175,7 +175,7 @@ export function ConditionEditor({
           {(field === "subject" || field === "description") && (
             <input
               type="text"
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs min-w-[120px]"
+              className="rounded border border-border bg-card px-2 py-1 text-xs min-w-[120px]"
               placeholder={isMulti ? "Comma-separated" : "Value"}
               value={
                 isMulti
@@ -204,7 +204,7 @@ export function ConditionEditor({
       <button
         type="button"
         onClick={onRemove}
-        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+        className="rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
       >
         Remove
       </button>

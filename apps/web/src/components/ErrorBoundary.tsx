@@ -68,11 +68,11 @@ function DefaultFallback({
 }) {
   return (
     <div className="flex min-h-[50vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-8 text-center shadow-lg">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+      <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-card p-8 text-center shadow-lg">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/20">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-7 w-7 text-red-600"
+            className="h-7 w-7 text-red-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -87,16 +87,16 @@ function DefaultFallback({
           </svg>
         </div>
 
-        <h2 className="mb-2 text-lg font-semibold text-slate-900">
+        <h2 className="mb-2 text-lg font-semibold text-foreground">
           Something went wrong
         </h2>
-        <p className="mb-6 text-sm text-slate-600">
+        <p className="mb-6 text-sm text-muted-foreground">
           An unexpected error occurred. You can try again or reload the page.
         </p>
 
         {/* Show error message in dev for easier debugging */}
         {import.meta.env.DEV && error?.message && (
-          <pre className="mb-6 max-h-32 overflow-auto rounded-lg bg-red-50 p-3 text-left text-xs text-red-800">
+          <pre className="mb-6 max-h-32 overflow-auto rounded-lg bg-red-500/10 p-3 text-left text-xs text-red-400">
             {error.message}
           </pre>
         )}
@@ -112,7 +112,7 @@ function DefaultFallback({
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30 focus-visible:ring-offset-1"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-1"
           >
             Reload page
           </button>
@@ -272,11 +272,11 @@ export function RouteErrorFallback({
 }) {
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-red-200 bg-white p-8 text-center shadow-lg">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+      <div className="w-full max-w-md rounded-2xl border border-red-500/30 bg-card p-8 text-center shadow-lg">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/20">
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-7 w-7 text-red-600"
+            className="h-7 w-7 text-red-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -291,16 +291,16 @@ export function RouteErrorFallback({
           </svg>
         </div>
 
-        <h2 className="mb-2 text-lg font-semibold text-slate-900">
+        <h2 className="mb-2 text-lg font-semibold text-foreground">
           This page ran into an error
         </h2>
-        <p className="mb-6 text-sm text-slate-600">
+        <p className="mb-6 text-sm text-muted-foreground">
           Something went wrong while loading this section. The rest of the app
           is still working.
         </p>
 
         {import.meta.env.DEV && error?.message && (
-          <pre className="mb-6 max-h-32 overflow-auto rounded-lg bg-red-50 p-3 text-left text-xs text-red-800">
+          <pre className="mb-6 max-h-32 overflow-auto rounded-lg bg-red-500/10 p-3 text-left text-xs text-red-400">
             {error.message}
           </pre>
         )}
@@ -315,7 +315,7 @@ export function RouteErrorFallback({
           </button>
           <a
             href="/dashboard"
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/30 focus-visible:ring-offset-1"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-border bg-card px-5 text-sm font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border focus-visible:ring-offset-1"
           >
             Go to Dashboard
           </a>

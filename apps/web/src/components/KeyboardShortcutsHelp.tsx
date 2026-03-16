@@ -34,12 +34,12 @@ const TICKET_DETAIL_SHORTCUTS: ShortcutItem[] = [
 function ShortcutRow({ keys, description }: ShortcutItem) {
   return (
     <div className="flex items-center justify-between gap-4 py-2">
-      <span className="text-sm text-slate-600">{description}</span>
+      <span className="text-sm text-muted-foreground">{description}</span>
       <div className="flex items-center gap-1">
         {keys.map((key) => (
           <kbd
             key={key}
-            className="px-2 py-1 rounded border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700"
+            className="px-2 py-1 rounded border border-border bg-muted text-xs font-medium text-foreground"
           >
             {key}
           </kbd>
@@ -82,14 +82,14 @@ export function KeyboardShortcutsHelp({
         aria-label="Keyboard shortcuts"
         tabIndex={-1}
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <h2 className="text-lg font-semibold text-slate-900">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-lg font-semibold text-foreground">
             Keyboard shortcuts
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+            className="h-8 w-8 rounded-lg border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -114,10 +114,10 @@ export function KeyboardShortcutsHelp({
 
           {showTicketsList && (
             <div>
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Ticket list
               </h3>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border">
                 {TICKETS_LIST_SHORTCUTS.map((item) => (
                   <ShortcutRow
                     key={item.description}
@@ -131,10 +131,10 @@ export function KeyboardShortcutsHelp({
 
           {showTicketDetail && (
             <div>
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                 Ticket detail
               </h3>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border">
                 {TICKET_DETAIL_SHORTCUTS.map((item) => (
                   <ShortcutRow
                     key={item.description}
@@ -147,9 +147,9 @@ export function KeyboardShortcutsHelp({
           )}
         </div>
 
-        <div className="border-t border-slate-200 px-4 py-2 text-xs text-slate-500">
+        <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
           Press{" "}
-          <kbd className="px-1 py-0.5 rounded border border-slate-200 bg-slate-50">
+          <kbd className="px-1 py-0.5 rounded border border-border bg-muted">
             ?
           </kbd>{" "}
           anytime to show this help

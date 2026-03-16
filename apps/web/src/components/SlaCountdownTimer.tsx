@@ -57,38 +57,38 @@ const STATE_STYLES: Record<
 > = {
   on_track: {
     bar: "bg-emerald-500",
-    text: "text-emerald-700",
+    text: "text-emerald-400",
     label: "On track",
   },
   caution: {
     bar: "bg-amber-500",
-    text: "text-amber-700",
+    text: "text-amber-400",
     label: "Caution",
   },
   at_risk: {
     bar: "bg-orange-500",
-    text: "text-orange-700",
+    text: "text-orange-400",
     pulse: true,
     label: "At risk",
   },
   breached: {
     bar: "bg-rose-500",
-    text: "text-rose-700",
+    text: "text-rose-400",
     label: "Breached",
   },
   paused: {
-    bar: "bg-slate-300",
-    text: "text-slate-600",
+    bar: "bg-muted-foreground/30",
+    text: "text-muted-foreground",
     label: "Paused",
   },
   met: {
     bar: "bg-emerald-500",
-    text: "text-emerald-700",
+    text: "text-emerald-400",
     label: "Met",
   },
   no_sla: {
-    bar: "bg-slate-200",
-    text: "text-slate-500",
+    bar: "bg-muted",
+    text: "text-muted-foreground",
     label: "No SLA",
   },
 };
@@ -110,10 +110,10 @@ export function SlaCountdownTimer({
   if (!ticket) {
     return (
       <div
-        className={`rounded-2xl border border-slate-200 bg-slate-50/80 p-4 ${className}`}
+        className={`rounded-2xl border border-border bg-muted/50 p-4 ${className}`}
       >
-        <p className="text-sm font-semibold text-slate-700">{title}</p>
-        <p className="text-xs text-slate-500 mt-1">No SLA data</p>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground mt-1">No SLA data</p>
       </div>
     );
   }
@@ -126,10 +126,10 @@ export function SlaCountdownTimer({
   if (isFirstResponse && ticket.firstResponseAt) {
     return (
       <div
-        className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 ${className}`}
+        className={`rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 ${className}`}
       >
-        <p className="text-sm font-semibold text-emerald-800">{title}</p>
-        <p className="text-xs text-emerald-600 mt-1">Responded</p>
+        <p className="text-sm font-semibold text-emerald-400">{title}</p>
+        <p className="text-xs text-emerald-400/70 mt-1">Responded</p>
       </div>
     );
   }
@@ -137,10 +137,10 @@ export function SlaCountdownTimer({
   if (!isFirstResponse && ticket.completedAt) {
     return (
       <div
-        className={`rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 ${className}`}
+        className={`rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 ${className}`}
       >
-        <p className="text-sm font-semibold text-emerald-800">{title}</p>
-        <p className="text-xs text-emerald-600 mt-1">Met</p>
+        <p className="text-sm font-semibold text-emerald-400">{title}</p>
+        <p className="text-xs text-emerald-400/70 mt-1">Met</p>
       </div>
     );
   }
@@ -149,10 +149,10 @@ export function SlaCountdownTimer({
   if (!dueAt) {
     return (
       <div
-        className={`rounded-2xl border border-slate-200 bg-slate-50/80 p-4 ${className}`}
+        className={`rounded-2xl border border-border bg-muted/50 p-4 ${className}`}
       >
-        <p className="text-sm font-semibold text-slate-700">{title}</p>
-        <p className="text-xs text-slate-500 mt-1">No SLA configured</p>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="text-xs text-muted-foreground mt-1">No SLA configured</p>
       </div>
     );
   }
@@ -182,19 +182,19 @@ export function SlaCountdownTimer({
 
   return (
     <div
-      className={`rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-soft ${className} ${
+      className={`rounded-2xl border border-border bg-card/90 p-4 shadow-soft ${className} ${
         styles.pulse ? "animate-pulse" : ""
       }`}
       title={tooltipTitle}
     >
-      <p className="text-sm font-semibold text-slate-900">{title}</p>
+      <p className="text-sm font-semibold text-foreground">{title}</p>
       {isPaused ? (
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-500">
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
           <Clock className="h-4 w-4 shrink-0" aria-hidden />
           <span className="text-xs font-medium">Paused</span>
           {ticket.slaPausedAt && (
             <span
-              className="text-xs text-slate-400"
+              className="text-xs text-muted-foreground/70"
               title={formatDateLong(ticket.slaPausedAt)}
             >
               since <RelativeTime value={ticket.slaPausedAt} />
@@ -215,7 +215,7 @@ export function SlaCountdownTimer({
           </div>
           {!hideProgressPercent && (
             <>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${styles.bar}`}
                   style={{ width: `${pctRemaining}%` }}
@@ -226,7 +226,7 @@ export function SlaCountdownTimer({
                   aria-label={`${pctRemaining.toFixed(0)}% remaining`}
                 />
               </div>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {Math.round(pctRemaining)}% remaining · Due {formatDate(dueAt)}
               </p>
             </>
@@ -235,7 +235,7 @@ export function SlaCountdownTimer({
             <p className="mt-1 text-xs text-slate-500">
               Due {formatDate(dueAt)}
               {hasBeenPaused && (
-                <span className="ml-1 text-slate-400">
+                <span className="ml-1 text-muted-foreground/60">
                   (SLA was paused; % not shown)
                 </span>
               )}

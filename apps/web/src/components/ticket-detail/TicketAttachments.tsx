@@ -26,14 +26,14 @@ export function TicketAttachments({
         aria-label="Attachments"
         className="flex flex-1 items-center justify-center px-6 py-8"
       >
-        <div className="max-w-md rounded-2xl border border-dashed border-slate-300 bg-white px-8 py-10 text-center shadow-sm">
+        <div className="max-w-md rounded-2xl border border-dashed border-border bg-card px-8 py-10 text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
             <Paperclip className="h-5 w-5" />
           </div>
-          <h2 className="text-sm font-semibold text-slate-900">
+          <h2 className="text-sm font-semibold text-foreground">
             No attachments yet
           </h2>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted-foreground">
             Files you upload to this ticket will appear here.
           </p>
         </div>
@@ -106,10 +106,10 @@ export function TicketAttachments({
               <Paperclip className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-900">
+              <p className="text-sm font-semibold text-foreground">
                 Attachments
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {ticket.attachments.length} file
                 {ticket.attachments.length > 1 ? "s" : ""} attached.
               </p>
@@ -121,21 +121,21 @@ export function TicketAttachments({
           <p className="text-xs text-rose-600">{attachmentError}</p>
         ) : null}
 
-        <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+        <div className="divide-y divide-border rounded-xl border border-border bg-card">
           {ticket.attachments.map((attachment) => (
             <div
               key={attachment.id}
-              className="flex items-center justify-between gap-3 px-4 py-3 text-xs text-slate-700"
+              className="flex items-center justify-between gap-3 px-4 py-3 text-xs text-foreground"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100">
-                  <Paperclip className="h-3.5 w-3.5 text-slate-500" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted">
+                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-slate-900">
+                  <p className="truncate font-medium text-foreground">
                     {attachment.fileName}
                   </p>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-muted-foreground">
                     {(attachment.sizeBytes / 1024).toFixed(1)} KB •{" "}
                     {attachment.contentType}
                   </p>
@@ -154,7 +154,7 @@ export function TicketAttachments({
                   onClick={() =>
                     onDownloadAttachment(attachment.id, attachment.fileName)
                   }
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                  className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-semibold text-foreground hover:bg-muted"
                 >
                   Download
                 </button>
@@ -164,7 +164,7 @@ export function TicketAttachments({
         </div>
 
         {expandedAttachment ? (
-          <div className="relative mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 text-slate-50 shadow-2xl transition-all">
+          <div className="relative mt-4 overflow-hidden rounded-2xl border border-border bg-slate-950 text-slate-50 shadow-2xl transition-all">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(94,234,212,0.18),_transparent_55%)]" />
             <div className="relative flex flex-col gap-4 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-3">

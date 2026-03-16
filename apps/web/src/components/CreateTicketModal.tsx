@@ -118,9 +118,9 @@ export function CreateTicketModal({
   }
 
   const inputBase =
-    "w-full rounded-lg border px-3 py-2 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500";
+    "w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring";
   const inputError = "border-red-400";
-  const inputNormal = "border-slate-300 bg-white";
+  const inputNormal = "border-border bg-card";
 
   return (
     <div
@@ -141,21 +141,21 @@ export function CreateTicketModal({
             onClose();
           }
         }}
-        className="w-full max-w-xl rounded-xl bg-white shadow-2xl"
+        className="w-full max-w-xl rounded-xl bg-card shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">
+            <h3 className="text-base font-semibold text-foreground">
               Raise a new ticket
             </h3>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Select the department and describe the issue.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600"
+            className="text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -169,7 +169,7 @@ export function CreateTicketModal({
           <div>
             <label
               htmlFor="create-ticket-team"
-              className="mb-1 block text-xs font-medium text-slate-700"
+              className="mb-1 block text-xs font-medium text-foreground"
             >
               Department *
             </label>
@@ -195,7 +195,7 @@ export function CreateTicketModal({
             <div>
               <label
                 htmlFor="create-ticket-category"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-foreground"
               >
                 Category (optional)
               </label>
@@ -217,12 +217,12 @@ export function CreateTicketModal({
             <div className="mb-1 flex items-center justify-between">
               <label
                 htmlFor="create-ticket-subject"
-                className="block text-xs font-medium text-slate-700"
+                className="block text-xs font-medium text-foreground"
               >
                 Subject *
               </label>
               <span
-                className={`text-xs ${(subjectValue?.length ?? 0) > CREATE_TICKET_SUBJECT_MAX ? "text-red-500" : "text-slate-400"}`}
+                className={`text-xs ${(subjectValue?.length ?? 0) > CREATE_TICKET_SUBJECT_MAX ? "text-red-500" : "text-muted-foreground"}`}
               >
                 {subjectValue?.length ?? 0}/{CREATE_TICKET_SUBJECT_MAX}
               </span>
@@ -243,12 +243,12 @@ export function CreateTicketModal({
             <div className="mb-1 flex items-center justify-between">
               <label
                 htmlFor="create-ticket-description"
-                className="block text-xs font-medium text-slate-700"
+                className="block text-xs font-medium text-foreground"
               >
                 Description *
               </label>
               <span
-                className={`text-xs ${(descriptionValue?.length ?? 0) > CREATE_TICKET_DESCRIPTION_MAX ? "text-red-500" : "text-slate-400"}`}
+                className={`text-xs ${(descriptionValue?.length ?? 0) > CREATE_TICKET_DESCRIPTION_MAX ? "text-red-500" : "text-muted-foreground"}`}
               >
                 {descriptionValue?.length ?? 0}/{CREATE_TICKET_DESCRIPTION_MAX}
               </span>
@@ -270,7 +270,7 @@ export function CreateTicketModal({
             <div>
               <label
                 htmlFor="create-ticket-priority"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-foreground"
               >
                 Priority
               </label>
@@ -293,7 +293,7 @@ export function CreateTicketModal({
             <div>
               <label
                 htmlFor="create-ticket-channel"
-                className="mb-1 block text-xs font-medium text-slate-700"
+                className="mb-1 block text-xs font-medium text-foreground"
               >
                 Channel
               </label>
@@ -313,8 +313,8 @@ export function CreateTicketModal({
             </div>
           </div>
           {customFields.length > 0 && (
-            <div className="space-y-3 border-t border-slate-200 pt-4">
-              <p className="text-xs font-medium text-slate-700">
+            <div className="space-y-3 border-t border-border pt-4">
+              <p className="text-xs font-medium text-foreground">
                 Custom fields
               </p>
               {customFields.map((field) => (

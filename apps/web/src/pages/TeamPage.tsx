@@ -84,17 +84,17 @@ function MemberRoleDropdown({
         onClick={() => {
           if (!disabled) setOpen((prev) => !prev);
         }}
-        className={`inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-1.5 text-sm ${
+        className={`inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm ${
           disabled
-            ? "cursor-not-allowed bg-slate-100"
-            : "bg-white hover:bg-slate-50"
+            ? "cursor-not-allowed bg-accent"
+            : "bg-card hover:bg-accent"
         }`}
       >
         <RoleBadge role={member.role} />
-        {!disabled ? <ChevronDown className="h-4 w-4 text-slate-500" /> : null}
+        {!disabled ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : null}
       </button>
       {open && !disabled ? (
-        <div className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-slate-200 bg-white shadow-lg">
+        <div className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-border bg-card shadow-lg">
           {roleOptions.map((roleValue) => (
             <button
               key={`${member.id}-${roleValue}`}
@@ -103,7 +103,7 @@ function MemberRoleDropdown({
                 setOpen(false);
                 onChange(member, roleValue);
               }}
-              className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+              className={`block w-full px-4 py-2 text-left text-sm hover:bg-accent ${
                 member.role === roleValue ? "bg-blue-50" : ""
               }`}
             >
@@ -118,7 +118,7 @@ function MemberRoleDropdown({
 
 function MemberSkeleton() {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-2">
           <div className="h-5 w-32 rounded skeleton-shimmer" />
@@ -417,8 +417,8 @@ export function TeamPage({
   }, [addRoleOptions, selectedRole]);
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -429,10 +429,10 @@ export function TeamPage({
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Team Directory
                   </h1>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     View and manage team membership
                   </p>
                 </div>
@@ -440,10 +440,10 @@ export function TeamPage({
             />
           ) : (
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Team Directory
               </h1>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 View and manage team membership
               </p>
             </div>
@@ -471,18 +471,18 @@ export function TeamPage({
                   <button
                     type="button"
                     onClick={() => setShowTeamDropdown((prev) => !prev)}
-                    className="flex w-full items-center justify-between rounded-lg border border-slate-300 px-4 py-2.5 text-sm hover:bg-slate-50"
+                    className="flex w-full items-center justify-between rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted"
                   >
                     <div className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-slate-400" />
-                      <span className="text-slate-700">
+                      <Users className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-foreground">
                         {selectedTeam ? selectedTeam.name : "Select department"}
                       </span>
                     </div>
-                    <ChevronDown className="h-5 w-5 text-slate-400" />
+                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
                   </button>
                   {showTeamDropdown ? (
-                    <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg">
+                    <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
                       {teamsList.map((team) => (
                         <button
                           key={team.id}
@@ -492,10 +492,10 @@ export function TeamPage({
                             setMemberError(null);
                             setShowTeamDropdown(false);
                           }}
-                          className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                          className={`block w-full px-4 py-2 text-left text-sm hover:bg-accent ${
                             selectedTeamId === team.id
                               ? "bg-blue-50 text-blue-700"
-                              : "text-slate-700"
+                              : "text-foreground"
                           }`}
                         >
                           {team.name}
@@ -505,8 +505,8 @@ export function TeamPage({
                   ) : null}
                 </div>
               ) : (
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
-                  <Users className="h-5 w-5 text-slate-400" />
+                <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm text-foreground">
+                  <Users className="h-5 w-5 text-muted-foreground" />
                   <span>
                     {selectedTeam ? selectedTeam.name : "Select a department"}
                   </span>
@@ -523,11 +523,11 @@ export function TeamPage({
 
           {teamsList.length === 0 ? (
             <div className="py-12 text-center">
-              <Users className="mx-auto mb-4 h-12 w-12 text-slate-400" />
-              <h3 className="mb-2 text-lg font-semibold text-slate-900">
+              <Users className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <h3 className="mb-2 text-lg font-semibold text-foreground">
                 No departments yet
               </h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 {isOwner
                   ? "Create a department to start adding members."
                   : "No departments available. Contact an owner to create departments."}
@@ -537,11 +537,11 @@ export function TeamPage({
 
           {teamsList.length > 0 && !selectedTeamId ? (
             <div className="py-12 text-center">
-              <Users className="mx-auto mb-4 h-12 w-12 text-slate-400" />
-              <h3 className="mb-2 text-lg font-semibold text-slate-900">
+              <Users className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <h3 className="mb-2 text-lg font-semibold text-foreground">
                 Select a department
               </h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Choose a team to view members and manage access.
               </p>
             </div>
@@ -551,11 +551,11 @@ export function TeamPage({
             <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
               <div>
                 <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-900">
+                  <h3 className="text-sm font-semibold text-foreground">
                     Members
                   </h3>
                   {loadingMembers ? (
-                    <span className="text-sm text-slate-500">Loading...</span>
+                    <span className="text-sm text-muted-foreground">Loading...</span>
                   ) : null}
                 </div>
                 <div className="space-y-3">
@@ -568,9 +568,9 @@ export function TeamPage({
                   ) : null}
 
                   {!loadingMembers && members.length === 0 ? (
-                    <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 py-8 text-center">
-                      <Users className="mx-auto mb-3 h-10 w-10 text-slate-400" />
-                      <p className="text-sm text-slate-500">
+                    <div className="rounded-xl border-2 border-dashed border-border bg-muted py-8 text-center">
+                      <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
                         No members found.
                       </p>
                     </div>
@@ -580,11 +580,11 @@ export function TeamPage({
                     ? members.map((member) => (
                         <div
                           key={member.id}
-                          className="rounded-xl border border-slate-200 bg-white p-4"
+                          className="rounded-xl border border-border bg-card p-4"
                         >
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
                                 {member.user.displayName
                                   .split(" ")
                                   .map((chunk) => chunk[0] ?? "")
@@ -593,10 +593,10 @@ export function TeamPage({
                                   .toUpperCase()}
                               </div>
                               <div>
-                                <h4 className="text-sm font-semibold text-slate-900">
+                                <h4 className="text-sm font-semibold text-foreground">
                                   {member.user.displayName}
                                 </h4>
-                                <p className="text-sm text-slate-500">
+                                <p className="text-sm text-muted-foreground">
                                   {member.user.email}
                                 </p>
                               </div>
@@ -627,11 +627,11 @@ export function TeamPage({
               </div>
 
               <div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
-                  <h3 className="mb-2 text-sm font-semibold text-slate-900">
+                <div className="rounded-xl border border-border bg-muted p-6">
+                  <h3 className="mb-2 text-sm font-semibold text-foreground">
                     Add member
                   </h3>
-                  <p className="mb-4 text-sm text-slate-500">
+                  <p className="mb-4 text-sm text-muted-foreground">
                     {isReadOnly
                       ? "Admin access is required to manage memberships."
                       : "Invite an existing user to this team."}
@@ -656,7 +656,7 @@ export function TeamPage({
                   ) : (
                     <div className="space-y-4">
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                        <label className="mb-1 block text-xs font-medium text-foreground">
                           User
                         </label>
                         <div className="relative" data-user-dropdown>
@@ -664,16 +664,16 @@ export function TeamPage({
                             type="button"
                             disabled={actionLoading || loadingUsers}
                             onClick={() => setShowUserDropdown((prev) => !prev)}
-                            className="flex w-full items-center justify-between rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                            className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:bg-accent"
                           >
-                            <span className="text-slate-700">
+                            <span className="text-foreground">
                               {userSelectionLabel}
                             </span>
-                            <ChevronDown className="h-4 w-4 text-slate-500" />
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           </button>
 
                           {showUserDropdown && availableUsers.length > 0 ? (
-                            <div className="absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                            <div className="absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
                               {availableUsers.map((user) => (
                                 <button
                                   key={user.id}
@@ -682,12 +682,12 @@ export function TeamPage({
                                     setSelectedUserId(user.id);
                                     setShowUserDropdown(false);
                                   }}
-                                  className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100"
+                                  className="block w-full px-4 py-2 text-left text-sm hover:bg-accent"
                                 >
-                                  <div className="font-medium text-slate-900">
+                                  <div className="font-medium text-foreground">
                                     {user.displayName}
                                   </div>
-                                  <div className="text-xs text-slate-500">
+                                  <div className="text-xs text-muted-foreground">
                                     {user.email}
                                   </div>
                                 </button>
@@ -698,7 +698,7 @@ export function TeamPage({
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-700">
+                        <label className="mb-1 block text-xs font-medium text-foreground">
                           Role
                         </label>
                         <div className="relative" data-add-role-dropdown>
@@ -706,13 +706,13 @@ export function TeamPage({
                             type="button"
                             disabled={actionLoading}
                             onClick={() => setShowRoleDropdown((prev) => !prev)}
-                            className="flex w-full items-center justify-between rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                            className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:bg-accent"
                           >
                             <RoleBadge role={selectedRole} />
-                            <ChevronDown className="h-4 w-4 text-slate-500" />
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           </button>
                           {showRoleDropdown ? (
-                            <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg">
+                            <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
                               {addRoleOptions.map((roleValue) => (
                                 <button
                                   key={`new-member-${roleValue}`}
@@ -721,7 +721,7 @@ export function TeamPage({
                                     setSelectedRole(roleValue);
                                     setShowRoleDropdown(false);
                                   }}
-                                  className="block w-full px-4 py-2 text-left text-sm hover:bg-slate-100"
+                                  className="block w-full px-4 py-2 text-left text-sm hover:bg-accent"
                                 >
                                   <RoleBadge role={roleValue} />
                                 </button>
@@ -737,7 +737,7 @@ export function TeamPage({
                         disabled={
                           !canAddSelectedUser || actionLoading || loadingUsers
                         }
-                        className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
                       >
                         {actionLoading ? "Adding..." : "Add member"}
                       </button>

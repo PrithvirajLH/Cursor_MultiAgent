@@ -143,8 +143,8 @@ const OPEN_STATUSES = new Set([
   "TRIAGED",
   "ASSIGNED",
   "IN_PROGRESS",
-  "WAITING_ON_CUSTOMER",
-  "WAITING_ON_THIRDPARTY",
+  "WAITING_ON_REQUESTER",
+  "WAITING_ON_VENDOR",
   "REOPENED",
 ]);
 
@@ -217,10 +217,10 @@ function priorityClass(priority?: string | null): string {
     case "P2":
       return "bg-orange-100 text-orange-700";
     case "P3":
-      return "bg-blue-100 text-blue-700";
+      return "bg-primary/10 text-primary";
     case "P4":
     default:
-      return "bg-slate-100 text-slate-700";
+      return "bg-white/[0.06] text-muted-foreground";
   }
 }
 
@@ -228,10 +228,10 @@ function activitySummary(ticket: TicketRecord): string {
   if (ticket.status === "RESOLVED" || ticket.status === "CLOSED") {
     return "Resolved";
   }
-  if (ticket.status === "WAITING_ON_CUSTOMER") {
+  if (ticket.status === "WAITING_ON_REQUESTER") {
     return "Waiting for requester";
   }
-  if (ticket.status === "WAITING_ON_THIRDPARTY") {
+  if (ticket.status === "WAITING_ON_VENDOR") {
     return "Waiting for vendor";
   }
   return `Status changed to ${formatStatus(ticket.status)}`;
@@ -251,32 +251,32 @@ function kpiToneClass(tone: KpiTone): {
     case "green":
       return {
         bg: "bg-green-500",
-        text: "text-green-600",
-        bgTone: "bg-green-50",
+        text: "text-green-400",
+        bgTone: "bg-green-500/10",
       };
     case "purple":
       return {
         bg: "bg-violet-500",
-        text: "text-violet-600",
-        bgTone: "bg-violet-50",
+        text: "text-violet-400",
+        bgTone: "bg-violet-500/10",
       };
     case "orange":
       return {
         bg: "bg-orange-500",
-        text: "text-orange-600",
-        bgTone: "bg-orange-50",
+        text: "text-orange-400",
+        bgTone: "bg-orange-500/10",
       };
     case "red":
-      return { bg: "bg-red-500", text: "text-red-600", bgTone: "bg-red-50" };
+      return { bg: "bg-red-500", text: "text-red-400", bgTone: "bg-red-500/10" };
     case "gray":
       return {
         bg: "bg-slate-400",
-        text: "text-slate-600",
-        bgTone: "bg-slate-100",
+        text: "text-muted-foreground",
+        bgTone: "bg-white/[0.06]",
       };
     case "blue":
     default:
-      return { bg: "bg-blue-600", text: "text-blue-600", bgTone: "bg-blue-50" };
+      return { bg: "bg-blue-600", text: "text-primary", bgTone: "bg-primary/10" };
   }
 }
 
@@ -312,7 +312,7 @@ function ChartLegend({
   items: Array<{ label: string; color: string }>;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600">
+    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
       {items.map((item) => (
         <div key={item.label} className="inline-flex items-center gap-2">
           <span
@@ -362,7 +362,7 @@ function StatusDonutChart({ data }: { data: TicketStatusPoint[] }) {
 
   if (points.length === 0) {
     return (
-      <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
+      <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
         No tickets in range
       </div>
     );
@@ -423,7 +423,7 @@ function PriorityDonutChart({
 
   if (points.length === 0) {
     return (
-      <div className="flex h-[200px] items-center justify-center text-sm text-slate-500">
+      <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
         No tickets in range
       </div>
     );
@@ -493,18 +493,18 @@ function LeadAgentWorkloadBarChart({
         >
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="#e2e8f0"
+            stroke="hsl(222, 28%, 18%)"
             vertical={false}
           />
           <XAxis
             dataKey="name"
-            tick={{ fill: "#64748b", fontSize: 11 }}
+            tick={{ fill: "hsl(215, 22%, 48%)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             allowDecimals={false}
-            tick={{ fill: "#64748b", fontSize: 11 }}
+            tick={{ fill: "hsl(215, 22%, 48%)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
@@ -515,7 +515,9 @@ function LeadAgentWorkloadBarChart({
             ]}
             contentStyle={{
               borderRadius: "12px",
-              border: "1px solid #e2e8f0",
+              backgroundColor: "hsl(222, 40%, 13%)",
+              color: "hsl(215, 100%, 96%)",
+              border: "1px solid hsl(222, 28%, 18%)",
               boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
               fontSize: "12px",
             }}
@@ -559,18 +561,18 @@ function LeadSlaBarChart({
         >
           <CartesianGrid
             strokeDasharray="3 3"
-            stroke="#e2e8f0"
+            stroke="hsl(222, 28%, 18%)"
             vertical={false}
           />
           <XAxis
             dataKey="name"
-            tick={{ fill: "#64748b", fontSize: 12 }}
+            tick={{ fill: "hsl(215, 22%, 48%)", fontSize: 12 }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             allowDecimals={false}
-            tick={{ fill: "#64748b", fontSize: 11 }}
+            tick={{ fill: "hsl(215, 22%, 48%)", fontSize: 11 }}
             axisLine={false}
             tickLine={false}
           />
@@ -578,7 +580,9 @@ function LeadSlaBarChart({
             formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
             contentStyle={{
               borderRadius: "12px",
-              border: "1px solid #e2e8f0",
+              backgroundColor: "hsl(222, 40%, 13%)",
+              color: "hsl(215, 100%, 96%)",
+              border: "1px solid hsl(222, 28%, 18%)",
               boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
               fontSize: "12px",
             }}
@@ -659,7 +663,9 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
               formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
               contentStyle={{
                 borderRadius: "12px",
-                border: "1px solid #e2e8f0",
+                backgroundColor: "hsl(222, 40%, 13%)",
+                color: "hsl(215, 100%, 96%)",
+                border: "1px solid hsl(222, 28%, 18%)",
                 boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
                 fontSize: "12px",
               }}
@@ -684,7 +690,7 @@ function ModernTicketCard({
   return (
     <div
       onClick={onClick}
-      className="group flex flex-col sm:flex-row gap-5 p-6 bg-white border border-slate-100 rounded-[24px] shadow-[0_2px_12px_rgb(0,0,0,0.02)] hover:shadow-[0_8px_24px_rgb(0,0,0,0.06)] hover:border-blue-200 transition-all cursor-pointer mb-4"
+      className="group flex flex-col sm:flex-row gap-5 p-6 bg-card border border-border rounded-[24px] hover:border-primary/30 hover:shadow-glow-sm transition-all cursor-pointer mb-4"
     >
       <div className="flex-shrink-0">
         <div
@@ -701,18 +707,18 @@ function ModernTicketCard({
       </div>
       <div className="flex-grow">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-          <h3 className="text-[17px] font-bold text-slate-900 group-hover:text-blue-600 transition truncate pr-4">
+          <h3 className="text-[17px] font-bold text-foreground group-hover:text-primary transition truncate pr-4">
             {ticket.subject}
           </h3>
-          <span className="text-xs font-medium text-slate-400 whitespace-nowrap">
+          <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
             <RelativeTime value={ticket.updatedAt} />
           </span>
         </div>
-        <p className="text-[14px] text-slate-500 mb-5 line-clamp-1">
+        <p className="text-[14px] text-muted-foreground mb-5 line-clamp-1">
           {activitySummary(ticket)}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-600 text-xs font-bold tracking-wider uppercase border border-slate-100">
+          <span className="px-3 py-1.5 rounded-lg bg-white/[0.06] text-muted-foreground text-xs font-bold tracking-wider uppercase border border-border">
             ID: {formatTicketId(ticket)}
           </span>
           <PriorityBadge priority={ticket.priority} />
@@ -1492,8 +1498,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
   ]);
 
   return (
-    <section className="min-h-screen bg-[#f8fafc]">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
+    <section className="min-h-screen bg-background">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -1504,14 +1510,14 @@ export function DashboardPage({ role }: DashboardPageProps) {
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                  <h1 className="text-xl font-bold tracking-tight text-foreground">
                     {headerCtx.title}
                   </h1>
-                  <p className="text-sm font-medium text-slate-500">
+                  <p className="text-sm font-medium text-muted-foreground">
                     {headerCtx.subtitle}
                   </p>
                   {refreshing ? (
-                    <p className="mt-1 text-xs font-semibold text-blue-600">
+                    <p className="mt-1 text-xs font-semibold text-primary">
                       Refreshing data...
                     </p>
                   ) : null}
@@ -1520,14 +1526,14 @@ export function DashboardPage({ role }: DashboardPageProps) {
             />
           ) : (
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
                 {roleMeta.title}
               </h1>
-              <p className="text-sm font-medium text-slate-500">
+              <p className="text-sm font-medium text-muted-foreground">
                 {roleMeta.subtitle}
               </p>
               {refreshing ? (
-                <p className="mt-1 text-xs font-semibold text-blue-600">
+                <p className="mt-1 text-xs font-semibold text-primary">
                   Refreshing data...
                 </p>
               ) : null}
@@ -1541,12 +1547,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {isEmployee ? (
             <div className="grid gap-8 lg:grid-cols-12">
               <div className="lg:col-span-8">
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
                       My Requests
                     </h2>
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Track the status of your submitted tickets
                     </p>
                   </div>
@@ -1556,7 +1562,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       onChange={(event) =>
                         setSort(event.target.value as "recent" | "oldest")
                       }
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                      className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                     >
                       <option value="recent">Most recent</option>
                       <option value="oldest">Oldest</option>
@@ -1569,7 +1575,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                     {[1, 2, 3].map((i) => (
                       <div
                         key={i}
-                        className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm"
+                        className="h-32 animate-pulse rounded-[24px] border border-border bg-white/[0.04]"
                       />
                     ))}
                   </div>
@@ -1592,7 +1598,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       <button
                         type="button"
                         onClick={() => navigate("/tickets?scope=created")}
-                        className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                        className="text-sm font-semibold text-primary transition hover:text-primary/80"
                       >
                         View my tickets →
                       </button>
@@ -1601,8 +1607,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 )}
               </div>
               <div className="space-y-6 lg:col-span-4">
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                <div className="bg-card rounded-[24px] p-6 border border-border">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-6">
                     Quick Stats
                   </h3>
                   <div className="space-y-5">
@@ -1614,7 +1620,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                           className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
                         >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">
+                            <div className="text-[14px] font-medium text-muted-foreground">
                               {item.label}
                             </div>
                             {item.helper && (
@@ -1625,7 +1631,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                               </div>
                             )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                          <div className="text-3xl font-bold tracking-tight text-foreground">
                             {item.value}
                           </div>
                         </div>
@@ -1640,12 +1646,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {isAgent ? (
             <div className="grid gap-8 lg:grid-cols-12">
               <div className="lg:col-span-8">
-                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
                       Your Action Items
                     </h2>
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Review and resolve your assigned tickets
                     </p>
                   </div>
@@ -1655,7 +1661,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       onChange={(event) =>
                         setSort(event.target.value as "recent" | "oldest")
                       }
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                      className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                     >
                       <option value="recent">Most recent updates</option>
                       <option value="oldest">Oldest updates</option>
@@ -1668,7 +1674,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                     {[1, 2, 3].map((i) => (
                       <div
                         key={i}
-                        className="h-32 animate-pulse rounded-[24px] border border-slate-100 bg-white shadow-sm"
+                        className="h-32 animate-pulse rounded-[24px] border border-border bg-white/[0.04]"
                       />
                     ))}
                   </div>
@@ -1691,7 +1697,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       <button
                         type="button"
                         onClick={() => navigate("/tickets")}
-                        className="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
+                        className="text-sm font-semibold text-primary transition hover:text-primary/80"
                       >
                         View all tickets →
                       </button>
@@ -1701,8 +1707,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
               </div>
 
               <div className="space-y-6 lg:col-span-4">
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                <div className="bg-card rounded-[24px] p-6 border border-border">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-6">
                     Workload Vitals
                   </h3>
                   <div className="space-y-5">
@@ -1714,7 +1720,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                           className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
                         >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">
+                            <div className="text-[14px] font-medium text-muted-foreground">
                               {item.label}
                             </div>
                             {item.helper && (
@@ -1725,7 +1731,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                               </div>
                             )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                          <div className="text-3xl font-bold tracking-tight text-foreground">
                             {item.value}
                           </div>
                         </div>
@@ -1734,12 +1740,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Activity Trend
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse rounded-xl bg-slate-50" />
+                    <div className="flex-1 animate-pulse rounded-xl bg-white/[0.04]" />
                   ) : (
                     <div className="flex-1 -mx-4 mt-2">
                       <TicketActivityChart data={activity} />
@@ -1747,12 +1753,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   )}
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Queue Status
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse rounded-xl bg-slate-50" />
+                    <div className="flex-1 animate-pulse rounded-xl bg-white/[0.04]" />
                   ) : (
                     <div className="flex-1 -mx-4 mt-2">
                       <StatusDonutChart data={statusBreakdown} />
@@ -1766,12 +1772,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {isLead ? (
             <div className="grid gap-8 lg:grid-cols-12">
               <div className="space-y-6 lg:col-span-8">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
                       Team Insights
                     </h2>
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Monitor your team's workload and SLA compliance
                     </p>
                   </div>
@@ -1780,7 +1786,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                     onChange={(event) =>
                       setRange(event.target.value as "3" | "7" | "30")
                     }
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                    className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                   >
                     <option value="3">Last 3 days</option>
                     <option value="7">Last 7 days</option>
@@ -1788,12 +1794,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   </select>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 min-h-[300px] flex flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border min-h-[300px] flex flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Agent Workload
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                   ) : (
                     <div className="flex-1 -mx-4">
                       <LeadAgentWorkloadBarChart data={agentWorkload} />
@@ -1802,41 +1808,41 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                       Status Distribution
                     </h3>
                     {loading ? (
-                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                      <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                     ) : (
                       <div className="flex-1 -mx-4">
                         <LeadStatusPieChart data={statusBreakdown} />
                       </div>
                     )}
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                       Agent Performance
                     </h3>
                     <div className="flex-1">
                       {loading ? (
-                        <div className="animate-pulse bg-slate-50 h-32 rounded-xl" />
+                        <div className="animate-pulse bg-white/[0.04] h-32 rounded-xl" />
                       ) : agentPerformance.length === 0 ? (
-                        <span className="text-sm text-slate-400">No data</span>
+                        <span className="text-sm text-muted-foreground">No data</span>
                       ) : (
                         agentPerformance.slice(0, 4).map((agent) => (
                           <div
                             key={agent.userId}
                             className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0"
                           >
-                            <span className="font-semibold text-slate-900 text-[15px]">
+                            <span className="font-semibold text-foreground text-[15px]">
                               {agent.name}
                             </span>
                             <div className="flex gap-2 items-center text-sm">
-                              <span className="text-slate-500">
+                              <span className="text-muted-foreground">
                                 {agent.ticketsResolved} res
                               </span>
-                              <span className="font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">
+                              <span className="font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded">
                                 {agent.ticketsResolved > 0
                                   ? `${Math.min(100, Math.round((agent.firstResponses / agent.ticketsResolved) * 100))}%`
                                   : "—"}
@@ -1851,8 +1857,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
               </div>
 
               <div className="space-y-6 lg:col-span-4">
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                <div className="bg-card rounded-[24px] p-6 border border-border">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-6">
                     Team Vitals
                   </h3>
                   <div className="space-y-5">
@@ -1864,7 +1870,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                           className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
                         >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">
+                            <div className="text-[14px] font-medium text-muted-foreground">
                               {item.label}
                             </div>
                             {item.helper && (
@@ -1875,7 +1881,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                               </div>
                             )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                          <div className="text-3xl font-bold tracking-tight text-foreground">
                             {item.value}
                           </div>
                         </div>
@@ -1884,12 +1890,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     SLA Performance
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                   ) : (
                     <div className="flex-1 -mx-4">
                       <LeadSlaBarChart
@@ -1909,12 +1915,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {isTeamAdmin ? (
             <div className="grid gap-8 lg:grid-cols-12">
               <div className="space-y-6 lg:col-span-8">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
                       Queue Operations
                     </h2>
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Manage triage configurations and active queue health
                     </p>
                   </div>
@@ -1923,7 +1929,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                     onChange={(event) =>
                       setRange(event.target.value as "3" | "7" | "30")
                     }
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                    className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                   >
                     <option value="3">Last 3 days</option>
                     <option value="7">Last 7 days</option>
@@ -1933,105 +1939,105 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
                 {/* Operational Warnings Bento */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-red-200 relative overflow-hidden">
+                  <div className="bg-card rounded-[24px] p-6 border border-red-500/20 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-red-500" />
-                    <h3 className="text-sm font-bold text-slate-700 mb-2">
+                    <h3 className="text-sm font-bold text-foreground/80 mb-2">
                       Breached SLA
                     </h3>
                     <div className="text-4xl font-bold tracking-tight text-red-600 mb-1">
                       {stats.overdue}
                     </div>
-                    <p className="text-[12px] font-semibold text-slate-500">
+                    <p className="text-[12px] font-semibold text-muted-foreground">
                       Immediate attention
                     </p>
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-orange-200 relative overflow-hidden">
+                  <div className="bg-card rounded-[24px] p-6 border border-orange-500/20 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-orange-500" />
-                    <h3 className="text-sm font-bold text-slate-700 mb-2">
+                    <h3 className="text-sm font-bold text-foreground/80 mb-2">
                       At Risk
                     </h3>
                     <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">
                       {stats.atRisk}
                     </div>
-                    <p className="text-[12px] font-semibold text-slate-500">
+                    <p className="text-[12px] font-semibold text-muted-foreground">
                       Approaching breach
                     </p>
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-blue-200 relative overflow-hidden">
+                  <div className="bg-card rounded-[24px] p-6 border border-blue-500/20 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-full h-1 bg-blue-500" />
-                    <h3 className="text-sm font-bold text-slate-700 mb-2">
+                    <h3 className="text-sm font-bold text-foreground/80 mb-2">
                       Unassigned
                     </h3>
-                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">
+                    <div className="text-4xl font-bold tracking-tight text-primary mb-1">
                       {stats.unassigned}
                     </div>
-                    <p className="text-[12px] font-semibold text-slate-500">
+                    <p className="text-[12px] font-semibold text-muted-foreground">
                       {unassignedPercent}% of open
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                       Tickets by Age
                     </h3>
                     {loading ? (
-                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                      <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                     ) : (
                       <div className="flex-1 -mx-4 mt-2">
                         <TicketsByAgeChart data={ageBreakdown} />
                       </div>
                     )}
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                       Reopen Trend
                     </h3>
                     {loading ? (
-                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                      <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                     ) : (
                       <div className="flex-1 -mx-4 mt-2">
                         {reopenSeries.length > 0 ? (
                           <ReopenRateChart data={reopenSeries} />
                         ) : (
-                          <span className="p-4 text-slate-400">No data</span>
+                          <span className="p-4 text-muted-foreground">No data</span>
                         )}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Routing Exceptions & Categories
                   </h3>
                   <div className="grid grid-cols-2 gap-8 text-sm">
                     <div className="space-y-4">
                       <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-600">
+                        <span className="text-foreground/70">
                           Emails not parsed
                         </span>
                         <span className="font-bold text-red-600">0</span>
                       </div>
                       <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-600">Auto-assigned</span>
-                        <span className="font-bold text-blue-600">
+                        <span className="text-foreground/70">Auto-assigned</span>
+                        <span className="font-bold text-primary">
                           {stats.assignedToMe}
                         </span>
                       </div>
                       <div className="flex justify-between border-b border-slate-50 pb-2">
-                        <span className="text-slate-600">Failed webhooks</span>
+                        <span className="text-foreground/70">Failed webhooks</span>
                         <span className="font-bold text-orange-600">0</span>
                       </div>
                     </div>
-                    <div className="space-y-4 border-l border-slate-100 pl-8">
+                    <div className="space-y-4 border-l border-border pl-8">
                       {queueCategories.slice(0, 3).map((c) => (
                         <div
                           key={c.id}
                           className="flex justify-between border-b border-slate-50 pb-2"
                         >
-                          <span className="text-slate-600">{c.name}</span>
+                          <span className="text-foreground/70">{c.name}</span>
                           <span className="font-bold">{c.count}</span>
                         </div>
                       ))}
@@ -2066,26 +2072,26 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Quick Settings
                   </h3>
                   <div className="space-y-3">
                     <button
                       onClick={() => navigate("/routing")}
-                      className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition"
+                      className="w-full text-left px-4 py-3 bg-white/[0.04] rounded-xl text-[14px] font-semibold text-foreground/80 hover:bg-primary/10 hover:text-primary transition"
                     >
                       ⚙️ Routing Rules Mode
                     </button>
                     <button
                       disabled
-                      className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed"
+                      className="w-full text-left px-4 py-3 bg-white/[0.04] rounded-xl text-[14px] font-semibold text-muted-foreground cursor-not-allowed"
                     >
                       ⏱️ Business Hours Config
                     </button>
                     <button
                       disabled
-                      className="w-full text-left px-4 py-3 bg-slate-50 rounded-xl text-[14px] font-semibold text-slate-400 cursor-not-allowed"
+                      className="w-full text-left px-4 py-3 bg-white/[0.04] rounded-xl text-[14px] font-semibold text-muted-foreground cursor-not-allowed"
                     >
                       ⚡ Macros Library
                     </button>
@@ -2098,12 +2104,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
           {isOwner ? (
             <div className="grid gap-8 lg:grid-cols-12">
               <div className="space-y-6 lg:col-span-8">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                   <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
                       Platform Overview
                     </h2>
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Cross-team performance and business metrics
                     </p>
                   </div>
@@ -2112,7 +2118,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                     onChange={(event) =>
                       setRange(event.target.value as "3" | "7" | "30")
                     }
-                    className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:border-blue-300 transition outline-none"
+                    className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                   >
                     <option value="3">Last 3 days</option>
                     <option value="7">Last 7 days</option>
@@ -2132,30 +2138,30 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       System wide
                     </p>
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col justify-center items-center">
-                    <div className="text-4xl font-bold tracking-tight text-blue-600 mb-1">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col justify-center items-center">
+                    <div className="text-4xl font-bold tracking-tight text-primary mb-1">
                       {transfers.total}
                     </div>
-                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                    <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
                       Total Transfers
                     </h3>
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col justify-center items-center">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col justify-center items-center">
                     <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">
                       {reopenRate}%
                     </div>
-                    <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                    <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
                       Reopen Rate
                     </h3>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 min-h-[300px] flex flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border min-h-[300px] flex flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Platform Activity
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                   ) : (
                     <div className="flex-1 -mx-4">
                       <TicketVolumeChart data={volumeSeries} />
@@ -2164,37 +2170,37 @@ export function DashboardPage({ role }: DashboardPageProps) {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                       Tickets by Priority
                     </h3>
                     {loading ? (
-                      <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                      <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                     ) : (
                       <div className="flex-1 -mx-4">
                         <PriorityDonutChart data={priorityBreakdown} />
                       </div>
                     )}
                   </div>
-                  <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col">
+                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                       Top Performers
                     </h3>
                     <div className="flex-1 space-y-4 pt-2">
                       {loading ? (
-                        <div className="animate-pulse bg-slate-50 h-32 rounded-xl" />
+                        <div className="animate-pulse bg-white/[0.04] h-32 rounded-xl" />
                       ) : agentPerformance.length === 0 ? (
-                        <span className="text-sm text-slate-400">No data</span>
+                        <span className="text-sm text-muted-foreground">No data</span>
                       ) : (
                         agentPerformance.slice(0, 4).map((agent, idx) => (
                           <div
                             key={agent.userId}
                             className="flex justify-between items-center border-b border-slate-50 last:border-0 pb-3"
                           >
-                            <span className="font-semibold text-slate-900 text-[15px]">
+                            <span className="font-semibold text-foreground text-[15px]">
                               #{idx + 1} {agent.name}
                             </span>
-                            <span className="font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded text-sm">
+                            <span className="font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded text-sm">
                               {agent.avgFirstResponseHours == null
                                 ? "—"
                                 : `${agent.avgFirstResponseHours.toFixed(1)}h FRT`}
@@ -2208,8 +2214,8 @@ export function DashboardPage({ role }: DashboardPageProps) {
               </div>
 
               <div className="space-y-6 lg:col-span-4">
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-6">
+                <div className="bg-card rounded-[24px] p-6 border border-border">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-6">
                     Executive Vitals
                   </h3>
                   <div className="space-y-5">
@@ -2221,7 +2227,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                           className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
                         >
                           <div>
-                            <div className="text-[14px] font-medium text-slate-500">
+                            <div className="text-[14px] font-medium text-muted-foreground">
                               {item.label}
                             </div>
                             {item.helper && (
@@ -2232,7 +2238,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                               </div>
                             )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-slate-900">
+                          <div className="text-3xl font-bold tracking-tight text-foreground">
                             {item.value}
                           </div>
                         </div>
@@ -2241,12 +2247,12 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     SLA Compliance
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                   ) : (
                     <div className="flex-1 -mx-4">
                       <LeadSlaBarChart
@@ -2260,24 +2266,24 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   )}
                 </div>
 
-                <div className="bg-white rounded-[24px] p-6 shadow-[0_2px_12px_rgb(0,0,0,0.02)] border border-slate-100 flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
+                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
                     Team Summary
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-slate-50 rounded-xl" />
+                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
                   ) : (
                     <div className="flex-1 overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="border-b border-slate-100">
+                        <thead className="border-b border-border">
                           <tr>
-                            <th className="py-2 text-left font-semibold text-slate-500">
+                            <th className="py-2 text-left font-semibold text-muted-foreground">
                               Team
                             </th>
-                            <th className="py-2 text-right font-semibold text-slate-500">
+                            <th className="py-2 text-right font-semibold text-muted-foreground">
                               Open
                             </th>
-                            <th className="py-2 text-right font-semibold text-slate-500">
+                            <th className="py-2 text-right font-semibold text-muted-foreground">
                               SLA
                             </th>
                           </tr>
@@ -2285,10 +2291,10 @@ export function DashboardPage({ role }: DashboardPageProps) {
                         <tbody className="divide-y divide-slate-50">
                           {teamSummary.map((team) => (
                             <tr key={team.id}>
-                              <td className="py-3 font-medium text-slate-900">
+                              <td className="py-3 font-medium text-foreground">
                                 {team.name}
                               </td>
-                              <td className="py-3 text-right font-bold text-slate-700">
+                              <td className="py-3 text-right font-bold text-foreground/80">
                                 {team.open}
                               </td>
                               <td className="py-3 text-right font-bold text-green-600">

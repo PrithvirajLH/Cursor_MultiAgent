@@ -35,8 +35,8 @@ export function ViewToggle({
         onClick={() => onChange("grid")}
         className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-1 ${
           value === "grid"
-            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-600"
-            : "text-slate-600 hover:bg-white hover:text-slate-900"
+            ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground"
         }`}
       >
         <LayoutGrid className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />
@@ -51,8 +51,8 @@ export function ViewToggle({
         onClick={() => onChange("table")}
         className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-1 ${
           value === "table"
-            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-600"
-            : "text-slate-600 hover:bg-white hover:text-slate-900"
+            ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary"
+            : "text-muted-foreground hover:bg-accent hover:text-foreground"
         }`}
       >
         <Table2 className="h-3.5 w-3.5 flex-shrink-0" aria-hidden />

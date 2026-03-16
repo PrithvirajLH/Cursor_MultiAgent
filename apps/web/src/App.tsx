@@ -132,7 +132,7 @@ const TriageBoardPage = lazy(() =>
 
 function PageFallback() {
   return (
-    <div className="flex-1 w-full bg-slate-50 dark:bg-slate-900 animate-pulse">
+    <div className="flex-1 w-full animate-pulse" style={{ background: "hsl(var(--background))" }}>
       <PageSkeleton />
     </div>
   );
@@ -1034,18 +1034,44 @@ function App() {
 
   if (auth.loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#0B0F19] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-[#0B0F19] to-[#0B0F19]">
-        <div className="flex flex-col items-center animate-fade-in-up">
-          <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 font-bold text-white shadow-[0_0_40px_-10px_rgba(37,99,235,0.5)] ring-1 ring-blue-500/50">
-            <Ticket className="h-8 w-8 text-white" strokeWidth={2.5} />
+      <div
+        className="flex min-h-screen flex-col items-center justify-center"
+        style={{ background: "hsl(var(--background))" }}
+      >
+        {/* Background glow */}
+        <div
+          className="pointer-events-none fixed inset-0 overflow-hidden"
+          aria-hidden="true"
+        >
+          <div
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full opacity-[0.07] blur-[80px]"
+            style={{ background: "hsl(var(--primary))" }}
+          />
+        </div>
+
+        <div className="relative flex flex-col items-center animate-fade-in">
+          <div
+            className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl font-bold text-white shadow-glow"
+            style={{
+              background:
+                "linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(217 91% 60%) 100%)",
+            }}
+          >
+            <Ticket className="h-7 w-7 text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="mb-8 text-2xl font-bold tracking-tight text-white">
+          <h1 className="mb-8 text-xl font-bold tracking-tight text-foreground">
             Ticket
           </h1>
           <div className="flex flex-col items-center gap-3">
-            <div className="h-6 w-6 animate-spin rounded-full border-[3px] border-slate-700 border-t-blue-500" />
-            <p className="text-sm font-medium text-slate-500 animate-pulse">
-              Authenticating...
+            <div
+              className="h-5 w-5 animate-spin rounded-full border-[2.5px]"
+              style={{
+                borderColor: "hsl(var(--border))",
+                borderTopColor: "hsl(var(--primary))",
+              }}
+            />
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">
+              Authenticating…
             </p>
           </div>
         </div>

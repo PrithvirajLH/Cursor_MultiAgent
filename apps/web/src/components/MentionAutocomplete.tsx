@@ -34,7 +34,7 @@ export function MentionAutocomplete({
   const dropdown = (
     <div
       ref={listRef}
-      className={`z-[9999] max-h-48 w-64 overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg ${className}`}
+      className={`z-[9999] max-h-48 w-64 overflow-auto rounded-lg border border-border bg-popover py-1 shadow-lg ${className}`}
       style={{ position: "fixed", top: position.top, left: position.left }}
       role="listbox"
       aria-label="Mention user"
@@ -48,8 +48,8 @@ export function MentionAutocomplete({
           aria-selected={index === selectedIndex}
           className={`w-full px-3 py-2 text-left text-sm transition ${
             index === selectedIndex
-              ? "bg-slate-100 text-slate-900"
-              : "text-slate-700 hover:bg-slate-50"
+              ? "bg-accent text-foreground"
+              : "text-foreground hover:bg-muted"
           }`}
           onMouseDown={(e) => {
             e.preventDefault();
@@ -57,7 +57,7 @@ export function MentionAutocomplete({
           }}
         >
           <span className="font-medium">{user.displayName}</span>
-          <span className="ml-2 text-slate-500 text-xs">{user.email}</span>
+          <span className="ml-2 text-muted-foreground text-xs">{user.email}</span>
         </button>
       ))}
     </div>

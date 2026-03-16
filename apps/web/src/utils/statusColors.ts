@@ -34,12 +34,12 @@ export function getStatusTone(status?: string | null): StatusTone {
 
 /** Badge classes (bg + text + border) keyed by tone. */
 const STATUS_BADGE_CLASSES: Record<StatusTone, string> = {
-  new: "bg-indigo-50 text-indigo-700",
-  progress: "bg-amber-50 text-amber-700",
-  resolved: "bg-emerald-50 text-emerald-700",
-  closed: "bg-slate-100 text-slate-700",
-  reopened: "bg-rose-50 text-rose-700",
-  neutral: "bg-slate-100 text-slate-700",
+  new: "bg-violet-500/10 text-violet-400",
+  progress: "bg-amber-500/10 text-amber-400",
+  resolved: "bg-emerald-500/10 text-emerald-400",
+  closed: "bg-white/[0.06] text-slate-400",
+  reopened: "bg-rose-500/10 text-rose-400",
+  neutral: "bg-white/[0.06] text-slate-400",
 };
 
 /** Returns Tailwind badge classes for a given ticket status. */
@@ -72,11 +72,11 @@ export function getPriorityTone(priority?: string | null): PriorityTone {
 }
 
 const PRIORITY_BADGE_CLASSES: Record<PriorityTone, string> = {
-  urgent: "bg-red-50 text-red-700",
-  high: "bg-orange-50 text-orange-700",
-  medium: "bg-blue-50 text-blue-700",
-  low: "bg-slate-100 text-slate-600",
-  neutral: "bg-slate-100 text-slate-600",
+  urgent: "bg-red-500/10 text-red-400",
+  high: "bg-orange-500/10 text-orange-400",
+  medium: "bg-blue-500/10 text-blue-400",
+  low: "bg-white/[0.06] text-slate-400",
+  neutral: "bg-white/[0.06] text-slate-400",
 };
 
 /** Returns Tailwind badge classes for a given ticket priority. */
@@ -95,12 +95,12 @@ export type SlaTone =
   | "none";
 
 const SLA_BADGE_CLASSES: Record<SlaTone, string> = {
-  met: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-  onTrack: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-  atRisk: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-  paused: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-  breached: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
-  none: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  met: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20",
+  onTrack: "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20",
+  atRisk: "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20",
+  paused: "bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20",
+  breached: "bg-rose-500/10 text-rose-400 ring-1 ring-rose-500/20",
+  none: "bg-white/[0.06] text-slate-400 ring-1 ring-white/10",
 };
 
 /** Returns Tailwind badge classes for a given SLA label. */
@@ -117,12 +117,12 @@ export function slaBadgeClass(label?: string): string {
 /* ——— SLA detail tones (used in cards/inline badges) ——— */
 
 const SLA_DETAIL_CLASSES: Record<SlaTone, string> = {
-  met: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  onTrack: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  atRisk: "border-amber-200 bg-amber-50 text-amber-700",
-  paused: "border-amber-200 bg-amber-50 text-amber-700",
-  breached: "border-rose-200 bg-rose-50 text-rose-700",
-  none: "border-slate-200 bg-slate-100 text-slate-600",
+  met: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  onTrack: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+  atRisk: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+  paused: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+  breached: "border-rose-500/20 bg-rose-500/10 text-rose-400",
+  none: "border-white/10 bg-white/[0.06] text-slate-400",
 };
 
 /** Returns Tailwind classes for SLA detail cards. */

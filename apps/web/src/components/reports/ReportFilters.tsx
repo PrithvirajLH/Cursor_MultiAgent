@@ -56,14 +56,14 @@ export function ReportFilters({
   return (
     <div className="flex flex-wrap items-end gap-4">
       <div>
-        <label className="text-xs text-slate-500 block">Date range</label>
+        <label className="text-xs text-muted-foreground block">Date range</label>
         <div className="mt-1 flex gap-2">
           {DATE_PRESETS.map((p) => (
             <button
               key={p.days}
               type="button"
               onClick={() => setPreset(p.days)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
             >
               {p.label}
             </button>
@@ -74,23 +74,23 @@ export function ReportFilters({
             type="date"
             value={filters.from}
             onChange={(e) => onChange({ ...filters, from: e.target.value })}
-            className="rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5 text-sm"
+            className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground"
           />
-          <span className="text-slate-400">–</span>
+          <span className="text-muted-foreground">–</span>
           <input
             type="date"
             value={filters.to}
             onChange={(e) => onChange({ ...filters, to: e.target.value })}
-            className="rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5 text-sm"
+            className="rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground"
           />
         </div>
       </div>
       <div>
-        <label className="text-xs text-slate-500 block">Team</label>
+        <label className="text-xs text-muted-foreground block">Team</label>
         <select
           value={filters.teamId}
           onChange={(e) => onChange({ ...filters, teamId: e.target.value })}
-          className="mt-1 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm min-w-[140px]"
+          className="mt-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground min-w-[140px]"
         >
           <option value="">All teams</option>
           {teams.map((t) => (
@@ -101,11 +101,11 @@ export function ReportFilters({
         </select>
       </div>
       <div>
-        <label className="text-xs text-slate-500 block">Priority</label>
+        <label className="text-xs text-muted-foreground block">Priority</label>
         <select
           value={filters.priority}
           onChange={(e) => onChange({ ...filters, priority: e.target.value })}
-          className="mt-1 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm min-w-[100px]"
+          className="mt-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground min-w-[100px]"
         >
           <option value="">All</option>
           <option value="P1">P1</option>
@@ -115,11 +115,11 @@ export function ReportFilters({
         </select>
       </div>
       <div>
-        <label className="text-xs text-slate-500 block">Category</label>
+        <label className="text-xs text-muted-foreground block">Category</label>
         <select
           value={filters.categoryId}
           onChange={(e) => onChange({ ...filters, categoryId: e.target.value })}
-          className="mt-1 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm min-w-[140px]"
+          className="mt-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground min-w-[140px]"
         >
           <option value="">All categories</option>
           {categories.map((c) => (

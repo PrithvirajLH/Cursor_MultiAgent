@@ -264,24 +264,24 @@ function AgentModal({
         aria-modal="true"
         aria-label={`Agent details for ${agent.name}`}
         tabIndex={-1}
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-xl"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card shadow-xl"
       >
-        <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+        <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-semibold text-white">
               {agent.avatar}
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-foreground">
                 {agent.name}
               </h2>
-              <p className="text-sm text-slate-500">{agent.email}</p>
+              <p className="text-sm text-muted-foreground">{agent.email}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-500 hover:text-slate-700"
+            className="text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
             <X className="h-6 w-6" />
@@ -289,41 +289,41 @@ function AgentModal({
         </div>
         <div className="space-y-6 p-6">
           <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg bg-slate-50 p-3">
-              <div className="text-xs text-slate-600">Open Tickets</div>
-              <div className="text-2xl font-bold text-slate-900">
+            <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">Open Tickets</div>
+              <div className="text-2xl font-bold text-foreground">
                 {agent.openTickets}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <div className="text-xs text-slate-600">In Progress</div>
-              <div className="text-2xl font-bold text-slate-900">
+            <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">In Progress</div>
+              <div className="text-2xl font-bold text-foreground">
                 {agent.inProgress}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <div className="text-xs text-slate-600">Resolved (Range)</div>
-              <div className="text-2xl font-bold text-slate-900">
+            <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">Resolved (Range)</div>
+              <div className="text-2xl font-bold text-foreground">
                 {agent.resolvedPeriod}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <div className="text-xs text-slate-600">
+            <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">
                 First Responses (Range)
               </div>
-              <div className="text-2xl font-bold text-slate-900">
+              <div className="text-2xl font-bold text-foreground">
                 {agent.firstResponses}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <div className="text-xs text-slate-600">Avg First Response</div>
-              <div className="text-2xl font-bold text-slate-900">
+            <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">Avg First Response</div>
+              <div className="text-2xl font-bold text-foreground">
                 {hfmt(agent.avgResponseHours)}
               </div>
             </div>
-            <div className="rounded-lg bg-slate-50 p-3">
-              <div className="text-xs text-slate-600">Avg Resolution</div>
-              <div className="text-2xl font-bold text-slate-900">
+            <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">Avg Resolution</div>
+              <div className="text-2xl font-bold text-foreground">
                 {hfmt(agent.avgResolutionHours)}
               </div>
             </div>
@@ -912,8 +912,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
@@ -924,19 +924,19 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div>
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     {headerCtx.title}
                   </h1>
-                  <p className="text-sm text-slate-500">{headerCtx.subtitle}</p>
+                  <p className="text-sm text-muted-foreground">{headerCtx.subtitle}</p>
                 </div>
               }
             />
           ) : (
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Manager View
               </h1>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 Team performance and oversight
               </p>
             </div>
@@ -944,7 +944,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         </div>
       </div>
 
-      <div className="border-b border-slate-200 bg-white">
+      <div className="border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div className="flex items-center gap-6">
             {[
@@ -959,8 +959,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                 onClick={() => setActiveTab(key as TabKey)}
                 className={`border-b-2 py-3 text-sm font-medium transition-colors ${
                   activeTab === key
-                    ? "border-blue-500 text-blue-600"
-                    : "border-transparent text-slate-500 hover:text-slate-700"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {label}
@@ -972,14 +972,14 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
               <button
                 type="button"
                 onClick={() => setShowDateDropdown((prev) => !prev)}
-                className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50"
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-foreground hover:bg-muted"
               >
-                <CalendarDays className="h-4 w-4 text-slate-500" />
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 Last {dateRange} days
-                <ChevronDown className="h-4 w-4 text-slate-500" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </button>
               {showDateDropdown ? (
-                <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-slate-200 bg-white shadow-lg">
+                <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-md border border-border bg-card shadow-lg">
                   {DATE_OPTIONS.map((days) => (
                     <button
                       key={days}
@@ -988,10 +988,10 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                         setDateRange(days);
                         setShowDateDropdown(false);
                       }}
-                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                      className={`block w-full px-4 py-2 text-left text-sm hover:bg-accent ${
                         dateRange === days
                           ? "bg-blue-50 text-blue-700"
-                          : "text-slate-700"
+                          : "text-foreground"
                       }`}
                     >
                       Last {days} days
@@ -1003,7 +1003,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
             <button
               type="button"
               onClick={handleExportReport}
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700"
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90"
             >
               <Download className="h-4 w-4" />
               Export Report
@@ -1019,13 +1019,13 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
               {Array.from({ length: 4 }).map((_, index) => (
                 <div
                   key={`kpi-skeleton-${index}`}
-                  className="h-28 rounded-lg border border-slate-200 bg-white skeleton-shimmer"
+                  className="h-28 rounded-lg border border-border bg-card skeleton-shimmer"
                 />
               ))}
             </div>
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="h-80 rounded-lg border border-slate-200 bg-white skeleton-shimmer" />
-              <div className="h-80 rounded-lg border border-slate-200 bg-white skeleton-shimmer" />
+              <div className="h-80 rounded-lg border border-border bg-card skeleton-shimmer" />
+              <div className="h-80 rounded-lg border border-border bg-card skeleton-shimmer" />
             </div>
           </div>
         ) : null}
@@ -1056,41 +1056,41 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         {!loading && !error && hasData && activeTab === "overview" ? (
           <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 card-stagger">
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="text-sm text-slate-600">Tickets Created</div>
-                <div className="text-3xl font-bold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="text-sm text-muted-foreground">Tickets Created</div>
+                <div className="text-3xl font-bold text-foreground">
                   {metrics?.createdInRange ?? 0}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-muted-foreground">
                   Last {dateRange} days
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="text-sm text-slate-600">Tickets Resolved</div>
-                <div className="text-3xl font-bold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="text-sm text-muted-foreground">Tickets Resolved</div>
+                <div className="text-3xl font-bold text-foreground">
                   {metrics?.resolvedInRange ?? 0}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-muted-foreground">
                   Last {dateRange} days
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="text-sm text-slate-600">
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="text-sm text-muted-foreground">
                   Current Open Tickets
                 </div>
-                <div className="text-3xl font-bold text-slate-900">
+                <div className="text-3xl font-bold text-foreground">
                   {metrics?.currentOpenTickets ?? 0}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-muted-foreground">
                   Current snapshot
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="text-sm text-slate-600">SLA Compliance</div>
-                <div className="text-3xl font-bold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-4">
+                <div className="text-sm text-muted-foreground">SLA Compliance</div>
+                <div className="text-3xl font-bold text-foreground">
                   {metrics?.slaCompliance}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-muted-foreground">
                   First {metrics?.firstResponseSla} • Resolution{" "}
                   {metrics?.resolutionSla}
                 </div>
@@ -1098,8 +1098,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Ticket Trends
                 </h3>
                 <div className="h-64">
@@ -1111,11 +1111,11 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                         tickFormatter={(value) =>
                           formatUtcShortDate(String(value))
                         }
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         minTickGap={24}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         allowDecimals={false}
                       />
                       <Tooltip
@@ -1143,8 +1143,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                   </ResponsiveContainer>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   SLA Compliance
                 </h3>
                 <div className="h-64">
@@ -1156,10 +1156,10 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         allowDecimals={false}
                       />
                       <Tooltip />
@@ -1175,86 +1175,86 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   SLA Breakdown
                 </h3>
-                <div className="space-y-2 text-sm text-slate-700">
+                <div className="space-y-2 text-sm text-foreground">
                   <div className="flex items-center justify-between">
                     <span>Overall Met</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.slaMet ?? 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Overall Breached</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.slaBreached ?? 0}
                     </span>
                   </div>
-                  <div className="mt-3 border-t border-slate-100 pt-3 flex items-center justify-between">
+                  <div className="mt-3 border-t border-border pt-3 flex items-center justify-between">
                     <span>First Response Met</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.firstResponseMet ?? 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>First Response Breached</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.firstResponseBreached ?? 0}
                     </span>
                   </div>
-                  <div className="mt-3 border-t border-slate-100 pt-3 flex items-center justify-between">
+                  <div className="mt-3 border-t border-border pt-3 flex items-center justify-between">
                     <span>Resolution Met</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.resolutionMet ?? 0}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Resolution Breached</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.resolutionBreached ?? 0}
                     </span>
                   </div>
-                  <div className="mt-3 border-t border-slate-100 pt-3 flex items-center justify-between">
+                  <div className="mt-3 border-t border-border pt-3 flex items-center justify-between">
                     <span>Avg First Response</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.avgFirstResponseTime ?? "—"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Avg Resolution</span>
-                    <span className="font-medium text-slate-900">
+                    <span className="font-medium text-foreground">
                       {metrics?.avgResolutionTime ?? "—"}
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Highest Priority Open Tickets
                 </h3>
                 <div className="space-y-3">
                   {escalations.length === 0 ? (
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-muted-foreground">
                       No open tickets in this range.
                     </p>
                   ) : (
                     escalations.map((ticket) => (
                       <div
                         key={ticket.id}
-                        className="rounded-lg border border-red-200 bg-red-50 p-3"
+                        className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3"
                       >
                         <div className="mb-1 flex items-center gap-2">
-                          <span className="text-sm font-medium text-blue-600">
+                          <span className="text-sm font-medium text-primary">
                             {formatTicketId(ticket)}
                           </span>
                           <PriorityBadge priority={ticket.priority} />
                         </div>
-                        <p className="mb-1 text-sm text-slate-900">
+                        <p className="mb-1 text-sm text-foreground">
                           {ticket.subject}
                         </p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span>
                             Assigned to{" "}
                             {ticket.assignee?.displayName ?? "Unassigned"}
@@ -1278,21 +1278,21 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         {!loading && !error && hasData && activeTab === "agents" ? (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-foreground">
                 Team Members ({sortedAgents.length})
               </h2>
               <div className="relative" data-sort-dropdown>
                 <button
                   type="button"
                   onClick={() => setShowSortDropdown((prev) => !prev)}
-                  className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-50"
+                  className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-foreground hover:bg-muted"
                 >
                   Sort by:{" "}
                   {SORT_OPTIONS.find((item) => item.key === sortBy)?.label}
-                  <ChevronDown className="h-4 w-4 text-slate-500" />
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </button>
                 {showSortDropdown ? (
-                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-slate-200 bg-white shadow-lg">
+                  <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-border bg-card shadow-lg">
                     {SORT_OPTIONS.map((item) => (
                       <button
                         key={item.key}
@@ -1301,10 +1301,10 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                           setSortBy(item.key);
                           setShowSortDropdown(false);
                         }}
-                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-slate-100 ${
+                        className={`block w-full px-4 py-2 text-left text-sm hover:bg-accent ${
                           item.key === sortBy
                             ? "bg-blue-50 text-blue-700"
-                            : "text-slate-700"
+                            : "text-foreground"
                         }`}
                       >
                         {item.label}
@@ -1321,48 +1321,48 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                   key={agent.id}
                   type="button"
                   onClick={() => setSelectedAgent(agent)}
-                  className="rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-sm"
+                  className="rounded-lg border border-border bg-card p-4 text-left transition hover:-translate-y-0.5 hover:bg-accent hover:shadow-sm"
                 >
                   <div className="mb-3 flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-semibold text-white">
                         {agent.avatar}
                       </div>
                       <div>
-                        <h3 className="text-sm font-semibold text-slate-900">
+                        <h3 className="text-sm font-semibold text-foreground">
                           {agent.name}
                         </h3>
-                        <p className="text-xs text-slate-500">{agent.email}</p>
+                        <p className="text-xs text-muted-foreground">{agent.email}</p>
                       </div>
                     </div>
                   </div>
                   <div className="mb-3 grid grid-cols-4 gap-3">
                     <div className="text-center">
-                      <div className="text-lg font-bold text-blue-600">
+                      <div className="text-lg font-bold text-primary">
                         {agent.openTickets}
                       </div>
-                      <div className="text-xs text-slate-500">Open</div>
+                      <div className="text-xs text-muted-foreground">Open</div>
                     </div>
                     <div className="text-center">
                       <div className="text-lg font-bold text-amber-600">
                         {agent.inProgress}
                       </div>
-                      <div className="text-xs text-slate-500">In Progress</div>
+                      <div className="text-xs text-muted-foreground">In Progress</div>
                     </div>
                     <div className="text-center">
                       <div className="text-lg font-bold text-purple-600">
                         {agent.resolvedPeriod}
                       </div>
-                      <div className="text-xs text-slate-500">Period</div>
+                      <div className="text-xs text-muted-foreground">Period</div>
                     </div>
                     <div className="text-center">
                       <div className="text-lg font-bold text-emerald-600">
                         {agent.firstResponses}
                       </div>
-                      <div className="text-xs text-slate-500">1st Resp.</div>
+                      <div className="text-xs text-muted-foreground">1st Resp.</div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-slate-600">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>
                       Avg First Response: {hfmt(agent.avgResponseHours)}
                     </span>
@@ -1379,8 +1379,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         {!loading && !error && hasData && activeTab === "performance" ? (
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Avg First Response Hours by Agent
                 </h3>
                 <div className="h-64">
@@ -1389,10 +1389,10 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         allowDecimals={false}
                       />
                       <Tooltip />
@@ -1405,8 +1405,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                   </ResponsiveContainer>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Reopened Tickets Trend
                 </h3>
                 <div className="h-64">
@@ -1418,11 +1418,11 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                         tickFormatter={(value) =>
                           formatUtcShortDate(String(value))
                         }
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         minTickGap={24}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         allowDecimals={false}
                       />
                       <Tooltip
@@ -1448,8 +1448,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         {!loading && !error && hasData && activeTab === "workload" ? (
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Current Workload Distribution
                 </h3>
                 <div className="h-72">
@@ -1458,10 +1458,10 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
                         allowDecimals={false}
                       />
                       <Tooltip />
@@ -1474,8 +1474,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                   </ResponsiveContainer>
                 </div>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-white p-6">
-                <h3 className="mb-4 text-sm font-semibold text-slate-900">
+              <div className="rounded-lg border border-border bg-card p-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">
                   Tickets by Category
                 </h3>
                 <div className="h-72">
@@ -1498,8 +1498,8 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                 </div>
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-6">
-              <h3 className="mb-4 text-sm font-semibold text-slate-900">
+            <div className="rounded-lg border border-border bg-card p-6">
+              <h3 className="mb-4 text-sm font-semibold text-foreground">
                 Workload Snapshot
               </h3>
               <div className="space-y-4">
@@ -1509,48 +1509,48 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                     return (
                       <div
                         key={`workload-${agent.id}`}
-                        className="rounded-lg border border-slate-200 p-4"
+                        className="rounded-lg border border-border p-4"
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
                               {agent.avatar}
                             </div>
                             <div>
-                              <h4 className="text-sm font-semibold text-slate-900">
+                              <h4 className="text-sm font-semibold text-foreground">
                                 {agent.name}
                               </h4>
-                              <p className="text-xs text-slate-500">
+                              <p className="text-xs text-muted-foreground">
                                 {agent.email}
                               </p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="text-sm font-semibold text-slate-900">
+                            <div className="text-sm font-semibold text-foreground">
                               {agent.openTickets} open tickets
                             </div>
-                            <div className="text-xs text-slate-500">
+                            <div className="text-xs text-muted-foreground">
                               {agent.inProgress} in progress
                             </div>
                           </div>
                         </div>
 
-                        <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-3">
-                          <div className="rounded-md bg-slate-50 px-3 py-2">
+                        <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-3">
+                          <div className="rounded-md bg-muted px-3 py-2">
                             Open:{" "}
-                            <span className="font-medium text-slate-900">
+                            <span className="font-medium text-foreground">
                               {agent.openTickets}
                             </span>
                           </div>
-                          <div className="rounded-md bg-slate-50 px-3 py-2">
+                          <div className="rounded-md bg-muted px-3 py-2">
                             In Progress:{" "}
-                            <span className="font-medium text-slate-900">
+                            <span className="font-medium text-foreground">
                               {agent.inProgress}
                             </span>
                           </div>
-                          <div className="rounded-md bg-slate-50 px-3 py-2">
+                          <div className="rounded-md bg-muted px-3 py-2">
                             Resolved:{" "}
-                            <span className="font-medium text-slate-900">
+                            <span className="font-medium text-foreground">
                               {agent.resolvedPeriod}
                             </span>
                           </div>

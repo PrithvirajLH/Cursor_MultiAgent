@@ -108,8 +108,8 @@ export function NewCategoryPage() {
   const headerValue = headerCtx;
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerValue ? (
             <TopBar
@@ -120,10 +120,10 @@ export function NewCategoryPage() {
               notificationProps={headerValue.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     New Category
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Define a new category to organize tickets and reporting.
                   </p>
                 </div>
@@ -131,10 +131,10 @@ export function NewCategoryPage() {
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 New Category
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Define a new category to organize tickets and reporting.
               </p>
             </div>
@@ -146,24 +146,24 @@ export function NewCategoryPage() {
         <button
           type="button"
           onClick={() => navigate("/categories")}
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Back to categories</span>
         </button>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">
+        <div className="rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-lg font-semibold text-foreground">
               Category details
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-muted-foreground">
               Choose a clear, human-friendly name and optional slug and parent.
             </p>
           </div>
@@ -171,7 +171,7 @@ export function NewCategoryPage() {
           <div className="space-y-6 px-6 py-6">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Name <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -179,12 +179,12 @@ export function NewCategoryPage() {
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, name: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="e.g. Billing, Access Requests, Facilities"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Slug
                 </label>
                 <input
@@ -192,14 +192,14 @@ export function NewCategoryPage() {
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, slug: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="Auto-generated from name if left blank"
                 />
               </div>
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 block text-sm font-medium text-foreground">
                 Description
               </label>
               <textarea
@@ -211,14 +211,14 @@ export function NewCategoryPage() {
                   }))
                 }
                 rows={3}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 placeholder="Short description to help your team understand when to use this category."
               />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Parent category
                 </label>
                 <select
@@ -229,7 +229,7 @@ export function NewCategoryPage() {
                       parentId: event.target.value,
                     }))
                   }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   disabled={loading}
                 >
                   <option value="">No parent</option>
@@ -239,15 +239,15 @@ export function NewCategoryPage() {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Use parents to group related subcategories.
                 </p>
               </div>
 
-              <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex items-center rounded-lg border border-border bg-muted px-4 py-3">
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-700">Active</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm font-medium text-foreground">Active</p>
+                  <p className="text-xs text-muted-foreground">
                     Inactive categories are hidden from new tickets but kept for
                     history.
                   </p>
@@ -262,16 +262,16 @@ export function NewCategoryPage() {
                         isActive: event.target.checked,
                       }))
                     }
-                    className="h-4 w-4 rounded text-blue-600"
+                    className="h-4 w-4 rounded text-primary"
                   />
-                  <span className="text-sm text-slate-700">Active</span>
+                  <span className="text-sm text-foreground">Active</span>
                 </label>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
-            <span className="text-xs text-slate-400">
+          <div className="flex items-center justify-between rounded-b-2xl border-t border-border bg-muted px-6 py-4">
+            <span className="text-xs text-muted-foreground">
               * Required fields. Categories are used across reports and ticket
               routing.
             </span>
@@ -280,7 +280,7 @@ export function NewCategoryPage() {
                 type="button"
                 onClick={() => navigate("/categories")}
                 disabled={saving}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -288,7 +288,7 @@ export function NewCategoryPage() {
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={saving || loading}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
               >
                 <Plus className="h-4 w-4" />
                 <span>Create category</span>

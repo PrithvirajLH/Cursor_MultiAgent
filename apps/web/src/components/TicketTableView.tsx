@@ -61,7 +61,7 @@ export function TicketTableView({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[1180px]">
-        <thead className="border-b border-slate-100 bg-white">
+        <thead className="border-b border-border bg-card">
           <tr>
             {showCheckbox ? (
               <th className="w-12 px-6 py-4 text-left">
@@ -69,38 +69,38 @@ export function TicketTableView({
                   type="checkbox"
                   checked={selection.isAllSelected}
                   onChange={selection.toggleAll}
-                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 transition"
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30 transition accent-primary"
                   aria-label="Select all tickets"
                 />
               </th>
             ) : null}
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               ID
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Subject
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Requester
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Priority
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Status
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Assignee
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Created
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               SLA
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-border">
           {tickets.map((ticket) => {
             const sla = getSlaTone({
               dueAt: ticket.dueAt,
@@ -136,12 +136,12 @@ export function TicketTableView({
                 role="button"
                 tabIndex={0}
                 aria-selected={selected || focused}
-                className={`cursor-pointer text-sm transition-colors hover:bg-blue-50/40 focus-visible:bg-slate-50 ${
+                className={`cursor-pointer text-sm transition-colors hover:bg-white/[0.04] focus-visible:bg-white/[0.05] ${
                   selected
-                    ? "bg-blue-50 border-transparent z-10 relative shadow-[inset_2px_0_0_0_#2563eb]"
+                    ? "bg-primary/5 border-transparent z-10 relative shadow-[inset_2px_0_0_0_hsl(var(--primary))]"
                     : focused
-                      ? "bg-slate-50"
-                      : "bg-white"
+                      ? "bg-white/[0.05]"
+                      : "bg-transparent"
                 }`}
               >
                 {showCheckbox ? (
@@ -153,25 +153,25 @@ export function TicketTableView({
                       type="checkbox"
                       checked={selected}
                       onChange={() => selection.toggle(ticket.id)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 transition"
+                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30 transition accent-primary"
                       aria-label={`Select ticket ${ticket.subject}`}
                     />
                   </td>
                 ) : null}
                 <td className="whitespace-nowrap px-6 py-4">
-                  <span className="font-semibold text-slate-900">
+                  <span className="font-semibold text-foreground">
                     {formatTicketId(ticket)}
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <p className="max-w-lg truncate text-sm font-semibold text-slate-900 leading-tight">
+                  <p className="max-w-lg truncate text-sm font-semibold text-foreground leading-tight">
                     {ticket.subject}
                   </p>
-                  <p className="max-w-lg truncate text-sm text-slate-500 mt-0.5">
+                  <p className="max-w-lg truncate text-sm text-muted-foreground mt-0.5">
                     {snippet}
                   </p>
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-700">
+                <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-foreground/80">
                   {requesterName}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
@@ -189,10 +189,10 @@ export function TicketTableView({
                     {formatStatus(ticket.status)}
                   </span>
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-600">
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-foreground/70">
                   {assigneeName}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-slate-500">
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-muted-foreground">
                   <RelativeTime value={ticket.createdAt} />
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">

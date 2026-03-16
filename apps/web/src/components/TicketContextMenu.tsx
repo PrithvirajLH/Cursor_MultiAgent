@@ -54,9 +54,9 @@ export function TicketContextMenu({
     <div
       ref={menuRef}
       style={style}
-      className="w-56 rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-xl backdrop-blur-md animate-fade-in origin-top-left flex flex-col gap-0.5"
+      className="w-56 rounded-xl border border-border bg-popover/95 p-1.5 shadow-xl backdrop-blur-md animate-fade-in origin-top-left flex flex-col gap-0.5"
     >
-      <div className="px-2 py-1.5 text-xs font-semibold text-slate-500 border-b border-slate-100 mb-1 truncate">
+      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1 truncate">
         {formatTicketId(ticket)}
       </div>
       <button
@@ -66,7 +66,7 @@ export function TicketContextMenu({
           onAction("assign_me", ticket);
           onClose();
         }}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors text-left"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
       >
         <UserPlus className="h-4 w-4 text-slate-400 shrink-0" />
         Assign to Me
@@ -78,7 +78,7 @@ export function TicketContextMenu({
           onAction("status", ticket);
           onClose();
         }}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors text-left"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
       >
         <Activity className="h-4 w-4 text-slate-400 shrink-0" />
         Change Status
@@ -90,12 +90,12 @@ export function TicketContextMenu({
           onAction("priority", ticket);
           onClose();
         }}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors text-left"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
       >
         <ArrowUpCircle className="h-4 w-4 text-slate-400 shrink-0" />
         Change Priority
       </button>
-      <div className="my-0.5 border-b border-slate-100" />
+      <div className="my-0.5 border-b border-border" />
       <button
         type="button"
         onClick={(e) => {
@@ -103,7 +103,7 @@ export function TicketContextMenu({
           onAction("copy", ticket);
           onClose();
         }}
-        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors text-left"
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
       >
         <Copy className="h-4 w-4 text-slate-400 shrink-0" />
         Copy Ticket ID

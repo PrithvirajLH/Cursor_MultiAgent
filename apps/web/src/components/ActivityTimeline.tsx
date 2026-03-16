@@ -125,9 +125,9 @@ export function ActivityTimeline({
 
   if (events.length === 0) {
     return (
-      <div className="py-10 text-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50">
-        <p className="text-sm font-medium text-slate-600">No activity yet</p>
-        <p className="text-xs text-slate-500 mt-1">
+      <div className="py-10 text-center rounded-xl border border-dashed border-border bg-muted/50">
+        <p className="text-sm font-medium text-muted-foreground">No activity yet</p>
+        <p className="text-xs text-muted-foreground mt-1">
           Events will appear here as the ticket is updated (status changes,
           assignments, messages, and more).
         </p>
@@ -139,7 +139,7 @@ export function ActivityTimeline({
     <div className="flex flex-col gap-4">
       {uniqueTypes.length > 1 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-500">Filter:</span>
+          <span className="text-xs font-medium text-muted-foreground">Filter:</span>
           {uniqueTypes.map((type) => {
             const active = typeFilter.length === 0 || typeFilter.includes(type);
             return (
@@ -157,8 +157,8 @@ export function ActivityTimeline({
                 }}
                 className={`text-xs px-2 py-1 rounded-full border transition ${
                   active
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-card text-muted-foreground border-border hover:border-border/70"
                 }`}
               >
                 {EVENT_TYPE_LABELS[type] ?? type.replace(/_/g, " ")}
@@ -169,7 +169,7 @@ export function ActivityTimeline({
             <button
               type="button"
               onClick={() => setTypeFilter([])}
-              className="text-xs text-slate-500 hover:text-slate-700"
+              className="text-xs text-muted-foreground hover:text-foreground"
             >
               Clear
             </button>
@@ -177,7 +177,7 @@ export function ActivityTimeline({
         </div>
       )}
 
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-border">
         {groupedByDate.map(({ dateKey, dateLabel, events }) => {
           const isCollapsed = collapsedDates.has(dateKey);
           return (
@@ -185,7 +185,7 @@ export function ActivityTimeline({
               <button
                 type="button"
                 onClick={() => toggleDate(dateKey)}
-                className="flex items-center gap-2 w-full text-left text-xs font-medium text-slate-500 hover:text-slate-700 py-1"
+                className="flex items-center gap-2 w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground py-1"
               >
                 {isCollapsed ? (
                   <ChevronRight className="h-3.5 w-3.5 flex-shrink-0" />
@@ -193,7 +193,7 @@ export function ActivityTimeline({
                   <ChevronDown className="h-3.5 w-3.5 flex-shrink-0" />
                 )}
                 {dateLabel}
-                <span className="text-slate-400 font-normal">
+                <span className="text-muted-foreground font-normal">
                   ({events.length})
                 </span>
               </button>

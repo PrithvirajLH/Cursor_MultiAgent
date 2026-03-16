@@ -133,11 +133,11 @@ export function SavedViewsDropdown({
       <button
         type="button"
         onClick={openDropdown}
-        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+        className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-[13px] font-semibold text-foreground shadow-sm hover:bg-muted transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
       >
         Saved views
         <ChevronDown
-          className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {open && (
@@ -147,7 +147,7 @@ export function SavedViewsDropdown({
             aria-hidden
             onClick={() => setOpen(false)}
           />
-          <div className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-[16px] border border-slate-200 bg-white py-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+          <div className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-[16px] border border-border bg-popover py-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
             {showSaveInput ? (
               <div className="px-3 py-2 space-y-3">
                 <input
@@ -155,7 +155,7 @@ export function SavedViewsDropdown({
                   value={saveName}
                   onChange={(e) => setSaveName(e.target.value)}
                   placeholder="View name"
-                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white transition-colors"
+                  className="w-full rounded-lg border border-border bg-muted px-3 py-2 text-[13px] text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-card transition-colors"
                   autoFocus
                 />
                 <div className="flex gap-2">
@@ -173,7 +173,7 @@ export function SavedViewsDropdown({
                       setShowSaveInput(false);
                       setSaveName("");
                     }}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                    className="rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground hover:bg-muted transition-colors shadow-sm"
                   >
                     Cancel
                   </button>
@@ -184,29 +184,29 @@ export function SavedViewsDropdown({
                 <button
                   type="button"
                   onClick={() => setShowSaveInput(true)}
-                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-medium text-foreground hover:bg-muted transition-colors"
                 >
                   <Save className="h-4 w-4 text-slate-400" />
                   Save current filters
                 </button>
-                <div className="border-t border-slate-100" />
+                <div className="border-t border-border" />
                 {loading ? (
-                  <p className="px-3 py-4 text-[12px] text-slate-500 text-center">
+                  <p className="px-3 py-4 text-[12px] text-muted-foreground text-center">
                     Loading…
                   </p>
                 ) : views.length === 0 ? (
-                  <p className="px-3 py-4 text-[12px] text-slate-500 text-center">
+                  <p className="px-3 py-4 text-[12px] text-muted-foreground text-center">
                     No saved views
                   </p>
                 ) : (
                   <ul className="max-h-48 overflow-y-auto">
                     {views.map((view) => (
                       <li key={view.id}>
-                        <div className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted transition-colors">
                           <button
                             type="button"
                             onClick={() => applyView(view)}
-                            className="min-w-0 flex-1 truncate text-left text-[13px] text-slate-700"
+                            className="min-w-0 flex-1 truncate text-left text-[13px] text-foreground"
                           >
                             {view.name}
                             {view.isDefault && (

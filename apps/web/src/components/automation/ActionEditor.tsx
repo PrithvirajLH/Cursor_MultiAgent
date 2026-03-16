@@ -40,9 +40,9 @@ export function ActionEditor({
   const type = action.type ?? "assign_team";
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 p-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 p-2 text-sm">
       <select
-        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+        className="rounded border border-border bg-card px-2 py-1 text-xs"
         value={type}
         onChange={(e) => onChange({ ...action, type: e.target.value })}
       >
@@ -54,7 +54,7 @@ export function ActionEditor({
       </select>
       {type === "assign_team" && (
         <select
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+          className="rounded border border-border bg-card px-2 py-1 text-xs"
           value={action.teamId ?? ""}
           onChange={(e) => onChange({ ...action, teamId: e.target.value })}
         >
@@ -68,7 +68,7 @@ export function ActionEditor({
       )}
       {type === "assign_user" && (
         <select
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs min-w-[140px]"
+          className="rounded border border-border bg-card px-2 py-1 text-xs min-w-[140px]"
           value={action.userId ?? ""}
           onChange={(e) => onChange({ ...action, userId: e.target.value })}
         >
@@ -82,7 +82,7 @@ export function ActionEditor({
       )}
       {type === "set_priority" && (
         <select
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+          className="rounded border border-border bg-card px-2 py-1 text-xs"
           value={action.priority ?? ""}
           onChange={(e) => onChange({ ...action, priority: e.target.value })}
         >
@@ -96,7 +96,7 @@ export function ActionEditor({
       )}
       {type === "set_status" && (
         <select
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs"
+          className="rounded border border-border bg-card px-2 py-1 text-xs"
           value={action.status ?? ""}
           onChange={(e) => onChange({ ...action, status: e.target.value })}
         >
@@ -111,7 +111,7 @@ export function ActionEditor({
       {(type === "notify_team_lead" || type === "add_internal_note") && (
         <input
           type="text"
-          className="rounded border border-slate-200 bg-white px-2 py-1 text-xs min-w-[160px]"
+          className="rounded border border-border bg-card px-2 py-1 text-xs min-w-[160px]"
           placeholder={
             type === "add_internal_note" ? "Note text" : "Message (optional)"
           }
@@ -122,7 +122,7 @@ export function ActionEditor({
       <button
         type="button"
         onClick={onRemove}
-        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-slate-100"
+        className="rounded border border-border bg-card px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
       >
         Remove
       </button>

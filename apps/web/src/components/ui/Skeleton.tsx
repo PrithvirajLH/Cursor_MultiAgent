@@ -1,12 +1,5 @@
 import { cn } from "../../lib/utils";
 
-/* ——————————————————————————————————————————————————————————————
- * Skeleton primitives – consistent loading states across pages.
- *
- * Uses the existing `skeleton-shimmer` class from styles.css.
- * All pages should use these instead of ad-hoc loading text.
- * —————————————————————————————————————————————————————————————— */
-
 /** Base skeleton block – shimmer rectangle with configurable size. */
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("skeleton-shimmer rounded", className)} />;
@@ -19,7 +12,7 @@ export function KpiGridSkeleton({ count = 4 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={`kpi-skel-${i}`}
-          className="rounded-xl border border-slate-200 bg-white p-4"
+          className="rounded-xl border border-border bg-card p-4"
         >
           <Skeleton className="mb-3 h-4 w-24" />
           <Skeleton className="mb-2 h-7 w-16" />
@@ -37,7 +30,7 @@ export function CardListSkeleton({ count = 3 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={`card-skel-${i}`}
-          className="rounded-xl border border-slate-200 bg-white p-5"
+          className="rounded-xl border border-border bg-card p-5"
         >
           <div className="flex items-center justify-between">
             <div className="space-y-2">
@@ -61,9 +54,9 @@ export function TableSkeleton({
   rows?: number;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       {/* Header */}
-      <div className="flex items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="flex items-center gap-4 border-b border-border bg-muted/50 px-4 py-3">
         {Array.from({ length: columns }).map((_, i) => (
           <Skeleton
             key={`th-${i}`}
@@ -75,7 +68,7 @@ export function TableSkeleton({
       {Array.from({ length: rows }).map((_, ri) => (
         <div
           key={`tr-${ri}`}
-          className="flex items-center gap-4 border-b border-slate-100 px-4 py-3.5 last:border-0"
+          className="flex items-center gap-4 border-b border-border/50 px-4 py-3.5 last:border-0"
         >
           {Array.from({ length: columns }).map((_, ci) => (
             <Skeleton
@@ -96,7 +89,7 @@ export function TableSkeleton({
 export function ChartSkeleton({ height = "h-72" }: { height?: string }) {
   return (
     <div
-      className={cn("rounded-xl border border-slate-200 bg-white p-6", height)}
+      className={cn("rounded-xl border border-border bg-card p-6", height)}
     >
       <Skeleton className="mb-4 h-5 w-32" />
       <Skeleton className="h-3/4 w-full rounded-lg" />
@@ -109,11 +102,11 @@ export function ColumnSkeleton({ cards = 4 }: { cards?: number }) {
   return (
     <div className="w-80 flex-shrink-0">
       <Skeleton className="mb-3 h-5 w-28" />
-      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
         {Array.from({ length: cards }).map((_, i) => (
           <div
             key={`col-card-${i}`}
-            className="rounded-lg border border-slate-200 bg-white p-4"
+            className="rounded-lg border border-border bg-card p-4"
           >
             <Skeleton className="mb-2 h-4 w-3/4" />
             <Skeleton className="mb-3 h-3 w-1/2" />

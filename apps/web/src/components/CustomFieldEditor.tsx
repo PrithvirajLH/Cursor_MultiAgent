@@ -143,9 +143,9 @@ export function CustomFieldEditor({
     <form className="space-y-4" onSubmit={onSubmit}>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div>
-        <label className="text-xs text-slate-500">Name</label>
+        <label className="text-xs text-muted-foreground">Name</label>
         <input
-          className="mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
           placeholder="e.g. Asset Tag"
@@ -154,9 +154,9 @@ export function CustomFieldEditor({
         />
       </div>
       <div>
-        <label className="text-xs text-slate-500">Field type</label>
+        <label className="text-xs text-muted-foreground">Field type</label>
         <select
-          className="mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.fieldType}
           onChange={(e) => onChange({ fieldType: e.target.value })}
         >
@@ -170,13 +170,13 @@ export function CustomFieldEditor({
       {needsOptions && (
         <div>
           <div className="flex items-center justify-between">
-            <label className="text-xs text-slate-500">
+            <label className="text-xs text-muted-foreground">
               Options (value / label)
             </label>
             <button
               type="button"
               onClick={addOption}
-              className="text-xs text-slate-600 hover:text-slate-900 inline-flex items-center gap-1"
+              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
             >
               <Plus className="h-3 w-3" /> Add
             </button>
@@ -185,13 +185,13 @@ export function CustomFieldEditor({
             {form.options.map((opt, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <input
-                  className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5 text-sm"
+                  className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground"
                   value={opt.value}
                   onChange={(e) => updateOption(i, "value", e.target.value)}
                   placeholder="Value"
                 />
                 <input
-                  className="flex-1 rounded-lg border border-slate-200 bg-white/80 px-2 py-1.5 text-sm"
+                  className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground"
                   value={opt.label}
                   onChange={(e) => updateOption(i, "label", e.target.value)}
                   placeholder="Label"
@@ -199,7 +199,7 @@ export function CustomFieldEditor({
                 <button
                   type="button"
                   onClick={() => removeOption(i)}
-                  className="p-1.5 text-slate-500 hover:text-red-600"
+                  className="p-1.5 text-muted-foreground hover:text-red-400"
                   aria-label="Remove option"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -207,7 +207,7 @@ export function CustomFieldEditor({
               </div>
             ))}
             {form.options.length === 0 && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-muted-foreground">
                 No options yet. Add at least one for dropdown/multi-select.
               </p>
             )}
@@ -220,19 +220,19 @@ export function CustomFieldEditor({
           id="custom-field-required"
           checked={form.isRequired}
           onChange={(e) => onChange({ isRequired: e.target.checked })}
-          className="rounded border-slate-300"
+          className="rounded border-border"
         />
         <label
           htmlFor="custom-field-required"
-          className="text-sm text-slate-700"
+          className="text-sm text-foreground"
         >
           Required
         </label>
       </div>
       <div>
-        <label className="text-xs text-slate-500">Team (scope)</label>
+        <label className="text-xs text-muted-foreground">Team (scope)</label>
         <select
-          className="mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.teamId}
           onChange={(e) => onChange({ teamId: e.target.value })}
         >
@@ -245,9 +245,9 @@ export function CustomFieldEditor({
         </select>
       </div>
       <div>
-        <label className="text-xs text-slate-500">Category (scope)</label>
+        <label className="text-xs text-muted-foreground">Category (scope)</label>
         <select
-          className="mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.categoryId}
           onChange={(e) => onChange({ categoryId: e.target.value })}
         >
@@ -260,10 +260,10 @@ export function CustomFieldEditor({
         </select>
       </div>
       <div>
-        <label className="text-xs text-slate-500">Sort order</label>
+        <label className="text-xs text-muted-foreground">Sort order</label>
         <input
           type="number"
-          className="mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm"
+          className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.sortOrder}
           onChange={(e) => onChange({ sortOrder: Number(e.target.value) || 0 })}
           min={0}
@@ -273,14 +273,14 @@ export function CustomFieldEditor({
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          className="rounded-xl border border-border px-4 py-2 text-sm text-foreground hover:bg-accent"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={saving || !form.name.trim()}
-          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>

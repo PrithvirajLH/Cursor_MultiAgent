@@ -10,17 +10,26 @@ interface KPICardProps {
   helper?: string;
 }
 
-const bgGradients: Record<NonNullable<KPICardProps["variant"]>, string> = {
-  blue: "bg-card",
-  green: "bg-card",
-  default: "bg-card",
-};
-
-const iconBgs: Record<NonNullable<KPICardProps["variant"]>, string> = {
-  blue: "bg-[hsl(var(--status-progress-bg))] text-[hsl(var(--status-progress))]",
-  green:
-    "bg-[hsl(var(--status-resolved-bg))] text-[hsl(var(--status-resolved))]",
-  default: "bg-[hsl(var(--kpi-yellow))] text-amber-600",
+const accentColors: Record<NonNullable<KPICardProps["variant"]>, {
+  icon: string;
+  iconBg: string;
+  bar: string;
+}> = {
+  blue: {
+    icon: "hsl(var(--status-progress))",
+    iconBg: "hsl(var(--status-progress-bg))",
+    bar: "hsl(var(--status-progress))",
+  },
+  green: {
+    icon: "hsl(var(--status-open))",
+    iconBg: "hsl(var(--status-open-bg))",
+    bar: "hsl(var(--status-open))",
+  },
+  default: {
+    icon: "hsl(var(--status-waiting))",
+    iconBg: "hsl(var(--status-waiting-bg))",
+    bar: "hsl(var(--status-waiting))",
+  },
 };
 
 export function KPICard({
@@ -31,31 +40,47 @@ export function KPICard({
   dropdown,
   helper,
 }: KPICardProps) {
+  const colors = accentColors[variant];
+
   return (
     <div
       className={cn(
-        "relative flex items-center gap-2 rounded-lg border border-border/80 p-3 shadow-card transition-all duration-200 hover:shadow-elevated",
-        bgGradients[variant],
+        "relative flex items-center gap-4 rounded-xl border p-4 transition-all duration-200 overflow-hidden",
+        "hover:border-white/[0.12] hover:shadow-card group cursor-default",
       )}
+      style={{
+        background: "hsl(var(--card))",
+        borderColor: "hsl(var(--border))",
+      }}
     >
+      {/* Subtle left accent bar */}
+      <span
+        className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full opacity-70 group-hover:opacity-100 transition-opacity"
+        style={{ background: colors.bar }}
+        aria-hidden="true"
+      />
+
+      {/* Icon */}
       <div
-        className={cn(
-          "flex h-9 w-9 items-center justify-center rounded-lg",
-          iconBgs[variant],
-        )}
+        className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105"
+        style={{
+          background: colors.iconBg,
+          color: colors.icon,
+        }}
       >
         <Icon className="h-5 w-5" />
       </div>
 
-      <div className="flex-1">
-        <div className="text-xl font-bold leading-tight text-foreground tracking-tight">
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="text-[26px] font-bold leading-none tracking-tight tabular-nums text-foreground">
           {value.toLocaleString()}
         </div>
-        <div className="mt-0 text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
           {label}
         </div>
         {helper && (
-          <div className="mt-0 text-xs leading-tight text-muted-foreground">
+          <div className="mt-1 text-[12px] text-muted-foreground/70 leading-tight">
             {helper}
           </div>
         )}

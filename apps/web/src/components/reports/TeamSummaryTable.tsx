@@ -9,7 +9,7 @@ type TeamRow = {
 export function TeamSummaryTable({ data }: { data: TeamRow[] }) {
   if (data.length === 0) {
     return (
-      <div className="py-6 text-sm text-slate-500">
+      <div className="py-6 text-sm text-muted-foreground">
         No team summary available for the selected range.
       </div>
     );
@@ -19,7 +19,7 @@ export function TeamSummaryTable({ data }: { data: TeamRow[] }) {
       <table className="w-full min-w-[420px] text-sm" aria-label="Team summary">
         <caption className="sr-only">Team summary</caption>
         <thead>
-          <tr className="border-b border-slate-200 text-left text-slate-600">
+          <tr className="border-b border-border text-left text-muted-foreground">
             <th className="pb-2 pr-3 font-medium">Team</th>
             <th className="pb-2 pr-3 font-medium text-right">Open</th>
             <th className="pb-2 pr-3 font-medium text-right">Closed</th>
@@ -28,17 +28,17 @@ export function TeamSummaryTable({ data }: { data: TeamRow[] }) {
         </thead>
         <tbody>
           {data.map((row) => (
-            <tr key={row.id} className="border-b border-slate-100">
-              <td className="py-2 pr-3 font-medium text-slate-900">
+            <tr key={row.id} className="border-b border-border/50">
+              <td className="py-2 pr-3 font-medium text-foreground">
                 {row.name}
               </td>
-              <td className="py-2 pr-3 text-right text-slate-700">
+              <td className="py-2 pr-3 text-right text-foreground/80">
                 {row.open}
               </td>
-              <td className="py-2 pr-3 text-right text-slate-700">
+              <td className="py-2 pr-3 text-right text-foreground/80">
                 {row.resolved}
               </td>
-              <td className="py-2 text-right text-slate-900 font-semibold">
+              <td className="py-2 text-right text-foreground font-semibold">
                 {row.total}
               </td>
             </tr>

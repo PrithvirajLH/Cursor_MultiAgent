@@ -34,6 +34,7 @@ type AdminSidebarItem = {
   route: AdminRoute;
   icon: LucideIcon;
   roles: Role[];
+  description?: string;
 };
 
 const adminItems: AdminSidebarItem[] = [
@@ -43,6 +44,7 @@ const adminItems: AdminSidebarItem[] = [
     route: "/sla-settings",
     icon: Shield,
     roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Response & resolution targets",
   },
   {
     key: "routing",
@@ -50,13 +52,15 @@ const adminItems: AdminSidebarItem[] = [
     route: "/routing",
     icon: ArrowRightLeft,
     roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Keyword-based assignment",
   },
   {
     key: "automation",
-    label: "Automation Rules",
+    label: "Automation",
     route: "/automation",
     icon: Bot,
     roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Trigger-based actions",
   },
   {
     key: "custom-fields",
@@ -64,6 +68,7 @@ const adminItems: AdminSidebarItem[] = [
     route: "/custom-fields",
     icon: Wrench,
     roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Per-team field definitions",
   },
   {
     key: "audit-log",
@@ -71,6 +76,7 @@ const adminItems: AdminSidebarItem[] = [
     route: "/audit-log",
     icon: FileText,
     roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Changes & compliance trail",
   },
   {
     key: "categories",
@@ -78,6 +84,7 @@ const adminItems: AdminSidebarItem[] = [
     route: "/categories",
     icon: Tags,
     roles: ["OWNER"],
+    description: "Ticket categorization",
   },
   {
     key: "reports",
@@ -85,6 +92,7 @@ const adminItems: AdminSidebarItem[] = [
     route: "/reports",
     icon: BarChart3,
     roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Analytics & insights",
   },
 ];
 
@@ -126,107 +134,85 @@ export function AdminSidebar({
   className?: string;
 }) {
   const items = adminItems.filter((item) => item.roles.includes(role));
-  const navRef = useRef<HTMLElement | null>(null);
-  const [indicatorStyle, setIndicatorStyle] = useState({
-    top: 0,
-    height: 0,
-    opacity: 0,
-  });
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!navRef.current || !visible) {
-        return;
-      }
-
-      const activeEl = navRef.current.querySelector(
-        '[data-active="true"]',
-      ) as HTMLElement | null;
-
-      if (activeEl) {
-        const topOffset = activeEl.offsetTop;
-        const pHeight = parseInt(
-          activeEl.getAttribute("data-indicator-height") || "24",
-          10,
-        );
-        const pTopPadding = parseInt(
-          activeEl.getAttribute("data-indicator-padding") || "8",
-          10,
-        );
-
-        setIndicatorStyle({
-          top: topOffset + pTopPadding,
-          height: pHeight,
-          opacity: 1,
-        });
-      } else {
-        setIndicatorStyle((prev) => ({ ...prev, opacity: 0 }));
-      }
-    }, 50);
-
-    return () => clearTimeout(timer);
-  }, [items, pathname, visible]);
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 h-screen w-64 border-r border-slate-800 bg-slate-900 p-5 transition-transform duration-300 ease-out ${
+      className={`fixed left-0 top-0 z-50 h-screen w-[248px] border-r border-white/[0.07] flex flex-col transition-transform duration-300 ease-out ${
         visible ? "translate-x-0" : "-translate-x-full pointer-events-none"
       } ${className ?? ""}`}
+      style={{ background: "hsl(222 52% 7%)" }}
       aria-hidden={!visible}
     >
-      <div className="flex h-full flex-col">
-        <div className="border-b border-slate-800 pb-4">
-          <button
-            type="button"
-            onClick={onBack}
-            className="group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-          >
-            <ArrowLeft className="h-5 w-5 flex-shrink-0 text-slate-500 group-hover:text-slate-300 transition-colors" />
-            <span className="truncate text-left">Back</span>
-          </button>
-        </div>
-
-        <nav
-          ref={navRef}
-          className="mt-6 flex-1 space-y-1 overflow-y-auto overflow-x-visible pr-1 custom-scrollbar relative"
+      {/* Header */}
+      <div className="px-4 py-[18px] border-b border-white/[0.07] flex-shrink-0">
+        <button
+          type="button"
+          onClick={onBack}
+          className="group w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 text-white/40 hover:text-white/70 hover:bg-white/[0.06]"
         >
-          <div
-            className="absolute left-0 w-1 rounded-r-full bg-blue-500 transition-all duration-300 [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] z-10"
-            style={{
-              top: indicatorStyle.top,
-              height: indicatorStyle.height,
-              opacity: indicatorStyle.opacity,
-            }}
-            aria-hidden="true"
-          />
-          {items.map((item) => {
-            const Icon = item.icon;
-            const active = isItemActive(item.route, pathname);
-            return (
-              <button
-                key={item.key}
-                type="button"
-                data-active={active}
-                data-indicator-height="24"
-                data-indicator-padding="8"
-                onClick={() => onNavigate(item.route)}
-                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  active
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-                }`}
-              >
-                <Icon
-                  className={`h-5 w-5 flex-shrink-0 transition-colors ${active ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"}`}
-                />
-                <span className="truncate text-left">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+          <ArrowLeft className="h-4 w-4 flex-shrink-0 transition-transform group-hover:-translate-x-0.5" />
+          <span>Back to Menu</span>
+        </button>
+      </div>
 
-        <div className="mt-6 border-t border-slate-800 pt-4 flex items-center justify-between">
-          <span />
+      {/* Section label */}
+      <div className="px-5 pt-5 pb-2">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+          Administration
+        </p>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-1 space-y-0.5">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const active = isItemActive(item.route, pathname);
+
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => onNavigate(item.route)}
+              className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+                active
+                  ? "bg-white/[0.09] text-white"
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+              }`}
+            >
+              {active && (
+                <span
+                  className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                  style={{ background: "hsl(var(--primary))" }}
+                  aria-hidden="true"
+                />
+              )}
+
+              <Icon
+                className={`flex-shrink-0 h-[18px] w-[18px] transition-colors duration-150 ${
+                  active
+                    ? "text-[hsl(var(--primary))]"
+                    : "text-white/30 group-hover:text-white/55"
+                }`}
+              />
+
+              <div className="flex-1 text-left min-w-0">
+                <div className="truncate">{item.label}</div>
+                {item.description && (
+                  <div className="text-[11px] truncate mt-0.5 text-white/25 font-normal">
+                    {item.description}
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="px-2.5 pb-4 pt-2 border-t border-white/[0.07] flex-shrink-0">
+        <div className="px-3 py-2.5 rounded-lg" style={{ background: "hsl(var(--muted))" }}>
+          <p className="text-[11px] text-white/35 leading-relaxed">
+            Admin settings are visible only to Team Admins and Owners.
+          </p>
         </div>
       </div>
     </aside>

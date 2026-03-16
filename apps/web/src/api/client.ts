@@ -175,8 +175,8 @@ export type TicketStatus =
   | "TRIAGED"
   | "ASSIGNED"
   | "IN_PROGRESS"
-  | "WAITING_ON_CUSTOMER"
-  | "WAITING_ON_THIRDPARTY"
+  | "WAITING_ON_REQUESTER"
+  | "WAITING_ON_VENDOR"
   | "RESOLVED"
   | "CLOSED"
   | "REOPENED";

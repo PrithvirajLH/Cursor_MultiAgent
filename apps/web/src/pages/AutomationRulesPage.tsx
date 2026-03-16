@@ -213,8 +213,8 @@ function Toggle({
         onChange={(event) => onChange(event.target.checked)}
         className="peer sr-only"
       />
-      <span className="absolute inset-0 cursor-pointer rounded-full bg-slate-300 transition peer-checked:bg-blue-600 peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
-      <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-[18px]" />
+      <span className="absolute inset-0 cursor-pointer rounded-full bg-muted transition peer-checked:bg-primary peer-disabled:cursor-not-allowed peer-disabled:opacity-60" />
+      <span className="absolute bottom-[3px] left-[3px] h-4 w-4 rounded-full bg-card transition-transform peer-checked:translate-x-[18px]" />
     </label>
   );
 }
@@ -244,7 +244,7 @@ function ConfirmDeleteModal({
         aria-modal="true"
         aria-label="Delete automation rule"
         tabIndex={-1}
-        className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+        className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl"
       >
         <div className="mb-3 flex items-center space-x-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
@@ -262,18 +262,18 @@ function ConfirmDeleteModal({
               />
             </svg>
           </div>
-          <h3 className="text-base font-semibold text-slate-900">
+          <h3 className="text-base font-semibold text-foreground">
             Delete Automation
           </h3>
         </div>
-        <p className="mb-5 text-sm leading-relaxed text-slate-600">
+        <p className="mb-5 text-sm leading-relaxed text-muted-foreground">
           Delete "{ruleName}"?
         </p>
         <div className="flex justify-end space-x-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
           >
             Cancel
           </button>
@@ -352,21 +352,21 @@ function RuleEditorModal({
         aria-modal="true"
         aria-label={isNew ? "Create automation rule" : "Edit automation rule"}
         tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl"
+        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-card shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>
-            <p className="text-base font-semibold text-slate-900">
+            <p className="text-base font-semibold text-foreground">
               {isNew ? "Create Automation" : "Edit Automation"}
             </p>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Set trigger, conditions and actions
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600"
+            className="text-muted-foreground hover:text-muted-foreground"
           >
             <svg
               className="h-5 w-5"
@@ -387,31 +387,31 @@ function RuleEditorModal({
         <div className="flex-1 space-y-5 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Automation Name *
               </label>
               <input
                 value={form.name}
                 onChange={(event) => onChange({ name: event.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 placeholder="e.g. Auto-close Resolved"
               />
             </div>
             <div className="col-span-2 sm:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-foreground">
                 Scope
               </label>
               {isTeamAdmin ? (
                 <input
                   value={teamAdminScopeName}
                   disabled
-                  className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                  className="w-full rounded-lg border border-border bg-accent px-3 py-2 text-sm text-muted-foreground"
                 />
               ) : (
                 <select
                   value={form.teamId}
                   onChange={(event) => onChange({ teamId: event.target.value })}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 >
                   <option value="">Global (all teams)</option>
                   {teamsList.map((team) => (
@@ -428,7 +428,7 @@ function RuleEditorModal({
                   checked={form.enabled}
                   onChange={(value) => onChange({ enabled: value })}
                 />
-                <span className="text-sm text-slate-700">Enabled</span>
+                <span className="text-sm text-foreground">Enabled</span>
               </div>
             </div>
           </div>
@@ -437,7 +437,7 @@ function RuleEditorModal({
             <p className="mb-2 text-xs font-semibold text-amber-800">Trigger</p>
             <div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
+                <label className="mb-1 block text-xs font-medium text-foreground">
                   When
                 </label>
                 <select
@@ -445,7 +445,7 @@ function RuleEditorModal({
                   onChange={(event) =>
                     onChange({ trigger: event.target.value })
                   }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 >
                   {TRIGGERS.map((trigger) => (
                     <option key={trigger.value} value={trigger.value}>
@@ -459,7 +459,7 @@ function RuleEditorModal({
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">Conditions</p>
+              <p className="text-sm font-semibold text-foreground">Conditions</p>
             </div>
             {conditionEditingLocked && (
               <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -471,7 +471,7 @@ function RuleEditorModal({
               {form.conditions.map((condition, index) => (
                 <div
                   key={`condition-${index}`}
-                  className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5"
+                  className="flex items-center space-x-2 rounded-lg border border-border bg-muted p-2.5"
                 >
                   <select
                     value={condition.field}
@@ -479,7 +479,7 @@ function RuleEditorModal({
                       onUpdateCondition(index, "field", event.target.value)
                     }
                     disabled={conditionEditingLocked}
-                    className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     <option value="">Field...</option>
                     {CONDITION_FIELDS.map((field) => (
@@ -494,7 +494,7 @@ function RuleEditorModal({
                       onUpdateCondition(index, "op", event.target.value)
                     }
                     disabled={conditionEditingLocked}
-                    className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="w-24 rounded-lg border border-border bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     {CONDITION_OPS.map((op) => (
                       <option key={op} value={op}>
@@ -508,14 +508,14 @@ function RuleEditorModal({
                       onUpdateCondition(index, "val", event.target.value)
                     }
                     disabled={conditionEditingLocked}
-                    className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     placeholder="value..."
                   />
                   <button
                     type="button"
                     onClick={() => onRemoveCondition(index)}
                     disabled={conditionEditingLocked}
-                    className="text-slate-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="text-muted-foreground hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <svg
                       className="h-4 w-4"
@@ -537,7 +537,7 @@ function RuleEditorModal({
                 type="button"
                 onClick={onAddCondition}
                 disabled={conditionEditingLocked}
-                className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center space-x-1 text-xs font-medium text-primary hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -559,7 +559,7 @@ function RuleEditorModal({
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold text-slate-800">Actions</p>
+              <p className="text-sm font-semibold text-foreground">Actions</p>
             </div>
             <div className="space-y-2">
               {form.actions.map((action, index) => (
@@ -585,7 +585,7 @@ function RuleEditorModal({
                     onChange={(event) =>
                       onUpdateAction(index, "type", event.target.value)
                     }
-                    className="flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     {ACTION_TYPES.map((item) => (
                       <option key={item.value} value={item.value}>
@@ -599,7 +599,7 @@ function RuleEditorModal({
                       onChange={(event) =>
                         onUpdateAction(index, "val", event.target.value)
                       }
-                      className="flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Select team...</option>
                       {teamsList.map((team) => (
@@ -614,7 +614,7 @@ function RuleEditorModal({
                       onChange={(event) =>
                         onUpdateAction(index, "val", event.target.value)
                       }
-                      className="flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                       disabled={assignableUsersLoading || !!assignableUsersHint}
                     >
                       <option value="">
@@ -634,7 +634,7 @@ function RuleEditorModal({
                       onChange={(event) =>
                         onUpdateAction(index, "val", event.target.value)
                       }
-                      className="flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Select priority...</option>
                       {PRIORITY_OPTIONS.map((priority) => (
@@ -649,7 +649,7 @@ function RuleEditorModal({
                       onChange={(event) =>
                         onUpdateAction(index, "val", event.target.value)
                       }
-                      className="flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     >
                       <option value="">Select status...</option>
                       {STATUS_OPTIONS.map((status) => (
@@ -664,14 +664,14 @@ function RuleEditorModal({
                       onChange={(event) =>
                         onUpdateAction(index, "val", event.target.value)
                       }
-                      className="flex-1 rounded-lg border border-green-200 bg-white px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                       placeholder="value..."
                     />
                   )}
                   <button
                     type="button"
                     onClick={() => onRemoveAction(index)}
-                    className="text-slate-400 hover:text-red-500"
+                    className="text-muted-foreground hover:text-red-500"
                   >
                     <svg
                       className="h-4 w-4"
@@ -692,7 +692,7 @@ function RuleEditorModal({
               <button
                 type="button"
                 onClick={onAddAction}
-                className="flex items-center space-x-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                className="flex items-center space-x-1 text-xs font-medium text-primary hover:text-blue-700"
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -713,12 +713,12 @@ function RuleEditorModal({
           </div>
         </div>
 
-        <div className="flex justify-end space-x-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex justify-end space-x-3 rounded-b-xl border-t border-border bg-muted px-6 py-4">
           <button
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
           </button>
@@ -726,7 +726,7 @@ function RuleEditorModal({
             type="button"
             onClick={onSubmit}
             disabled={loading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
           >
             {loading
               ? "Saving..."
@@ -1359,8 +1359,8 @@ export function AutomationRulesPage({
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerCtx ? (
             <TopBar
@@ -1371,10 +1371,10 @@ export function AutomationRulesPage({
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Automation Rules
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Run actions automatically based on ticket events.
                   </p>
                 </div>
@@ -1382,10 +1382,10 @@ export function AutomationRulesPage({
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Automation Rules
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Run actions automatically based on ticket events.
               </p>
             </div>
@@ -1401,14 +1401,14 @@ export function AutomationRulesPage({
         )}
 
         <div className="mb-5 flex items-center justify-between">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             Automations run automatically based on triggers and conditions.
           </p>
           {canEdit && (
             <button
               type="button"
               onClick={openCreateModal}
-              className="flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+              className="flex items-center space-x-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
               <span>New Automation</span>
@@ -1417,20 +1417,20 @@ export function AutomationRulesPage({
         </div>
 
         <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Total Automations</p>
-            <p className="mt-0.5 text-2xl font-bold text-blue-600">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Total Automations</p>
+            <p className="mt-0.5 text-2xl font-bold text-primary">
               {rules.length}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Active</p>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Active</p>
             <p className="mt-0.5 text-2xl font-bold text-green-600">
               {rules.filter((rule) => rule.isActive).length}
             </p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Total Runs</p>
+          <div className="rounded-xl border border-border bg-card p-4">
+            <p className="text-xs text-muted-foreground">Total Runs</p>
             <p className="mt-0.5 text-2xl font-bold text-purple-600">
               {totalRuns}
             </p>
@@ -1443,7 +1443,7 @@ export function AutomationRulesPage({
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={`kpi-skel-${i}`}
-                  className="rounded-xl border border-slate-200 bg-white p-4"
+                  className="rounded-xl border border-border bg-card p-4"
                 >
                   <div className="mb-3 h-4 w-24 skeleton-shimmer rounded" />
                   <div className="mb-2 h-7 w-16 skeleton-shimmer rounded" />
@@ -1455,7 +1455,7 @@ export function AutomationRulesPage({
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={`rule-skel-${i}`}
-                  className="rounded-xl border border-slate-200 bg-white p-5"
+                  className="rounded-xl border border-border bg-card p-5"
                 >
                   <div className="flex items-center justify-between">
                     <div className="space-y-2">
@@ -1480,7 +1480,7 @@ export function AutomationRulesPage({
               return (
                 <div
                   key={rule.id}
-                  className={`rounded-xl border border-slate-200 bg-white p-5 transition-all duration-200 hover:shadow-md ${
+                  className={`rounded-xl border border-border bg-card p-5 transition-all duration-200 hover:shadow-md ${
                     !rule.isActive ? "opacity-60" : ""
                   }`}
                 >
@@ -1505,18 +1505,18 @@ export function AutomationRulesPage({
                       </div>
                       <div className="flex-1">
                         <div className="mb-1 flex items-center space-x-2">
-                          <span className="text-sm font-semibold text-slate-900">
+                          <span className="text-sm font-semibold text-foreground">
                             {rule.name}
                           </span>
                           {!rule.isActive && (
-                            <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-500">
+                            <span className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-muted-foreground">
                               Disabled
                             </span>
                           )}
                         </div>
 
                         <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-muted-foreground">
                             Trigger:
                           </span>
                           <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
@@ -1526,13 +1526,13 @@ export function AutomationRulesPage({
 
                         {meta.conditions.length > 0 && (
                           <div className="mb-2 flex flex-wrap gap-1.5">
-                            <span className="mt-0.5 text-xs text-slate-400">
+                            <span className="mt-0.5 text-xs text-muted-foreground">
                               IF
                             </span>
                             {meta.conditions.map((condition, index) => (
                               <span
                                 key={`${rule.id}-condition-${index}`}
-                                className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700"
+                                className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-foreground"
                               >
                                 {condition.field.replace("_", " ")}{" "}
                                 {condition.op} "{condition.val}"
@@ -1582,7 +1582,7 @@ export function AutomationRulesPage({
                           <button
                             type="button"
                             onClick={() => openEditModal(rule)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                            className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
                           >
                             <svg
                               className="h-4 w-4"
@@ -1601,7 +1601,7 @@ export function AutomationRulesPage({
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(rule)}
-                            className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
                           >
                             <svg
                               className="h-4 w-4"
@@ -1620,13 +1620,13 @@ export function AutomationRulesPage({
                         </div>
                       )}
                       <div className="text-right">
-                        <p className="text-xs text-slate-500">
-                          <span className="font-semibold text-slate-700">
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">
                             {meta.runCount}
                           </span>{" "}
                           runs
                         </p>
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-muted-foreground">
                           Last: {meta.lastRun}
                         </p>
                       </div>
@@ -1640,7 +1640,7 @@ export function AutomationRulesPage({
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-slate-300 p-4 text-sm text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600"
+                className="flex w-full items-center justify-center space-x-2 rounded-xl border-2 border-dashed border-border p-4 text-sm text-muted-foreground transition-colors hover:border-blue-300 hover:text-primary"
               >
                 <svg
                   className="h-4 w-4"

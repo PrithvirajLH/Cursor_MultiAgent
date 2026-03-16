@@ -413,8 +413,8 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
   }
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerCtx ? (
             <TopBar
@@ -425,10 +425,10 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
               notificationProps={headerCtx.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     Custom Fields
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Form fields and visibility.
                   </p>
                 </div>
@@ -436,10 +436,10 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 Custom Fields
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Form fields and visibility.
               </p>
             </div>
@@ -460,7 +460,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
         )}
 
         <div className="mb-5 flex items-center justify-between">
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted-foreground">
             Custom fields appear on ticket forms and detail views.
           </p>
           {canEdit && (
@@ -468,7 +468,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
               type="button"
               onClick={openCreate}
               disabled={isTeamAdmin && !resolvedTeamAdminTeamId}
-              className="inline-flex items-center space-x-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="inline-flex items-center space-x-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
             >
               <Plus className="h-4 w-4" />
               <span>New Field</span>
@@ -476,10 +476,10 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
           )}
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50">
+              <thead className="border-b border-border bg-muted">
                 <tr>
                   {[
                     "Field Label",
@@ -492,19 +492,19 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                   ].map((heading) => (
                     <th
                       key={heading}
-                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500"
+                      className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
                     >
                       {heading}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border">
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr
                       key={`skel-${i}`}
-                      className="border-b border-slate-100 last:border-0"
+                      className="border-b border-border last:border-0"
                     >
                       <td className="px-4 py-3">
                         <div className="h-4 w-32 skeleton-shimmer rounded" />
@@ -532,10 +532,10 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                 ) : fields.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-10 text-center">
-                      <p className="text-sm font-semibold text-slate-700">
+                      <p className="text-sm font-semibold text-foreground">
                         No custom fields
                       </p>
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Create your first custom field to extend ticket forms.
                       </p>
                     </td>
@@ -546,7 +546,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                     return (
                       <tr
                         key={field.id}
-                        className="transition-colors hover:bg-slate-50"
+                        className="transition-colors hover:bg-muted"
                       >
                         <td className="px-4 py-3">
                           <div className="flex items-center space-x-2">
@@ -554,19 +554,19 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                               <TypeIcon className="h-3.5 w-3.5 text-purple-600" />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-slate-900">
+                              <p className="text-sm font-semibold text-foreground">
                                 {field.name}
                               </p>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                          <span className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-foreground">
                             {fieldTypeLabel(field.fieldType)}
                           </span>
                           {(field.fieldType === "DROPDOWN" ||
                             field.fieldType === "MULTISELECT") && (
-                            <p className="mt-0.5 text-xs text-slate-400">
+                            <p className="mt-0.5 text-xs text-muted-foreground">
                               {parseOptionLabels(field.options).length} options
                             </p>
                           )}
@@ -577,13 +577,13 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                               Required
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted-foreground">
                               Optional
                             </span>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-xs text-slate-600">
+                          <span className="text-xs text-muted-foreground">
                             {categoryLabel(field.categoryId)}
                           </span>
                         </td>
@@ -593,12 +593,12 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                               {teamLabel(field.teamId)}
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted-foreground">
                               All teams
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-600">
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
                           {field.sortOrder}
                         </td>
                         <td className="px-4 py-3">
@@ -607,21 +607,21 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                               <button
                                 type="button"
                                 onClick={() => openEdit(field)}
-                                className="rounded p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                                className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
                               >
                                 <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeleteTarget(field)}
-                                className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           )}
                           {!canManageField(field) && canEdit && (
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-muted-foreground">
                               Read-only
                             </span>
                           )}
@@ -635,12 +635,12 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
           </div>
 
           {canEdit && (
-            <div className="border-t border-slate-100 px-4 py-3">
+            <div className="border-t border-border px-4 py-3">
               <button
                 type="button"
                 onClick={openCreate}
                 disabled={isTeamAdmin && !resolvedTeamAdminTeamId}
-                className="inline-flex items-center space-x-1 text-sm font-medium text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-blue-300"
+                className="inline-flex items-center space-x-1 text-sm font-medium text-primary hover:text-blue-700 disabled:cursor-not-allowed disabled:text-blue-300"
               >
                 <Plus className="h-4 w-4" />
                 <span>Add Custom Field</span>
@@ -663,16 +663,16 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
             aria-modal="true"
             aria-label={form.id ? "Edit custom field" : "Create custom field"}
             tabIndex={-1}
-            className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-2xl"
+            className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl bg-card shadow-2xl"
           >
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-              <p className="text-base font-semibold text-slate-900">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <p className="text-base font-semibold text-foreground">
                 {form.id ? "Edit Custom Field" : "Create Custom Field"}
               </p>
               <button
                 type="button"
                 onClick={closeEditor}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-muted-foreground hover:text-muted-foreground"
               >
                 <svg
                   className="h-5 w-5"
@@ -692,7 +692,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
 
             <div className="flex-1 space-y-4 overflow-y-auto p-6">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
+                <label className="mb-1 block text-xs font-medium text-foreground">
                   Field Label *
                 </label>
                 <input
@@ -700,13 +700,13 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, label: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="e.g. Account ID"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-xs font-medium text-slate-700">
+                <label className="mb-2 block text-xs font-medium text-foreground">
                   Field Type
                 </label>
                 <div className="grid grid-cols-3 gap-2">
@@ -730,8 +730,8 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                         }
                         className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${
                           selected
-                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                            : "border-slate-200 text-slate-600 hover:border-slate-300"
+                            ? "border-primary bg-blue-50 text-blue-700"
+                            : "border-border text-muted-foreground hover:border-border"
                         }`}
                       >
                         <TypeIcon className="mb-1 h-5 w-5" />
@@ -744,27 +744,27 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
 
               {(form.type === "dropdown" || form.type === "multiselect") && (
                 <div>
-                  <label className="mb-2 block text-xs font-medium text-slate-700">
+                  <label className="mb-2 block text-xs font-medium text-foreground">
                     Options
                   </label>
                   <div className="space-y-1.5">
                     {form.options.map((option, index) => (
                       <div
                         key={`option-${index}`}
-                        className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5"
+                        className="flex items-center space-x-2 rounded-lg border border-border bg-muted px-3 py-1.5"
                       >
                         <input
                           value={option}
                           onChange={(event) =>
                             updateOption(index, event.target.value)
                           }
-                          className="flex-1 bg-transparent text-sm text-slate-700 outline-none"
+                          className="flex-1 bg-transparent text-sm text-foreground outline-none"
                           placeholder="Option value"
                         />
                         <button
                           type="button"
                           onClick={() => removeOption(index)}
-                          className="text-slate-400 hover:text-red-500"
+                          className="text-muted-foreground hover:text-red-500"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -774,7 +774,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                   <button
                     type="button"
                     onClick={addOption}
-                    className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-700"
+                    className="mt-2 text-xs font-medium text-primary hover:text-blue-700"
                   >
                     Add option
                   </button>
@@ -783,7 +783,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                  <label className="mb-1 block text-xs font-medium text-foreground">
                     Category Scope
                   </label>
                   <select
@@ -794,7 +794,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                         categoryId: event.target.value,
                       }))
                     }
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     <option value="">All categories</option>
                     {categories.map((category) => (
@@ -805,7 +805,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">
+                  <label className="mb-1 block text-xs font-medium text-foreground">
                     Sort Order
                   </label>
                   <input
@@ -818,13 +818,13 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                         sortOrder: Number(event.target.value) || 0,
                       }))
                     }
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">
+                <label className="mb-1 block text-xs font-medium text-foreground">
                   Team Scope
                 </label>
                 {isTeamAdmin ? (
@@ -835,7 +835,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                         : "Primary team unavailable"
                     }
                     disabled
-                    className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                    className="w-full rounded-lg border border-border bg-accent px-3 py-2 text-sm text-muted-foreground"
                   />
                 ) : (
                   <select
@@ -846,7 +846,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                         teamId: event.target.value,
                       }))
                     }
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   >
                     <option value="">All teams (global)</option>
                     {teamsList.map((team) => (
@@ -858,10 +858,10 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                 )}
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-700">Required</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm font-medium text-foreground">Required</p>
+                  <p className="text-xs text-muted-foreground">
                     Must be filled before submitting
                   </p>
                 </div>
@@ -874,17 +874,17 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                       required: event.target.checked,
                     }))
                   }
-                  className="h-4 w-4 rounded text-blue-600"
+                  className="h-4 w-4 rounded text-primary"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-4">
+            <div className="flex justify-end space-x-3 rounded-b-xl border-t border-border bg-muted px-6 py-4">
               <button
                 type="button"
                 onClick={closeEditor}
                 disabled={saving}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -892,7 +892,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
                 type="button"
                 onClick={() => void saveField()}
                 disabled={saving}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
               >
                 {saving ? "Saving..." : form.id ? "Save Field" : "Create Field"}
               </button>
@@ -914,17 +914,17 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
             aria-modal="true"
             aria-label="Delete custom field"
             tabIndex={-1}
-            className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl"
+            className="w-full max-w-md rounded-xl bg-card p-6 shadow-2xl"
           >
             <div className="mb-3 flex items-center space-x-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                 <Trash2 className="h-5 w-5 text-red-600" />
               </div>
-              <h3 className="text-base font-semibold text-slate-900">
+              <h3 className="text-base font-semibold text-foreground">
                 Delete Custom Field
               </h3>
             </div>
-            <p className="mb-5 text-sm leading-relaxed text-slate-600">
+            <p className="mb-5 text-sm leading-relaxed text-muted-foreground">
               Delete "{deleteTarget.name}"? This will remove it from all
               tickets.
             </p>
@@ -932,7 +932,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
               >
                 Cancel
               </button>

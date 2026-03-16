@@ -167,7 +167,7 @@ export const TicketConversation = memo(function TicketConversation({
             type="button"
             onClick={onLoadMore}
             disabled={messagesLoading}
-            className="text-sm font-medium text-blue-600 hover:text-blue-700"
+            className="text-sm font-medium text-primary hover:text-primary/80"
           >
             {messagesLoading ? "Loading..." : "↑ Load older messages"}
           </button>
@@ -176,34 +176,34 @@ export const TicketConversation = memo(function TicketConversation({
 
       <div
         ref={conversationListRef}
-        className="relative flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 via-slate-50 to-slate-100 px-4 py-5 sm:px-6"
+        className="relative flex-1 overflow-y-auto bg-background px-4 py-5 sm:px-6"
       >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-slate-100/80 to-transparent" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-8 bg-gradient-to-t from-slate-200/80 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-background/80 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-8 bg-gradient-to-t from-background/80 to-transparent" />
         {messagesError ? (
           <div
-            className="relative mx-auto mb-4 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-left shadow-sm"
+            className="relative mx-auto mb-4 max-w-xl rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-left shadow-sm"
             role="alert"
           >
-            <p className="text-sm font-semibold text-amber-950">
+            <p className="text-sm font-semibold text-amber-300">
               Conversation history unavailable
             </p>
-            <p className="mt-1 text-sm text-amber-900">{messagesError}</p>
+            <p className="mt-1 text-sm text-amber-400/80">{messagesError}</p>
             <button
               type="button"
               onClick={onRetryLoad}
-              className="mt-3 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
+              className="mt-3 inline-flex rounded-lg border border-amber-500/50 bg-amber-950/30 px-3 py-1.5 text-sm font-medium text-amber-300 hover:bg-amber-900/40"
             >
               Retry loading messages
             </button>
           </div>
         ) : null}
         {messages.length === 0 && !messagesLoading && !messagesError ? (
-          <div className="relative mx-auto max-w-xl rounded-xl border border-dashed border-slate-300 bg-white/90 px-4 py-5 text-left text-sm text-slate-600 shadow-sm">
-            <p className="font-semibold text-slate-800">
+          <div className="relative mx-auto max-w-xl rounded-xl border border-dashed border-border bg-card/90 px-4 py-5 text-left text-sm text-muted-foreground shadow-sm">
+            <p className="font-semibold text-foreground">
               Start the conversation
             </p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               Your first reply will show up here and notify the requester.
             </p>
           </div>
@@ -244,7 +244,7 @@ export const TicketConversation = memo(function TicketConversation({
               <div key={message.id}>
                 {shouldShowDateDivider ? (
                   <div className="my-4 flex items-center justify-center">
-                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
+                    <span className="rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
                       {formatConversationDay(message.createdAt)}
                     </span>
                   </div>
@@ -254,7 +254,7 @@ export const TicketConversation = memo(function TicketConversation({
                 >
                   {!isCurrentUser ? (
                     isGroupEnd ? (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 shadow-sm">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-xs font-bold text-foreground shadow-sm">
                         {initials}
                       </div>
                     ) : (
@@ -269,7 +269,7 @@ export const TicketConversation = memo(function TicketConversation({
                       <div
                         className={`mb-1 flex items-center gap-2 ${isCurrentUser ? "justify-end" : "justify-start"}`}
                       >
-                        <span className="text-xs font-semibold text-slate-700">
+                        <span className="text-xs font-semibold text-foreground">
                           {isCurrentUser
                             ? "You"
                             : (message.author?.displayName ??
@@ -277,17 +277,17 @@ export const TicketConversation = memo(function TicketConversation({
                               "Unknown")}
                         </span>
                         {isInternal ? (
-                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                          <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-400 ring-1 ring-amber-500/30">
                             Internal
                           </span>
                         ) : null}
-                        <span className="flex items-center gap-1 text-[11px] text-slate-500">
+                        <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                           {formatDate(message.createdAt)}
                           {isCurrentUser && localStatus === "sending" ? (
-                            <span className="text-slate-400">…</span>
+                            <span className="text-muted-foreground">…</span>
                           ) : null}
                           {isCurrentUser && localStatus === "sent" ? (
-                            <span className="text-xs text-slate-400">✓</span>
+                            <span className="text-xs text-muted-foreground">✓</span>
                           ) : null}
                           {isCurrentUser && localStatus === "failed" ? (
                             <span className="text-xs text-rose-500">!</span>
@@ -301,8 +301,8 @@ export const TicketConversation = memo(function TicketConversation({
                         isCurrentUser
                           ? "border-slate-700 bg-slate-700 text-slate-50"
                           : isInternal
-                            ? "border-amber-200 bg-amber-50 text-slate-900"
-                            : "border-slate-200 bg-white text-slate-900"
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                            : "border-border bg-muted text-foreground"
                       } ${
                         isCurrentUser
                           ? `${isGroupStart ? "rounded-tr-[20px]" : "rounded-tr-md"} ${isGroupEnd ? "rounded-br-[20px]" : "rounded-br-md"} rounded-tl-[20px] rounded-bl-[20px]`
@@ -330,26 +330,26 @@ export const TicketConversation = memo(function TicketConversation({
 
         {typingText ? (
           <div className="mt-2 flex animate-fade-in justify-start px-4 sm:px-6">
-            <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-slate-50">
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-border bg-card px-3 py-2 shadow-sm">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary">
                 {typingLeadInitials}
               </div>
               <div className="max-w-[260px] text-left">
                 <div className="flex items-center gap-1.5">
-                  <span className="truncate text-xs font-semibold text-slate-800">
+                  <span className="truncate text-xs font-semibold text-foreground">
                     {typingLeadLabel}
                   </span>
                   {typingUsers.length > 1 ? (
-                    <span className="text-[11px] text-slate-500">
+                    <span className="text-[11px] text-muted-foreground">
                       +{typingUsers.length - 1} more
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-1">
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-slate-500" />
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-slate-400 [animation-delay:120ms]" />
-                  <span className="h-1 w-1 animate-pulse rounded-full bg-slate-300 [animation-delay:240ms]" />
-                  <span className="text-[11px] font-medium text-slate-500">
+                <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-1">
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground" />
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/70 [animation-delay:120ms]" />
+                  <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:240ms]" />
+                  <span className="text-[11px] font-medium text-muted-foreground">
                     typing…
                   </span>
                 </div>
@@ -364,17 +364,17 @@ export const TicketConversation = memo(function TicketConversation({
           <button
             type="button"
             onClick={onScrollToLatest}
-            className="rounded-full border border-slate-200 bg-gradient-to-r from-sky-50 via-white to-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:from-sky-100 hover:to-slate-100"
+            className="rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-sm hover:bg-muted"
           >
             Jump to latest ↓
           </button>
         </div>
       ) : null}
 
-      <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-6 sm:px-6 sm:py-7">
+      <div className="shrink-0 border-t border-border bg-background px-4 py-6 sm:px-6 sm:py-7">
         <div className="mx-auto w-full max-w-4xl">
           <div className="flex w-full items-end gap-4">
-            <div className="flex max-h-72 flex-1 items-end gap-3 overflow-y-auto rounded-full border border-slate-200 bg-white px-4 py-3 focus-within:border-slate-300">
+            <div className="flex max-h-72 flex-1 items-end gap-3 overflow-y-auto rounded-full border border-border bg-card px-4 py-3 focus-within:border-primary/50">
               <textarea
                 ref={messageInputRef}
                 value={messageBody}
@@ -383,10 +383,10 @@ export const TicketConversation = memo(function TicketConversation({
                 onKeyDown={handleMessageInputKeyDown}
                 placeholder="Type a message…"
                 rows={1}
-                className="min-h-[44px] flex-1 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-2 text-[14px] text-slate-900 leading-relaxed outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0"
+                className="min-h-[44px] flex-1 resize-none overflow-y-hidden border-0 bg-transparent px-2 py-2 text-[14px] text-foreground leading-relaxed outline-none placeholder:text-muted-foreground focus:outline-none focus:ring-0"
               />
 
-              <div className="flex items-center gap-1.5 text-slate-500">
+              <div className="flex items-center gap-1.5 text-muted-foreground">
                 {canManage ? (
                   <button
                     type="button"
@@ -397,8 +397,8 @@ export const TicketConversation = memo(function TicketConversation({
                     }
                     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                       messageType === "PUBLIC"
-                        ? "border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100"
-                        : "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                        ? "border-border bg-muted text-foreground hover:bg-muted/80"
+                        : "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                     }`}
                     title={
                       messageType === "PUBLIC"
@@ -423,7 +423,7 @@ export const TicketConversation = memo(function TicketConversation({
                     <button
                       type="button"
                       onClick={() => attachmentInputRef.current?.click()}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-slate-100"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted"
                       title="Attach file"
                       aria-label="Attach file"
                     >
@@ -444,7 +444,7 @@ export const TicketConversation = memo(function TicketConversation({
                   type="button"
                   onClick={onReply}
                   disabled={!messageBody.trim()}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                   title="Send"
                   aria-label="Send message"
                 >

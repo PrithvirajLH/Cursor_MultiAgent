@@ -38,11 +38,11 @@ export function CustomFieldDisplay({
   if (raw === null || raw === "") {
     return (
       <div className="flex flex-wrap gap-x-2 gap-y-1">
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-muted-foreground">
           {label}
           {isRequired ? " *" : ""}
         </span>
-        <span className="text-sm text-slate-400">—</span>
+        <span className="text-sm text-muted-foreground">—</span>
       </div>
     );
   }
@@ -51,11 +51,11 @@ export function CustomFieldDisplay({
     case "CHECKBOX":
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </span>
-          <span className="text-sm text-slate-700">
+          <span className="text-sm text-foreground">
             {raw === "true" || raw === "1" ? "Yes" : "No"}
           </span>
         </div>
@@ -63,11 +63,11 @@ export function CustomFieldDisplay({
     case "DATE":
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </span>
-          <span className="text-sm text-slate-700">{raw}</span>
+          <span className="text-sm text-foreground">{raw}</span>
         </div>
       );
     case "DROPDOWN":
@@ -77,11 +77,11 @@ export function CustomFieldDisplay({
       const display = option ? option.label : raw;
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </span>
-          <span className="text-sm text-slate-700">{display}</span>
+          <span className="text-sm text-foreground">{display}</span>
         </div>
       );
     }
@@ -96,11 +96,11 @@ export function CustomFieldDisplay({
       );
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </span>
-          <span className="text-sm text-slate-700">
+          <span className="text-sm text-foreground">
             {labels.length ? labels.join(", ") : raw}
           </span>
         </div>
@@ -109,7 +109,7 @@ export function CustomFieldDisplay({
     default:
       return (
         <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </span>
@@ -139,13 +139,13 @@ export function CustomFieldInput({
   const inputId = `cf-input-${field.id}`;
 
   const inputClass =
-    "mt-1 w-full rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm";
+    "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground";
 
   switch (field.fieldType) {
     case "TEXT":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -162,7 +162,7 @@ export function CustomFieldInput({
     case "TEXTAREA":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -179,7 +179,7 @@ export function CustomFieldInput({
     case "NUMBER":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -196,7 +196,7 @@ export function CustomFieldInput({
     case "DATE":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -218,9 +218,9 @@ export function CustomFieldInput({
             id={inputId}
             checked={value === "true" || value === "1"}
             onChange={(e) => onChange(e.target.checked ? "true" : "")}
-            className="rounded border-slate-300"
+            className="rounded border-border"
           />
-          <label htmlFor={inputId} className="text-sm text-slate-700">
+          <label htmlFor={inputId} className="text-sm text-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -229,7 +229,7 @@ export function CustomFieldInput({
     case "DROPDOWN":
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -264,7 +264,7 @@ export function CustomFieldInput({
       }
       return (
         <fieldset>
-          <legend className="text-xs text-slate-500">
+          <legend className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </legend>
@@ -274,14 +274,14 @@ export function CustomFieldInput({
               return (
                 <div
                   key={opt.value}
-                  className="inline-flex items-center gap-1.5 text-sm text-slate-700"
+                  className="inline-flex items-center gap-1.5 text-sm text-foreground"
                 >
                   <input
                     id={optionId}
                     type="checkbox"
                     checked={selected.includes(opt.value)}
                     onChange={() => toggle(opt.value)}
-                    className="rounded border-slate-300"
+                    className="rounded border-border"
                   />
                   <label htmlFor={optionId}>{opt.label}</label>
                 </div>
@@ -295,7 +295,7 @@ export function CustomFieldInput({
       if (users.length === 0) {
         return (
           <div>
-            <label htmlFor={inputId} className="text-xs text-slate-500">
+            <label htmlFor={inputId} className="text-xs text-muted-foreground">
               {label}
               {isRequired ? " *" : ""}
             </label>
@@ -313,7 +313,7 @@ export function CustomFieldInput({
       }
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>
@@ -336,7 +336,7 @@ export function CustomFieldInput({
     default:
       return (
         <div>
-          <label htmlFor={inputId} className="text-xs text-slate-500">
+          <label htmlFor={inputId} className="text-xs text-muted-foreground">
             {label}
             {isRequired ? " *" : ""}
           </label>

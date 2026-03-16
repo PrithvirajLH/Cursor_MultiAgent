@@ -228,8 +228,8 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
   const headerValue = headerCtx;
 
   return (
-    <section className="min-h-full bg-slate-50 animate-fade-in">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white">
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerValue ? (
             <TopBar
@@ -240,10 +240,10 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
               notificationProps={headerValue.notificationProps}
               leftContent={
                 <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-slate-900">
+                  <h1 className="text-xl font-semibold text-foreground">
                     New Custom Field
                   </h1>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="mt-0.5 text-sm text-muted-foreground">
                     Define an additional ticket field for your forms and
                     workflows.
                   </p>
@@ -252,10 +252,10 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
             />
           ) : (
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold text-slate-900">
+              <h1 className="text-xl font-semibold text-foreground">
                 New Custom Field
               </h1>
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 Define an additional ticket field for your forms and workflows.
               </p>
             </div>
@@ -267,24 +267,24 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
         <button
           type="button"
           onClick={() => navigate("/custom-fields")}
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
+          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>Back to custom fields</span>
         </button>
 
         {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-4">
-            <h2 className="text-lg font-semibold text-slate-900">
+        <div className="rounded-2xl border border-border bg-card shadow-sm">
+          <div className="border-b border-border px-6 py-4">
+            <h2 className="text-lg font-semibold text-foreground">
               Field configuration
             </h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-muted-foreground">
               Choose a field type, scope, and behavior. You can edit this later.
             </p>
           </div>
@@ -292,7 +292,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
           <div className="space-y-6 px-6 py-6">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Field label <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -300,12 +300,12 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, label: event.target.value }))
                   }
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   placeholder="e.g. Asset tag, Account ID, Room number"
                 />
               </div>
               <div className="space-y-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Sort order
                 </label>
                 <input
@@ -318,9 +318,9 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                       sortOrder: Number(event.target.value) || 0,
                     }))
                   }
-                  className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-24 rounded-lg border border-border px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 />
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Lower numbers appear higher in the form.
                 </p>
               </div>
@@ -328,10 +328,10 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">
+                <p className="text-sm font-semibold text-foreground">
                   Field type
                 </p>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted-foreground">
                   Choose how this field is captured.
                 </span>
               </div>
@@ -356,8 +356,8 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                       }
                       className={`flex flex-col items-center rounded-lg border p-3 text-xs font-medium transition-all ${
                         selected
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-slate-200 text-slate-600 hover:border-slate-300"
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:border-border"
                       }`}
                     >
                       <TypeIcon className="mb-1 h-5 w-5" />
@@ -371,10 +371,10 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
             {(form.type === "dropdown" || form.type === "multiselect") && (
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-800">
+                  <p className="text-sm font-semibold text-foreground">
                     Options
                   </p>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-muted-foreground">
                     These values appear in the dropdown.
                   </span>
                 </div>
@@ -382,20 +382,20 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                   {form.options.map((option, index) => (
                     <div
                       key={`option-${index}`}
-                      className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5"
+                      className="flex items-center space-x-2 rounded-lg border border-border bg-muted px-3 py-1.5"
                     >
                       <input
                         value={option}
                         onChange={(event) =>
                           updateOption(index, event.target.value)
                         }
-                        className="flex-1 bg-transparent text-sm text-slate-700 outline-none"
+                        className="flex-1 bg-transparent text-sm text-foreground outline-none"
                         placeholder="Option value"
                       />
                       <button
                         type="button"
                         onClick={() => removeOption(index)}
-                        className="text-slate-400 hover:text-red-500"
+                        className="text-muted-foreground hover:text-red-500"
                       >
                         <CheckSquare className="h-3.5 w-3.5 rotate-45" />
                       </button>
@@ -405,7 +405,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                 <button
                   type="button"
                   onClick={addOption}
-                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   <span>Add option</span>
@@ -415,7 +415,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Category scope
                 </label>
                 <select
@@ -426,7 +426,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                       categoryId: event.target.value,
                     }))
                   }
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                   disabled={loading}
                 >
                   <option value="">All categories</option>
@@ -436,14 +436,14 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Limit this field to tickets in a specific category, or keep it
                   global.
                 </p>
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-sm font-medium text-foreground">
                   Team scope
                 </label>
                 {isTeamAdmin ? (
@@ -456,7 +456,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                         : "Primary team unavailable"
                     }
                     disabled
-                    className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-600"
+                    className="w-full rounded-lg border border-border bg-accent px-3 py-2 text-sm text-muted-foreground"
                   />
                 ) : (
                   <select
@@ -467,7 +467,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                         teamId: event.target.value,
                       }))
                     }
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                     disabled={loading}
                   >
                     <option value="">All teams (global)</option>
@@ -478,16 +478,16 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                     ))}
                   </select>
                 )}
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Control whether this field is global or only for one team.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-muted p-3">
               <div>
-                <p className="text-sm font-medium text-slate-700">Required</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-sm font-medium text-foreground">Required</p>
+                <p className="text-xs text-muted-foreground">
                   The field must be filled before the ticket can be submitted.
                 </p>
               </div>
@@ -500,13 +500,13 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                     required: event.target.checked,
                   }))
                 }
-                className="h-4 w-4 rounded text-blue-600"
+                className="h-4 w-4 rounded text-primary"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
-            <span className="text-xs text-slate-400">
+          <div className="flex items-center justify-between rounded-b-2xl border-t border-border bg-muted px-6 py-4">
+            <span className="text-xs text-muted-foreground">
               * Required fields. Changes take effect immediately for new
               tickets.
             </span>
@@ -515,7 +515,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                 type="button"
                 onClick={() => navigate("/custom-fields")}
                 disabled={saving}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -523,7 +523,7 @@ export function NewCustomFieldPage({ role }: { role?: Role }) {
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={saving || loading}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40"
               >
                 {saving ? "Creating…" : "Create field"}
               </button>
