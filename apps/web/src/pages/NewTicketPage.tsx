@@ -15,7 +15,7 @@ import {
   type CreateTicketFormData,
 } from "../schemas/createTicket";
 import { CustomFieldInput } from "../components/CustomFieldRenderer";
-import { Button } from "../components/ui/Button";
+import { Button } from "../components/ui/button";
 
 type NewTicketPageProps = {
   role: Role;

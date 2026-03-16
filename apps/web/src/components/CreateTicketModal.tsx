@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
 import type { CategoryRef, CustomFieldRecord, TeamRef } from "../api/client";
 import { CustomFieldInput } from "./CustomFieldRenderer";
-import { Button } from "./ui/Button";
+import { Button } from "./ui/button";
 import {
   CREATE_TICKET_DESCRIPTION_MAX,
   CREATE_TICKET_SUBJECT_MAX,

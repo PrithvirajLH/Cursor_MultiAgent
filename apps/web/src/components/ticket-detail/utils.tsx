@@ -100,8 +100,8 @@ export function getResolutionSla(
     };
   }
   const isPaused =
-    ticket.status === "WAITING_ON_CUSTOMER" ||
-    ticket.status === "WAITING_ON_THIRDPARTY";
+    ticket.status === "WAITING_ON_REQUESTER" ||
+    ticket.status === "WAITING_ON_VENDOR";
   if (isPaused) {
     return {
       label: "Paused",

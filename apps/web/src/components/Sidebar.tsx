@@ -84,7 +84,7 @@ export const Sidebar = memo(function Sidebar({
               <button
                 type="button"
                 onClick={
-                  isAdminTrigger && onOpenAdminSidebar
+                  isAdminTrigger
                     ? onOpenAdminSidebar
                     : () => onSelect(item.key)
                 }
