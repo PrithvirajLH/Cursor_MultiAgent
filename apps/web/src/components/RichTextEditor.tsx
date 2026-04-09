@@ -150,6 +150,9 @@ export const RichTextEditor = forwardRef<
   const [mentionIndex, setMentionIndex] = useState(0);
   const [mentionAtOffset, setMentionAtOffset] = useState<number | null>(null);
   const [showCanned, setShowCanned] = useState(false);
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("https://");
+  const linkInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(
     ref,
@@ -233,6 +236,10 @@ export const RichTextEditor = forwardRef<
   const handleInput = useCallback(() => {
     const el = editableRef.current;
     if (!el) return;
+
+    // Immediately update placeholder visibility (no debounce)
+    const text = el.textContent ?? "";
+    setLocalEmpty(text.trim() === "");
 
     // Debounce sanitization + parent state updates to reduce main-thread work while typing.
     if (flushTimerRef.current != null) {
@@ -403,10 +410,23 @@ export const RichTextEditor = forwardRef<
   const mentionPosition = useMemo(() => {
     if (!showMentions || !editableRef.current) return null;
     const rect = editableRef.current.getBoundingClientRect();
+    const dropdownHeight = 192; // matches max-h-48 in MentionAutocomplete
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < dropdownHeight + 8) {
+      return { top: Math.max(4, rect.top - dropdownHeight - 4), left: rect.left };
+    }
     return { top: rect.bottom + 4, left: rect.left };
   }, [showMentions]);
 
-  const isEmpty = value.trim() === "" || value === "<br>";
+  const [localEmpty, setLocalEmpty] = useState(
+    value.trim() === "" || value === "<br>",
+  );
+  // Sync when parent clears the value (e.g. after send)
+  useEffect(() => {
+    const empty = value.trim() === "" || value === "<br>";
+    if (empty) setLocalEmpty(true);
+  }, [value]);
+  const isEmpty = localEmpty;
 
   return (
     <div className={`relative ${className}`}>
@@ -461,19 +481,66 @@ export const RichTextEditor = forwardRef<
         >
           <Code className="h-4 w-4" />
         </button>
-        <button
-          type="button"
-          onMouseDown={handleToolbarMouseDown}
-          onClick={() => {
-            const url = window.prompt("Link URL:", "https://");
-            if (url) execCmd("createLink", url);
-          }}
-          className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          title="Link"
-          aria-label="Link"
-        >
-          <Link2 className="h-4 w-4" />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={handleToolbarMouseDown}
+            onClick={() => {
+              setShowLinkInput((prev) => !prev);
+              setLinkUrl("https://");
+              setTimeout(() => linkInputRef.current?.select(), 50);
+            }}
+            className={`rounded p-1.5 transition-colors ${showLinkInput ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
+            title="Link"
+            aria-label="Link"
+          >
+            <Link2 className="h-4 w-4" />
+          </button>
+          {showLinkInput && (
+            <div className="absolute top-full left-0 mt-1 z-50 flex items-center gap-1 rounded-lg border border-border bg-card p-1.5 shadow-elevated">
+              <input
+                ref={linkInputRef}
+                type="url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (linkUrl && linkUrl !== "https://") {
+                      execCmd("createLink", linkUrl);
+                    }
+                    setShowLinkInput(false);
+                  }
+                  if (e.key === "Escape") {
+                    setShowLinkInput(false);
+                  }
+                }}
+                placeholder="https://..."
+                className="h-7 w-52 rounded-md border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (linkUrl && linkUrl !== "https://") {
+                    execCmd("createLink", linkUrl);
+                  }
+                  setShowLinkInput(false);
+                }}
+                className="h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-[11px] font-semibold hover:bg-primary/90"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLinkInput(false)}
+                className="h-7 px-2 rounded-md text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
         <div className="mx-1 w-px bg-border" />
         <button
           type="button"

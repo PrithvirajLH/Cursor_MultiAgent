@@ -32,6 +32,7 @@ import {
   type TicketMessage,
   type TicketStatus,
 } from "../api/client";
+import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
 import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
@@ -109,15 +110,21 @@ export function TicketDetailPage({
   currentEmail,
   role,
   teamsList,
+  ticketId: ticketIdProp,
+  onBack,
 }: {
   currentEmail: string;
   role: Role;
   teamsList: TeamRef[];
+  ticketId?: string;
+  onBack?: () => void;
 }) {
   const headerCtx = useHeaderContext();
-  const { ticketId } = useParams();
+  const { ticketId: ticketIdParam } = useParams();
+  const ticketId = ticketIdProp ?? ticketIdParam;
   const location = useLocation();
   const navigate = useNavigate();
+  const ticketTabs = useTicketTabs();
 
   /* ——— State ——— */
 
@@ -201,6 +208,28 @@ export function TicketDetailPage({
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
     useTicketDataInvalidation();
 
+  /* ——— Register ticket in tab bar ——— */
+  useEffect(() => {
+    if (ticket && ticketId) {
+      ticketTabs.openTab({
+        id: ticket.id,
+        displayId: ticket.displayId ?? `#${ticket.number}`,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.id, ticket?.subject, ticket?.status, ticket?.priority]);
+
+  // Sync active tab when navigating to this ticket
+  useEffect(() => {
+    if (ticketId && ticketTabs.activeTabId !== ticketId) {
+      ticketTabs.setActiveTabId(ticketId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketId]);
+
   /* ——— Derived / memoized values (6.3) ——— */
 
   const followers = ticket?.followers ?? [];
@@ -283,6 +312,10 @@ export function TicketDetailPage({
   /* ——— Navigation (memoized, 6.3) ——— */
 
   const navigateBack = useCallback(() => {
+    if (onBack) {
+      onBack();
+      return;
+    }
     const fromTicketsPath = (
       location.state as { fromTicketsPath?: string } | null
     )?.fromTicketsPath;
@@ -296,7 +329,7 @@ export function TicketDetailPage({
       return;
     }
     navigate("/tickets");
-  }, [location.state, navigate]);
+  }, [onBack, location.state, navigate]);
 
   const toTicketMessage = useCallback(
     (payload: RealtimeTicketMessagePayload): ConversationMessage => ({
@@ -1527,7 +1560,7 @@ export function TicketDetailPage({
 
   return (
     <section
-      className="flex h-screen flex-col bg-card animate-fade-in"
+      className={`flex flex-col bg-card animate-fade-in ${ticketIdProp ? "h-full overflow-hidden" : "h-screen"}`}
       title={headerTitle}
     >
       {/* Toast notification */}
@@ -1550,7 +1583,8 @@ export function TicketDetailPage({
         </div>
       )}
 
-      {/* Sticky header */}
+      {/* Sticky header — hidden when embedded in tabs */}
+      {!ticketIdProp && (
       <div className="shrink-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="px-6 py-3">
           <TopBar
@@ -1608,6 +1642,7 @@ export function TicketDetailPage({
           />
         </div>
       </div>
+      )}
 
       {/* Main content */}
       <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.contentShell}>
@@ -1628,12 +1663,12 @@ export function TicketDetailPage({
             <div className="flex flex-1 flex-col min-h-0">
               {/* Integrated Subject Header */}
               {ticket && (
-                <div className="px-6 pt-6 pb-0">
-                  <div className="relative overflow-hidden rounded-2xl border border-border bg-card px-5 py-4 shadow-sm sm:px-7 sm:py-5">
+                <div className="px-6 pt-3 pb-0">
+                  <div className="relative overflow-hidden rounded-xl border border-border bg-card px-5 py-3 shadow-sm sm:px-6 sm:py-3.5">
                     <div className="pointer-events-none absolute inset-y-0 right-[-80px] hidden w-64 rounded-full bg-gradient-to-l from-cyan-500/10 to-transparent blur-3xl sm:block" />
                     <div className="flex items-start justify-between gap-6">
                       <div className="min-w-0">
-                        <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                        <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
                           {ticket.subject}
                         </h1>
                         {ticket.description ? (
@@ -1664,7 +1699,7 @@ export function TicketDetailPage({
               )}
 
               {/* Tab bar – Aceternity-style segmented tabs with sliding indicator */}
-              <div className="shrink-0 flex items-center justify-between gap-4 border-b border-border px-6 py-3">
+              <div className="shrink-0 flex items-center justify-between gap-4 border-b border-border px-6 py-1.5">
                 <div
                   ref={tabsContainerRef}
                   className="relative inline-flex items-center gap-1 rounded-full border border-border bg-accent/70 p-1 text-xs shadow-sm"

@@ -39,6 +39,7 @@ import { SignInLandingPage } from "./components/auth/SignInLandingPage";
 import { Sidebar, type SidebarItem } from "./components/Sidebar";
 import { ToastContainer } from "./components/ToastContainer";
 import { TopBar } from "./components/TopBar";
+import { TicketTabsProvider } from "./contexts/TicketTabsContext";
 import {
   HeaderProvider,
   type HeaderContextValue,
@@ -872,6 +873,7 @@ function AuthenticatedShell({
           )}
 
           {/* HeaderProvider eliminates headerProps prop drilling (6.2) */}
+          <TicketTabsProvider>
           <HeaderProvider value={headerValue}>
             {/* Route-level error boundary (2.2 fix) – resets automatically on navigation
                 because the key changes with the pathname. */}
@@ -1079,6 +1081,7 @@ function AuthenticatedShell({
               </Suspense>
             </ErrorBoundary>
           </HeaderProvider>
+          </TicketTabsProvider>
         </main>
       </div>
 

@@ -379,8 +379,6 @@ function StyledSelect({
   icon?: typeof CircleDot;
   options: { value: string; label: string }[];
 }) {
-  const selected = options.find((o) => o.value === value);
-
   return (
     <div className="relative">
       {Icon && (

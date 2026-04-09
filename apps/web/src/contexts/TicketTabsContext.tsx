@@ -1,0 +1,183 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
+
+export type TicketTab = {
+  id: string;
+  displayId: string;
+  subject: string;
+  status: string;
+  priority: string;
+};
+
+type TicketTabsContextValue = {
+  tabs: TicketTab[];
+  activeTabId: string | null;
+  openTab: (tab: TicketTab) => void;
+  closeTab: (id: string) => void;
+  switchTab: (id: string) => void;
+  closeOtherTabs: (id: string) => void;
+  closeAllTabs: () => void;
+  updateTab: (id: string, updates: Partial<TicketTab>) => void;
+  setActiveTabId: (id: string | null) => void;
+};
+
+const STORAGE_KEY = "csh-ticket-tabs";
+const MAX_TABS = 15;
+
+function loadTabs(): TicketTab[] {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as TicketTab[];
+  } catch {}
+  return [];
+}
+
+function saveTabs(tabs: TicketTab[]) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
+  } catch {}
+}
+
+function loadActiveId(): string | null {
+  try {
+    return sessionStorage.getItem(STORAGE_KEY + ":active") || null;
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveId(id: string | null) {
+  try {
+    if (id) {
+      sessionStorage.setItem(STORAGE_KEY + ":active", id);
+    } else {
+      sessionStorage.removeItem(STORAGE_KEY + ":active");
+    }
+  } catch {}
+}
+
+const TicketTabsContext = createContext<TicketTabsContextValue | null>(null);
+
+export function TicketTabsProvider({ children }: { children: ReactNode }) {
+  const [tabs, setTabs] = useState<TicketTab[]>(loadTabs);
+  const [activeTabId, setActiveTabIdState] = useState<string | null>(
+    loadActiveId,
+  );
+
+  const setActiveTabId = useCallback((id: string | null) => {
+    setActiveTabIdState(id);
+    saveActiveId(id);
+  }, []);
+
+  const openTab = useCallback(
+    (tab: TicketTab) => {
+      setTabs((prev) => {
+        const existing = prev.find((t) => t.id === tab.id);
+        if (existing) {
+          // Update metadata if changed
+          const updated = prev.map((t) =>
+            t.id === tab.id ? { ...t, ...tab } : t,
+          );
+          saveTabs(updated);
+          return updated;
+        }
+        // Add new tab, evict oldest if at max
+        const next =
+          prev.length >= MAX_TABS ? [...prev.slice(1), tab] : [...prev, tab];
+        saveTabs(next);
+        return next;
+      });
+      setActiveTabId(tab.id);
+    },
+    [setActiveTabId],
+  );
+
+  const closeTab = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.id === id);
+        if (idx === -1) return prev;
+        const next = prev.filter((t) => t.id !== id);
+        saveTabs(next);
+
+        // If closing the active tab, switch to adjacent
+        if (activeTabId === id) {
+          const newActive =
+            next.length === 0
+              ? null
+              : idx < next.length
+                ? next[idx].id
+                : next[next.length - 1].id;
+          setActiveTabId(newActive);
+        }
+
+        return next;
+      });
+    },
+    [activeTabId, setActiveTabId],
+  );
+
+  const switchTab = useCallback(
+    (id: string) => {
+      setActiveTabId(id);
+    },
+    [setActiveTabId],
+  );
+
+  const closeOtherTabs = useCallback(
+    (id: string) => {
+      setTabs((prev) => {
+        const keep = prev.filter((t) => t.id === id);
+        saveTabs(keep);
+        return keep;
+      });
+      setActiveTabId(id);
+    },
+    [setActiveTabId],
+  );
+
+  const closeAllTabs = useCallback(() => {
+    setTabs([]);
+    saveTabs([]);
+    setActiveTabId(null);
+  }, [setActiveTabId]);
+
+  const updateTab = useCallback((id: string, updates: Partial<TicketTab>) => {
+    setTabs((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...updates } : t));
+      saveTabs(next);
+      return next;
+    });
+  }, []);
+
+  return (
+    <TicketTabsContext.Provider
+      value={{
+        tabs,
+        activeTabId,
+        openTab,
+        closeTab,
+        switchTab,
+        closeOtherTabs,
+        closeAllTabs,
+        updateTab,
+        setActiveTabId,
+      }}
+    >
+      {children}
+    </TicketTabsContext.Provider>
+  );
+}
+
+export function useTicketTabs(): TicketTabsContextValue {
+  const ctx = useContext(TicketTabsContext);
+  if (!ctx) {
+    throw new Error("useTicketTabs must be used within TicketTabsProvider");
+  }
+  return ctx;
+}

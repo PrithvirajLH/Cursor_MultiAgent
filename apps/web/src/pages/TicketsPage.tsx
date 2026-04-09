@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useTicketTabs } from "../contexts/TicketTabsContext";
+import { TicketTabBar } from "../components/TicketTabBar";
+import { TicketDetailPage } from "./TicketDetailPage";
 import {
   bulkAssignTickets,
   bulkPriorityTickets,
@@ -15,7 +18,7 @@ import {
   type UserRef,
 } from "../api/client";
 import { BulkActionsToolbar } from "../components/BulkActionsToolbar";
-import { TopBar } from "../components/TopBar";
+// import { TopBar } from "../components/TopBar";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FilterPanel } from "../components/filters/FilterPanel";
@@ -31,7 +34,7 @@ import {
   type RealtimeTicketChangedEventPayload,
 } from "../realtime/events";
 import type { Role, StatusFilter, TicketFilters, TicketScope } from "../types";
-import { useHeaderContext } from "../contexts/HeaderContext";
+// import { useHeaderContext } from "../contexts/HeaderContext";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 
 type SortPreset =
@@ -166,9 +169,26 @@ export function TicketsPage({
   teamsList: TeamRef[];
   onCreateTicket?: () => void;
 }) {
-  const headerCtx = useHeaderContext();
+  // const headerCtx = useHeaderContext();
   const navigate = useNavigate();
   const location = useLocation();
+  const ticketTabs = useTicketTabs();
+  const [activeTicketId, setActiveTicketId] = useState<string | null>(() => {
+    // Restore active ticket from tab context on mount
+    const stored = ticketTabs.activeTabId;
+    if (stored && stored !== "__queue__" && ticketTabs.tabs.some(t => t.id === stored)) {
+      return stored;
+    }
+    return null;
+  });
+  const isQueueView = activeTicketId === null;
+
+  // Reset to queue view when sidebar navigation changes filters
+  useEffect(() => {
+    setActiveTicketId(null);
+    ticketTabs.switchTab("__queue__");
+  }, [presetStatus, presetScope]);
+
   const [searchParams] = useSearchParams();
   const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } =
     useFilters(presetScope, presetStatus);
@@ -1032,7 +1052,8 @@ export function TicketsPage({
   }, [listMeta]);
 
   return (
-    <section className="min-h-full bg-background animate-fade-in">
+    <section className={`bg-background animate-fade-in flex flex-col ${isQueueView ? "min-h-full" : "max-h-screen overflow-hidden"}`}>
+      {/* Header — hidden, tab bar replaces it
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="px-6 py-4">
           {headerCtx ? (
@@ -1067,8 +1088,15 @@ export function TicketsPage({
           )}
         </div>
       </div>
+      */}
 
-      <div className="border-b border-border bg-card/90 backdrop-blur-sm">
+      {/* Tab bar — always visible */}
+      <TicketTabBar
+        onSwitchTab={(id) => setActiveTicketId(id)}
+      />
+
+      {/* Filter bar — queue view only */}
+      {isQueueView && <div className="border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="px-6 py-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 border-r border-border pr-4">
@@ -1201,8 +1229,10 @@ export function TicketsPage({
             ) : null}
           </div>
         </div>
-      </div>
+      </div>}
 
+      {/* Queue view — ticket list */}
+      {isQueueView ? (
       <div className="p-6 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto">
         <p className="text-sm text-muted-foreground">{countLabel}</p>
 
@@ -1284,13 +1314,16 @@ export function TicketsPage({
                 toggleAll: selection.toggleAll,
                 isAllSelected: selection.isAllSelected,
               }}
-              onRowClick={(ticket) =>
-                navigate(`/tickets/${ticket.id}`, {
-                  state: {
-                    fromTicketsPath: `${location.pathname}${location.search}`,
-                  },
-                })
-              }
+              onRowClick={(ticket) => {
+                ticketTabs.openTab({
+                  id: ticket.id,
+                  displayId: ticket.displayId ?? `#${ticket.number}`,
+                  subject: ticket.subject,
+                  status: ticket.status,
+                  priority: ticket.priority,
+                });
+                setActiveTicketId(ticket.id);
+              }}
             />
 
         {listMeta && listMeta.total > 0 ? (
@@ -1357,6 +1390,22 @@ export function TicketsPage({
           </div>
         ) : null}
       </div>
+      ) : (
+        /* Ticket detail view — embedded in tab */
+        <div style={{ height: "calc(100vh - 40px)", overflow: "hidden" }}>
+          <TicketDetailPage
+            key={activeTicketId}
+            ticketId={activeTicketId}
+            currentEmail={currentEmail}
+            role={role}
+            teamsList={teamsList}
+            onBack={() => {
+              setActiveTicketId(null);
+              ticketTabs.switchTab("__queue__");
+            }}
+          />
+        </div>
+      )}
 
       {showAdvancedFilters && role !== "EMPLOYEE" ? (
         <div

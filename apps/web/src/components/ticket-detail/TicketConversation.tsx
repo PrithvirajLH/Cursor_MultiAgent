@@ -172,7 +172,7 @@ export const TicketConversation = memo(function TicketConversation({
 
       <div
         ref={conversationListRef}
-        className="relative flex-1 overflow-y-auto bg-background px-4 py-5 sm:px-6"
+        className="relative flex-1 overflow-y-auto bg-background px-4 py-3 sm:px-6"
       >
         <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-background/80 to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-8 bg-gradient-to-t from-background/80 to-transparent" />
@@ -273,7 +273,7 @@ export const TicketConversation = memo(function TicketConversation({
                               "Unknown")}
                         </span>
                         {isInternal ? (
-                          <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-400 ring-1 ring-amber-500/30">
+                          <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/30">
                             Internal
                           </span>
                         ) : null}
@@ -350,7 +350,7 @@ export const TicketConversation = memo(function TicketConversation({
         </div>
       ) : null}
 
-      <div className="shrink-0 border-t border-border bg-background px-4 py-4 sm:px-6 sm:py-5">
+      <div className="shrink-0 border-t border-border bg-background px-4 py-2 sm:px-6 sm:py-2.5">
         <div className="mx-auto w-full max-w-4xl">
           <div
             className="w-full overflow-hidden rounded-xl border border-border focus-within:border-primary/50"
@@ -376,7 +376,7 @@ export const TicketConversation = memo(function TicketConversation({
                   className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                     messageType === "PUBLIC"
                       ? "border-border bg-muted text-foreground hover:bg-muted/80"
-                      : "border-amber-500/50 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                      : "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20"
                   }`}
                   title={
                     messageType === "PUBLIC"
