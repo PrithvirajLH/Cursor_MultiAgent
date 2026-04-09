@@ -465,6 +465,8 @@ export class TicketsService {
     unassigned: number;
     resolved: number;
     resolvedByMe: number;
+    createdByMeOpen: number;
+    createdByMeResolved: number;
     atRisk: number;
     overdue: number;
   }> {
@@ -488,6 +490,8 @@ export class TicketsService {
     unassigned: number;
     resolved: number;
     resolvedByMe: number;
+    createdByMeOpen: number;
+    createdByMeResolved: number;
     atRisk: number;
     overdue: number;
   }> {
@@ -506,6 +510,8 @@ export class TicketsService {
         unassigned: bigint;
         resolved: bigint;
         resolvedByMe: bigint;
+        createdByMeOpen: bigint;
+        createdByMeResolved: bigint;
         atRisk: bigint;
         overdue: bigint;
       }[]
@@ -538,6 +544,16 @@ export class TicketsService {
         ,
         SUM(CASE
           WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."requesterId" = ${user.id}
+          THEN 1 ELSE 0 END) AS "createdByMeOpen"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND t."requesterId" = ${user.id}
+          THEN 1 ELSE 0 END) AS "createdByMeResolved"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
             AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
             AND t."dueAt" IS NOT NULL
             AND t."dueAt" >= ${now}
@@ -561,6 +577,8 @@ export class TicketsService {
       unassigned: 0n,
       resolved: 0n,
       resolvedByMe: 0n,
+      createdByMeOpen: 0n,
+      createdByMeResolved: 0n,
       atRisk: 0n,
       overdue: 0n,
     };
@@ -571,6 +589,8 @@ export class TicketsService {
       unassigned: Number(row.unassigned ?? 0),
       resolved: Number(row.resolved ?? 0),
       resolvedByMe: Number(row.resolvedByMe ?? 0),
+      createdByMeOpen: Number(row.createdByMeOpen ?? 0),
+      createdByMeResolved: Number(row.createdByMeResolved ?? 0),
       atRisk: Number(row.atRisk ?? 0),
       overdue: Number(row.overdue ?? 0),
     };

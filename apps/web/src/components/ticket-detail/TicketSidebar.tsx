@@ -1,12 +1,15 @@
 import {
-  memo,
   type ReactNode,
   type RefObject,
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
 } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check, UserPlus, UserMinus, Clock } from "lucide-react";
+import { AiSummaryPanel } from "./AiSummaryPanel";
+import { CsatWidget } from "./CsatWidget";
 import type {
   TicketDetail,
   TicketEvent,
@@ -22,7 +25,6 @@ import {
   getFirstResponseSla,
   getResolutionSla,
   priorityBadgeClass,
-  slaBadgeClass,
 } from "./utils";
 
 export type ExpandedSections = {
@@ -66,9 +68,14 @@ export type TicketSidebarProps = {
   followError: string | null;
   onFollowToggle: () => void;
   statusEvents: TicketEvent[];
+  currentEmail?: string;
+  ticketId?: string;
+  csatTicketId?: string;
+  csatTicketStatus?: string;
+  csatIsRequester?: boolean;
 };
 
-export const TicketSidebar = memo(function TicketSidebar(
+export function TicketSidebar(
   props: TicketSidebarProps,
 ) {
   const {
@@ -96,7 +103,15 @@ export const TicketSidebar = memo(function TicketSidebar(
     statusEvents,
     expandedSections,
     toggleSection,
+    currentEmail,
+    ticketId,
+    csatTicketId,
+    csatTicketStatus,
+    csatIsRequester,
   } = props;
+
+  const isRequester =
+    !!currentEmail && ticket.requester?.email === currentEmail;
 
   const firstResponseSla = getFirstResponseSla(ticket, RelativeTime);
   const resolutionSla = getResolutionSla(ticket, RelativeTime);
@@ -109,12 +124,24 @@ export const TicketSidebar = memo(function TicketSidebar(
   })();
 
   return (
-    <aside className="flex h-full flex-col gap-3 bg-background px-3 pt-3 pb-6 text-[13px] text-foreground">
-      {/* Properties card */}
-      <div className="flex flex-col overflow-visible rounded-2xl border border-border bg-card shadow-sm">
-        <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h3 className="text-[13px] font-semibold text-foreground">
-            Properties
+    <aside className="flex min-h-full flex-col gap-3 bg-background px-3 pt-3 pb-6 text-[13px] text-foreground">
+      {/* AI Summary Panel */}
+      {ticketId && <AiSummaryPanel ticketId={ticketId} />}
+
+      {/* CSAT Widget */}
+      {csatTicketId && (
+        <CsatWidget
+          ticketId={csatTicketId}
+          ticketStatus={csatTicketStatus ?? ""}
+          isRequester={csatIsRequester ?? false}
+        />
+      )}
+
+      {/* Actions card */}
+      <div className="flex flex-col overflow-visible rounded-xl border border-border bg-card shadow-card">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            Actions
           </h3>
           <div className="flex items-center gap-2">
             {followers.length > 0 && (
@@ -135,25 +162,25 @@ export const TicketSidebar = memo(function TicketSidebar(
                 )}
               </div>
             )}
-            <button
-              onClick={onFollowToggle}
-              disabled={followLoading}
-              className={`flex h-7 w-7 items-center justify-center rounded-full border text-muted-foreground transition-all ${
-                isFollowing
-                  ? "border-primary/30 bg-primary/10 text-primary hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400 group"
-                  : "border-border bg-card hover:border-border/80 hover:bg-muted hover:text-foreground"
-              }`}
-              title={isFollowing ? "Unfollow" : "Follow"}
-            >
-              {isFollowing ? (
-                <>
-                  <UserPlus className="h-3.5 w-3.5 group-hover:hidden" />
-                  <UserMinus className="hidden h-3.5 w-3.5 group-hover:block" />
-                </>
-              ) : (
-                <UserPlus className="h-3.5 w-3.5" />
-              )}
-            </button>
+            {/* Hide unfollow for requesters — they always follow their own ticket */}
+            {isFollowing && isRequester ? null : (
+              <button
+                onClick={onFollowToggle}
+                disabled={followLoading}
+                className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all ${
+                  isFollowing
+                    ? "border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/20"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+                }`}
+                title={isFollowing ? "Unfollow" : "Follow"}
+              >
+                {isFollowing ? (
+                  <UserMinus className="h-3.5 w-3.5" />
+                ) : (
+                  <UserPlus className="h-3.5 w-3.5" />
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -169,7 +196,7 @@ export const TicketSidebar = memo(function TicketSidebar(
         )}
 
         {/* Property List */}
-        <div className="mt-3 space-y-0.5 border-t border-border bg-card/50 p-2">
+        <div className="divide-y divide-border/50 p-1">
           <PropertyRow label="Status">
             {canManage && availableTransitions.length > 0 ? (
               <InlineSelect
@@ -194,55 +221,67 @@ export const TicketSidebar = memo(function TicketSidebar(
 
           <PropertyRow label="Assignee">
             {canManage ? (
-              <div className="flex items-center gap-1 overflow-hidden w-full group/assign overflow-visible relative">
-                <InlineSelect
-                  buttonClassName="flex-1 w-full"
-                  value={ticket.assignee?.id ?? ""}
-                  placeholder="Unassigned"
-                  options={[
-                    ...teamMembers.map((m) => ({
-                      value: m.user.id,
-                      label: m.user.displayName,
-                      avatarString: m.user.displayName,
-                    })),
-                  ]}
-                  onChange={(val) => {
-                    setAssignToId(val);
-                  }}
-                  disabled={actionLoading || membersLoading}
-                  renderValue={() =>
-                    ticket.assignee ? (
-                      <div className="flex items-center gap-1.5 text-foreground truncate font-medium">
-                        <Avatar name={ticket.assignee.displayName} />
-                        <span className="truncate">
-                          {ticket.assignee.displayName}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground font-medium">
-                        Unassigned
-                      </span>
-                    )
-                  }
-                />
-                {assignToId && assignToId !== (ticket.assignee?.id ?? "") && (
-                  <button
-                    onClick={onAssignMember}
-                    disabled={actionLoading}
-                    className="h-6 px-2.5 bg-primary text-primary-foreground rounded text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
-                  >
-                    Save
-                  </button>
-                )}
-                {!ticket.assignee && (
-                  <button
-                    onClick={onAssignSelf}
-                    disabled={actionLoading}
-                    className="hidden group-hover/assign:flex absolute right-0 bg-card shadow-sm ring-1 ring-border h-6 px-2 text-[11px] font-semibold text-muted-foreground items-center rounded-md hover:text-primary"
-                  >
-                    Assign to me
-                  </button>
-                )}
+              <div className="flex items-center gap-1.5 w-full">
+                {(() => {
+                  const effectiveId = assignToId || (ticket.assignee?.id ?? "");
+                  const pendingMember = assignToId
+                    ? teamMembers.find((m) => m.user.id === assignToId)
+                    : null;
+                  const hasPendingChange = assignToId && assignToId !== (ticket.assignee?.id ?? "");
+
+                  return (
+                    <>
+                      <InlineSelect
+                        buttonClassName="flex-1 w-full"
+                        value={effectiveId}
+                        placeholder="Unassigned"
+                        options={teamMembers.map((m) => ({
+                          value: m.user.id,
+                          label: m.user.displayName,
+                          avatarString: m.user.displayName,
+                        }))}
+                        onChange={(val) => setAssignToId(val)}
+                        disabled={actionLoading || membersLoading}
+                        renderValue={() => {
+                          if (pendingMember) {
+                            return (
+                              <div className="flex items-center gap-1.5 text-foreground truncate font-medium">
+                                <Avatar name={pendingMember.user.displayName} />
+                                <span className="truncate">{pendingMember.user.displayName}</span>
+                              </div>
+                            );
+                          }
+                          if (ticket.assignee) {
+                            return (
+                              <div className="flex items-center gap-1.5 text-foreground truncate font-medium">
+                                <Avatar name={ticket.assignee.displayName} />
+                                <span className="truncate">{ticket.assignee.displayName}</span>
+                              </div>
+                            );
+                          }
+                          return <span className="text-muted-foreground font-medium">Unassigned</span>;
+                        }}
+                      />
+                      {hasPendingChange ? (
+                        <button
+                          onClick={onAssignMember}
+                          disabled={actionLoading}
+                          className="h-6 px-2.5 bg-primary text-primary-foreground rounded-md text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
+                        >
+                          Save
+                        </button>
+                      ) : !ticket.assignee && !assignToId ? (
+                        <button
+                          onClick={onAssignSelf}
+                          disabled={actionLoading}
+                          className="h-6 px-2 text-[11px] font-semibold text-primary bg-primary/10 rounded-md hover:bg-primary/15 shrink-0 whitespace-nowrap"
+                        >
+                          Me
+                        </button>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <div className="flex items-center gap-1.5 text-foreground truncate px-1.5 font-medium">
@@ -262,7 +301,7 @@ export const TicketSidebar = memo(function TicketSidebar(
 
           <PropertyRow label="Department">
             {canManage ? (
-              <div className="relative flex w-full items-center gap-1 overflow-visible">
+              <div className="flex w-full items-center gap-1.5">
                 <InlineSelect
                   buttonClassName="flex-1 w-full"
                   value={transferTeamId || (ticket.assignedTeam?.id ?? "")}
@@ -291,9 +330,9 @@ export const TicketSidebar = memo(function TicketSidebar(
                     <button
                       onClick={onTransfer}
                       disabled={actionLoading}
-                      className="h-6 px-2.5 bg-primary text-primary-foreground rounded text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
+                      className="h-6 px-2.5 bg-primary text-primary-foreground rounded-md text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
                     >
-                      Set
+                      Save
                     </button>
                   )}
               </div>
@@ -321,37 +360,49 @@ export const TicketSidebar = memo(function TicketSidebar(
       </div>
 
       {/* SLAs */}
-      <div className="rounded-2xl border border-border bg-card px-5 py-4 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
+      <div className="rounded-xl border border-border bg-card shadow-card">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" /> SLAs
+            <Clock className="w-3.5 h-3.5" /> SLA Tracking
           </h4>
-          <span
-            className={`rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wider uppercase border ${slaBadgeClass(resolutionSla.label)}`}
-          >
-            {resolutionSla.label}
-          </span>
         </div>
-        <div className="grid gap-2">
+        <div className="p-2 space-y-1.5">
           <SlaRow label="First Response" sla={firstResponseSla} />
           <SlaRow label="Resolution" sla={resolutionSla} />
         </div>
       </div>
 
       {/* Details */}
-      <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-          Details
-        </h4>
-        <div className="space-y-2.5">
-          <DetailText
+      <div className="rounded-xl border border-border bg-card shadow-card">
+        <div className="px-4 py-3 border-b border-border">
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            Information
+          </h4>
+        </div>
+        <div className="divide-y divide-border/50">
+          <DetailRow
             label="Requester"
             value={ticket.requester?.displayName ?? "Unknown"}
           />
-          <DetailText label="Email" value={ticket.requester?.email ?? "—"} />
-          <DetailText label="Reference" value={formatTicketId(ticket)} />
-          {facility && <DetailText label="Facility" value={facility} />}
-          <DetailText
+          {(ticket.requester?.graphProfile?.jobTitle || ticket.requester?.department) && (
+            <DetailRow
+              label="Job Title"
+              value={ticket.requester.graphProfile?.jobTitle || ticket.requester.department || "—"}
+            />
+          )}
+          <DetailRow
+            label="Email"
+            value={ticket.requester?.email ?? "—"}
+            mono
+          />
+          {(ticket.requester?.location || ticket.requester?.graphProfile?.officeLocation || facility) && (
+            <DetailRow
+              label="Facility"
+              value={ticket.requester?.location || ticket.requester?.graphProfile?.officeLocation || facility || "—"}
+            />
+          )}
+          <DetailRow label="Reference" value={formatTicketId(ticket)} mono />
+          <DetailRow
             label="Created"
             value={<RelativeTime value={ticket.createdAt} />}
           />
@@ -360,46 +411,48 @@ export const TicketSidebar = memo(function TicketSidebar(
 
       {/* Custom Fields */}
       {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <h4 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-            Custom Fields
-          </h4>
-          <div className="space-y-3">
+        <div className="rounded-xl border border-border bg-card shadow-card">
+          <div className="px-4 py-3 border-b border-border">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Custom Fields
+            </h4>
+          </div>
+          <div className="p-4 space-y-3">
             <CustomFieldsDisplay values={ticket.customFieldValues} />
           </div>
         </div>
       )}
 
       {/* History */}
-      <div className="space-y-3 rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div className="rounded-xl border border-border bg-card shadow-card">
         <button
           type="button"
           onClick={() => toggleSection("history")}
-          className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left hover:bg-muted/30"
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/30 transition-colors"
         >
-          <div className="flex flex-col gap-0.5">
-            <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-              Status History
-            </h4>
+          <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+            Status History
             {statusEvents.length > 0 && (
-              <span className="text-[11px] text-muted-foreground">
-                Showing last {statusEvents.length} change
-                {statusEvents.length > 1 ? "s" : ""} • Full history in{" "}
-                <span className="font-semibold text-foreground">Timeline</span>
+              <span className="ml-1.5 text-[10px] font-medium normal-case tracking-normal text-muted-foreground/60">
+                ({statusEvents.length})
               </span>
             )}
-          </div>
+          </h4>
           <ChevronDown
-            className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedSections.history ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 ${expandedSections.history ? "rotate-180" : ""}`}
           />
         </button>
-        {statusEvents.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">
-            No status changes recorded yet.
-          </p>
-        ) : null}
-        {expandedSections.history && statusEvents.length > 0 ? (
-          <div className="space-y-3">
+
+        {statusEvents.length === 0 && (
+          <div className="px-4 pb-3">
+            <p className="text-xs text-muted-foreground/60 italic">
+              No status changes yet
+            </p>
+          </div>
+        )}
+
+        {expandedSections.history && statusEvents.length > 0 && (
+          <div className="px-4 pb-3 space-y-0">
             {statusEvents.map((event, index) => {
               const payload = (event.payload ?? {}) as {
                 from?: string;
@@ -415,42 +468,36 @@ export const TicketSidebar = memo(function TicketSidebar(
               const toStatus = payload.to ?? ticket.status;
               const isLast = index === statusEvents.length - 1;
               return (
-                <div key={event.id} className="flex gap-3 text-xs">
-                  <div className="flex flex-col items-center pt-1">
-                    <div className="h-2 w-2 rounded-full bg-primary" />
+                <div key={event.id} className="flex gap-3">
+                  {/* Timeline rail */}
+                  <div className="flex flex-col items-center w-4 flex-shrink-0">
+                    <div className="h-2 w-2 mt-2 rounded-full bg-primary ring-2 ring-card" />
                     {!isLast && (
-                      <div className="mt-1 h-full w-px bg-border" />
+                      <div className="flex-1 w-px bg-border mt-1" />
                     )}
                   </div>
-                  <div className="flex-1 rounded-lg border border-border bg-card/80 px-3 py-2 shadow-sm">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          {fromLabel}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">to</span>
-                        <StatusBadge status={toStatus} />
-                      </div>
-                      <span className="text-[11px] text-muted-foreground whitespace-nowrap">
-                        <RelativeTime value={event.createdAt} />
-                      </span>
+                  {/* Event content */}
+                  <div className="flex-1 pb-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <StatusBadge status={fromLabel.toUpperCase().replace(/ /g, "_")} />
+                      <span className="text-[10px] text-muted-foreground">→</span>
+                      <StatusBadge status={toStatus} />
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      Changed by{" "}
-                      <span className="font-medium text-foreground">
-                        {actor}
-                      </span>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {actor}{" "}
+                      <span className="text-muted-foreground/50">·</span>{" "}
+                      <RelativeTime value={event.createdAt} />
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : null}
+        )}
       </div>
     </aside>
   );
-});
+}
 
 /* ——— Sub-components ——— */
 
@@ -462,20 +509,32 @@ function PropertyRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-center px-3 py-1.5 min-h-[36px] group/row rounded-lg hover:bg-muted/30 transition-colors">
-      <div className="w-1/3 shrink-0 text-muted-foreground font-medium select-none">
+    <div className="flex items-center px-3 py-2.5 min-h-[40px] group/row rounded-lg hover:bg-accent/40 transition-colors">
+      <div className="w-[90px] shrink-0 text-xs text-muted-foreground font-medium select-none">
         {label}
       </div>
-      <div className="w-2/3 min-w-0 flex items-center">{children}</div>
+      <div className="flex-1 min-w-0 flex items-center">{children}</div>
     </div>
   );
 }
 
-function DetailText({ label, value }: { label: string; value: ReactNode }) {
+function DetailRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+}) {
   return (
-    <div className="flex justify-between items-start gap-4 text-xs">
-      <span className="text-muted-foreground font-medium">{label}</span>
-      <span className="text-foreground font-medium text-right break-words">
+    <div className="flex items-center px-4 py-2.5">
+      <span className="w-[80px] shrink-0 text-xs text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={`flex-1 text-xs font-medium text-foreground text-right truncate ${mono ? "font-mono text-[11px]" : ""}`}
+      >
         {value}
       </span>
     </div>
@@ -493,10 +552,13 @@ function SlaRow({
   const isWarning = sla.tone.includes("amber") || sla.tone.includes("yellow");
   const isSuccess = sla.tone.includes("emerald") || sla.tone.includes("green");
 
-  let bgClass = "bg-card border-border";
-  if (isDanger) bgClass = "bg-rose-500/10 border-rose-500/30";
-  if (isWarning) bgClass = "bg-amber-500/10 border-amber-500/30";
-  if (isSuccess) bgClass = "bg-emerald-500/10 border-emerald-500/30";
+  let bgClass = "bg-muted/30 border-border";
+  if (isDanger)
+    bgClass = "bg-rose-50 border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30";
+  if (isWarning)
+    bgClass = "bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30";
+  if (isSuccess)
+    bgClass = "bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30";
 
   const dotClass = isDanger
     ? "bg-rose-500"
@@ -507,9 +569,7 @@ function SlaRow({
         : "bg-muted-foreground";
 
   return (
-    <div
-      className={`flex items-center justify-between gap-3 p-2.5 rounded-xl border shadow-sm ${bgClass}`}
-    >
+    <div className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border ${bgClass}`}>
       <div className="flex items-start gap-2">
         <span className={`mt-1 h-2 w-2 rounded-full ${dotClass}`} />
         <div className="flex flex-col gap-0.5">
@@ -521,9 +581,7 @@ function SlaRow({
           </span>
         </div>
       </div>
-      <div
-        className={`text-[12px] font-bold ${sla.tone} bg-background/80 px-2.5 py-1 rounded-md shadow-sm border border-border/60`}
-      >
+      <div className={`text-[11px] font-bold ${sla.tone} px-2 py-0.5 rounded-md`}>
         {sla.label}
       </div>
     </div>
@@ -531,24 +589,21 @@ function SlaRow({
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const getColors = () => {
-    switch (status) {
-      case "OPEN":
-        return "bg-blue-500/10 text-blue-400 border-blue-500/30";
-      case "IN_PROGRESS":
-        return "bg-amber-500/10 text-amber-400 border-amber-500/30";
-      case "RESOLVED":
-        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
-      case "CLOSED":
-        return "bg-muted text-muted-foreground border-border";
-      default:
-        return "bg-muted text-foreground border-border";
-    }
+  const colorMap: Record<string, string> = {
+    NEW: "bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400",
+    TRIAGED: "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400",
+    ASSIGNED: "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400",
+    IN_PROGRESS: "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
+    WAITING_ON_REQUESTER: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400",
+    WAITING_ON_VENDOR: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400",
+    RESOLVED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+    CLOSED: "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400",
+    REOPENED: "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400",
   };
+  const colors = colorMap[status] ?? "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400";
   return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide border ${getColors()}`}
-    >
+    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${colors}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
       {formatStatus(status)}
     </span>
   );
@@ -581,19 +636,35 @@ function InlineSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLUListElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+
+  useLayoutEffect(() => {
+    if (!isOpen || !buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const dropdownHeight = 240; // max-h-60 = 15rem = 240px
+    const openUpward = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+    setDropdownPos({
+      top: openUpward ? rect.top - Math.min(dropdownHeight, rect.top - 8) : rect.bottom + 4,
+      left: rect.left,
+      width: Math.max(rect.width, 224), // min w-56 = 224px
+    });
+  }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
     function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
       if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
+        containerRef.current && !containerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
     }
-    if (isOpen) {
-      document.addEventListener("mousedown", handleOutsideClick);
-    }
+    document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isOpen]);
 
@@ -602,18 +673,21 @@ function InlineSelect({
   return (
     <div className={`relative ${buttonClassName}`} ref={containerRef}>
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className={`flex w-full items-center justify-between rounded-md px-2 py-1 transition-all outline-none disabled:opacity-50 text-left min-w-0 ${
+        className={`flex w-full items-center justify-between gap-1 rounded-lg px-2.5 py-1.5 transition-all outline-none disabled:opacity-50 text-left min-w-0 text-[12px] cursor-pointer border ${
           disabled
-            ? "pointer-events-none"
-            : "bg-muted border border-border hover:bg-muted/80 hover:shadow-sm focus:ring-2 focus:ring-primary/40"
+            ? "pointer-events-none opacity-60 border-transparent"
+            : isOpen
+              ? "bg-card border-primary/30 shadow-sm"
+              : "bg-card border-border hover:border-foreground/20"
         }`}
       >
-        <span className="truncate">
+        <span className="truncate flex-1">
           {selectedOption ? (
             renderValue(value)
           ) : (
@@ -624,15 +698,17 @@ function InlineSelect({
         </span>
         {!disabled && (
           <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
+            className={`h-3.5 w-3.5 flex-shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180 text-primary" : "text-muted-foreground"}`}
           />
         )}
       </button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <ul
+          ref={dropdownRef}
           role="listbox"
-          className="absolute left-0 top-full z-[70] mt-1 max-h-60 min-w-full w-56 overflow-y-auto rounded-xl border border-border bg-popover py-1.5 shadow-xl ring-1 ring-black/10 focus:outline-none"
+          className="fixed z-[9999] max-h-60 overflow-y-auto rounded-xl border border-border bg-card py-1.5 shadow-elevated focus:outline-none"
+          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
         >
           {options.map((option) => (
             <li
@@ -641,10 +717,10 @@ function InlineSelect({
                 onChange(option.value);
                 setIsOpen(false);
               }}
-              className={`relative cursor-pointer select-none py-1.5 pl-3 pr-9 text-sm transition-colors ${
+              className={`relative cursor-pointer select-none py-2.5 pl-3 pr-9 text-[12px] transition-colors ${
                 value === option.value
-                  ? "bg-primary/10 text-primary"
-                  : "text-foreground hover:bg-muted"
+                  ? "bg-primary/8 text-primary font-semibold"
+                  : "text-foreground hover:bg-accent/60"
               }`}
             >
               <div className="flex items-center gap-2 truncate">
@@ -662,7 +738,8 @@ function InlineSelect({
               )}
             </li>
           ))}
-        </ul>
+        </ul>,
+        document.body,
       )}
     </div>
   );

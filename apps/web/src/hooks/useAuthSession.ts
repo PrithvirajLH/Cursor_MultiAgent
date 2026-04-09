@@ -10,6 +10,8 @@ import {
   getDemoUserEmail,
   setAuthToken,
   setDemoUserEmail,
+  setOnAuthFailure,
+  setTokenRefresher,
   syncCurrentUserProfile,
   type CurrentUserSession,
   type MicrosoftGraphProfile,
@@ -414,11 +416,15 @@ export function useAuthSession() {
   const signOut = useCallback(async () => {
     if (isE2EMode) {
       setAuthToken(null);
+      setTokenRefresher(null);
+      setOnAuthFailure(null);
       setDemoUserEmail("");
       setState({ loading: false, user: null, error: null });
       return;
     }
     setAuthToken(null);
+    setTokenRefresher(null);
+    setOnAuthFailure(null);
     setDemoUserEmail("");
     setState({ loading: false, user: null, error: null });
 
@@ -495,6 +501,19 @@ export function useAuthSession() {
       if (!isLocalhost) {
         const easyAuthSession = await initializeEasyAuthSession();
         if (easyAuthSession) {
+          // Register refresher that re-reads the EasyAuth cookie
+          setTokenRefresher(async () => {
+            const identity = await readEasyAuthIdentity();
+            if (identity?.token) {
+              setAuthToken(identity.token);
+              return identity.token;
+            }
+            return null;
+          });
+          // On auth failure, redirect to EasyAuth login
+          setOnAuthFailure(() => {
+            window.location.assign(buildEasyAuthLoginUrl());
+          });
           if (isMounted) {
             setState({
               loading: false,
@@ -551,6 +570,31 @@ export function useAuthSession() {
         }
 
         setAuthToken(tokens.idToken);
+
+        // Register a silent token refresher so apiFetch can retry on 401
+        setTokenRefresher(async () => {
+          try {
+            const refreshResult = await client.acquireTokenSilent({
+              ...oidcRequest,
+              account,
+              forceRefresh: true,
+            });
+            if (refreshResult.idToken) {
+              setAuthToken(refreshResult.idToken);
+              return refreshResult.idToken;
+            }
+            return null;
+          } catch {
+            return null;
+          }
+        });
+
+        // When token refresh fails, force interactive re-login
+        setOnAuthFailure(() => {
+          client.loginRedirect(loginRequest).catch(() => {
+            window.location.reload();
+          });
+        });
 
         const [me, graphProfile] = await Promise.all([
           fetchCurrentUser(),

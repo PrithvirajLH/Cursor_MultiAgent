@@ -9,6 +9,8 @@ export type HeaderContextValue = {
   onOpenSearch?: () => void;
   currentUser?: CurrentUserSession | null;
   onSignOut?: () => void;
+  theme?: "light" | "dark";
+  onToggleTheme?: () => void;
   notificationProps?: {
     notifications: NotificationRecord[];
     unreadCount: number;

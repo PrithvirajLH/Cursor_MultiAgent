@@ -5,9 +5,82 @@
 @tailwind utilities;
 
 @layer base {
+  /* ═══════════════════════════════════════════════════════════════════════════
+     LIGHT THEME — warm ivory canvas, rich indigo accents, soft tinted layers
+     Design language: depth via color tinting, not just lightness
+     ═══════════════════════════════════════════════════════════════════════════ */
   :root {
+    color-scheme: light;
+
+    /* ─── Surface Palette (ivory-cream warmth, not clinical gray) ─── */
+    --background: 40 20% 92%;           /* Warm ivory canvas   #edebe5 */
+    --foreground: 230 28% 14%;          /* Deep navy ink       #1a1f30 */
+
+    --card: 40 24% 97%;                /* Warm cream card      #f9f8f5 */
+    --card-foreground: 230 28% 14%;
+
+    --popover: 40 30% 99%;             /* Near-white popover   #fdfcfa */
+    --popover-foreground: 230 28% 14%;
+
+    /* ─── Interactive (rich violet-indigo, distinctive) ─── */
+    --primary: 245 58% 51%;            /* Vibrant indigo       #4f46e5 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 14% 88%;           /* Warm sand            #e2dfda */
+    --secondary-foreground: 230 20% 22%;
+
+    --muted: 40 12% 89%;              /* Soft parchment       #e5e2dd */
+    --muted-foreground: 230 10% 38%;  /* Rich readable gray — WCAG AA */
+
+    --accent: 245 30% 95%;            /* Faint indigo wash    #eeedf8 */
+    --accent-foreground: 230 28% 14%;
+
+    /* ─── Feedback ─── */
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ─── Borders & Inputs ─── */
+    --border: 40 10% 80%;             /* Warm visible edge    #cdc9c2 */
+    --input: 40 10% 80%;
+    --ring: 245 58% 51%;
+
+    /* ─── Charts (saturated, vibrant palette) ─── */
+    --chart-1: 245 58% 51%;           /* Indigo */
+    --chart-2: 152 55% 40%;           /* Emerald */
+    --chart-3: 330 65% 52%;           /* Rose */
+    --chart-4: 25 90% 52%;            /* Amber */
+    --chart-5: 195 80% 42%;           /* Teal */
+
+    /* ─── Status System (jewel-toned with soft tinted bg) ─── */
+    --status-new: 270 52% 50%;        /* Purple */
+    --status-new-bg: 270 40% 92%;
+    --status-open: 152 55% 38%;       /* Emerald */
+    --status-open-bg: 152 40% 91%;
+    --status-progress: 245 58% 51%;   /* Indigo */
+    --status-progress-bg: 245 40% 93%;
+    --status-resolved: 164 48% 38%;   /* Teal */
+    --status-resolved-bg: 164 38% 91%;
+    --status-waiting: 32 78% 48%;     /* Warm amber */
+    --status-waiting-bg: 32 60% 91%;
+
+    /* ─── KPI Backgrounds (gentle color washes) ─── */
+    --kpi-blue: 245 45% 94%;
+    --kpi-green: 152 40% 92%;
+    --kpi-yellow: 32 55% 92%;
+
+    /* ─── Layout ─── */
+    --radius: 0.625rem;
+    --shadow-soft: 0 1px 2px rgba(100, 80, 60, 0.06), 0 2px 8px rgba(100, 80, 60, 0.05);
+    --shadow-card: 0 1px 3px rgba(100, 80, 60, 0.07), 0 6px 24px rgba(100, 80, 60, 0.06);
+    --shadow-elevated: 0 4px 16px rgba(100, 80, 60, 0.08), 0 20px 50px rgba(100, 80, 60, 0.08);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     DARK THEME — the original palette, activated via .dark class
+     ═══════════════════════════════════════════════════════════════════════════ */
+  .dark {
     color-scheme: dark;
-    /* ─── Surface Palette (dark-first) ─── */
+
     --background: 222 47% 8%;
     --foreground: 213 45% 91%;
 
@@ -17,8 +90,7 @@
     --popover: 222 40% 13%;
     --popover-foreground: 213 45% 91%;
 
-    /* ─── Interactive ─── */
-    --primary: 193 95% 62%;           /* Electric Cyan #14d4f4 */
+    --primary: 193 95% 62%;
     --primary-foreground: 222 47% 8%;
 
     --secondary: 222 35% 16%;
@@ -30,23 +102,19 @@
     --accent: 222 32% 18%;
     --accent-foreground: 213 45% 91%;
 
-    /* ─── Feedback ─── */
     --destructive: 0 80% 60%;
     --destructive-foreground: 222 47% 8%;
 
-    /* ─── Borders & Inputs ─── */
     --border: 222 28% 18%;
     --input: 222 28% 18%;
     --ring: 193 95% 62%;
 
-    /* ─── Charts ─── */
     --chart-1: 193 95% 62%;
     --chart-2: 142 71% 50%;
     --chart-3: 262 83% 68%;
     --chart-4: 38 92% 60%;
     --chart-5: 27 87% 67%;
 
-    /* ─── Status System ─── */
     --status-new: 262 83% 68%;
     --status-new-bg: 262 83% 11%;
     --status-open: 142 71% 50%;
@@ -58,13 +126,10 @@
     --status-waiting: 38 92% 60%;
     --status-waiting-bg: 38 92% 10%;
 
-    /* ─── KPI Backgrounds ─── */
     --kpi-blue: 193 95% 9%;
     --kpi-green: 142 71% 8%;
     --kpi-yellow: 38 92% 10%;
 
-    /* ─── Layout ─── */
-    --radius: 0.625rem;
     --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.3);
     --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
     --shadow-elevated: 0 8px 48px rgba(0, 0, 0, 0.45);
@@ -88,6 +153,10 @@
   .glass-card {
     border-radius: var(--radius);
     backdrop-filter: blur(12px);
+    background: hsl(var(--card) / 0.85);
+    border: 1px solid hsl(var(--border));
+  }
+  .dark .glass-card {
     background: rgba(14, 22, 38, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.07);
   }
@@ -95,15 +164,25 @@
   .glass-card-strong {
     border-radius: var(--radius);
     backdrop-filter: blur(20px);
+    background: hsl(var(--card) / 0.95);
+    border: 1px solid hsl(var(--border));
+  }
+  .dark .glass-card-strong {
     background: rgba(10, 18, 32, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.09);
   }
 
-  /* ─── Glow effects ─── */
+  /* ─── Glow effects (dark only, subtle shadow in light) ─── */
   .glow-cyan {
+    box-shadow: 0 1px 4px hsl(var(--primary) / 0.1);
+  }
+  .dark .glow-cyan {
     box-shadow: 0 0 24px rgba(20, 212, 244, 0.18), 0 0 8px rgba(20, 212, 244, 0.08);
   }
   .glow-cyan-sm {
+    box-shadow: 0 1px 3px hsl(var(--primary) / 0.08);
+  }
+  .dark .glow-cyan-sm {
     box-shadow: 0 0 12px rgba(20, 212, 244, 0.12);
   }
 
@@ -131,10 +210,13 @@
   .custom-checkbox:checked {
     background: hsl(var(--primary));
     border-color: hsl(var(--primary));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='%230b1420' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3E%3C/svg%3E");
     background-size: 100%;
     background-position: center;
     background-repeat: no-repeat;
+  }
+  .dark .custom-checkbox:checked {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='%230b1420' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3E%3C/svg%3E");
   }
   .custom-checkbox:focus-visible {
     outline: 2px solid hsl(var(--ring));
@@ -150,10 +232,13 @@
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     color: hsl(var(--foreground));
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234a5568' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 8px center;
     background-size: 16px;
+  }
+  .dark .custom-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234a5568' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
   .custom-select:hover { border-color: hsl(var(--ring) / 0.5); }
   .custom-select:focus {
@@ -175,10 +260,18 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.05),
+      hsl(var(--background) / 0.4),
       transparent
     );
     animation: shimmer 1.6s ease-in-out infinite;
+  }
+  .dark .skeleton-shimmer::after {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.05),
+      transparent
+    );
   }
 
   /* ─── Mention styling ─── */
@@ -303,4 +396,14 @@ button:not(:disabled):active,
 @layer base {
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
+
+  /* Suppress browser-native :invalid styling */
+  input:invalid,
+  textarea:invalid,
+  select:invalid {
+    background-color: hsl(var(--card));
+    border-color: hsl(var(--border));
+    box-shadow: none;
+    outline: none;
+  }
 }

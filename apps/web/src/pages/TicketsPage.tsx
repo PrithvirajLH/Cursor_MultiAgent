@@ -1034,7 +1034,7 @@ export function TicketsPage({
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] px-6 py-4">
+        <div className="px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -1069,7 +1069,7 @@ export function TicketsPage({
       </div>
 
       <div className="border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] px-6 py-4">
+        <div className="px-6 py-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 border-r border-border pr-4">
               {(["all", "open", "resolved"] as StatusFilter[]).map((value) => (
@@ -1203,11 +1203,17 @@ export function TicketsPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] p-6 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto">
+      <div className="p-6 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto">
         <p className="text-sm text-muted-foreground">{countLabel}</p>
 
-        {selection.isSomeSelected && role !== "EMPLOYEE" ? (
-          <div className="mt-4">
+        <div
+          className={`mt-4 grid transition-all duration-300 ease-out ${
+            selection.isSomeSelected && role !== "EMPLOYEE"
+              ? "grid-rows-[1fr] opacity-100"
+              : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="overflow-hidden">
             <BulkActionsToolbar
               selectedCount={selection.selectedCount}
               onClearSelection={selection.clearSelection}
@@ -1223,7 +1229,7 @@ export function TicketsPage({
               onError={(message) => toast.error(message)}
             />
           </div>
-        ) : null}
+        </div>
 
         {ticketError ? (
           <div className="mt-4">
@@ -1267,7 +1273,7 @@ export function TicketsPage({
         ) : null}
 
         {!loadingTickets && tickets.length > 0 ? (
-          <div className="mt-4 overflow-hidden rounded-[20px] bg-card border border-border shadow-[0_4px_15px_rgb(0,0,0,0.04)] ring-1 ring-slate-100">
+          <div className="mt-4 overflow-hidden rounded-xl bg-card border border-border shadow-card">
             <TicketTableView
               tickets={tickets}
               role={role}
@@ -1286,11 +1292,9 @@ export function TicketsPage({
                 })
               }
             />
-          </div>
-        ) : null}
 
-        {!loadingTickets && listMeta && listMeta.total > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-b-[20px] border border-t-0 border-border bg-muted px-6 py-4">
+        {listMeta && listMeta.total > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/50 px-6 py-3">
             <div className="text-sm text-foreground">
               Showing <span className="font-medium">{pageStart}</span> to{" "}
               <span className="font-medium">{pageEnd}</span> of{" "}
@@ -1348,6 +1352,8 @@ export function TicketsPage({
                 Next
               </button>
             </div>
+          </div>
+        ) : null}
           </div>
         ) : null}
       </div>

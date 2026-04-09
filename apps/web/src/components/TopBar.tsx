@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { LogOut, Menu, Search } from "lucide-react";
+import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import type { CurrentUserSession, NotificationRecord } from "../api/client";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { initialsFor } from "../utils/format";
@@ -152,6 +152,8 @@ export function TopBar({
   leftContent,
   user,
   onSignOut,
+  theme,
+  onToggleTheme,
 }: {
   title: string;
   subtitle: string;
@@ -163,6 +165,8 @@ export function TopBar({
   leftContent?: ReactNode;
   user?: CurrentUserSession | null;
   onSignOut?: () => void;
+  theme?: "light" | "dark";
+  onToggleTheme?: () => void;
 }) {
   const headerCtx = useHeaderContext();
   const resolvedOpenNavigation =
@@ -249,7 +253,7 @@ export function TopBar({
           <button
             type="button"
             onClick={resolvedOpenNavigation}
-            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-white/20 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 lg:hidden"
+            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-primary/30 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 lg:hidden"
             aria-label="Open navigation"
           >
             <Menu className="h-4 w-4" />
@@ -278,14 +282,30 @@ export function TopBar({
           <button
             type="button"
             onClick={onOpenSearch}
-            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-card text-muted-foreground text-[13px] transition-all hover:border-white/20 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-card text-muted-foreground text-[13px] transition-all hover:border-primary/30 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
             aria-label="Search (⌘K)"
           >
             <Search className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-white/35">
+            <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               ⌘K
             </kbd>
+          </button>
+        )}
+
+        {onToggleTheme && (
+          <button
+            type="button"
+            onClick={onToggleTheme}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:text-foreground hover:border-primary/30 focus:outline-none focus:ring-2 focus:ring-ring/30"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
+          >
+            {theme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
           </button>
         )}
 

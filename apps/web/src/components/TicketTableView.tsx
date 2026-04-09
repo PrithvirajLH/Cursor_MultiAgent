@@ -11,6 +11,24 @@ import {
 import { TicketContextMenu } from "./TicketContextMenu";
 import { useToast } from "../hooks/useToast";
 
+/**
+ * For AI-generated tickets, extracts only the original user message.
+ * The AI pipeline builds descriptions as: **What:** ...\n---\n**Original message:**\n<text>
+ */
+function extractOriginalMessage(description: string): string {
+  const marker = "**Original message:**";
+  const idx = description.indexOf(marker);
+  if (idx !== -1) {
+    return description.substring(idx + marker.length).trim();
+  }
+  // Strip "Facility: ..." prefix for legacy tickets
+  const lines = description.split("\n");
+  if (lines[0]?.startsWith("Facility:")) {
+    return lines.slice(2).join("\n").trim();
+  }
+  return description;
+}
+
 type TicketTableViewProps = {
   tickets: TicketRecord[];
   role: string;
@@ -116,10 +134,9 @@ export function TicketTableView({
               ticket.assignee?.displayName ??
               ticket.assignee?.email ??
               "Unassigned";
-            const snippet =
-              ticket.description?.trim() ||
-              ticket.category?.name ||
-              "No additional details";
+            const snippet = ticket.description
+              ? extractOriginalMessage(ticket.description.trim())
+              : ticket.category?.name || "No additional details";
             const selected = selection.isSelected(ticket.id);
             const focused = focusedTicketId === ticket.id;
             return (
@@ -147,19 +164,24 @@ export function TicketTableView({
                 {showCheckbox ? (
                   <td
                     className="px-6 py-4"
-                    onClick={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      event.preventDefault();
+                      selection.toggle(ticket.id);
+                    }}
                   >
                     <input
                       type="checkbox"
                       checked={selected}
-                      onChange={() => selection.toggle(ticket.id)}
+                      onChange={() => {}}
+                      onClick={(event) => event.stopPropagation()}
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30 transition accent-primary"
                       aria-label={`Select ticket ${ticket.subject}`}
                     />
                   </td>
                 ) : null}
                 <td className="whitespace-nowrap px-6 py-4">
-                  <span className="font-semibold text-foreground">
+                  <span className="text-xs font-medium text-muted-foreground font-mono">
                     {formatTicketId(ticket)}
                   </span>
                 </td>

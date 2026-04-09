@@ -3,6 +3,10 @@ const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as
   | string
   | undefined;
 let authToken: string | null = null;
+let tokenRefresher: (() => Promise<string | null>) | null = null;
+let tokenRefreshInFlight: Promise<string | null> | null = null;
+let onAuthFailure: (() => void) | null = null;
+let authFailureFired = false;
 
 type ApiGetCacheEntry = {
   data: unknown;
@@ -102,6 +106,12 @@ export type UserRef = {
   email: string;
   displayName: string;
   role?: string;
+  department?: string | null;
+  location?: string | null;
+  graphProfile?: {
+    jobTitle?: string | null;
+    officeLocation?: string | null;
+  } | null;
 };
 
 export type MicrosoftGraphProfile = {
@@ -433,6 +443,54 @@ export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
+/**
+ * Registers a callback that can silently acquire a fresh token.
+ * Called by useAuthSession after MSAL is initialized.
+ */
+export function setTokenRefresher(fn: (() => Promise<string | null>) | null) {
+  tokenRefresher = fn;
+}
+
+/**
+ * Registers a callback invoked when auth fails even after token refresh.
+ * Typically triggers re-login.
+ */
+export function setOnAuthFailure(fn: (() => void) | null) {
+  onAuthFailure = fn;
+  authFailureFired = false;
+}
+
+function fireAuthFailure() {
+  if (authFailureFired || !onAuthFailure) return;
+  authFailureFired = true;
+  onAuthFailure();
+}
+
+/**
+ * Attempts to refresh the auth token. Deduplicates concurrent calls.
+ * Returns the new token or null if refresh failed.
+ */
+async function tryRefreshToken(): Promise<string | null> {
+  if (!tokenRefresher) return null;
+  if (tokenRefreshInFlight) return tokenRefreshInFlight;
+
+  tokenRefreshInFlight = tokenRefresher().then(
+    (newToken) => {
+      tokenRefreshInFlight = null;
+      if (newToken) {
+        authToken = newToken;
+      }
+      return newToken;
+    },
+    () => {
+      tokenRefreshInFlight = null;
+      return null;
+    },
+  );
+
+  return tokenRefreshInFlight;
+}
+
 function authHeaders(): Record<string, string> {
   if (authToken) {
     return { Authorization: `Bearer ${authToken}` };
@@ -533,7 +591,27 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   };
 
   if (!cacheableGet) {
-    const response = await fetchWithTimeout(`${API_BASE}${path}`, requestInit);
+    let response = await fetchWithTimeout(`${API_BASE}${path}`, requestInit);
+
+    // On 401, try refreshing the token and retry once
+    if (response.status === 401) {
+      if (tokenRefresher) {
+        const newToken = await tryRefreshToken();
+        if (newToken) {
+          const retryHeaders = buildRequestHeaders(options?.headers);
+          response = await fetchWithTimeout(`${API_BASE}${path}`, {
+            ...options,
+            method,
+            headers: retryHeaders,
+          });
+        }
+      }
+      // If still 401 after retry (or no refresher), trigger re-auth
+      if (response.status === 401) {
+        fireAuthFailure();
+      }
+    }
+
     if (!response.ok) {
       const raw = await response.text();
       throw new ApiError(
@@ -570,10 +648,30 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   const requestPromise = (async () => {
     try {
-      const response = await fetchWithTimeout(`${API_BASE}${path}`, {
+      let response = await fetchWithTimeout(`${API_BASE}${path}`, {
         ...requestInit,
         headers: conditionalHeaders,
       });
+
+      // On 401, try refreshing the token and retry once
+      if (response.status === 401) {
+        if (tokenRefresher) {
+          const newToken = await tryRefreshToken();
+          if (newToken) {
+            const retryHeaders = buildRequestHeaders(options?.headers);
+            if (cached?.etag) retryHeaders.set("If-None-Match", cached.etag);
+            if (cached?.lastModified) retryHeaders.set("If-Modified-Since", cached.lastModified);
+            response = await fetchWithTimeout(`${API_BASE}${path}`, {
+              ...requestInit,
+              headers: retryHeaders,
+            });
+          }
+        }
+        // If still 401 after retry, trigger re-auth
+        if (response.status === 401 && onAuthFailure) {
+          onAuthFailure();
+        }
+      }
 
       if (response.status === 304 && cached) {
         const refreshedCacheEntry: ApiGetCacheEntry = {
@@ -655,6 +753,8 @@ export function fetchTicketCounts() {
     unassigned: number;
     resolved: number;
     resolvedByMe: number;
+    createdByMeOpen: number;
+    createdByMeResolved: number;
     atRisk: number;
     overdue: number;
   }>("/tickets/counts");
@@ -2026,4 +2126,125 @@ export async function fetchAuditLogExport(
     throw new ApiError(message, response.status);
   }
   return response.text();
+}
+
+// ─── AI Classification ──────────────────────────────────────────────────────
+
+export interface AiPipelineStep {
+  step: number;
+  name: string;
+  agentName: string;
+  input: string;
+  rawOutput: string;
+  parsed: unknown;
+  toolsCalled: string[];
+  latencyMs: number;
+  status: "success" | "error";
+  error?: string;
+}
+
+export interface AiClassifyResultCreated {
+  status: "created";
+  ticket: {
+    id: string;
+    number: number;
+    displayId: string | null;
+    subject: string;
+    description: string;
+    status: string;
+    priority: string;
+    channel: string;
+    requesterId: string;
+    assignedTeamId: string | null;
+    categoryId: string | null;
+  };
+  aiMetadata: {
+    intentConfidence: number;
+    classificationConfidence: number;
+    overallConfidence: number;
+    reasoning: string;
+    pipelineLatencyMs: number;
+    modelUsed: string;
+  };
+}
+
+export interface AiClassifyResultClarification {
+  status: "needs_clarification";
+  question: string;
+  partialClassification: Record<string, unknown>;
+}
+
+export interface AiClassifyResultError {
+  status: "error";
+  error: string;
+  step: string;
+}
+
+export type AiClassifyResult =
+  | AiClassifyResultCreated
+  | AiClassifyResultClarification
+  | AiClassifyResultError;
+
+export interface AiDebugResult {
+  steps: AiPipelineStep[];
+  finalStatus: "created" | "needs_clarification" | "error";
+  totalLatencyMs: number;
+  ticket?: Record<string, unknown>;
+  clarifyingQuestion?: string;
+  errorMessage?: string;
+}
+
+export async function classifyTicket(payload: {
+  text: string;
+  userId?: string;
+  channel?: string;
+}): Promise<AiClassifyResult> {
+  return apiFetch("/ai/classify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function debugPipeline(payload: {
+  text: string;
+  userId?: string;
+  createTicket?: boolean;
+}): Promise<AiDebugResult> {
+  return apiFetch("/ai/debug", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchAiAnalysis(
+  ticketId: string,
+): Promise<{ data: Record<string, unknown> | null }> {
+  return apiFetch(`/ai/analysis/${ticketId}`);
+}
+
+// ─── CSAT (Customer Satisfaction) ───────────────────────────────────────────
+
+export interface CsatPayload {
+  ticketId: string;
+  rating: number;
+  comment?: string;
+}
+
+export interface CsatRecord {
+  id: string;
+  payload: { rating: number; comment?: string | null };
+  createdAt: string;
+}
+
+export async function submitCsat(payload: CsatPayload): Promise<CsatRecord> {
+  return apiFetch("/csat", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchCsat(
+  ticketId: string,
+): Promise<{ data: CsatRecord | null }> {
+  return apiFetch(`/csat/${ticketId}`);
 }

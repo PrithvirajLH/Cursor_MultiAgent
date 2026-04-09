@@ -15,6 +15,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   Settings,
+  Sparkles,
   Ticket,
   Users,
 } from "lucide-react";
@@ -45,6 +46,7 @@ import {
 import { useCommandPalette } from "./hooks/useCommandPalette";
 import { useCreateTicketForm } from "./hooks/useCreateTicketForm";
 import { useAuthSession } from "./hooks/useAuthSession";
+import { useTheme } from "./hooks/useTheme";
 import { shouldEnableNotificationPolling } from "./hooks/notification-fallback";
 import {
   getShortcutContext,
@@ -129,6 +131,12 @@ const TriageBoardPage = lazy(() =>
     default: m.TriageBoardPage,
   })),
 );
+const AiSubmitPage = lazy(() =>
+  import("./pages/AiSubmitPage").then((m) => ({ default: m.AiSubmitPage })),
+);
+const AiDebugPage = lazy(() =>
+  import("./pages/AiDebugPage").then((m) => ({ default: m.AiDebugPage })),
+);
 
 function PageFallback() {
   return (
@@ -140,10 +148,13 @@ function PageFallback() {
 
 type NavKey =
   | "dashboard"
+  | "submit"
   | "tickets"
   | "assigned"
   | "unassigned"
   | "created"
+  | "created-open"
+  | "created-resolved"
   | "completed"
   | "triage"
   | "manager"
@@ -160,6 +171,12 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
     roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
   },
   {
+    key: "submit",
+    label: "AI Submit",
+    icon: Sparkles,
+    roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
+  },
+  {
     key: "tickets",
     label: "All Tickets",
     icon: Ticket,
@@ -167,19 +184,18 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
     children: [
       { key: "assigned", label: "Assigned to Me", icon: Ticket },
       { key: "unassigned", label: "Unassigned", icon: Ticket },
+      { key: "completed", label: "Completed", icon: CheckCircle },
     ],
   },
   {
     key: "created",
-    label: "Created by Me",
+    label: "My Tickets",
     icon: FileText,
     roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
-  },
-  {
-    key: "completed",
-    label: "Completed",
-    icon: CheckCircle,
-    roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
+    children: [
+      { key: "created-open", label: "Open", icon: FileText },
+      { key: "created-resolved", label: "Resolved", icon: CheckCircle },
+    ],
   },
   {
     key: "triage",
@@ -229,6 +245,7 @@ function canAccessReports(role: Role): boolean {
 
 function isAdminRoutePath(pathname: string): boolean {
   return (
+    pathname.startsWith("/ai-debug") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/sla-settings") ||
     pathname.startsWith("/routing") ||
@@ -241,6 +258,8 @@ function isAdminRoutePath(pathname: string): boolean {
 }
 
 function isShellLayoutPath(pathname: string): boolean {
+  if (pathname === "/submit") return true;
+  if (pathname === "/ai-debug") return true;
   if (pathname === "/tickets" || pathname.startsWith("/tickets/")) return true;
   if (pathname === "/routing" || pathname.startsWith("/routing/")) return true;
   if (pathname === "/automation" || pathname.startsWith("/automation/"))
@@ -266,6 +285,7 @@ function deriveNavKey(
   ticketPresetStatus: StatusFilter,
   ticketPresetScope: TicketScope,
 ): NavKey {
+  if (pathname === "/submit") return "submit";
   if (pathname.startsWith("/triage")) return "triage";
   if (pathname.startsWith("/manager")) return "manager";
   if (pathname.startsWith("/reports"))
@@ -285,7 +305,11 @@ function deriveNavKey(
   if (pathname.startsWith("/tickets")) {
     if (ticketPresetScope === "assigned") return "assigned";
     if (ticketPresetScope === "unassigned") return "unassigned";
-    if (ticketPresetScope === "created") return "created";
+    if (ticketPresetScope === "created") {
+      if (ticketPresetStatus === "open") return "created-open";
+      if (ticketPresetStatus === "resolved") return "created-resolved";
+      return "created";
+    }
     if (ticketPresetStatus === "resolved") return "completed";
     return role === "EMPLOYEE" ? "created" : "tickets";
   }
@@ -298,6 +322,10 @@ const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
   dashboard: {
     title: "Dashboard",
     subtitle: "Quick view of your ticket activity and updates.",
+  },
+  submit: {
+    title: "AI Submit",
+    subtitle: "Describe your issue and let AI route it.",
   },
   tickets: {
     title: "All Tickets",
@@ -314,6 +342,14 @@ const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
   created: {
     title: "My Tickets",
     subtitle: "Requests you have opened or own.",
+  },
+  "created-open": {
+    title: "My Tickets — Open",
+    subtitle: "Your open requests awaiting resolution.",
+  },
+  "created-resolved": {
+    title: "My Tickets — Resolved",
+    subtitle: "Your requests that have been resolved or closed.",
   },
   completed: { title: "Completed", subtitle: "Closed and resolved tickets." },
   triage: {
@@ -403,9 +439,13 @@ function resolveViewTitle(
 function AuthenticatedShell({
   user,
   onSignOut,
+  theme,
+  onToggleTheme,
 }: {
   user: CurrentUserSession;
   onSignOut: () => void;
+  theme: "light" | "dark";
+  onToggleTheme: () => void;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -513,10 +553,10 @@ function AuthenticatedShell({
     adminMenuEnabled && isAdminRoute && !sidebar.adminSidebarDismissed;
   const shellLayoutPath = isShellLayoutPath(location.pathname);
   const desktopMainOffset = showAdminSidebar
-    ? "lg:ml-64"
+    ? "lg:ml-[248px]"
     : sidebar.isSidebarCollapsed
-      ? "lg:ml-20"
-      : "lg:ml-64";
+      ? "lg:ml-[72px]"
+      : "lg:ml-[248px]";
   const showMobileBackdrop =
     sidebar.isMobileViewport &&
     (sidebar.mobileSidebarOpen || sidebar.mobileAdminSidebarOpen);
@@ -560,6 +600,9 @@ function AuthenticatedShell({
         case "dashboard":
           navigate("/dashboard");
           return;
+        case "submit":
+          navigate("/submit");
+          return;
         case "triage":
           navigate("/triage");
           return;
@@ -596,7 +639,17 @@ function AuthenticatedShell({
           navigate("/tickets");
           return;
         case "created":
+          setTicketPresetStatus("all");
+          setTicketPresetScope("created");
+          navigate("/tickets");
+          return;
+        case "created-open":
           setTicketPresetStatus("open");
+          setTicketPresetScope("created");
+          navigate("/tickets");
+          return;
+        case "created-resolved":
+          setTicketPresetStatus("resolved");
           setTicketPresetScope("created");
           navigate("/tickets");
           return;
@@ -670,6 +723,8 @@ function AuthenticatedShell({
         onMarkAllAsRead: notifications.markAllAsRead,
         onRefresh: notifications.refresh,
       },
+      theme,
+      onToggleTheme,
     }),
     [
       viewTitle,
@@ -688,6 +743,8 @@ function AuthenticatedShell({
       notifications.markAsRead,
       notifications.markAllAsRead,
       notifications.refresh,
+      theme,
+      onToggleTheme,
     ],
   );
 
@@ -758,6 +815,8 @@ function AuthenticatedShell({
             }
             if (!isAdminRoutePath(location.pathname)) navigate("/sla-settings");
           }}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
         />
 
         {/* Unified Admin Sidebar (Desktop & Mobile) */}
@@ -789,11 +848,13 @@ function AuthenticatedShell({
             className={
               sidebar.isMobileViewport ? "z-[60] lg:hidden" : "hidden lg:block"
             }
+            theme={theme}
           />
         )}
 
         <main
-          className={`flex-1 min-w-0 w-full transition-all duration-300 h-screen overflow-y-auto ${shellLayoutPath ? "py-0" : "py-8"} ${desktopMainOffset}`}
+          className={`flex-1 min-w-0 w-full h-screen overflow-y-auto ${shellLayoutPath ? "py-0" : "py-8"} ${desktopMainOffset}`}
+          style={{ transition: "margin-left 300ms cubic-bezier(0.4, 0, 0.2, 1)" }}
         >
           {!shellLayoutPath && (
             <TopBar
@@ -805,6 +866,8 @@ function AuthenticatedShell({
               notificationProps={headerValue.notificationProps}
               user={user}
               onSignOut={onSignOut}
+              theme={theme}
+              onToggleTheme={onToggleTheme}
             />
           )}
 
@@ -968,6 +1031,17 @@ function AuthenticatedShell({
                       )}
                     />
                     <Route
+                      path="/submit"
+                      element={<AiSubmitPage />}
+                    />
+                    <Route
+                      path="/ai-debug"
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <AiDebugPage />,
+                      )}
+                    />
+                    <Route
                       path="/tickets"
                       element={
                         <TicketsPage
@@ -1031,6 +1105,7 @@ function AuthenticatedShell({
 
 function App() {
   const auth = useAuthSession();
+  const { theme, toggleTheme } = useTheme();
 
   if (auth.loading) {
     return (
@@ -1090,7 +1165,7 @@ function App() {
     );
   }
 
-  return <AuthenticatedShell user={auth.user} onSignOut={auth.signOut} />;
+  return <AuthenticatedShell user={auth.user} onSignOut={auth.signOut} theme={theme} onToggleTheme={toggleTheme} />;
 }
 
 export default App;

@@ -4,6 +4,8 @@ export type SidebarBadgeCounts = {
   open?: number;
   unassigned?: number;
   resolved?: number;
+  createdByMeOpen?: number;
+  createdByMeResolved?: number;
 };
 
 export function getSidebarBadge(
@@ -15,8 +17,6 @@ export function getSidebarBadge(
       return counts?.triage;
     case "tickets":
       return counts?.open;
-    case "completed":
-      return counts?.resolved;
     default:
       return undefined;
   }
@@ -31,6 +31,10 @@ export function getSidebarChildBadge(
       return counts?.assignedToMe;
     case "unassigned":
       return counts?.unassigned;
+    case "created-open":
+      return counts?.createdByMeOpen;
+    case "created-resolved":
+      return counts?.createdByMeResolved;
     default:
       return undefined;
   }

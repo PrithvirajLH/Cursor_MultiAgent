@@ -159,36 +159,36 @@ export function getSlaTone(args: {
   if (completedAt) {
     return {
       label: "Met",
-      className: "border-emerald-200 bg-emerald-100 text-emerald-700",
+      className: "border-emerald-300 bg-emerald-100 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-400",
     };
   }
   if (!dueAt) {
     return {
       label: "No SLA",
-      className: "border-slate-200 bg-slate-100 text-slate-600",
+      className: "border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-400",
     };
   }
   if (status === "WAITING_ON_REQUESTER" || status === "WAITING_ON_VENDOR") {
     return {
       label: slaPausedAt ? "Paused" : "Waiting",
-      className: "border-amber-200 bg-amber-100 text-amber-700",
+      className: "border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400",
     };
   }
   const ms = new Date(dueAt).getTime() - Date.now();
   if (ms < 0) {
     return {
       label: "Breached",
-      className: "border-rose-200 bg-rose-100 text-rose-700",
+      className: "border-rose-300 bg-rose-100 text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-400",
     };
   }
   if (ms <= 4 * 60 * 60 * 1000) {
     return {
       label: "At risk",
-      className: "border-amber-200 bg-amber-100 text-amber-700",
+      className: "border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400",
     };
   }
   return {
     label: "On track",
-    className: "border-sky-200 bg-sky-100 text-sky-700",
+    className: "border-sky-300 bg-sky-100 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-400",
   };
 }

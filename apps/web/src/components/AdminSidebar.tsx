@@ -124,6 +124,7 @@ export function AdminSidebar({
   onBack,
   onNavigate,
   className,
+  theme,
 }: {
   visible: boolean;
   role: Role;
@@ -131,23 +132,31 @@ export function AdminSidebar({
   onBack: () => void;
   onNavigate: (route: AdminRoute) => void;
   className?: string;
+  theme?: "light" | "dark";
 }) {
   const items = adminItems.filter((item) => item.roles.includes(role));
+  const isDark = theme === "dark";
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-50 h-screen w-[248px] border-r border-white/[0.07] flex flex-col transition-transform duration-300 ease-out ${
-        visible ? "translate-x-0" : "-translate-x-full pointer-events-none"
-      } ${className ?? ""}`}
-      style={{ background: "hsl(222 52% 7%)" }}
+      className={`fixed left-0 top-0 z-50 h-screen w-[248px] border-r flex flex-col transition-transform duration-300 ease-out ${
+        isDark ? "border-white/[0.07]" : "border-border"
+      } ${visible ? "translate-x-0" : "-translate-x-full pointer-events-none"} ${className ?? ""}`}
+      style={{
+        background: isDark ? "hsl(222 52% 7%)" : "hsl(var(--card))",
+      }}
       aria-hidden={!visible}
     >
       {/* Header */}
-      <div className="px-4 py-[18px] border-b border-white/[0.07] flex-shrink-0">
+      <div className={`px-4 py-[18px] border-b flex-shrink-0 ${isDark ? "border-white/[0.07]" : "border-border"}`}>
         <button
           type="button"
           onClick={onBack}
-          className="group w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 text-white/40 hover:text-white/70 hover:bg-white/[0.06]"
+          className={`group w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+            isDark
+              ? "text-white/40 hover:text-white/70 hover:bg-white/[0.06]"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          }`}
         >
           <ArrowLeft className="h-4 w-4 flex-shrink-0 transition-transform group-hover:-translate-x-0.5" />
           <span>Back to Menu</span>
@@ -156,7 +165,7 @@ export function AdminSidebar({
 
       {/* Section label */}
       <div className="px-5 pt-5 pb-2">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/25">
+        <p className={`text-[10px] font-semibold uppercase tracking-widest ${isDark ? "text-white/25" : "text-muted-foreground/60"}`}>
           Administration
         </p>
       </div>
@@ -174,8 +183,12 @@ export function AdminSidebar({
               onClick={() => onNavigate(item.route)}
               className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150 ${
                 active
-                  ? "bg-white/[0.09] text-white"
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                  ? isDark
+                    ? "bg-white/[0.09] text-white"
+                    : "bg-primary/[0.08] text-primary font-semibold"
+                  : isDark
+                    ? "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
             >
               {active && (
@@ -189,15 +202,17 @@ export function AdminSidebar({
               <Icon
                 className={`flex-shrink-0 h-[18px] w-[18px] transition-colors duration-150 ${
                   active
-                    ? "text-[hsl(var(--primary))]"
-                    : "text-white/30 group-hover:text-white/55"
+                    ? "text-primary"
+                    : isDark
+                      ? "text-white/30 group-hover:text-white/55"
+                      : "text-muted-foreground/50 group-hover:text-foreground"
                 }`}
               />
 
               <div className="flex-1 text-left min-w-0">
                 <div className="truncate">{item.label}</div>
                 {item.description && (
-                  <div className="text-[11px] truncate mt-0.5 text-white/25 font-normal">
+                  <div className={`text-[11px] truncate mt-0.5 font-normal ${isDark ? "text-white/25" : "text-muted-foreground/50"}`}>
                     {item.description}
                   </div>
                 )}
@@ -207,9 +222,12 @@ export function AdminSidebar({
         })}
       </nav>
 
-      <div className="px-2.5 pb-4 pt-2 border-t border-white/[0.07] flex-shrink-0">
-        <div className="px-3 py-2.5 rounded-lg" style={{ background: "hsl(var(--muted))" }}>
-          <p className="text-[11px] text-white/35 leading-relaxed">
+      <div className={`px-2.5 pb-4 pt-2 border-t flex-shrink-0 ${isDark ? "border-white/[0.07]" : "border-border"}`}>
+        <div
+          className="px-3 py-2.5 rounded-lg"
+          style={{ background: "hsl(var(--muted))" }}
+        >
+          <p className={`text-[11px] leading-relaxed ${isDark ? "text-white/35" : "text-muted-foreground"}`}>
             Admin settings are visible only to Team Admins and Owners.
           </p>
         </div>

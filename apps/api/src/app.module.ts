@@ -25,6 +25,8 @@ import { TeamsModule } from './teams/teams.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
+import { AiModule } from './ai/ai.module';
+import { CsatModule } from './csat/csat.module';
 
 // Resolve env file from cwd (apps/api) to work in both dev and production builds
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
@@ -81,12 +83,14 @@ import { parsePositiveInt } from './common/config.utils';
         return { ttl };
       },
     }),
+    AiModule,
     AuthModule,
     AuditModule,
     AutomationModule,
     CannedResponsesModule,
     CategoriesModule,
     CommonModule,
+    CsatModule,
     CustomFieldsModule,
     NotificationsModule,
     PrismaModule,

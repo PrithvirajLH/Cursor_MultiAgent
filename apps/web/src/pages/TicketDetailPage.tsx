@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Clock3, Copy } from "lucide-react";
 import {
@@ -76,6 +77,21 @@ function stripFacilityFromDescription(description: string): string {
     return lines.slice(2).join("\n").trim();
   }
   return description;
+}
+
+/**
+ * For AI-generated tickets, extracts only the original user message from the
+ * structured description. The AI pipeline builds descriptions in the format:
+ *   **What:** ...\n**Who:** ...\n---\n**Original message:**\n<text>
+ * This returns just the <text> portion. For non-AI descriptions, returns as-is.
+ */
+function extractOriginalMessage(description: string): string {
+  const marker = "**Original message:**";
+  const idx = description.indexOf(marker);
+  if (idx !== -1) {
+    return description.substring(idx + marker.length).trim();
+  }
+  return stripFacilityFromDescription(description);
 }
 
 type TypingUserEntry = {
@@ -160,7 +176,7 @@ export function TicketDetailPage({
 
   /* ——— Refs ——— */
 
-  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const messageInputRef = useRef<RichTextEditorRef | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationListRef = useRef<HTMLDivElement | null>(null);
   const statusSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -1141,14 +1157,6 @@ export function TicketDetailPage({
     (nextBody: string) => {
       setMessageBody(nextBody);
 
-      const el = messageInputRef.current;
-      if (el) {
-        const maxHeight = 180;
-        el.style.height = "auto";
-        const nextHeight = Math.min(el.scrollHeight, maxHeight);
-        el.style.height = `${nextHeight}px`;
-      }
-
       if (!ticketId) {
         return;
       }
@@ -1166,7 +1174,7 @@ export function TicketDetailPage({
   }, [stopTyping]);
 
   const handleReply = useCallback(async () => {
-    const body = messageBody.trim();
+    const body = (messageInputRef.current?.getValue() ?? messageBody).trim();
     if (!ticketId || !ticket || !body) return;
     setTicketError(null);
     stopTyping();
@@ -1186,9 +1194,6 @@ export function TicketDetailPage({
     };
     setMessages((prev) => [...prev, optimisticMessage]);
     setMessageBody("");
-    if (messageInputRef.current) {
-      messageInputRef.current.style.height = "";
-    }
 
     try {
       const serverMessage = await addTicketMessage(ticketId, {
@@ -1547,7 +1552,7 @@ export function TicketDetailPage({
 
       {/* Sticky header */}
       <div className="shrink-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] px-6 py-3">
+        <div className="px-6 py-3">
           <TopBar
             title={headerTitle}
             subtitle={
@@ -1584,7 +1589,7 @@ export function TicketDetailPage({
                   >
                     {formatPriority(ticket.priority)}
                   </span>
-                  <span className="rounded-md bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                  <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-400">
                     {formatChannel(ticket.channel)}
                   </span>
                 </div>
@@ -1632,8 +1637,8 @@ export function TicketDetailPage({
                           {ticket.subject}
                         </h1>
                         {ticket.description ? (
-                          <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
-                            {stripFacilityFromDescription(ticket.description) ||
+                          <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                            {extractOriginalMessage(ticket.description) ||
                               "No description provided."}
                           </p>
                         ) : (
@@ -1851,6 +1856,14 @@ export function TicketDetailPage({
                         messageInputRef={messageInputRef}
                         attachmentInputRef={attachmentInputRef}
                         conversationListRef={conversationListRef}
+                        users={teamMembers.map((m) => m.user)}
+                        cannedVariables={{
+                          ticketId: ticket.id,
+                          ticketSubject: ticket.subject,
+                          requesterName:
+                            ticket.requester?.displayName ??
+                            ticket.requester?.email,
+                        }}
                       />
                     </div>
 
@@ -1928,6 +1941,10 @@ export function TicketDetailPage({
           {ticket && (
             <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.sidebar}>
               <TicketSidebar
+                ticketId={ticket.id}
+                csatTicketId={ticket.id}
+                csatTicketStatus={ticket.status}
+                csatIsRequester={ticket.requester?.email === currentEmail}
                 ticket={ticket}
                 canManage={canManage}
                 actionError={actionError}
@@ -1961,6 +1978,7 @@ export function TicketDetailPage({
                 followError={followError}
                 onFollowToggle={() => void handleFollowToggle()}
                 statusEvents={statusEvents}
+                currentEmail={currentEmail}
               />
             </div>
           )}
