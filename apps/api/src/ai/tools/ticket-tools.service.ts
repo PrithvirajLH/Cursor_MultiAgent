@@ -41,6 +41,7 @@ export class TicketToolsService {
           categoryId: input.draft.categoryId ?? undefined,
         },
         user,
+        { skipRequiredCustomFields: true },
       );
 
       // Log AI classification event with analysis data

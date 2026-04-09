@@ -115,12 +115,31 @@ export class AiService {
     // Set user context for tool calls
     this.toolRegistry.setCurrentUser(user);
 
+    // Track each agent's raw response for storage
+    const pipelineSteps: Record<string, unknown>[] = [];
+
     // Step 1: Extract intent
     let intent: IntentResult;
+    let step1Raw: { content: string; toolCallsMade: string[]; latencyMs: number } | null = null;
     try {
-      intent = await this.extractIntent(input.text, input.userId ?? user.id);
+      const userMessage = input.userId
+        ? `User ID: ${input.userId}\n\nRequest:\n${input.text}`
+        : `Request:\n${input.text}`;
+      const result = await this.foundryClient.runAgent('intentExtractor', userMessage);
+      step1Raw = result;
+      intent = this.foundryClient.parseAgentResponse(result.content, (data) => this.validateIntentResult(data));
+      pipelineSteps.push({
+        step: 1, agent: 'intentExtractor', status: 'success',
+        latencyMs: result.latencyMs, toolsCalled: result.toolCallsMade,
+        input: userMessage, rawOutput: result.content, parsed: intent,
+      });
       this.logger.debug(`→ Intent: ${intent.intent}`);
     } catch (error) {
+      pipelineSteps.push({
+        step: 1, agent: 'intentExtractor', status: 'error',
+        latencyMs: step1Raw?.latencyMs ?? Date.now() - startTime,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       this.logger.error('Intent extraction failed', error);
       return {
         status: 'error',
@@ -131,10 +150,24 @@ export class AiService {
 
     // Step 2: Classify department
     let classification: ClassificationResult;
+    let step2Raw: { content: string; toolCallsMade: string[]; latencyMs: number } | null = null;
     try {
-      classification = await this.classifyDepartment(intent);
+      const step2Input = `Classify the following analyzed request:\n\n${JSON.stringify(intent, null, 2)}`;
+      const result = await this.foundryClient.runAgent('departmentClassifier', step2Input);
+      step2Raw = result;
+      classification = this.foundryClient.parseAgentResponse(result.content, (data) => this.validateClassificationResult(data));
+      pipelineSteps.push({
+        step: 2, agent: 'departmentClassifier', status: 'success',
+        latencyMs: result.latencyMs, toolsCalled: result.toolCallsMade,
+        input: step2Input, rawOutput: result.content, parsed: classification,
+      });
       this.logger.debug(`→ Department: ${classification.department.name} (${(classification.department.confidence * 100).toFixed(0)}%)`);
     } catch (error) {
+      pipelineSteps.push({
+        step: 2, agent: 'departmentClassifier', status: 'error',
+        latencyMs: step2Raw?.latencyMs ?? Date.now() - startTime,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       this.logger.error('Classification failed', error);
       return {
         status: 'error',
@@ -145,10 +178,24 @@ export class AiService {
 
     // Step 3: Confidence check
     let confidence: ConfidenceResult;
+    let step3Raw: { content: string; toolCallsMade: string[]; latencyMs: number } | null = null;
     try {
-      confidence = await this.checkConfidence(intent, classification);
+      const step3Input = `Evaluate the confidence of this classification:\n\nIntent:\n${JSON.stringify(intent, null, 2)}\n\nClassification:\n${JSON.stringify(classification, null, 2)}`;
+      const result = await this.foundryClient.runAgent('confidenceGate', step3Input);
+      step3Raw = result;
+      confidence = this.foundryClient.parseAgentResponse(result.content, (data) => this.validateConfidenceResult(data));
+      pipelineSteps.push({
+        step: 3, agent: 'confidenceGate', status: 'success',
+        latencyMs: result.latencyMs, toolsCalled: result.toolCallsMade,
+        input: step3Input, rawOutput: result.content, parsed: confidence,
+      });
       this.logger.debug(`→ Confidence: ${(confidence.overallConfidence * 100).toFixed(0)}% — ${confidence.passed ? 'PASSED' : 'NEEDS CLARIFICATION'}`);
     } catch (error) {
+      pipelineSteps.push({
+        step: 3, agent: 'confidenceGate', status: 'error',
+        latencyMs: step3Raw?.latencyMs ?? Date.now() - startTime,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       this.logger.error('Confidence check failed', error);
       return {
         status: 'error',
@@ -214,6 +261,27 @@ export class AiService {
 
       const pipelineLatencyMs = Date.now() - startTime;
       this.logger.log(`Ticket created: #${ticketResult.data.number} (${pipelineLatencyMs}ms total)`);
+
+      // Store the full pipeline trace as a TicketEvent
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId: ticketResult.data.id,
+          type: 'AI_PIPELINE_TRACE',
+          payload: JSON.parse(JSON.stringify({
+            userId: user.id,
+            userEmail: user.email,
+            ticketId: ticketResult.data.id,
+            ticketNumber: ticketResult.data.number,
+            inputText: input.text,
+            channel: input.channel ?? 'PORTAL',
+            totalLatencyMs: pipelineLatencyMs,
+            steps: pipelineSteps,
+            finalClassification,
+            aiAnalysis,
+          })),
+          createdById: user.id,
+        },
+      });
 
       // Fetch the full ticket for the response
       const ticket = await this.prisma.ticket.findUnique({

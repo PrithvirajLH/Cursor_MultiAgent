@@ -17,40 +17,14 @@
  */
 
 import { NestFactory } from '@nestjs/core';
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import path from 'path';
 import http from 'http';
 
-import { PrismaModule } from '../prisma/prisma.module';
+import { AppModule } from '../app.module';
 import { ToolRegistryService } from '../ai/tools/tool-registry.service';
-import { UserToolsService } from '../ai/tools/user-tools.service';
-import { ClassificationToolsService } from '../ai/tools/classification-tools.service';
-import { TicketToolsService } from '../ai/tools/ticket-tools.service';
-import { TicketsModule } from '../tickets/tickets.module';
-
-// Minimal module for MCP server — only needs tools and their dependencies
-@Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: path.resolve(process.cwd(), '.env'),
-    }),
-    PrismaModule,
-    TicketsModule,
-  ],
-  providers: [
-    ToolRegistryService,
-    UserToolsService,
-    ClassificationToolsService,
-    TicketToolsService,
-  ],
-})
-class McpAppModule {}
 
 function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
   const server = new McpServer({
@@ -167,7 +141,9 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
 }
 
 async function main() {
-  const app = await NestFactory.createApplicationContext(McpAppModule);
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
   const toolRegistry = app.get(ToolRegistryService);
   const mcpServer = createMcpServer(toolRegistry);
 

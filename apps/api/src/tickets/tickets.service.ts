@@ -899,7 +899,7 @@ export class TicketsService {
     };
   }
 
-  async create(payload: CreateTicketDto, user: AuthUser) {
+  async create(payload: CreateTicketDto, user: AuthUser, options?: { skipRequiredCustomFields?: boolean }) {
     const requesterId = payload.requesterId ?? user.id;
 
     if (user.role === UserRole.EMPLOYEE && requesterId !== user.id) {
@@ -960,7 +960,7 @@ export class TicketsService {
           payload.customFieldValues ?? [],
           routedTeamId,
           payload.categoryId ?? null,
-          { requireAllRequired: true, tx },
+          { requireAllRequired: !options?.skipRequiredCustomFields, tx },
         );
 
       const ticket = await tx.ticket.create({
