@@ -278,9 +278,9 @@
   .message-body .mention {
     @apply font-semibold;
     color: hsl(var(--primary));
-  }
-  .message-body.prose-invert .mention {
-    color: hsl(var(--primary) / 0.8);
+    background: hsl(var(--primary) / 0.1);
+    padding: 1px 4px;
+    border-radius: 4px;
   }
 }
 

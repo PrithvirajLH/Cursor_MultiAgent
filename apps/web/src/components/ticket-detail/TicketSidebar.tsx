@@ -145,19 +145,17 @@ export function TicketSidebar(
           </h3>
           <div className="flex items-center gap-2">
             {followers.length > 0 && (
-              <div className="flex -space-x-1.5">
-                {followers.slice(0, 3).map((f) => (
-                  <div
+              <div className="flex items-center">
+                {followers.slice(0, 5).map((f) => (
+                  <AnimatedTooltipAvatar
                     key={f.id}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[10px] font-bold text-primary ring-2 ring-card shadow-sm"
-                    title={f.user.displayName}
-                  >
-                    {initialsFor(f.user.displayName)}
-                  </div>
+                    name={f.user.displayName}
+                    initials={initialsFor(f.user.displayName)}
+                  />
                 ))}
-                {followers.length > 3 && (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground ring-2 ring-card shadow-sm">
-                    +{followers.length - 3}
+                {followers.length > 5 && (
+                  <div className="-ml-2 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-[9px] font-bold text-muted-foreground ring-2 ring-card z-0">
+                    +{followers.length - 5}
                   </div>
                 )}
               </div>
@@ -262,10 +260,9 @@ export function TicketSidebar(
                           return <span className="text-muted-foreground font-medium">Unassigned</span>;
                         }}
                       />
-                      {hasPendingChange ? (
+                      {hasPendingChange && !actionLoading ? (
                         <button
                           onClick={onAssignMember}
-                          disabled={actionLoading}
                           className="h-6 px-2.5 bg-primary text-primary-foreground rounded-md text-[11px] font-semibold hover:bg-primary/90 shadow-sm shrink-0"
                         >
                           Save
@@ -741,6 +738,44 @@ function InlineSelect({
         </ul>,
         document.body,
       )}
+    </div>
+  );
+}
+
+/* ── Animated Tooltip Avatar (Aceternity-style) ── */
+
+const AVATAR_COLORS = [
+  "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400",
+  "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400",
+  "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400",
+  "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+  "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-400",
+];
+
+function AnimatedTooltipAvatar({
+  name,
+  initials,
+}: {
+  name: string;
+  initials: string;
+}) {
+  const colorIndex =
+    name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) %
+    AVATAR_COLORS.length;
+
+  return (
+    <div className="group/avatar relative -ml-2 first:ml-0 z-10 hover:z-30">
+      {/* Tooltip */}
+      <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1 text-[10px] font-semibold text-background shadow-lg pointer-events-none opacity-0 scale-90 translate-y-1 group-hover/avatar:opacity-100 group-hover/avatar:scale-100 group-hover/avatar:translate-y-0 transition-all duration-200 z-50">
+        {name}
+        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 bg-foreground" />
+      </div>
+      {/* Avatar */}
+      <div
+        className={`flex h-7 w-7 items-center justify-center rounded-full text-[9px] font-bold ring-2 ring-card cursor-pointer transition-transform duration-200 hover:-translate-y-1 hover:scale-110 ${AVATAR_COLORS[colorIndex]}`}
+      >
+        {initials}
+      </div>
     </div>
   );
 }

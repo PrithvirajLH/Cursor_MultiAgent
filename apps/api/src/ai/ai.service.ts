@@ -217,8 +217,42 @@ export class AiService {
       };
     }
 
-    // Step 4: Create ticket via existing TicketsService
+    // Step 4: Generate ticket draft via Agent 4
+    let ticketDraft: TicketDraft | null = null;
     try {
+      const step4Input = `Based on the pipeline data below, generate a JSON ticket draft. Do NOT attempt to call any tools or functions. ONLY return a valid JSON object.
+
+Intent:
+${JSON.stringify(intent, null, 2)}
+
+Classification:
+${JSON.stringify(finalClassification, null, 2)}
+
+Confidence:
+${JSON.stringify(confidence, null, 2)}
+
+Channel: ${input.channel ?? 'PORTAL'}
+Requester ID: ${input.userId ?? user.id}
+
+IMPORTANT: Return ONLY the JSON object. Format:
+{"subject":"...","description":"...","priority":"P1|P2|P3|P4","channel":"PORTAL|EMAIL","assignedTeamId":"...","categoryId":"...|null","displayId":"...","tags":["..."]}`;
+
+      const result = await this.foundryClient.runAgent('ticketGenerator', step4Input);
+      ticketDraft = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateTicketDraft(d));
+      pipelineSteps.push({
+        step: 4, agent: 'ticketGenerator', status: 'success',
+        latencyMs: result.latencyMs, toolsCalled: result.toolCallsMade,
+        input: step4Input, rawOutput: result.content, parsed: ticketDraft,
+      });
+      this.logger.debug(`→ Subject: ${ticketDraft.subject}`);
+    } catch (error) {
+      this.logger.warn('Ticket generation agent failed, falling back to intent-based subject', error);
+      // Fallback: use intent as subject if Agent 4 fails
+    }
+
+    // Step 5: Create ticket via existing TicketsService
+    try {
+      const subject = ticketDraft?.subject ?? intent.intent.substring(0, 100);
       const aiAnalysis: AiAnalysis = {
         what: intent.intent,
         who: user.displayName ?? user.email,
@@ -235,14 +269,14 @@ export class AiService {
       const ticketResult = await this.ticketTools.createTicket(
         {
           draft: {
-            subject: `${intent.intent.substring(0, 100)}`,
-            description: this.buildDescription(intent, user),
-            priority: finalClassification.suggestedPriority,
+            subject,
+            description: ticketDraft?.description ?? this.buildDescription(intent, user),
+            priority: ticketDraft?.priority ?? finalClassification.suggestedPriority,
             channel: input.channel ?? 'PORTAL',
-            assignedTeamId: finalClassification.department.id,
-            categoryId: finalClassification.category?.id ?? null,
+            assignedTeamId: ticketDraft?.assignedTeamId ?? finalClassification.department.id,
+            categoryId: ticketDraft?.categoryId ?? finalClassification.category?.id ?? null,
             displayId: 'AUTO',
-            tags: finalClassification.tags,
+            tags: ticketDraft?.tags ?? finalClassification.tags,
           },
           requesterId: user.id,
           rawText: input.text,
@@ -320,6 +354,7 @@ export class AiService {
           pipelineLatencyMs,
           modelUsed: this.config.get<string>('AZURE_AI_FOUNDRY_MODEL') ?? 'gpt-4o',
         },
+        aiAnalysis,
       };
     } catch (error) {
       this.logger.error('Ticket generation failed', error);
@@ -459,54 +494,13 @@ IMPORTANT: Return ONLY the JSON object. Format:
       return { steps, finalStatus: 'error', totalLatencyMs: Date.now() - startTime, errorMessage: `Step 4 failed: ${steps[3].error}` };
     }
 
-    // Step 5: Save to Database
-    const step5Start = Date.now();
-    const aiAnalysis: AiAnalysis = {
-      what: intent.intent,
-      who: user.displayName ?? user.email,
-      context: finalClassification.reasoning,
-      urgency: intent.urgencySignals.length > 0 ? intent.urgencySignals.join(', ') : 'None indicated',
-      intent: intent.intent,
-      requestType: intent.requestType,
-      department: finalClassification.department.name,
-      departmentConfidence: finalClassification.department.confidence,
-      category: finalClassification.category?.name ?? null,
-      reasoning: finalClassification.reasoning,
-    };
-
-    const ticketResult = await this.ticketTools.createTicket(
-      { draft: ticketDraft, requesterId: user.id, rawText: input.text, aiAnalysis },
-      user,
-    );
-
-    if (!ticketResult.success) {
-      steps.push({
-        step: 5, name: 'Save to Database', agentName: 'system',
-        input: JSON.stringify(ticketDraft, null, 2), rawOutput: ticketResult.error,
-        parsed: null, toolsCalled: ['create_ticket'],
-        latencyMs: Date.now() - step5Start, status: 'error', error: ticketResult.error,
-      });
-      return { steps, finalStatus: 'error', totalLatencyMs: Date.now() - startTime, errorMessage: `Step 5 failed: ${ticketResult.error}` };
-    }
-
-    steps.push({
-      step: 5, name: 'Save to Database', agentName: 'system',
-      input: JSON.stringify(ticketDraft, null, 2),
-      rawOutput: JSON.stringify(ticketResult.data, null, 2),
-      parsed: {
-        ticketId: ticketResult.data.id,
-        ticketNumber: ticketResult.data.number,
-        displayId: ticketResult.data.displayId,
-      },
-      toolsCalled: ['create_ticket'], latencyMs: Date.now() - step5Start, status: 'success',
-    });
-
+    // Debug mode: return the draft without creating a ticket
     return {
       steps, finalStatus: 'created', totalLatencyMs: Date.now() - startTime,
       ticket: {
-        id: ticketResult.data.id,
-        number: ticketResult.data.number,
-        displayId: ticketResult.data.displayId,
+        id: 'debug-dry-run',
+        number: 0,
+        displayId: 'DEBUG',
         subject: ticketDraft.subject,
         description: ticketDraft.description,
         priority: ticketDraft.priority,

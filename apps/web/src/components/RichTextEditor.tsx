@@ -112,6 +112,7 @@ const EMPTY_HTML = "<br>";
 type RichTextEditorProps = {
   value: string;
   onChange: (value: string) => void;
+  onSubmit?: () => void;
   placeholder?: string;
   users: UserRef[];
   cannedVariables: {
@@ -131,6 +132,7 @@ export const RichTextEditor = forwardRef<
   {
     value,
     onChange,
+    onSubmit,
     placeholder = "Write a reply…",
     users,
     cannedVariables,
@@ -340,8 +342,24 @@ export const RichTextEditor = forwardRef<
           return;
         }
       }
+
+      // Enter (without Shift) sends the message if field is not empty
+      if (e.key === "Enter" && !e.shiftKey && onSubmit) {
+        const text = editableRef.current?.textContent?.trim() ?? "";
+        if (text.length > 0) {
+          e.preventDefault();
+          // Flush any pending debounced content to parent before sending
+          if (flushTimerRef.current != null) {
+            window.clearTimeout(flushTimerRef.current);
+            flushTimerRef.current = null;
+          }
+          flushToParent();
+          // Small delay to ensure parent state is updated before onSubmit
+          setTimeout(() => onSubmit(), 0);
+        }
+      }
     },
-    [showMentions, filteredUsers, mentionIndex, selectMention],
+    [showMentions, filteredUsers, mentionIndex, selectMention, onSubmit, flushToParent],
   );
 
   const saveSelection = useCallback(() => {

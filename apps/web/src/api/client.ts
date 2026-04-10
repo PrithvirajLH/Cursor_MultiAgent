@@ -2158,6 +2158,18 @@ export interface AiClassifyResultCreated {
     assignedTeamId: string | null;
     categoryId: string | null;
   };
+  aiAnalysis?: {
+    what: string;
+    who: string;
+    context: string;
+    urgency: string;
+    intent: string;
+    requestType: string;
+    department: string;
+    departmentConfidence: number;
+    category: string | null;
+    reasoning: string;
+  };
   aiMetadata: {
     intentConfidence: number;
     classificationConfidence: number;

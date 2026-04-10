@@ -82,15 +82,27 @@ function stripFacilityFromDescription(description: string): string {
 
 /**
  * For AI-generated tickets, extracts only the original user message from the
- * structured description. The AI pipeline builds descriptions in the format:
- *   **What:** ...\n**Who:** ...\n---\n**Original message:**\n<text>
- * This returns just the <text> portion. For non-AI descriptions, returns as-is.
+ * structured description. Handles both formats:
+ *   - Agent 4 format: "What: ...\nWho: ...\nOriginal message: <text>"
+ *   - buildDescription format: "**What:** ...\n---\n**Original message:**\n<text>"
+ * Returns just the original message portion. For non-AI descriptions, returns as-is.
  */
 function extractOriginalMessage(description: string): string {
-  const marker = "**Original message:**";
-  const idx = description.indexOf(marker);
-  if (idx !== -1) {
-    return description.substring(idx + marker.length).trim();
+  // Try markdown bold format first
+  const mdMarker = "**Original message:**";
+  const mdIdx = description.indexOf(mdMarker);
+  if (mdIdx !== -1) {
+    return description.substring(mdIdx + mdMarker.length).trim();
+  }
+  // Try plain format from Agent 4
+  const plainMarker = "Original message:";
+  const plainIdx = description.indexOf(plainMarker);
+  if (plainIdx !== -1) {
+    return description.substring(plainIdx + plainMarker.length).trim();
+  }
+  // Check if it starts with "What:" — AI structured description, return as-is but strip metadata
+  if (description.match(/^What:/m)) {
+    return stripFacilityFromDescription(description);
   }
   return stripFacilityFromDescription(description);
 }
@@ -1299,6 +1311,7 @@ export function TicketDetailPage({
     try {
       const updated = await assignTicket(ticket.id, { assigneeId: assignToId });
       setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
+      setAssignToId("");
       void refreshAfterMutation(ticket.id);
       setCopyToast({ message: "Assignee updated.", type: "success" });
       notifyTicketAggregatesChanged();

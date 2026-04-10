@@ -13,13 +13,20 @@ import { useToast } from "../hooks/useToast";
 
 /**
  * For AI-generated tickets, extracts only the original user message.
- * The AI pipeline builds descriptions as: **What:** ...\n---\n**Original message:**\n<text>
+ * Handles both Agent 4 format and buildDescription format.
  */
 function extractOriginalMessage(description: string): string {
-  const marker = "**Original message:**";
-  const idx = description.indexOf(marker);
-  if (idx !== -1) {
-    return description.substring(idx + marker.length).trim();
+  // Try markdown bold format
+  const mdMarker = "**Original message:**";
+  const mdIdx = description.indexOf(mdMarker);
+  if (mdIdx !== -1) {
+    return description.substring(mdIdx + mdMarker.length).trim();
+  }
+  // Try plain format from Agent 4
+  const plainMarker = "Original message:";
+  const plainIdx = description.indexOf(plainMarker);
+  if (plainIdx !== -1) {
+    return description.substring(plainIdx + plainMarker.length).trim();
   }
   // Strip "Facility: ..." prefix for legacy tickets
   const lines = description.split("\n");

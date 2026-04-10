@@ -26,7 +26,7 @@ export function MessageBody({
   const baseClasses =
     "message-body text-sm max-w-none whitespace-pre-wrap break-words prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0";
   const colorClasses = invert
-    ? "text-white prose-invert prose-a:text-sky-200"
+    ? "text-white prose-invert prose-a:text-sky-200 [&_.mention]:text-white [&_.mention]:bg-transparent"
     : "text-foreground prose prose-invert";
 
   return (

@@ -111,6 +111,7 @@ export interface PipelineSuccess {
     categoryId: string | null;
   };
   aiMetadata: AiMetadata;
+  aiAnalysis: AiAnalysis;
 }
 
 export interface PipelineClarification {

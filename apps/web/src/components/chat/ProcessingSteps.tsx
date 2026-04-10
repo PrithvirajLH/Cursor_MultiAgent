@@ -14,7 +14,7 @@ export function ProcessingSteps({ steps }: ProcessingStepsProps) {
   return (
     <div className="space-y-3 py-4">
       <p className="text-sm text-muted-foreground text-center mb-4">
-        Analyzing your request... this takes ~10-15 seconds
+        Analyzing your request...
       </p>
       {steps.map((step, i) => (
         <div key={i} className="flex items-center gap-3 px-4">

@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   BarChart3,
   Bot,
+  Bug,
   FileText,
   Shield,
   Tags,
@@ -18,7 +19,8 @@ type AdminRoute =
   | "/custom-fields"
   | "/audit-log"
   | "/categories"
-  | "/reports";
+  | "/reports"
+  | "/ai-debug";
 
 type AdminSidebarItem = {
   key:
@@ -28,7 +30,8 @@ type AdminSidebarItem = {
     | "custom-fields"
     | "audit-log"
     | "categories"
-    | "reports";
+    | "reports"
+    | "ai-debug";
   label: string;
   route: AdminRoute;
   icon: LucideIcon;
@@ -93,6 +96,14 @@ const adminItems: AdminSidebarItem[] = [
     roles: ["TEAM_ADMIN", "OWNER"],
     description: "Analytics & insights",
   },
+  {
+    key: "ai-debug",
+    label: "AI Pipeline Debug",
+    route: "/ai-debug",
+    icon: Bug,
+    roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Test AI classification pipeline",
+  },
 ];
 
 function isItemActive(route: AdminRoute, pathname: string): boolean {
@@ -114,6 +125,7 @@ function isItemActive(route: AdminRoute, pathname: string): boolean {
     return effectivePathname.startsWith("/custom-fields");
   if (route === "/audit-log") return effectivePathname.startsWith("/audit-log");
   if (route === "/reports") return effectivePathname.startsWith("/reports");
+  if (route === "/ai-debug") return effectivePathname.startsWith("/ai-debug");
   return effectivePathname.startsWith("/categories");
 }
 

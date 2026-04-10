@@ -15,8 +15,6 @@ export function getSidebarBadge(
   switch (itemKey) {
     case "triage":
       return counts?.triage;
-    case "tickets":
-      return counts?.open;
     default:
       return undefined;
   }

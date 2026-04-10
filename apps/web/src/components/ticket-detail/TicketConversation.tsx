@@ -360,6 +360,7 @@ export const TicketConversation = memo(function TicketConversation({
               ref={messageInputRef}
               value={messageBody}
               onChange={onMessageBodyChange}
+              onSubmit={messageBody.trim() ? onReply : undefined}
               placeholder="Type a message… (use @ to mention someone)"
               users={users}
               cannedVariables={cannedVariables}

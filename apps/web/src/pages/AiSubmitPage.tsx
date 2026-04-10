@@ -42,7 +42,7 @@ export function AiSubmitPage() {
     }));
     setProcessingSteps(steps);
 
-    // Animate steps one by one
+    // Animate steps one by one, but keep last step as "running"
     let currentStep = 0;
     const interval = setInterval(() => {
       if (currentStep >= PIPELINE_STEPS.length) {
@@ -57,7 +57,7 @@ export function AiSubmitPage() {
         }),
       );
       currentStep++;
-    }, 2500);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, []);
@@ -71,14 +71,9 @@ export function AiSubmitPage() {
       try {
         const response = await classifyTicket({ text });
         cleanup();
-
-        // Mark all steps done
-        setProcessingSteps((prev) =>
-          prev.map((s) => ({ ...s, status: "done" })),
-        );
-
         setResult(response);
 
+        // Transition immediately — don't linger on completed steps
         if (response.status === "created") {
           setPhase("created");
         } else if (response.status === "needs_clarification") {
@@ -178,19 +173,31 @@ export function AiSubmitPage() {
                 priority: createdResult.ticket.priority,
               }}
               classification={
-                createdResult.aiMetadata
+                createdResult.aiAnalysis
                   ? {
-                      department: "Classified by AI",
+                      department: createdResult.aiAnalysis.department,
                       departmentConfidence:
-                        createdResult.aiMetadata.classificationConfidence,
-                      category: null,
-                      intent: createdResult.ticket.subject,
-                      requestType: "SERVICE_REQUEST",
-                      reasoning: createdResult.aiMetadata.reasoning,
-                      urgency: "Check ticket details",
+                        createdResult.aiAnalysis.departmentConfidence,
+                      category: createdResult.aiAnalysis.category,
+                      intent: createdResult.aiAnalysis.intent,
+                      requestType: createdResult.aiAnalysis.requestType,
+                      reasoning: createdResult.aiAnalysis.reasoning,
+                      urgency: createdResult.aiAnalysis.urgency,
                       routingMethod: "ai_classification",
                     }
-                  : undefined
+                  : createdResult.aiMetadata
+                    ? {
+                        department: "Classified by AI",
+                        departmentConfidence:
+                          createdResult.aiMetadata.classificationConfidence,
+                        category: null,
+                        intent: createdResult.ticket.subject,
+                        requestType: "SERVICE_REQUEST",
+                        reasoning: createdResult.aiMetadata.reasoning,
+                        urgency: "See ticket details",
+                        routingMethod: "ai_classification",
+                      }
+                    : undefined
               }
               onNewTicket={handleNewTicket}
             />
