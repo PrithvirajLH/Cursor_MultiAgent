@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
 import type { CategoryRef, CustomFieldRecord, TeamRef } from "../api/client";
 import { CustomFieldInput } from "./CustomFieldRenderer";
-import { Button } from "./ui/button";
+import { Button } from "./ui/Button";
 import {
   CREATE_TICKET_DESCRIPTION_MAX,
   CREATE_TICKET_SUBJECT_MAX,
@@ -118,9 +118,9 @@ export function CreateTicketModal({
   }
 
   const inputBase =
-    "w-full rounded-lg border px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring";
-  const inputError = "border-red-400";
-  const inputNormal = "border-border bg-card";
+    "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-ring invalid:bg-card invalid:border-border invalid:shadow-none";
+  const inputError = "";
+  const inputNormal = "";
 
   return (
     <div
@@ -164,6 +164,7 @@ export function CreateTicketModal({
         <form
           className="space-y-4 p-6"
           onSubmit={handleSubmit((data) => onSubmit(data))}
+          noValidate
         >
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div>

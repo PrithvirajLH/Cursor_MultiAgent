@@ -15,7 +15,7 @@ import {
   type CreateTicketFormData,
 } from "../schemas/createTicket";
 import { CustomFieldInput } from "../components/CustomFieldRenderer";
-import { Button } from "../components/ui/button";
+import { Button } from "../components/ui/Button";
 
 type NewTicketPageProps = {
   role: Role;
@@ -98,10 +98,9 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
   const headerValue = headerCtx;
 
   const inputBase =
-    "w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/20";
-  const inputError =
-    "border-red-400 bg-red-50 focus:border-red-500 focus:ring-red-500/20";
-  const inputNormal = "border-border bg-card hover:border-border";
+    "w-full rounded-lg border border-border bg-card px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/20 hover:border-border";
+  const inputError = "";
+  const inputNormal = "";
 
   return (
     <section className="min-h-full bg-background">
