@@ -138,6 +138,9 @@ const AiSubmitPage = lazy(() =>
 const AiDebugPage = lazy(() =>
   import("./pages/AiDebugPage").then((m) => ({ default: m.AiDebugPage })),
 );
+const TicketsPageRevamp = lazy(() =>
+  import("./pages/TicketsPageRevamp"),
+);
 
 function PageFallback() {
   return (
@@ -1055,6 +1058,10 @@ function AuthenticatedShell({
                           onCreateTicket={() => navigate("/tickets/new")}
                         />
                       }
+                    />
+                    <Route
+                      path="/tickets-revamp"
+                      element={<TicketsPageRevamp />}
                     />
                     <Route
                       path="/tickets/new"
