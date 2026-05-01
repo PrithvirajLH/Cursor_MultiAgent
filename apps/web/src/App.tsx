@@ -760,6 +760,18 @@ function AuthenticatedShell({
   const isAdminOrOwner =
     currentPersona.role === "TEAM_ADMIN" || currentPersona.role === "OWNER";
 
+  // UI revamp preview: render the new design bare (no legacy chrome).
+  if (location.pathname.startsWith("/tickets-revamp")) {
+    return (
+      <>
+        <ToastContainer />
+        <Suspense fallback={<PageFallback />}>
+          <TicketsPageRevamp />
+        </Suspense>
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen overflow-hidden">
       <ToastContainer />
