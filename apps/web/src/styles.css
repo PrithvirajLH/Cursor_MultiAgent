@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -12,67 +12,76 @@
   :root {
     color-scheme: light;
 
-    /* ─── Surface Palette (ivory-cream warmth, not clinical gray) ─── */
-    --background: 40 20% 92%;           /* Warm ivory canvas   #edebe5 */
-    --foreground: 230 28% 14%;          /* Deep navy ink       #1a1f30 */
+    /* ─── New design tokens (--c-* names match handoff) ─── */
+    --c-bg:           #f6f7f9;
+    --c-surface:      #ffffff;
+    --c-surface-2:    #fafbfc;
+    --c-surface-3:    #f1f3f5;
+    --c-border:       #e3e6ea;
+    --c-border-strong:#ced2d8;
+    --c-divider:      #eceff2;
 
-    --card: 40 24% 97%;                /* Warm cream card      #f9f8f5 */
-    --card-foreground: 230 28% 14%;
+    --c-fg:    #0f1419;
+    --c-fg-2:  #2b3340;
+    --c-fg-3:  #5c6573;
+    --c-fg-4:  #8a92a0;
+    --c-fg-5:  #b3b9c2;
 
-    --popover: 40 30% 99%;             /* Near-white popover   #fdfcfa */
-    --popover-foreground: 230 28% 14%;
+    --c-accent:        #2d3da3;
+    --c-accent-2:      #3b50c4;
+    --c-accent-tint:   #eef0fb;
+    --c-accent-tint-2: #dde1f5;
 
-    /* ─── Interactive (rich violet-indigo, distinctive) ─── */
-    --primary: 245 58% 51%;            /* Vibrant indigo       #4f46e5 */
+    --c-red:        #b42318;
+    --c-red-tint:   #fdecec;
+    --c-amber:      #b54708;
+    --c-amber-tint: #fdf3e7;
+    --c-green:      #1d7a4d;
+    --c-green-tint: #e7f5ee;
+    --c-blue:       #1454a8;
+    --c-blue-tint:  #e6eef9;
+    --c-purple:     #6b3aa3;
+    --c-purple-tint:#f1ebf9;
+
+    /* ─── shadcn HSL bridge (so existing components pick up the new look) ─── */
+    --background: 220 14% 97%;
+    --foreground: 215 26% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 26% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 26% 8%;
+
+    --primary: 232 57% 41%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 14% 88%;           /* Warm sand            #e2dfda */
-    --secondary-foreground: 230 20% 22%;
+    --secondary: 210 14% 95%;
+    --secondary-foreground: 217 19% 21%;
 
-    --muted: 40 12% 89%;              /* Soft parchment       #e5e2dd */
-    --muted-foreground: 230 10% 38%;  /* Rich readable gray — WCAG AA */
+    --muted: 210 14% 95%;
+    --muted-foreground: 218 11% 41%;
 
-    --accent: 245 30% 95%;            /* Faint indigo wash    #eeedf8 */
-    --accent-foreground: 230 28% 14%;
+    --accent: 232 67% 96%;
+    --accent-foreground: 232 57% 41%;
 
-    /* ─── Feedback ─── */
-    --destructive: 0 72% 50%;
+    --destructive: 4 76% 40%;
     --destructive-foreground: 0 0% 100%;
 
-    /* ─── Borders & Inputs ─── */
-    --border: 40 10% 80%;             /* Warm visible edge    #cdc9c2 */
-    --input: 40 10% 80%;
-    --ring: 245 58% 51%;
+    --border: 215 13% 90%;
+    --input:  214 11% 82%;
+    --ring:   232 57% 41%;
 
-    /* ─── Charts (saturated, vibrant palette) ─── */
-    --chart-1: 245 58% 51%;           /* Indigo */
-    --chart-2: 152 55% 40%;           /* Emerald */
-    --chart-3: 330 65% 52%;           /* Rose */
-    --chart-4: 25 90% 52%;            /* Amber */
-    --chart-5: 195 80% 42%;           /* Teal */
+    --chart-1: 232 57% 41%;
+    --chart-2: 152 56% 30%;
+    --chart-3: 25 87% 37%;
+    --chart-4: 4 76% 40%;
+    --chart-5: 213 79% 37%;
 
-    /* ─── Status System (jewel-toned with soft tinted bg) ─── */
-    --status-new: 270 52% 50%;        /* Purple */
-    --status-new-bg: 270 40% 92%;
-    --status-open: 152 55% 38%;       /* Emerald */
-    --status-open-bg: 152 40% 91%;
-    --status-progress: 245 58% 51%;   /* Indigo */
-    --status-progress-bg: 245 40% 93%;
-    --status-resolved: 164 48% 38%;   /* Teal */
-    --status-resolved-bg: 164 38% 91%;
-    --status-waiting: 32 78% 48%;     /* Warm amber */
-    --status-waiting-bg: 32 60% 91%;
-
-    /* ─── KPI Backgrounds (gentle color washes) ─── */
-    --kpi-blue: 245 45% 94%;
-    --kpi-green: 152 40% 92%;
-    --kpi-yellow: 32 55% 92%;
-
-    /* ─── Layout ─── */
-    --radius: 0.625rem;
-    --shadow-soft: 0 1px 2px rgba(100, 80, 60, 0.06), 0 2px 8px rgba(100, 80, 60, 0.05);
-    --shadow-card: 0 1px 3px rgba(100, 80, 60, 0.07), 0 6px 24px rgba(100, 80, 60, 0.06);
-    --shadow-elevated: 0 4px 16px rgba(100, 80, 60, 0.08), 0 20px 50px rgba(100, 80, 60, 0.08);
+    --radius: 4px;
+    --shadow-soft: 0 1px 2px rgba(15, 20, 25, 0.04), 0 2px 8px rgba(15, 20, 25, 0.04);
+    --shadow-card: 0 1px 3px rgba(15, 20, 25, 0.06), 0 6px 24px rgba(15, 20, 25, 0.05);
+    --shadow-elevated: 0 4px 16px rgba(15, 20, 25, 0.08), 0 20px 50px rgba(15, 20, 25, 0.08);
   }
 
   /* ═══════════════════════════════════════════════════════════════════════════
@@ -136,7 +145,8 @@
   }
 
   body {
-    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'tnum';
     background: hsl(var(--background));
     color: hsl(var(--foreground));
     @apply antialiased;
