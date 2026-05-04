@@ -90,7 +90,7 @@ export function AppSidebar() {
     enabled: authReady,
   });
 
-  const teamList = (teams ?? []).map((t, i) => ({
+  const teamList = (teams?.data ?? []).map((t, i) => ({
     id: t.id,
     label: t.name,
     color: TEAM_COLORS[i % TEAM_COLORS.length],
