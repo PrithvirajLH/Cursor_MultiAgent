@@ -141,6 +141,9 @@ const AiDebugPage = lazy(() =>
 const TicketsPageRevamp = lazy(() =>
   import("./pages/TicketsPageRevamp"),
 );
+const TicketDetailRevamp = lazy(() =>
+  import("./pages/TicketDetailRevamp"),
+);
 
 function PageFallback() {
   return (
@@ -762,11 +765,12 @@ function AuthenticatedShell({
 
   // UI revamp preview: render the new design bare (no legacy chrome).
   if (location.pathname.startsWith("/tickets-revamp")) {
+    const detailMatch = location.pathname.match(/^\/tickets-revamp\/([^/]+)/);
     return (
       <>
         <ToastContainer />
         <Suspense fallback={<PageFallback />}>
-          <TicketsPageRevamp />
+          {detailMatch ? <TicketDetailRevamp /> : <TicketsPageRevamp />}
         </Suspense>
       </>
     );
