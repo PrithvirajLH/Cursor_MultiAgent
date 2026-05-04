@@ -84,7 +84,12 @@ export default function TicketsPageRevamp() {
         </div>
       </div>
 
-      <BulkActionBar count={selected.size} onClear={() => setSelected(new Set())} />
+      <BulkActionBar
+        ticketIds={Array.from(selected)}
+        currentUserId={user?.id}
+        onClear={() => setSelected(new Set())}
+        onActionComplete={() => refetch()}
+      />
 
       {isError ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-[13px]" style={{ color: 'var(--c-fg-3)' }}>
