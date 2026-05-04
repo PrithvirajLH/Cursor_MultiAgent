@@ -1,5 +1,5 @@
-import { Icn, I } from '../atoms';
 import { FilterChip } from './FilterChip';
+import { AddFilterPopover } from './AddFilterPopover';
 import type { TicketFilters } from '../../types';
 
 interface FilterRowProps {
@@ -153,13 +153,7 @@ export function FilterRow({ filters, setFilters, hasActiveFilters, onClearAll }:
           Clear all
         </button>
       )}
-      <button
-        className="text-[11px] px-1.5 py-1 rounded inline-flex items-center gap-1 border-dashed border"
-        style={{ color: 'var(--c-fg-3)', borderColor: 'var(--c-border-strong)' }}
-        title="Filter picker — full UI lands in a follow-up; for now use URL params"
-      >
-        <Icn d={I.plus} s={11} /> Add filter
-      </button>
+      <AddFilterPopover filters={filters} setFilters={setFilters} />
     </div>
   );
 }
