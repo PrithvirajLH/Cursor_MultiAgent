@@ -1,27 +1,27 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/shell/AppShell';
 import { Pill, Icn, I } from '../components/atoms';
-import { FilterChip } from '../components/tickets/FilterChip';
+import { FilterRow } from '../components/tickets/FilterRow';
 import { BulkActionBar } from '../components/tickets/BulkActionBar';
 import { TicketsTable } from '../components/tickets/TicketsTable';
 import { ticketToRow } from '../components/tickets/mappers';
 import { fetchTickets } from '../api/client';
+import { useFilters } from '../hooks/useFilters';
 
 export default function TicketsPageRevamp() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState([
-    { label: 'status',   value: 'open, in_progress', active: true  },
-    { label: 'priority', value: 'P1, P2',            active: false },
-    { label: 'assignee', value: 'me',                active: false },
-  ]);
 
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['tickets-revamp'],
-    queryFn: ({ signal }) => fetchTickets({ pageSize: 50 }, { signal }),
+  const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } =
+    useFilters();
+
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
+    queryKey: ['tickets-revamp', apiParams],
+    queryFn: ({ signal }) => fetchTickets(apiParams, { signal }),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const rows = useMemo(
@@ -29,17 +29,26 @@ export default function TicketsPageRevamp() {
     [data],
   );
   const total = data?.meta?.total ?? rows.length;
+  const meta = data?.meta;
+
+  const pageStart = meta ? (meta.page - 1) * meta.pageSize + 1 : rows.length ? 1 : 0;
+  const pageEnd = meta ? Math.min(meta.page * meta.pageSize, meta.total) : rows.length;
+
+  const headingTitle =
+    filters.statusGroup === 'open' ? 'All open' :
+    filters.statusGroup === 'resolved' ? 'Resolved' :
+    'All tickets';
 
   return (
-    <AppShell crumbs={['Inbox', 'All open']}>
+    <AppShell crumbs={['Inbox', headingTitle]}>
       {/* Page header */}
       <div className="border-b" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border)', padding: '12px 18px' }}>
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-[18px] font-semibold tracking-[-0.01em]">All open</h1>
+            <h1 className="text-[18px] font-semibold tracking-[-0.01em]">{headingTitle}</h1>
             <Pill tone="gray"><span className="font-mono">{total}</span></Pill>
             <span className="text-[11px]" style={{ color: 'var(--c-fg-4)' }}>
-              · {isLoading ? 'loading…' : `updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+              · {isLoading || isFetching ? 'loading…' : `updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
             </span>
           </div>
           <div className="flex gap-1.5">
@@ -51,26 +60,19 @@ export default function TicketsPageRevamp() {
           </div>
         </div>
 
-        {/* Filter row (visual only — wiring is a follow-up) */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {filters.map((f, i) => (
-            <FilterChip
-              key={f.label}
-              label={f.label}
-              value={f.value}
-              active={f.active}
-              onRemove={() => setFilters(filters.filter((_, j) => j !== i))}
-            />
-          ))}
-          <button className="text-[11px] px-1.5 py-1 rounded inline-flex items-center gap-1 border-dashed border" style={{ color: 'var(--c-fg-3)', borderColor: 'var(--c-border-strong)' }}>
-            <Icn d={I.plus} s={11} /> Add filter
-          </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <FilterRow
+            filters={filters}
+            setFilters={setFilters}
+            hasActiveFilters={hasActiveFilters}
+            onClearAll={clearFilters}
+          />
           <span className="flex-1" />
           <button className="text-[11px] px-1.5 py-1 rounded border inline-flex items-center gap-1" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>
             Group · <span className="font-semibold">None</span> <Icn d={I.chevD} s={11} />
           </button>
           <button className="text-[11px] px-1.5 py-1 rounded border inline-flex items-center gap-1" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>
-            Sort · <span className="font-semibold">SLA ↓</span> <Icn d={I.chevD} s={11} />
+            Sort · <span className="font-semibold">{filters.sort} {filters.order === 'asc' ? '↑' : '↓'}</span> <Icn d={I.chevD} s={11} />
           </button>
         </div>
       </div>
@@ -109,7 +111,9 @@ export default function TicketsPageRevamp() {
         className="flex items-center justify-between text-[11px] border-t"
         style={{ backgroundColor: 'var(--c-surface-2)', borderColor: 'var(--c-border)', color: 'var(--c-fg-4)', padding: '6px 18px' }}
       >
-        <div className="font-mono">Showing 1–{rows.length} of {total}</div>
+        <div className="font-mono">
+          {total === 0 ? 'No results' : `Showing ${pageStart}–${pageEnd} of ${total}`}
+        </div>
         <div className="flex items-center gap-1.5">
           <span>
             <span className="font-mono text-[10px] px-1 rounded-sm border" style={{ backgroundColor: 'var(--c-surface-3)', borderColor: 'var(--c-border)' }}>J</span>
@@ -121,9 +125,19 @@ export default function TicketsPageRevamp() {
             {' '}assign
           </span>
           <span className="w-px h-3.5" style={{ backgroundColor: 'var(--c-border)' }} />
-          <button className="text-[11px] px-1.5 py-0.5 rounded border" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>‹</button>
-          <span className="font-mono">1 / 1</span>
-          <button className="text-[11px] px-1.5 py-0.5 rounded border" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>›</button>
+          <button
+            disabled={!meta || meta.page <= 1}
+            onClick={() => meta && setFilters({ page: meta.page - 1 })}
+            className="text-[11px] px-1.5 py-0.5 rounded border disabled:opacity-40"
+            style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}
+          >‹</button>
+          <span className="font-mono">{meta ? `${meta.page} / ${meta.totalPages}` : '1 / 1'}</span>
+          <button
+            disabled={!meta || meta.page >= meta.totalPages}
+            onClick={() => meta && setFilters({ page: meta.page + 1 })}
+            className="text-[11px] px-1.5 py-0.5 rounded border disabled:opacity-40"
+            style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}
+          >›</button>
         </div>
       </div>
     </AppShell>
