@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  addTicketMessage,
   fetchTicketMessages,
   type TicketDetail,
   type TicketMessage,
@@ -27,13 +28,13 @@ export function ConversationPane({ ticket }: ConversationPaneProps) {
   });
 
   const messages = messagesData?.data ?? [];
-  const row = ticketToRow(ticket); // re-use the same status/priority mapping
+  const row = ticketToRow(ticket);
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       <ConversationHeader ticket={ticket} statusTone={row.statusTone} statusLabel={row.status} />
       <MessageThread messages={messages} loading={messagesLoading} />
-      <Composer tab={composerTab} onTabChange={setComposerTab} />
+      <Composer ticketId={ticket.id} tab={composerTab} onTabChange={setComposerTab} />
     </div>
   );
 }
@@ -177,14 +178,51 @@ function MessageBubble({ message }: { message: TicketMessage }) {
   );
 }
 
-/* ─── Composer placeholder ───────────────────────────────────────── */
+/* ─── Composer ───────────────────────────────────────────────────── */
 
-function Composer({ tab, onTabChange }: { tab: ComposerTab; onTabChange: (t: ComposerTab) => void }) {
-  const tabs: Array<{ id: ComposerTab; label: string }> = [
+interface ComposerProps {
+  ticketId: string;
+  tab: ComposerTab;
+  onTabChange: (t: ComposerTab) => void;
+}
+
+function Composer({ ticketId, tab, onTabChange }: ComposerProps) {
+  const [body, setBody] = useState('');
+  const qc = useQueryClient();
+
+  const tabs: Array<{ id: ComposerTab; label: string; disabled?: boolean }> = [
     { id: 'public',   label: 'Public reply' },
     { id: 'internal', label: 'Internal note' },
-    { id: 'forward',  label: 'Forward' },
+    { id: 'forward',  label: 'Forward', disabled: true },
   ];
+
+  const send = useMutation({
+    mutationFn: () =>
+      addTicketMessage(ticketId, {
+        body: body.trim(),
+        type: tab === 'internal' ? 'INTERNAL' : 'PUBLIC',
+      }),
+    onSuccess: () => {
+      setBody('');
+      qc.invalidateQueries({ queryKey: ['ticket-messages-revamp', ticketId] });
+      qc.invalidateQueries({ queryKey: ['ticket-detail-revamp', ticketId] });
+      qc.invalidateQueries({ queryKey: ['tickets-revamp'] });
+    },
+  });
+
+  const canSend = body.trim().length > 0 && !send.isPending && tab !== 'forward';
+
+  const onSendClick = () => {
+    if (!canSend) return;
+    send.mutate();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      onSendClick();
+    }
+  };
 
   return (
     <footer
@@ -197,14 +235,16 @@ function Composer({ tab, onTabChange }: { tab: ComposerTab; onTabChange: (t: Com
           return (
             <button
               key={t.id}
-              onClick={() => onTabChange(t.id)}
-              className="px-3 py-1.5 text-[12px] border-b-2"
+              onClick={() => !t.disabled && onTabChange(t.id)}
+              disabled={t.disabled}
+              className="px-3 py-1.5 text-[12px] border-b-2 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 borderBottomColor: active ? 'var(--c-accent)' : 'transparent',
                 color: active ? 'var(--c-fg)' : 'var(--c-fg-3)',
                 fontWeight: active ? 600 : 500,
                 marginBottom: '-1px',
               }}
+              title={t.disabled ? 'Forward coming soon' : undefined}
             >
               {t.label}
             </button>
@@ -212,18 +252,52 @@ function Composer({ tab, onTabChange }: { tab: ComposerTab; onTabChange: (t: Com
         })}
       </div>
 
-      <div className="px-5 py-4 text-[12px]" style={{ color: 'var(--c-fg-4)' }}>
-        <div
-          className="border rounded p-3 cursor-not-allowed"
+      <div className="px-5 py-3 flex flex-col gap-2">
+        <textarea
+          value={body}
+          onChange={e => setBody(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={
+            tab === 'internal'
+              ? 'Internal note (only visible to agents). ⌘+Enter to send.'
+              : 'Reply to requester. ⌘+Enter to send.'
+          }
+          rows={4}
+          disabled={tab === 'forward' || send.isPending}
+          className="w-full text-[12px] p-2 rounded border resize-y outline-none focus:border-[var(--c-accent)]"
           style={{
-            backgroundColor: 'var(--c-surface-2)',
-            borderColor: 'var(--c-border)',
+            backgroundColor: tab === 'internal' ? 'var(--c-amber-tint)' : 'var(--c-surface-2)',
+            borderColor: tab === 'internal' ? '#f4d8b6' : 'var(--c-border)',
+            color: 'var(--c-fg)',
             minHeight: 80,
           }}
-          title="Reply composer wiring is a follow-up task"
-        >
-          Reply UI coming in a follow-up — for now use the existing legacy detail page
-          for sending messages.
+        />
+
+        <div className="flex items-center gap-2">
+          {send.isError && (
+            <span className="text-[11px]" style={{ color: 'var(--c-red)' }}>
+              Send failed — try again
+            </span>
+          )}
+          <span className="flex-1" />
+          <span className="text-[11px]" style={{ color: 'var(--c-fg-4)' }}>
+            <span className="font-mono text-[10px] px-1 rounded-sm border" style={{ backgroundColor: 'var(--c-surface-3)', borderColor: 'var(--c-border)' }}>⌘</span>
+            {'+'}
+            <span className="font-mono text-[10px] px-1 rounded-sm border" style={{ backgroundColor: 'var(--c-surface-3)', borderColor: 'var(--c-border)' }}>Enter</span>
+            {' '}to send
+          </span>
+          <button
+            onClick={onSendClick}
+            disabled={!canSend}
+            className="text-[12px] px-3 py-1 rounded inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--c-accent)',
+              color: 'white',
+            }}
+          >
+            <Icn d={I.send} s={11} />
+            {send.isPending ? 'Sending…' : 'Send'}
+          </button>
         </div>
       </div>
     </footer>
