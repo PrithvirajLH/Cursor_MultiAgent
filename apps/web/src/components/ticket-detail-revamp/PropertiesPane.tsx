@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
-import type { TicketDetail } from '../../api/client';
-import { Pill, Prio, Avatar, SlaBar, toneFromName } from '../atoms';
+import type { TicketDetail, TicketStatus } from '../../api/client';
+import { Prio, Avatar, SlaBar, toneFromName } from '../atoms';
 import { ticketToRow } from '../tickets/mappers';
 import { ActivityList } from './ActivityList';
+import { StatusSelector } from './StatusSelector';
+import { useTransitionTicket } from './ticket-mutations';
 
 interface PropertiesPaneProps {
   ticket: TicketDetail;
@@ -10,6 +12,8 @@ interface PropertiesPaneProps {
 
 export function PropertiesPane({ ticket }: PropertiesPaneProps) {
   const row = ticketToRow(ticket);
+  const transition = useTransitionTicket(ticket.id);
+  const allowed = (ticket.allowedTransitions ?? []) as TicketStatus[];
 
   const created = new Date(ticket.createdAt).toLocaleString([], {
     dateStyle: 'medium',
@@ -25,7 +29,14 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
       {/* Status / priority / SLA */}
       <Section title="Status">
         <Row label="State">
-          <Pill tone={row.statusTone} dot>{row.status}</Pill>
+          <StatusSelector
+            current={ticket.status}
+            currentLabel={row.status}
+            currentTone={row.statusTone}
+            allowed={allowed}
+            onChange={next => transition.mutate(next)}
+            disabled={transition.isPending}
+          />
         </Row>
         <Row label="Priority">
           <span className="flex items-center gap-1.5">
