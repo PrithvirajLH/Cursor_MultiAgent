@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Pill, Prio, Avatar, SlaBar, Icn, I } from '../atoms';
-import type { MockTicket } from './mock-tickets';
+import type { TicketRow } from './mappers';
 
 interface TicketsTableProps {
-  tickets: MockTicket[];
+  tickets: TicketRow[];
   selected: Set<string>;
   onSelectionChange: (next: Set<string>) => void;
   onRowClick?: (id: string) => void;
@@ -62,13 +62,13 @@ export function TicketsTable({ tickets, selected, onSelectionChange, onRowClick 
                 className="cursor-pointer"
               >
                 <td className="py-1.5 px-2.5 border-b" style={cellStyle} onClick={e => e.stopPropagation()}>
-                  <input type="checkbox" checked={isSelected} onChange={() => toggle(t.id)} aria-label={`Select ${t.id}`} />
+                  <input type="checkbox" checked={isSelected} onChange={() => toggle(t.id)} aria-label={`Select ${t.displayId}`} />
                 </td>
                 <td className="py-1.5 px-2.5 border-b" style={cellStyle}>
                   <Prio level={t.priority} />
                 </td>
                 <td className="py-1.5 px-2.5 border-b font-mono text-[11px]" style={{ ...cellStyle, color: 'var(--c-fg-4)' }}>
-                  {t.id}
+                  {t.displayId}
                 </td>
                 <td className="py-1.5 px-2.5 border-b" style={cellStyle}>
                   <div className="flex items-center gap-1.5 min-w-0">
