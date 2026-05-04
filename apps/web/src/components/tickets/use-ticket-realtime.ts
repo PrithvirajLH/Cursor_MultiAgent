@@ -21,9 +21,17 @@ export function useTicketRealtime({ userKey, enabled = true }: UseTicketRealtime
   useRealtimeEvents({
     enabled: enabled && Boolean(userKey),
     userKey,
-    onTicketChanged: () => {
+    onTicketChanged: payload => {
       qc.invalidateQueries({ queryKey: ['tickets-revamp'] });
       qc.invalidateQueries({ queryKey: ['ticket-counts'] });
+      qc.invalidateQueries({ queryKey: ['view-count'] });
+      // If the change targets a specific ticket, also refresh its detail/messages/events.
+      const ticketId = (payload as { ticketId?: string })?.ticketId;
+      if (ticketId) {
+        qc.invalidateQueries({ queryKey: ['ticket-detail-revamp', ticketId] });
+        qc.invalidateQueries({ queryKey: ['ticket-messages-revamp', ticketId] });
+        qc.invalidateQueries({ queryKey: ['ticket-events-revamp', ticketId] });
+      }
     },
   });
 }

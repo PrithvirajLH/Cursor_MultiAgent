@@ -8,6 +8,7 @@ import { Icn, I } from '../components/atoms';
 import { MidList } from '../components/ticket-detail-revamp/MidList';
 import { ConversationPane } from '../components/ticket-detail-revamp/ConversationPane';
 import { PropertiesPane } from '../components/ticket-detail-revamp/PropertiesPane';
+import { useTicketRealtime } from '../components/tickets/use-ticket-realtime';
 
 /**
  * Master-detail layout per the design hand-off:
@@ -32,6 +33,10 @@ export default function TicketDetailRevamp() {
     // Wait for auth — fetchTicketById without a token returns 401.
     enabled: !!id && !!user && !authLoading,
   });
+
+  // Realtime: when any ticket changes (this one or others), invalidate queries.
+  // Re-uses the list's hook since the queryKey it invalidates includes detail too.
+  useTicketRealtime({ userKey: user?.email });
 
   return (
     <div
