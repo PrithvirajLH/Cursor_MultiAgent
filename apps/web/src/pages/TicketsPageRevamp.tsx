@@ -12,6 +12,7 @@ import { fetchTickets } from '../api/client';
 import { useFilters } from '../hooks/useFilters';
 import { useAuthSession } from '../hooks/useAuthSession';
 import { useTicketListKeyboard } from '../components/tickets/use-ticket-list-keyboard';
+import { useTicketRealtime } from '../components/tickets/use-ticket-realtime';
 
 export default function TicketsPageRevamp() {
   const navigate = useNavigate();
@@ -42,6 +43,8 @@ export default function TicketsPageRevamp() {
     onOpenTicket: id => navigate(`/tickets/${id}`),
     canSelect: canBulkEdit,
   });
+
+  useTicketRealtime({ userKey: user?.email });
   const total = data?.meta?.total ?? rows.length;
   const meta = data?.meta;
 
