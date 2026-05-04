@@ -7,6 +7,7 @@ import { FilterRow } from '../components/tickets/FilterRow';
 import { SortDropdown } from '../components/tickets/SortDropdown';
 import { BulkActionBar } from '../components/tickets/BulkActionBar';
 import { TicketsTable } from '../components/tickets/TicketsTable';
+import { TicketRowSkeleton } from '../components/tickets/TicketRowSkeleton';
 import { ticketToRow } from '../components/tickets/mappers';
 import { fetchTickets } from '../api/client';
 import { useFilters } from '../hooks/useFilters';
@@ -120,10 +121,7 @@ export default function TicketsPageRevamp() {
           </button>
         </div>
       ) : isLoading ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-[13px]" style={{ color: 'var(--c-fg-4)' }}>
-          <Icn d={I.clock} s={20} />
-          <span>Loading tickets…</span>
-        </div>
+        <TicketRowSkeleton showCheckbox={canBulkEdit} />
       ) : rows.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-[13px]" style={{ color: 'var(--c-fg-4)' }}>
           <Icn d={I.inbox} s={32} />

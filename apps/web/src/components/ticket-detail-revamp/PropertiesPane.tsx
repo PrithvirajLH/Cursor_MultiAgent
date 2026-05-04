@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import type { TicketDetail } from '../../api/client';
-import { Pill, Prio, Avatar, SlaBar, Icn, I, toneFromName } from '../atoms';
+import { Pill, Prio, Avatar, SlaBar, toneFromName } from '../atoms';
 import { ticketToRow } from '../tickets/mappers';
+import { ActivityList } from './ActivityList';
 
 interface PropertiesPaneProps {
   ticket: TicketDetail;
@@ -135,12 +136,9 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
         )}
       </Section>
 
-      {/* Activity log placeholder */}
+      {/* Activity log */}
       <Section title="Activity">
-        <div className="flex items-center gap-1.5 text-[11px] py-1" style={{ color: 'var(--c-fg-4)' }}>
-          <Icn d={I.history} s={12} />
-          <span>Activity log coming soon</span>
-        </div>
+        <ActivityList ticketId={ticket.id} />
       </Section>
     </div>
   );
