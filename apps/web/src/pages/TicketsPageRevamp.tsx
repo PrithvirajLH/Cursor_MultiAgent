@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AppShell } from '../components/shell/AppShell';
 import { Pill, Icn, I } from '../components/atoms';
 import { FilterRow } from '../components/tickets/FilterRow';
+import { SortDropdown } from '../components/tickets/SortDropdown';
 import { BulkActionBar } from '../components/tickets/BulkActionBar';
 import { TicketsTable } from '../components/tickets/TicketsTable';
 import { ticketToRow } from '../components/tickets/mappers';
@@ -71,9 +72,11 @@ export default function TicketsPageRevamp() {
           <button className="text-[11px] px-1.5 py-1 rounded border inline-flex items-center gap-1" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>
             Group · <span className="font-semibold">None</span> <Icn d={I.chevD} s={11} />
           </button>
-          <button className="text-[11px] px-1.5 py-1 rounded border inline-flex items-center gap-1" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>
-            Sort · <span className="font-semibold">{filters.sort} {filters.order === 'asc' ? '↑' : '↓'}</span> <Icn d={I.chevD} s={11} />
-          </button>
+          <SortDropdown
+            sort={filters.sort}
+            order={filters.order}
+            onChange={(sort, order) => setFilters({ sort, order })}
+          />
         </div>
       </div>
 
@@ -103,6 +106,9 @@ export default function TicketsPageRevamp() {
           selected={selected}
           onSelectionChange={setSelected}
           onRowClick={(id) => navigate(`/tickets/${id}`)}
+          sort={filters.sort}
+          order={filters.order}
+          onSortChange={(sort, order) => setFilters({ sort, order })}
         />
       )}
 

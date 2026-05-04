@@ -1,15 +1,27 @@
 import { useState } from 'react';
 import { Pill, Prio, Avatar, SlaBar, Icn, I } from '../atoms';
 import type { TicketRow } from './mappers';
+import type { SortField, SortOrder } from '../../types';
 
 interface TicketsTableProps {
   tickets: TicketRow[];
   selected: Set<string>;
   onSelectionChange: (next: Set<string>) => void;
   onRowClick?: (id: string) => void;
+  sort?: SortField;
+  order?: SortOrder;
+  onSortChange?: (sort: SortField, order: SortOrder) => void;
 }
 
-export function TicketsTable({ tickets, selected, onSelectionChange, onRowClick }: TicketsTableProps) {
+export function TicketsTable({
+  tickets,
+  selected,
+  onSelectionChange,
+  onRowClick,
+  sort,
+  order,
+  onSortChange,
+}: TicketsTableProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const allChecked = tickets.length > 0 && tickets.every(t => selected.has(t.id));
 
@@ -43,7 +55,20 @@ export function TicketsTable({ tickets, selected, onSelectionChange, onRowClick 
             <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 90 }}>Team</th>
             <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 88 }}>Assignee</th>
             <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 140 }}>SLA</th>
-            <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 70 }}>Updated</th>
+            <th
+              className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0"
+              style={{ ...headStyle, width: 70, cursor: onSortChange ? 'pointer' : 'default' }}
+              onClick={() => {
+                if (!onSortChange) return;
+                if (sort === 'updatedAt') onSortChange('updatedAt', order === 'asc' ? 'desc' : 'asc');
+                else onSortChange('updatedAt', 'desc');
+              }}
+              aria-sort={sort === 'updatedAt' ? (order === 'asc' ? 'ascending' : 'descending') : 'none'}
+            >
+              Updated{sort === 'updatedAt' && (
+                <span className="ml-1 font-mono">{order === 'asc' ? '↑' : '↓'}</span>
+              )}
+            </th>
             <th className="border-b sticky top-0" style={{ backgroundColor: 'var(--c-surface-2)', borderColor: 'var(--c-border)', width: 24 }} />
           </tr>
         </thead>
