@@ -33,8 +33,8 @@ const ICON_FOR_PRESET: Record<string, typeof I.inbox> = {
 
 const STANDALONE_LINKS: PrimaryNavLink[] = [
   { to: '/dashboard', icon: I.chart, label: 'Dashboard' },
-  { to: '/watching',  icon: I.eye,   label: 'Watching',  count: '7' },
-  { to: '/mentions',  icon: I.bell,  label: 'Mentions',  count: '3', hasDot: true },
+  { to: '/watching',  icon: I.eye,   label: 'Watching' },
+  { to: '/mentions',  icon: I.bell,  label: 'Mentions', hasDot: true },
 ];
 
 // Stable color palette for teams in display order — extends beyond 5 by cycling.

@@ -57,7 +57,6 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'p1-today',
     label: 'P1 today',
-    count: '4',
     tone: 'red',
     buildQuery: () => qs({ priorities: 'P1', createdFrom: todayIso() }),
     matches: p =>
@@ -66,7 +65,6 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'awaiting-24h',
     label: 'Awaiting reply > 24h',
-    count: '11',
     tone: 'amber',
     buildQuery: () =>
       qs({
@@ -82,7 +80,6 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'sla-at-risk',
     label: 'Breach risk · 1h',
-    count: '8',
     tone: 'amber',
     buildQuery: () => qs({ slaStatus: 'at_risk' }),
     matches: p => paramsMatch(p, { slaStatus: 'at_risk' }),
@@ -90,7 +87,6 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'unassigned',
     label: 'Unassigned',
-    count: '17',
     tone: 'gray',
     buildQuery: () => qs({ scope: 'unassigned' }),
     matches: p => paramsMatch(p, { scope: 'unassigned' }),
@@ -98,7 +94,6 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'recent-resolved',
     label: 'Resolved this week',
-    count: '52',
     tone: 'green',
     buildQuery: () =>
       qs({
@@ -111,7 +106,6 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'reopened',
     label: 'Reopened',
-    count: '9',
     tone: 'gray',
     buildQuery: () => qs({ statuses: 'REOPENED' }),
     matches: p => paramsMatch(p, { statuses: 'REOPENED' }),
