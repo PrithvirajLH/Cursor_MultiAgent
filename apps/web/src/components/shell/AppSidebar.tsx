@@ -15,6 +15,7 @@ import {
   type SidebarPreset,
   type ToneKey,
 } from './saved-views';
+import { querystringToParams, useViewCounts, viewFiltersToParams } from './use-view-count';
 
 interface PrimaryNavLink {
   to: string;
@@ -103,6 +104,18 @@ export function AppSidebar() {
     staleTime: 60_000,
     enabled: authReady,
   });
+
+  // Live counts for the saved-view presets (P1 today, etc).
+  const presetCounts = useViewCounts(
+    SAVED_VIEWS.map(v => querystringToParams(v.buildQuery())),
+    { enabled: authReady },
+  );
+
+  // Live counts for user-saved views.
+  const userViewCounts = useViewCounts(
+    (userSavedViews ?? []).map(v => viewFiltersToParams(v.filters)),
+    { enabled: authReady && !!userSavedViews?.length },
+  );
 
   const teamList = (teams?.data ?? []).map((t, i) => ({
     id: t.id,
@@ -219,8 +232,9 @@ export function AppSidebar() {
         <div className="px-2 pt-3.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em] flex justify-between" style={{ color: 'var(--c-fg-4)' }}>
           <span>Saved views</span><Icn d={I.plus} s={11} />
         </div>
-        {SAVED_VIEWS.map(v => {
+        {SAVED_VIEWS.map((v, i) => {
           const active = presetIsActive(v);
+          const liveCount = presetCounts[i]?.count;
           return (
             <Link
               key={v.id}
@@ -237,9 +251,9 @@ export function AppSidebar() {
                 style={{ backgroundColor: TONE_COLOR[v.tone ?? 'gray'] }}
               />
               <span className="flex-1 min-w-0 truncate">{v.label}</span>
-              {v.count && (
+              {liveCount !== undefined && (
                 <span className="font-mono text-[10px]" style={{ color: active ? 'var(--c-accent)' : 'var(--c-fg-4)' }}>
-                  {v.count}
+                  {liveCount}
                 </span>
               )}
             </Link>
@@ -252,10 +266,11 @@ export function AppSidebar() {
             <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--c-fg-4)' }}>
               Mine
             </div>
-            {userSavedViews.map(v => (
+            {userSavedViews.map((v, i) => (
               <UserSavedViewLink
                 key={v.id}
                 view={v}
+                count={userViewCounts[i]?.count}
                 onTicketsRevamp={onTicketsRevamp}
                 searchParams={searchParams}
               />
@@ -314,11 +329,12 @@ export function AppSidebar() {
 
 interface UserSavedViewLinkProps {
   view: SavedViewRecord;
+  count: number | undefined;
   onTicketsRevamp: boolean;
   searchParams: URLSearchParams;
 }
 
-function UserSavedViewLink({ view, onTicketsRevamp, searchParams }: UserSavedViewLinkProps) {
+function UserSavedViewLink({ view, count, onTicketsRevamp, searchParams }: UserSavedViewLinkProps) {
   const qc = useQueryClient();
   const remove = useMutation({
     mutationFn: () => deleteSavedView(view.id),
@@ -346,7 +362,12 @@ function UserSavedViewLink({ view, onTicketsRevamp, searchParams }: UserSavedVie
           className="w-1.5 h-1.5 rounded-full flex-none"
           style={{ backgroundColor: 'var(--c-fg-5)' }}
         />
-        <span className="truncate">{view.name}</span>
+        <span className="flex-1 min-w-0 truncate">{view.name}</span>
+        {count !== undefined && (
+          <span className="font-mono text-[10px]" style={{ color: active ? 'var(--c-accent)' : 'var(--c-fg-4)' }}>
+            {count}
+          </span>
+        )}
       </Link>
       <button
         onClick={() => {
