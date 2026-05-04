@@ -4,7 +4,8 @@ import { Prio, Avatar, SlaBar, toneFromName } from '../atoms';
 import { ticketToRow } from '../tickets/mappers';
 import { ActivityList } from './ActivityList';
 import { StatusSelector } from './StatusSelector';
-import { useTransitionTicket } from './ticket-mutations';
+import { AssigneeSelector } from './AssigneeSelector';
+import { useAssignTicket, useTransitionTicket } from './ticket-mutations';
 
 interface PropertiesPaneProps {
   ticket: TicketDetail;
@@ -13,6 +14,7 @@ interface PropertiesPaneProps {
 export function PropertiesPane({ ticket }: PropertiesPaneProps) {
   const row = ticketToRow(ticket);
   const transition = useTransitionTicket(ticket.id);
+  const assign = useAssignTicket(ticket.id);
   const allowed = (ticket.allowedTransitions ?? []) as TicketStatus[];
 
   const created = new Date(ticket.createdAt).toLocaleString([], {
@@ -74,22 +76,11 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
           </span>
         </Row>
         <Row label="Assignee">
-          {ticket.assignee ? (
-            <span className="flex items-center gap-1.5">
-              <Avatar
-                name={initials(ticket.assignee.displayName)}
-                size="sm"
-                tone={toneFromName(ticket.assignee.displayName)}
-              />
-              <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
-                {ticket.assignee.displayName}
-              </span>
-            </span>
-          ) : (
-            <span className="text-[12px]" style={{ color: 'var(--c-fg-4)' }}>
-              Unassigned
-            </span>
-          )}
+          <AssigneeSelector
+            current={ticket.assignee ?? null}
+            onChange={assignee => assign.mutate({ assignee })}
+            disabled={assign.isPending}
+          />
         </Row>
         <Row label="Channel">
           <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
