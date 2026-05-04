@@ -10,10 +10,14 @@ import { TicketsTable } from '../components/tickets/TicketsTable';
 import { ticketToRow } from '../components/tickets/mappers';
 import { fetchTickets } from '../api/client';
 import { useFilters } from '../hooks/useFilters';
+import { useAuthSession } from '../hooks/useAuthSession';
 
 export default function TicketsPageRevamp() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { user } = useAuthSession();
+  const role = user?.role ?? 'EMPLOYEE';
+  const canBulkEdit = role !== 'EMPLOYEE';
 
   const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } =
     useFilters();
@@ -109,6 +113,7 @@ export default function TicketsPageRevamp() {
           sort={filters.sort}
           order={filters.order}
           onSortChange={(sort, order) => setFilters({ sort, order })}
+          showCheckbox={canBulkEdit}
         />
       )}
 

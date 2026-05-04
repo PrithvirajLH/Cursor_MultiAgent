@@ -11,6 +11,8 @@ interface TicketsTableProps {
   sort?: SortField;
   order?: SortOrder;
   onSortChange?: (sort: SortField, order: SortOrder) => void;
+  /** When false (e.g. EMPLOYEE role), hide the checkbox column. Default true. */
+  showCheckbox?: boolean;
 }
 
 export function TicketsTable({
@@ -21,6 +23,7 @@ export function TicketsTable({
   sort,
   order,
   onSortChange,
+  showCheckbox = true,
 }: TicketsTableProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const allChecked = tickets.length > 0 && tickets.every(t => selected.has(t.id));
@@ -44,9 +47,11 @@ export function TicketsTable({
       <table className="w-full text-[12px] border-collapse">
         <thead>
           <tr>
-            <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 28 }}>
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" />
-            </th>
+            {showCheckbox ? (
+              <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 28 }}>
+                <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all" />
+              </th>
+            ) : null}
             <th className="border-b sticky top-0" style={{ backgroundColor: 'var(--c-surface-2)', borderColor: 'var(--c-border)', width: 18 }} />
             <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={{ ...headStyle, width: 88 }}>ID</th>
             <th className="text-left font-medium text-[11px] uppercase tracking-[0.04em] py-1.5 px-2.5 border-b sticky top-0" style={headStyle}>Subject</th>
@@ -86,9 +91,11 @@ export function TicketsTable({
                 onClick={() => onRowClick?.(t.id)}
                 className="cursor-pointer"
               >
-                <td className="py-1.5 px-2.5 border-b" style={cellStyle} onClick={e => e.stopPropagation()}>
-                  <input type="checkbox" checked={isSelected} onChange={() => toggle(t.id)} aria-label={`Select ${t.displayId}`} />
-                </td>
+                {showCheckbox ? (
+                  <td className="py-1.5 px-2.5 border-b" style={cellStyle} onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={isSelected} onChange={() => toggle(t.id)} aria-label={`Select ${t.displayId}`} />
+                  </td>
+                ) : null}
                 <td className="py-1.5 px-2.5 border-b" style={cellStyle}>
                   <Prio level={t.priority} />
                 </td>
