@@ -6,6 +6,7 @@ import { AppTopbar } from '../components/shell/AppTopbar';
 import { Icn, I } from '../components/atoms';
 import { MidList } from '../components/ticket-detail-revamp/MidList';
 import { ConversationPane } from '../components/ticket-detail-revamp/ConversationPane';
+import { PropertiesPane } from '../components/ticket-detail-revamp/PropertiesPane';
 
 /**
  * Master-detail layout per the design hand-off:
@@ -81,9 +82,13 @@ export default function TicketDetailRevamp() {
             className="w-[290px] flex-none border-l overflow-auto"
             style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border)' }}
           >
-            <div className="p-3 text-[12px]" style={{ color: 'var(--c-fg-4)' }}>
-              Properties pane (P2.2.4)
-            </div>
+            {ticket ? (
+              <PropertiesPane ticket={ticket} />
+            ) : (
+              <div className="p-3 text-[12px]" style={{ color: 'var(--c-fg-4)' }}>
+                {isLoading ? 'Loading…' : '—'}
+              </div>
+            )}
           </aside>
         </div>
       </div>
