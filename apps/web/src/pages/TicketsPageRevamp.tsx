@@ -8,6 +8,7 @@ import { SortDropdown } from '../components/tickets/SortDropdown';
 import { BulkActionBar } from '../components/tickets/BulkActionBar';
 import { TicketsTable } from '../components/tickets/TicketsTable';
 import { TicketRowSkeleton } from '../components/tickets/TicketRowSkeleton';
+import { SaveViewDialog } from '../components/tickets/SaveViewDialog';
 import { ticketToRow } from '../components/tickets/mappers';
 import { fetchTickets } from '../api/client';
 import { useFilters } from '../hooks/useFilters';
@@ -74,7 +75,7 @@ export default function TicketsPageRevamp() {
             </span>
           </div>
           <div className="flex gap-1.5">
-            <button className="text-[11px] px-1.5 py-1 rounded border" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>Save view</button>
+            <SaveViewDialog filters={filters} />
             <button className="text-[11px] px-1.5 py-1 rounded border inline-flex items-center gap-1" style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)', color: 'var(--c-fg-2)' }}>Export <Icn d={I.chevD} s={11} /></button>
             <button onClick={() => refetch()} className="text-[11px] px-1.5 py-1 rounded inline-flex items-center gap-1" style={{ backgroundColor: 'var(--c-accent)', color: 'white' }}>
               <Icn d={I.plus} s={11} /> New ticket

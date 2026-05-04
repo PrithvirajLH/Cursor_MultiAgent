@@ -1,6 +1,12 @@
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { fetchTeams, fetchTicketCounts } from '../../api/client';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  deleteSavedView,
+  fetchSavedViews,
+  fetchTeams,
+  fetchTicketCounts,
+  type SavedViewRecord,
+} from '../../api/client';
 import { useAuthSession } from '../../hooks/useAuthSession';
 import { Icn, I, Avatar } from '../atoms';
 import {
@@ -87,6 +93,14 @@ export function AppSidebar() {
     queryKey: ['teams'],
     queryFn: ({ signal }) => fetchTeams({ signal }),
     staleTime: 5 * 60_000,
+    enabled: authReady,
+  });
+
+  // User-created saved views.
+  const { data: userSavedViews } = useQuery({
+    queryKey: ['saved-views'],
+    queryFn: () => fetchSavedViews(),
+    staleTime: 60_000,
     enabled: authReady,
   });
 
@@ -232,6 +246,23 @@ export function AppSidebar() {
           );
         })}
 
+        {/* User-saved views (CRUD) */}
+        {userSavedViews && userSavedViews.length > 0 && (
+          <>
+            <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--c-fg-4)' }}>
+              Mine
+            </div>
+            {userSavedViews.map(v => (
+              <UserSavedViewLink
+                key={v.id}
+                view={v}
+                onTicketsRevamp={onTicketsRevamp}
+                searchParams={searchParams}
+              />
+            ))}
+          </>
+        )}
+
         {/* Teams — clickable, filters list by teamId */}
         <div className="px-2 pt-3.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--c-fg-4)' }}>Teams</div>
         {teamList.length === 0 ? (
@@ -277,4 +308,81 @@ export function AppSidebar() {
       </div>
     </aside>
   );
+}
+
+/* ─── User-saved view row with delete-on-hover ─────────────────── */
+
+interface UserSavedViewLinkProps {
+  view: SavedViewRecord;
+  onTicketsRevamp: boolean;
+  searchParams: URLSearchParams;
+}
+
+function UserSavedViewLink({ view, onTicketsRevamp, searchParams }: UserSavedViewLinkProps) {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => deleteSavedView(view.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['saved-views'] }),
+  });
+
+  const query = filtersToQueryString(view.filters);
+  const active = onTicketsRevamp && matchesSearch(searchParams, view.filters);
+
+  return (
+    <div
+      className="group flex items-center gap-2 px-2 py-1 text-[12px] rounded-[3px] mb-px"
+      style={{
+        backgroundColor: active ? 'var(--c-accent-tint)' : 'transparent',
+        color: active ? 'var(--c-accent)' : 'var(--c-fg-2)',
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      <Link
+        to={`/tickets-revamp${query}`}
+        className="flex-1 min-w-0 flex items-center gap-2 truncate"
+        style={{ color: 'inherit' }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full flex-none"
+          style={{ backgroundColor: 'var(--c-fg-5)' }}
+        />
+        <span className="truncate">{view.name}</span>
+      </Link>
+      <button
+        onClick={() => {
+          if (window.confirm(`Delete saved view "${view.name}"?`)) remove.mutate();
+        }}
+        disabled={remove.isPending}
+        className="opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ color: 'var(--c-fg-4)' }}
+        aria-label={`Delete ${view.name}`}
+        title="Delete view"
+      >
+        <Icn d={I.x} s={11} />
+      </button>
+    </div>
+  );
+}
+
+function filtersToQueryString(filters: Record<string, unknown>): string {
+  const sp = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => {
+    if (v == null) return;
+    if (Array.isArray(v)) {
+      if (v.length) sp.set(k, v.join(','));
+    } else if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+      sp.set(k, String(v));
+    }
+  });
+  const s = sp.toString();
+  return s ? `?${s}` : '';
+}
+
+function matchesSearch(actual: URLSearchParams, expected: Record<string, unknown>): boolean {
+  return Object.entries(expected).every(([k, v]) => {
+    if (v == null) return true;
+    const a = actual.get(k);
+    if (Array.isArray(v)) return a === v.join(',');
+    return a === String(v);
+  });
 }
