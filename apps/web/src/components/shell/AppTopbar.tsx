@@ -1,4 +1,5 @@
 import { Icn, I, Avatar } from '../atoms';
+import { TopbarSearch } from './TopbarSearch';
 
 interface AppTopbarProps {
   crumbs: string[];
@@ -24,23 +25,7 @@ export function AppTopbar({ crumbs }: AppTopbarProps) {
 
       <div className="flex-1" />
 
-      <div
-        className="flex items-center rounded gap-1.5 text-[12px] w-80 px-2 py-[3px] border"
-        style={{ backgroundColor: 'var(--c-surface-2)', borderColor: 'var(--c-border)', color: 'var(--c-fg-4)' }}
-      >
-        <Icn d={I.search} s={13} />
-        <span>Search tickets, customers, KB…</span>
-        <span className="flex-1" />
-        <span
-          className="font-mono text-[10px] px-1 py-px rounded-sm border"
-          style={{
-            backgroundColor: 'var(--c-surface-3)',
-            borderColor: 'var(--c-border)',
-            borderBottomWidth: 2,
-            color: 'var(--c-fg-3)',
-          }}
-        >⌘K</span>
-      </div>
+      <TopbarSearch />
 
       <button
         className="inline-flex items-center gap-1.5 px-2.5 py-[5px] rounded text-[12px] font-medium border"
