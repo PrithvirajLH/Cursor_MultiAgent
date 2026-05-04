@@ -13,6 +13,10 @@ interface TicketsTableProps {
   onSortChange?: (sort: SortField, order: SortOrder) => void;
   /** When false (e.g. EMPLOYEE role), hide the checkbox column. Default true. */
   showCheckbox?: boolean;
+  /** Currently keyboard-focused row id (for J/K nav highlight) */
+  focusedRowId?: string | null;
+  /** Called when user clicks a row, to sync keyboard focus to that row */
+  onFocusRow?: (index: number) => void;
 }
 
 export function TicketsTable({
@@ -24,6 +28,8 @@ export function TicketsTable({
   order,
   onSortChange,
   showCheckbox = true,
+  focusedRowId,
+  onFocusRow,
 }: TicketsTableProps) {
   const [hovered, setHovered] = useState<string | null>(null);
   const allChecked = tickets.length > 0 && tickets.every(t => selected.has(t.id));
@@ -78,18 +84,29 @@ export function TicketsTable({
           </tr>
         </thead>
         <tbody>
-          {tickets.map(t => {
+          {tickets.map((t, i) => {
             const isSelected = selected.has(t.id);
             const isHover = hovered === t.id;
-            const rowBg = isSelected ? 'var(--c-accent-tint)' : isHover ? 'var(--c-surface-2)' : 'transparent';
+            const isFocused = focusedRowId === t.id;
+            const rowBg = isSelected
+              ? 'var(--c-accent-tint)'
+              : isFocused
+                ? 'var(--c-surface-3)'
+                : isHover
+                  ? 'var(--c-surface-2)'
+                  : 'transparent';
             const cellStyle = { backgroundColor: rowBg, borderColor: 'var(--c-divider)' };
             return (
               <tr
                 key={t.id}
                 onMouseEnter={() => setHovered(t.id)}
                 onMouseLeave={() => setHovered(null)}
-                onClick={() => onRowClick?.(t.id)}
+                onClick={() => {
+                  onFocusRow?.(i);
+                  onRowClick?.(t.id);
+                }}
                 className="cursor-pointer"
+                style={isFocused ? { boxShadow: 'inset 2px 0 0 0 var(--c-accent)' } : undefined}
               >
                 {showCheckbox ? (
                   <td className="py-1.5 px-2.5 border-b" style={cellStyle} onClick={e => e.stopPropagation()}>

@@ -11,6 +11,7 @@ import { ticketToRow } from '../components/tickets/mappers';
 import { fetchTickets } from '../api/client';
 import { useFilters } from '../hooks/useFilters';
 import { useAuthSession } from '../hooks/useAuthSession';
+import { useTicketListKeyboard } from '../components/tickets/use-ticket-list-keyboard';
 
 export default function TicketsPageRevamp() {
   const navigate = useNavigate();
@@ -33,6 +34,14 @@ export default function TicketsPageRevamp() {
     () => (data?.data ?? []).map(ticketToRow),
     [data],
   );
+
+  const { focusedRowId, setFocusedRowIndex } = useTicketListKeyboard({
+    tickets: rows,
+    selected,
+    onSelectionChange: setSelected,
+    onOpenTicket: id => navigate(`/tickets/${id}`),
+    canSelect: canBulkEdit,
+  });
   const total = data?.meta?.total ?? rows.length;
   const meta = data?.meta;
 
@@ -119,6 +128,8 @@ export default function TicketsPageRevamp() {
           order={filters.order}
           onSortChange={(sort, order) => setFilters({ sort, order })}
           showCheckbox={canBulkEdit}
+          focusedRowId={focusedRowId}
+          onFocusRow={setFocusedRowIndex}
         />
       )}
 
