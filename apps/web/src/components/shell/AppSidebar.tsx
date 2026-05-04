@@ -1,4 +1,7 @@
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { fetchTeams, fetchTicketCounts } from '../../api/client';
+import { useAuthSession } from '../../hooks/useAuthSession';
 import { Icn, I, Avatar } from '../atoms';
 import {
   PRIMARY_NAV_PRESETS,
@@ -28,13 +31,34 @@ const STANDALONE_LINKS: PrimaryNavLink[] = [
   { to: '/mentions',  icon: I.bell,  label: 'Mentions',  count: '3', hasDot: true },
 ];
 
-const TEAMS = [
-  { label: 'Platform',   color: 'var(--c-accent)', count: '38' },
-  { label: 'Identity',   color: 'var(--c-amber)',  count: '24' },
-  { label: 'Data',       color: 'var(--c-green)',  count: '19' },
-  { label: 'Mobile',     color: 'var(--c-purple)', count: '14' },
-  { label: 'Compliance', color: 'var(--c-fg-3)',   count: '6'  },
+// Stable color palette for teams in display order — extends beyond 5 by cycling.
+const TEAM_COLORS = [
+  'var(--c-accent)',
+  'var(--c-amber)',
+  'var(--c-green)',
+  'var(--c-purple)',
+  'var(--c-blue)',
+  'var(--c-fg-3)',
 ];
+
+/**
+ * Maps a count overlay to a primary-nav preset id.
+ * If a preset id is missing here, it falls back to the hard-coded value
+ * in saved-views.ts.
+ */
+function countForPreset(
+  presetId: string,
+  counts: Awaited<ReturnType<typeof fetchTicketCounts>> | undefined,
+): string | undefined {
+  if (!counts) return undefined;
+  switch (presetId) {
+    case 'inbox':         return String(counts.open);
+    case 'my-tickets':    return String(counts.assignedToMe);
+    case 'team-queue':    return String(counts.unassigned);
+    case 'created-by-me': return String(counts.createdByMeOpen);
+    default:              return undefined;
+  }
+}
 
 const TONE_COLOR: Record<ToneKey, string> = {
   red:   'var(--c-red)',
@@ -47,6 +71,30 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const onTicketsRevamp = pathname.startsWith('/tickets-revamp');
+  const { user, loading: authLoading } = useAuthSession();
+  const authReady = !!user && !authLoading;
+
+  // Live counts driving Inbox / My tickets / Team queue / Created-by-me badges.
+  const { data: counts } = useQuery({
+    queryKey: ['ticket-counts'],
+    queryFn: () => fetchTicketCounts(),
+    staleTime: 60_000,
+    enabled: authReady,
+  });
+
+  // Real teams replacing the hard-coded list.
+  const { data: teams } = useQuery({
+    queryKey: ['teams'],
+    queryFn: ({ signal }) => fetchTeams({ signal }),
+    staleTime: 5 * 60_000,
+    enabled: authReady,
+  });
+
+  const teamList = (teams ?? []).map((t, i) => ({
+    id: t.id,
+    label: t.name,
+    color: TEAM_COLORS[i % TEAM_COLORS.length],
+  }));
 
   const presetIsActive = (preset: SidebarPreset) =>
     onTicketsRevamp && preset.matches(searchParams);
@@ -103,6 +151,8 @@ export function AppSidebar() {
         {PRIMARY_NAV_PRESETS.map(p => {
           const active = presetIsActive(p);
           const icon = ICON_FOR_PRESET[p.id] ?? I.inbox;
+          const liveCount = countForPreset(p.id, counts);
+          const count = liveCount ?? p.count;
           return (
             <Link
               key={p.id}
@@ -116,9 +166,9 @@ export function AppSidebar() {
             >
               <Icn d={icon} s={14} />
               <span className="flex-1">{p.label}</span>
-              {p.count && (
+              {count && (
                 <span className="font-mono text-[10px]" style={{ color: active ? 'var(--c-accent)' : 'var(--c-fg-4)' }}>
-                  {p.count}
+                  {count}
                 </span>
               )}
             </Link>
@@ -182,15 +232,32 @@ export function AppSidebar() {
           );
         })}
 
-        {/* Teams (visual only — needs team filter wiring later) */}
+        {/* Teams — clickable, filters list by teamId */}
         <div className="px-2 pt-3.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--c-fg-4)' }}>Teams</div>
-        {TEAMS.map(t => (
-          <div key={t.label} className="flex items-center gap-2 px-2 py-1 text-[12px]">
-            <span className="w-2 h-2 rounded-sm flex-none" style={{ backgroundColor: t.color }} />
-            <span className="flex-1">{t.label}</span>
-            <span className="font-mono text-[10px]" style={{ color: 'var(--c-fg-4)' }}>{t.count}</span>
+        {teamList.length === 0 ? (
+          <div className="px-2 py-1 text-[11px]" style={{ color: 'var(--c-fg-4)' }}>
+            {authReady ? '—' : 'Loading…'}
           </div>
-        ))}
+        ) : (
+          teamList.map(t => {
+            const active = onTicketsRevamp && searchParams.get('teamIds') === t.id;
+            return (
+              <Link
+                key={t.id}
+                to={`/tickets-revamp?teamIds=${encodeURIComponent(t.id)}`}
+                className="flex items-center gap-2 px-2 py-1 text-[12px] rounded-[3px] mb-px"
+                style={{
+                  backgroundColor: active ? 'var(--c-accent-tint)' : 'transparent',
+                  color: active ? 'var(--c-accent)' : 'var(--c-fg-2)',
+                  fontWeight: active ? 600 : 400,
+                }}
+              >
+                <span className="w-2 h-2 rounded-sm flex-none" style={{ backgroundColor: t.color }} />
+                <span className="flex-1 truncate">{t.label}</span>
+              </Link>
+            );
+          })
+        )}
       </div>
 
       {/* User card (bottom) */}
