@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTicketById } from '../api/client';
 import { useAuthSession } from '../hooks/useAuthSession';
@@ -17,9 +17,14 @@ import { PropertiesPane } from '../components/ticket-detail-revamp/PropertiesPan
  * shell + atoms + ticket-fetch hooks. Wired at /tickets-revamp/:id.
  */
 export default function TicketDetailRevamp() {
-  const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuthSession();
+
+  // The bare-render path in App.tsx renders this component outside the legacy
+  // <Routes> tree, so `useParams()` returns {}. Parse the id straight from URL.
+  const idMatch = location.pathname.match(/^\/tickets-revamp\/([^/?#]+)/);
+  const id = idMatch?.[1];
 
   const { data: ticket, isLoading, isError } = useQuery({
     queryKey: ['ticket-detail-revamp', id],
