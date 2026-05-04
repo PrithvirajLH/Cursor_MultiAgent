@@ -4,6 +4,7 @@ import { fetchTicketById } from '../api/client';
 import { AppSidebar } from '../components/shell/AppSidebar';
 import { AppTopbar } from '../components/shell/AppTopbar';
 import { Icn, I } from '../components/atoms';
+import { MidList } from '../components/ticket-detail-revamp/MidList';
 
 /**
  * Master-detail layout per the design hand-off:
@@ -43,9 +44,7 @@ export default function TicketDetailRevamp() {
             className="w-[280px] flex-none border-r overflow-auto"
             style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border)' }}
           >
-            <div className="p-3 text-[12px]" style={{ color: 'var(--c-fg-4)' }}>
-              Mid-list pane (P2.2.2)
-            </div>
+            <MidList currentTicketId={id} />
           </aside>
 
           <main
