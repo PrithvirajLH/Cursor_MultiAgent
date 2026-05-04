@@ -5,6 +5,7 @@ import { AppSidebar } from '../components/shell/AppSidebar';
 import { AppTopbar } from '../components/shell/AppTopbar';
 import { Icn, I } from '../components/atoms';
 import { MidList } from '../components/ticket-detail-revamp/MidList';
+import { ConversationPane } from '../components/ticket-detail-revamp/ConversationPane';
 
 /**
  * Master-detail layout per the design hand-off:
@@ -47,35 +48,34 @@ export default function TicketDetailRevamp() {
             <MidList currentTicketId={id} />
           </aside>
 
-          <main
-            className="flex-1 flex flex-col min-w-0 overflow-hidden"
-            style={{ backgroundColor: 'var(--c-surface)' }}
-          >
-            {isLoading ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[13px]" style={{ color: 'var(--c-fg-4)' }}>
-                <Icn d={I.clock} s={20} />
-                <span>Loading ticket…</span>
+          {isLoading ? (
+            <main
+              className="flex-1 flex flex-col items-center justify-center gap-2 text-[13px] min-w-0"
+              style={{ backgroundColor: 'var(--c-surface)', color: 'var(--c-fg-4)' }}
+            >
+              <Icn d={I.clock} s={20} />
+              <span>Loading ticket…</span>
+            </main>
+          ) : isError || !ticket ? (
+            <main
+              className="flex-1 flex flex-col items-center justify-center gap-2 text-[13px] min-w-0"
+              style={{ backgroundColor: 'var(--c-surface)', color: 'var(--c-fg-3)' }}
+            >
+              <Icn d={I.alert} s={32} />
+              <div className="font-semibold" style={{ color: 'var(--c-fg)' }}>
+                Couldn't load ticket
               </div>
-            ) : isError ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-2 text-[13px]" style={{ color: 'var(--c-fg-3)' }}>
-                <Icn d={I.alert} s={32} />
-                <div className="font-semibold" style={{ color: 'var(--c-fg)' }}>
-                  Couldn't load ticket
-                </div>
-                <button
-                  onClick={() => navigate(-1)}
-                  className="text-[11px] px-2 py-1 rounded border"
-                  style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)' }}
-                >
-                  Back to list
-                </button>
-              </div>
-            ) : ticket ? (
-              <div className="p-3 text-[12px]" style={{ color: 'var(--c-fg-4)' }}>
-                Conversation pane (P2.2.3) — currently showing: {ticket.subject}
-              </div>
-            ) : null}
-          </main>
+              <button
+                onClick={() => navigate(-1)}
+                className="text-[11px] px-2 py-1 rounded border"
+                style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border-strong)' }}
+              >
+                Back to list
+              </button>
+            </main>
+          ) : (
+            <ConversationPane ticket={ticket} />
+          )}
 
           <aside
             className="w-[290px] flex-none border-l overflow-auto"
