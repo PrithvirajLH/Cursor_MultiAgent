@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchTicketById } from '../api/client';
+import { useAuthSession } from '../hooks/useAuthSession';
 import { AppSidebar } from '../components/shell/AppSidebar';
 import { AppTopbar } from '../components/shell/AppTopbar';
 import { Icn, I } from '../components/atoms';
@@ -18,11 +19,13 @@ import { PropertiesPane } from '../components/ticket-detail-revamp/PropertiesPan
 export default function TicketDetailRevamp() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuthSession();
 
   const { data: ticket, isLoading, isError } = useQuery({
     queryKey: ['ticket-detail-revamp', id],
     queryFn: () => fetchTicketById(id!),
-    enabled: !!id,
+    // Wait for auth — fetchTicketById without a token returns 401.
+    enabled: !!id && !!user && !authLoading,
   });
 
   return (

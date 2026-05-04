@@ -5,6 +5,7 @@ import {
   type TicketDetail,
   type TicketMessage,
 } from '../../api/client';
+import { useAuthSession } from '../../hooks/useAuthSession';
 import { Pill, Prio, Avatar, Icn, I, toneFromName } from '../atoms';
 import { MessageBody } from '../MessageBody';
 import { ticketToRow } from '../tickets/mappers';
@@ -17,10 +18,12 @@ type ComposerTab = 'public' | 'internal' | 'forward';
 
 export function ConversationPane({ ticket }: ConversationPaneProps) {
   const [composerTab, setComposerTab] = useState<ComposerTab>('public');
+  const { user, loading: authLoading } = useAuthSession();
 
   const { data: messagesData, isLoading: messagesLoading } = useQuery({
     queryKey: ['ticket-messages-revamp', ticket.id],
     queryFn: () => fetchTicketMessages(ticket.id, { take: 50 }),
+    enabled: !!user && !authLoading,
   });
 
   const messages = messagesData?.data ?? [];

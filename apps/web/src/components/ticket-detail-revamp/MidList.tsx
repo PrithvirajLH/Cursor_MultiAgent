@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { fetchTickets } from '../../api/client';
 import { ticketToRow } from '../tickets/mappers';
 import { useFilters } from '../../hooks/useFilters';
+import { useAuthSession } from '../../hooks/useAuthSession';
 import { Pill, Prio, Avatar } from '../atoms';
 
 interface MidListProps {
@@ -22,12 +23,14 @@ interface MidListProps {
 export function MidList({ currentTicketId }: MidListProps) {
   const { apiParams } = useFilters();
   const search = window.location.search; // raw query string, preserves order
+  const { user, loading: authLoading } = useAuthSession();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['tickets-revamp', apiParams],
     queryFn: ({ signal }) => fetchTickets(apiParams, { signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
+    enabled: !!user && !authLoading,
   });
 
   const rows = useMemo(
