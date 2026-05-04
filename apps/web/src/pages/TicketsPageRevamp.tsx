@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AppShell } from '../components/shell/AppShell';
 import { Pill, Icn, I } from '../components/atoms';
 import { FilterRow } from '../components/tickets/FilterRow';
@@ -16,10 +16,14 @@ import { useTicketRealtime } from '../components/tickets/use-ticket-realtime';
 
 export default function TicketsPageRevamp() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const { user } = useAuthSession();
   const role = user?.role ?? 'EMPLOYEE';
   const canBulkEdit = role !== 'EMPLOYEE';
+
+  // Helper: navigate to detail while preserving the current filter query string
+  const openTicket = (id: string) => navigate(`/tickets-revamp/${id}${location.search}`);
 
   const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } =
     useFilters();
@@ -40,7 +44,7 @@ export default function TicketsPageRevamp() {
     tickets: rows,
     selected,
     onSelectionChange: setSelected,
-    onOpenTicket: id => navigate(`/tickets/${id}`),
+    onOpenTicket: openTicket,
     canSelect: canBulkEdit,
   });
 
@@ -130,7 +134,7 @@ export default function TicketsPageRevamp() {
           tickets={rows}
           selected={selected}
           onSelectionChange={setSelected}
-          onRowClick={(id) => navigate(`/tickets/${id}`)}
+          onRowClick={openTicket}
           sort={filters.sort}
           order={filters.order}
           onSortChange={(sort, order) => setFilters({ sort, order })}
