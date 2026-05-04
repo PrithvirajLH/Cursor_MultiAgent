@@ -98,7 +98,11 @@ export default function TicketsPageRevamp() {
 
       <BulkActionBar
         ticketIds={Array.from(selected)}
-        currentUserId={user?.id}
+        currentUser={
+          user
+            ? { id: user.id, email: user.email, displayName: user.displayName }
+            : undefined
+        }
         onClear={() => setSelected(new Set())}
         onActionComplete={() => refetch()}
       />

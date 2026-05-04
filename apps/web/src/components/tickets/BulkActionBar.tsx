@@ -1,10 +1,10 @@
 import type { ChangeEvent } from 'react';
-import type { TicketPriority, TicketStatus } from '../../api/client';
+import type { TicketPriority, TicketStatus, UserRef } from '../../api/client';
 import { useBulkAssign, useBulkPriority, useBulkStatus } from './bulk-actions';
 
 interface BulkActionBarProps {
   ticketIds: string[];
-  currentUserId?: string;
+  currentUser?: UserRef;
   onClear?: () => void;
   onActionComplete?: () => void;
 }
@@ -35,7 +35,7 @@ const selectStyle = {
 
 export function BulkActionBar({
   ticketIds,
-  currentUserId,
+  currentUser,
   onClear,
   onActionComplete,
 }: BulkActionBarProps) {
@@ -54,12 +54,12 @@ export function BulkActionBar({
   };
 
   const onAssignToMe = () => {
-    if (!currentUserId) return;
-    assign.mutate({ ticketIds, assigneeId: currentUserId }, { onSuccess: handleAfter });
+    if (!currentUser) return;
+    assign.mutate({ ticketIds, assignee: currentUser }, { onSuccess: handleAfter });
   };
 
   const onUnassign = () => {
-    assign.mutate({ ticketIds, assigneeId: undefined }, { onSuccess: handleAfter });
+    assign.mutate({ ticketIds, assignee: undefined }, { onSuccess: handleAfter });
   };
 
   const onStatusChange = (e: ChangeEvent<HTMLSelectElement>) => {
@@ -92,7 +92,7 @@ export function BulkActionBar({
 
       <button
         onClick={onAssignToMe}
-        disabled={busy || !currentUserId}
+        disabled={busy || !currentUser}
         className="text-[12px] px-2 py-0.5 rounded border bg-white disabled:opacity-50"
         style={buttonStyle}
       >
