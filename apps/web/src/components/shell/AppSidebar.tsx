@@ -1,7 +1,13 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Icn, I, Avatar } from '../atoms';
+import {
+  PRIMARY_NAV_PRESETS,
+  SAVED_VIEWS,
+  type SidebarPreset,
+  type ToneKey,
+} from './saved-views';
 
-interface NavItem {
+interface PrimaryNavLink {
   to: string;
   icon: typeof I.inbox;
   label: string;
@@ -9,22 +15,17 @@ interface NavItem {
   hasDot?: boolean;
 }
 
-const PRIMARY_NAV: NavItem[] = [
-  { to: '/dashboard',   icon: I.chart,  label: 'Dashboard' },
-  { to: '/tickets',     icon: I.inbox,  label: 'Inbox',       count: '142' },
-  { to: '/my-tickets',  icon: I.ticket, label: 'My tickets',  count: '14'  },
-  { to: '/team',        icon: I.users,  label: 'Team queue',  count: '38'  },
-  { to: '/watching',    icon: I.eye,    label: 'Watching',    count: '7'   },
-  { to: '/mentions',    icon: I.bell,   label: 'Mentions',    count: '3', hasDot: true },
-];
+const ICON_FOR_PRESET: Record<string, typeof I.inbox> = {
+  'inbox':         I.inbox,
+  'my-tickets':    I.ticket,
+  'team-queue':    I.users,
+  'created-by-me': I.note,
+};
 
-const SAVED_VIEWS = [
-  { label: 'P1 today',                count: '4',  tone: 'red'   as const },
-  { label: 'Awaiting reply > 24h',    count: '11', tone: 'amber' as const },
-  { label: 'Breach risk · 1h',        count: '8',  tone: 'amber' as const },
-  { label: 'Unassigned',              count: '17', tone: 'gray'  as const },
-  { label: 'Enterprise tier',         count: '52', tone: 'gray'  as const },
-  { label: 'API errors',              count: '9',  tone: 'gray'  as const },
+const STANDALONE_LINKS: PrimaryNavLink[] = [
+  { to: '/dashboard', icon: I.chart, label: 'Dashboard' },
+  { to: '/watching',  icon: I.eye,   label: 'Watching',  count: '7' },
+  { to: '/mentions',  icon: I.bell,  label: 'Mentions',  count: '3', hasDot: true },
 ];
 
 const TEAMS = [
@@ -35,9 +36,20 @@ const TEAMS = [
   { label: 'Compliance', color: 'var(--c-fg-3)',   count: '6'  },
 ];
 
+const TONE_COLOR: Record<ToneKey, string> = {
+  red:   'var(--c-red)',
+  amber: 'var(--c-amber)',
+  green: 'var(--c-green)',
+  gray:  'var(--c-fg-5)',
+};
+
 export function AppSidebar() {
   const { pathname } = useLocation();
-  const isActive = (to: string) => pathname.startsWith(to);
+  const [searchParams] = useSearchParams();
+  const onTicketsRevamp = pathname.startsWith('/tickets-revamp');
+
+  const presetIsActive = (preset: SidebarPreset) =>
+    onTicketsRevamp && preset.matches(searchParams);
 
   return (
     <aside
@@ -62,8 +74,60 @@ export function AppSidebar() {
 
       {/* Scrollable nav */}
       <div className="p-2 text-[12px] flex-1 overflow-auto">
-        {PRIMARY_NAV.map(r => {
-          const active = isActive(r.to);
+        {/* Standalone (Dashboard) — non-revamp routes */}
+        {STANDALONE_LINKS.slice(0, 1).map(r => {
+          const active = pathname.startsWith(r.to);
+          return (
+            <Link
+              key={r.to}
+              to={r.to}
+              className="flex items-center gap-2 px-2 py-1 rounded-[3px] mb-px"
+              style={{
+                backgroundColor: active ? 'var(--c-accent-tint)' : 'transparent',
+                color: active ? 'var(--c-accent)' : 'var(--c-fg-2)',
+                fontWeight: active ? 600 : 500,
+              }}
+            >
+              <Icn d={r.icon} s={14} />
+              <span className="flex-1">{r.label}</span>
+              {r.count && (
+                <span className="font-mono text-[10px]" style={{ color: active ? 'var(--c-accent)' : 'var(--c-fg-4)' }}>
+                  {r.count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+
+        {/* Primary nav presets — all link to /tickets-revamp with preset query */}
+        {PRIMARY_NAV_PRESETS.map(p => {
+          const active = presetIsActive(p);
+          const icon = ICON_FOR_PRESET[p.id] ?? I.inbox;
+          return (
+            <Link
+              key={p.id}
+              to={`/tickets-revamp${p.buildQuery()}`}
+              className="flex items-center gap-2 px-2 py-1 rounded-[3px] mb-px"
+              style={{
+                backgroundColor: active ? 'var(--c-accent-tint)' : 'transparent',
+                color: active ? 'var(--c-accent)' : 'var(--c-fg-2)',
+                fontWeight: active ? 600 : 500,
+              }}
+            >
+              <Icn d={icon} s={14} />
+              <span className="flex-1">{p.label}</span>
+              {p.count && (
+                <span className="font-mono text-[10px]" style={{ color: active ? 'var(--c-accent)' : 'var(--c-fg-4)' }}>
+                  {p.count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+
+        {/* Standalone non-list links (Watching, Mentions) */}
+        {STANDALONE_LINKS.slice(1).map(r => {
+          const active = pathname.startsWith(r.to);
           return (
             <Link
               key={r.to}
@@ -87,25 +151,38 @@ export function AppSidebar() {
           );
         })}
 
-        {/* Saved views */}
+        {/* Saved views — preset filters */}
         <div className="px-2 pt-3.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em] flex justify-between" style={{ color: 'var(--c-fg-4)' }}>
           <span>Saved views</span><Icn d={I.plus} s={11} />
         </div>
-        {SAVED_VIEWS.map(v => (
-          <div key={v.label} className="flex items-center gap-2 px-2 py-1 text-[12px]">
-            <span
-              className="w-1.5 h-1.5 rounded-full flex-none"
+        {SAVED_VIEWS.map(v => {
+          const active = presetIsActive(v);
+          return (
+            <Link
+              key={v.id}
+              to={`/tickets-revamp${v.buildQuery()}`}
+              className="flex items-center gap-2 px-2 py-1 text-[12px] rounded-[3px] mb-px"
               style={{
-                backgroundColor:
-                  v.tone === 'red' ? 'var(--c-red)' : v.tone === 'amber' ? 'var(--c-amber)' : 'var(--c-fg-5)',
+                backgroundColor: active ? 'var(--c-accent-tint)' : 'transparent',
+                color: active ? 'var(--c-accent)' : 'var(--c-fg-2)',
+                fontWeight: active ? 600 : 400,
               }}
-            />
-            <span className="flex-1 min-w-0 truncate">{v.label}</span>
-            <span className="font-mono text-[10px]" style={{ color: 'var(--c-fg-4)' }}>{v.count}</span>
-          </div>
-        ))}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full flex-none"
+                style={{ backgroundColor: TONE_COLOR[v.tone ?? 'gray'] }}
+              />
+              <span className="flex-1 min-w-0 truncate">{v.label}</span>
+              {v.count && (
+                <span className="font-mono text-[10px]" style={{ color: active ? 'var(--c-accent)' : 'var(--c-fg-4)' }}>
+                  {v.count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
 
-        {/* Teams */}
+        {/* Teams (visual only — needs team filter wiring later) */}
         <div className="px-2 pt-3.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--c-fg-4)' }}>Teams</div>
         {TEAMS.map(t => (
           <div key={t.label} className="flex items-center gap-2 px-2 py-1 text-[12px]">
