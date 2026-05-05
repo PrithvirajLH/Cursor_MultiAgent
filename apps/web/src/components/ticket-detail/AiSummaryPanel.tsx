@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sparkles,
   ChevronDown,
@@ -38,22 +39,26 @@ interface AiAnalysisData {
 }
 
 export function AiSummaryPanel({ ticketId }: AiSummaryPanelProps) {
-  const [data, setData] = useState<AiAnalysisData | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAiAnalysis(ticketId)
-      .then((res) => {
-        if (res.data) {
-          setData(res.data as AiAnalysisData);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [ticketId]);
+  // Cache the AI analysis per ticket id. Re-visiting the same ticket
+  // skips the network call entirely (5-minute staleTime). Errors are
+  // swallowed by returning null so the panel just hides.
+  const { data, isLoading } = useQuery<AiAnalysisData | null>({
+    queryKey: ["ai-analysis", ticketId],
+    queryFn: async () => {
+      try {
+        const res = await fetchAiAnalysis(ticketId);
+        return (res.data as AiAnalysisData) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 5 * 60_000,
+    enabled: !!ticketId,
+  });
 
-  if (loading || !data?.aiAnalysis) return null;
+  if (isLoading || !data?.aiAnalysis) return null;
 
   const analysis = data.aiAnalysis;
   const confidence = analysis.departmentConfidence ?? 0;

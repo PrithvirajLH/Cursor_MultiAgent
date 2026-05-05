@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Clock3, Copy } from "lucide-react";
@@ -186,13 +187,31 @@ export function TicketDetailPage({
   const [followError, setFollowError] = useState<string | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
 
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
+  const teamMembersQuery = useQuery({
+    queryKey: ["team-members", ticket?.assignedTeam?.id],
+    queryFn: () => fetchTeamMembers(ticket!.assignedTeam!.id),
+    enabled: !!ticket?.assignedTeam?.id,
+    staleTime: 5 * 60_000,
+  });
+  const teamMembers = useMemo<TeamMember[]>(
+    () => teamMembersQuery.data?.data ?? [],
+    [teamMembersQuery.data],
+  );
+  const membersLoading = teamMembersQuery.isLoading;
   const [assignToId, setAssignToId] = useState("");
   const [nextStatus, setNextStatus] = useState("");
   const [transferTeamId, setTransferTeamId] = useState("");
   const [transferAssigneeId, setTransferAssigneeId] = useState("");
-  const [transferMembers, setTransferMembers] = useState<TeamMember[]>([]);
+  const transferMembersQuery = useQuery({
+    queryKey: ["team-members", transferTeamId],
+    queryFn: () => fetchTeamMembers(transferTeamId),
+    enabled: !!transferTeamId,
+    staleTime: 5 * 60_000,
+  });
+  const transferMembers = useMemo<TeamMember[]>(
+    () => transferMembersQuery.data?.data ?? [],
+    [transferMembersQuery.data],
+  );
 
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
@@ -1024,29 +1043,11 @@ export function TicketDetailPage({
     };
   }, [ticketId, currentUserId]);
 
+  // Reset transferAssigneeId when transferTeamId changes — the team
+  // members themselves come from React Query (teamMembersQuery /
+  // transferMembersQuery) which dedupes per-team-id and caches for 5min.
   useEffect(() => {
-    if (!ticket?.assignedTeam?.id) {
-      setTeamMembers([]);
-      return;
-    }
-    setTeamMembers([]);
-    setMembersLoading(true);
-    fetchTeamMembers(ticket.assignedTeam.id)
-      .then((r) => setTeamMembers(r.data))
-      .catch(() => setTeamMembers([]))
-      .finally(() => setMembersLoading(false));
-  }, [ticket?.assignedTeam?.id]);
-
-  useEffect(() => {
-    if (!transferTeamId) {
-      setTransferMembers([]);
-      setTransferAssigneeId("");
-      return;
-    }
     setTransferAssigneeId("");
-    fetchTeamMembers(transferTeamId)
-      .then((r) => setTransferMembers(r.data))
-      .catch(() => setTransferMembers([]));
   }, [transferTeamId]);
 
   useEffect(() => {
