@@ -162,6 +162,28 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           ref={scrollRef}
           className="flex items-end gap-0.5 overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: "none" }}
+          onDragOver={(e) => {
+            // Permit drops in the empty space after the last tab.
+            if (draggingTabId) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }
+          }}
+          onDrop={(e) => {
+            // Fallback: a drop landing on the bar's empty area (past the
+            // last tab) reorders to the end. Per-tab onDrop handlers
+            // stop propagation implicitly, so this only fires when the
+            // cursor wasn't on any tab.
+            const fromId = e.dataTransfer.getData("text/plain");
+            if (fromId && tabs.length > 0) {
+              const last = tabs[tabs.length - 1];
+              if (fromId !== last.id) {
+                reorderTabs(fromId, last.id, "after");
+              }
+            }
+            setDraggingTabId(null);
+            setDropTarget(null);
+          }}
         >
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
@@ -215,9 +237,21 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                 onDrop={(e) => {
                   e.preventDefault();
                   const fromId = e.dataTransfer.getData("text/plain");
-                  const target = dropTarget;
-                  if (fromId && target && fromId !== target.id) {
-                    reorderTabs(fromId, target.id, target.position);
+                  // Compute the insertion position from the actual drop
+                  // event data instead of relying on the dropTarget
+                  // React state — that state can be stale here because
+                  // dragover's setDropTarget is async, and onDrop may
+                  // fire before React has re-rendered with the latest
+                  // hover. Reading e.clientX is always up-to-date.
+                  if (fromId && fromId !== tab.id) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const isLeftHalf =
+                      e.clientX < rect.left + rect.width / 2;
+                    reorderTabs(
+                      fromId,
+                      tab.id,
+                      isLeftHalf ? "before" : "after",
+                    );
                   }
                   setDraggingTabId(null);
                   setDropTarget(null);
