@@ -7,7 +7,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Clock3, Copy } from "lucide-react";
@@ -149,6 +149,7 @@ export function TicketDetailPage({
   const location = useLocation();
   const navigate = useNavigate();
   const ticketTabs = useTicketTabs();
+  const queryClient = useQueryClient();
 
   /* ——— State ——— */
 
@@ -638,12 +639,17 @@ export function TicketDetailPage({
       setTicketError(null);
       setAccessDenied(false);
       if (isNewTicket) {
-        // Clear ticket / messages / events immediately on swap so every
-        // pane shows a coherent loading state (skeletons + empty
-        // conversation) rather than the previous ticket's content. The
-        // top progress bar plus the loadingDetail-driven skeletons give
-        // the user a clear "loading new ticket" cue.
-        setTicket(null);
+        // Try the React Query cache first — if we've loaded this ticket
+        // before, populate from cache so the subject + right pane chrome
+        // appear instantly while the background fetch refreshes data.
+        // Messages / events still clear so the conversation pane shows
+        // a coherent loading state (cached convo would be a much bigger
+        // refactor; cursor-based pagination doesn't fit cleanly).
+        const cached = queryClient.getQueryData<TicketDetail>([
+          "ticket",
+          id,
+        ]);
+        setTicket(cached ?? null);
         setMessages([]);
         setEvents([]);
         setMessageCursor(null);
@@ -660,6 +666,9 @@ export function TicketDetailPage({
         const detail = await fetchTicketById(id);
         if (detailRequestSeqRef.current !== requestSeq) return;
         setTicket(detail);
+        // Mirror into the React Query cache so re-visiting this ticket
+        // is an instant cache hit rather than another cold fetch.
+        queryClient.setQueryData(["ticket", id], detail);
         await Promise.all([
           loadMessagesPage(id, true),
           loadEventsPage(id, true),
