@@ -706,6 +706,7 @@ export function TicketsPage({
       if (ticketsRequestSeqRef.current !== requestSeq) return;
       setTicketError("Unable to load tickets.");
       setListMeta(null);
+      setTickets([]);
     } finally {
       if (ticketsRequestSeqRef.current === requestSeq) {
         setLoadingTickets(false);
