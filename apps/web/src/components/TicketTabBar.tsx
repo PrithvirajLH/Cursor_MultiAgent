@@ -5,11 +5,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  DragOverlay,
   closestCenter,
-  type DragStartEvent,
   type DragEndEvent,
-  type DragCancelEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -59,12 +56,7 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     y: number;
     tabId: string;
   } | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-
   const isQueueActive = activeTabId === null || activeTabId === "__queue__";
-  const draggingTab = draggingId
-    ? tabs.find((t) => t.id === draggingId) ?? null
-    : null;
 
   // 5px activation distance lets the click handler fire when the user
   // just clicks; only when they actually move the mouse does drag start.
@@ -119,12 +111,7 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     setContextMenu(null);
   }
 
-  function handleDragStart(event: DragStartEvent) {
-    setDraggingId(event.active.id as string);
-  }
-
   function handleDragEnd(event: DragEndEvent) {
-    setDraggingId(null);
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const fromIdx = tabs.findIndex((t) => t.id === active.id);
@@ -135,10 +122,6 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     // closest center, so this gives a natural insertion point.
     const position = fromIdx < toIdx ? "after" : "before";
     reorderTabs(active.id as string, over.id as string, position);
-  }
-
-  function handleDragCancel(_event: DragCancelEvent) {
-    setDraggingId(null);
   }
 
   return (
@@ -177,17 +160,8 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          modifiers={[
-            // Lock the drag overlay to horizontal motion so the tab
-            // can't drift up/down out of the bar — matches Chrome.
-            // Don't restrict to the scrollable ancestor here: that
-            // modifier was clamping the overlay past the tab's slot
-            // and made the ghost lag well behind the cursor.
-            restrictToHorizontalAxis,
-          ]}
-          onDragStart={handleDragStart}
+          modifiers={[restrictToHorizontalAxis]}
           onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
         >
           <SortableContext
             items={tabs.map((t) => t.id)}
@@ -212,23 +186,6 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
               ))}
             </div>
           </SortableContext>
-
-          {/* Floating tab that follows the cursor while dragging.
-              dnd-kit handles positioning + smoothing for us. */}
-          <DragOverlay
-            dropAnimation={{
-              duration: 200,
-              easing: "cubic-bezier(0.2, 0, 0, 1)",
-            }}
-          >
-            {draggingTab ? (
-              <TabContent
-                tab={draggingTab}
-                isActive={draggingTab.id === activeTabId}
-                isOverlay
-              />
-            ) : null}
-          </DragOverlay>
         </DndContext>
 
         {/* Close all */}
@@ -337,47 +294,55 @@ function SortableTab({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        // Hide the source while it's being dragged — DragOverlay renders
-        // the floating copy. opacity:0 keeps the slot in place so
-        // surrounding tabs don't snap; the SortableContext's transition
-        // makes the gap glide as collisions change.
-        opacity: isDragging ? 0 : 1,
+        // While dragging, lift the tab visually with a small shadow +
+        // higher z-index so it floats above neighbours. The transform
+        // from useSortable carries the tab to the cursor naturally —
+        // no DragOverlay required, which avoided a coordinate-offset
+        // bug we saw with portaled overlays.
+        zIndex: isDragging ? 50 : undefined,
+        boxShadow: isDragging
+          ? "0 6px 18px rgba(0,0,0,0.18)"
+          : undefined,
+        cursor: isDragging ? "grabbing" : "grab",
       }}
       {...attributes}
       {...listeners}
       onClick={onClick}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
-      className={`shrink-0 ${isDragging ? "z-10" : ""}`}
+      className="shrink-0 rounded-t-lg"
     >
-      <TabContent tab={tab} isActive={isActive} onClose={onClose} />
+      <TabContent
+        tab={tab}
+        isActive={isActive}
+        onClose={onClose}
+        dragging={isDragging}
+      />
     </div>
   );
 }
 
-/* ─── Tab visual content (used both inline and in DragOverlay) ──── */
+/* ─── Tab visual content ─────────────────────────────────────────── */
 
 interface TabContentProps {
   tab: TicketTab;
   isActive: boolean;
   onClose?: (e: React.MouseEvent) => void;
-  isOverlay?: boolean;
+  dragging?: boolean;
 }
 
-function TabContent({ tab, isActive, onClose, isOverlay }: TabContentProps) {
+function TabContent({ tab, isActive, onClose, dragging }: TabContentProps) {
   const priorityStyle = PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
   const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
 
   return (
     <div
       className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] ${
-        isActive
-          ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
-          : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-      } ${
-        isOverlay
-          ? "shadow-lg ring-1 ring-border bg-card text-foreground cursor-grabbing"
-          : "cursor-grab active:cursor-grabbing"
+        dragging
+          ? "bg-card text-foreground"
+          : isActive
+            ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
+            : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
       }`}
     >
       {/* Priority chip */}
@@ -406,7 +371,7 @@ function TabContent({ tab, isActive, onClose, isOverlay }: TabContentProps) {
       </span>
 
       {/* Close — hidden in overlay (no interaction during drag) */}
-      {!isOverlay && onClose && (
+      {onClose && (
         <button
           type="button"
           onPointerDown={(e) => e.stopPropagation()}
