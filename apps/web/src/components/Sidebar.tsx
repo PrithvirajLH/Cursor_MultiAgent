@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import {
   ArrowRight,
   ChevronLeft,
@@ -32,6 +32,7 @@ export const Sidebar = memo(function Sidebar({
   hideCollapseToggle = false,
   theme,
   onToggleTheme,
+  extraNavContent,
 }: {
   collapsed: boolean;
   onToggle?: () => void;
@@ -46,6 +47,7 @@ export const Sidebar = memo(function Sidebar({
   hideCollapseToggle?: boolean;
   theme?: "light" | "dark";
   onToggleTheme?: () => void;
+  extraNavContent?: ReactNode;
 }) {
   const dk = theme === "dark";
 
@@ -227,6 +229,8 @@ export const Sidebar = memo(function Sidebar({
             </div>
           );
         })}
+
+        {extraNavContent}
       </nav>
 
       {/* ── New Ticket Button ── */}

@@ -37,6 +37,7 @@ import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 import { AdminSidebar } from "./components/AdminSidebar";
 import { SignInLandingPage } from "./components/auth/SignInLandingPage";
 import { Sidebar, type SidebarItem } from "./components/Sidebar";
+import { SidebarSavedViews } from "./components/SidebarSavedViews";
 import { ToastContainer } from "./components/ToastContainer";
 import { TopBar } from "./components/TopBar";
 import { TicketTabsProvider } from "./contexts/TicketTabsContext";
@@ -837,6 +838,16 @@ function AuthenticatedShell({
           }}
           theme={theme}
           onToggleTheme={onToggleTheme}
+          extraNavContent={
+            isLeadOrAbove ? (
+              <SidebarSavedViews
+                collapsed={
+                  sidebar.isMobileViewport ? false : sidebar.isSidebarCollapsed
+                }
+                theme={theme}
+              />
+            ) : null
+          }
         />
 
         {/* Unified Admin Sidebar (Desktop & Mobile) */}
