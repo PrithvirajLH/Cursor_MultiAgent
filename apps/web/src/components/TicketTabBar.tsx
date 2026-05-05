@@ -42,7 +42,10 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     tabId: string;
   } | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
-  const [dropTargetTabId, setDropTargetTabId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    id: string;
+    position: "before" | "after";
+  } | null>(null);
 
   const isQueueActive = activeTabId === null || activeTabId === "__queue__";
 
@@ -136,8 +139,14 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const isDragging = draggingTabId === tab.id;
-            const isDropTarget =
-              dropTargetTabId === tab.id && draggingTabId !== tab.id;
+            const isDropTargetBefore =
+              dropTarget?.id === tab.id &&
+              dropTarget.position === "before" &&
+              draggingTabId !== tab.id;
+            const isDropTargetAfter =
+              dropTarget?.id === tab.id &&
+              dropTarget.position === "after" &&
+              draggingTabId !== tab.id;
             const priorityStyle =
               PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
             const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
@@ -157,37 +166,60 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                   if (!draggingTabId || draggingTabId === tab.id) return;
                   e.preventDefault();
                   e.dataTransfer.dropEffect = "move";
-                  setDropTargetTabId(tab.id);
+                  // Decide insertion side from the cursor's X relative to
+                  // the target tab's midpoint — Chrome/VS Code-style.
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const isLeftHalf =
+                    e.clientX < rect.left + rect.width / 2;
+                  setDropTarget({
+                    id: tab.id,
+                    position: isLeftHalf ? "before" : "after",
+                  });
                 }}
                 onDragLeave={() => {
-                  setDropTargetTabId((prev) =>
-                    prev === tab.id ? null : prev,
+                  setDropTarget((prev) =>
+                    prev?.id === tab.id ? null : prev,
                   );
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
                   const fromId = e.dataTransfer.getData("text/plain");
-                  if (fromId && fromId !== tab.id) {
-                    reorderTabs(fromId, tab.id);
+                  const target = dropTarget;
+                  if (fromId && target && fromId !== target.id) {
+                    reorderTabs(fromId, target.id, target.position);
                   }
                   setDraggingTabId(null);
-                  setDropTargetTabId(null);
+                  setDropTarget(null);
                 }}
                 onDragEnd={() => {
                   setDraggingTabId(null);
-                  setDropTargetTabId(null);
+                  setDropTarget(null);
                 }}
-                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] transition-colors min-w-0 max-w-[260px] shrink-0 cursor-pointer ${
+                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] transition-colors min-w-0 max-w-[260px] shrink-0 ${
                   isActive
                     ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-                } ${isDragging ? "opacity-40" : ""}`}
+                } ${
+                  isDragging
+                    ? "opacity-60 cursor-grabbing"
+                    : draggingTabId
+                      ? "cursor-grabbing"
+                      : "cursor-grab active:cursor-grabbing"
+                }`}
               >
-                {/* Drop-target indicator: a 2px primary stripe on the left
-                    edge of the tab the user is hovering over. */}
-                {isDropTarget && (
+                {/* Drop-target indicator: a primary-color stripe on the
+                    edge of the tab the user is hovering toward. Sides
+                    flip based on cursor position so the user sees the
+                    exact insertion point. */}
+                {isDropTargetBefore && (
                   <span
-                    className="absolute left-0 top-1.5 bottom-1 w-0.5 rounded-full bg-primary"
+                    className="absolute -left-px top-1 bottom-0 w-0.5 rounded-full bg-primary shadow-[0_0_4px_rgba(0,0,0,0.1)]"
+                    aria-hidden
+                  />
+                )}
+                {isDropTargetAfter && (
+                  <span
+                    className="absolute -right-px top-1 bottom-0 w-0.5 rounded-full bg-primary shadow-[0_0_4px_rgba(0,0,0,0.1)]"
                     aria-hidden
                   />
                 )}

@@ -31,10 +31,14 @@ type TicketTabsContextValue = {
   updateTab: (id: string, updates: Partial<TicketTab>) => void;
   setActiveTabId: (id: string | null) => void;
   /**
-   * Reorder tabs by moving the tab with id `fromId` to the index that the tab
-   * with id `toId` currently occupies. Used for drag-and-drop reordering.
+   * Reorder tabs by moving the tab with id `fromId` to either before or after
+   * the tab with id `toId`. Used for drag-and-drop reordering.
    */
-  reorderTabs: (fromId: string, toId: string) => void;
+  reorderTabs: (
+    fromId: string,
+    toId: string,
+    position?: "before" | "after",
+  ) => void;
 };
 
 const STORAGE_KEY = "csh-ticket-tabs";
@@ -200,19 +204,32 @@ export function TicketTabsProvider({ children }: { children: ReactNode }) {
     setActiveTabId(null);
   }, [setActiveTabId]);
 
-  const reorderTabs = useCallback((fromId: string, toId: string) => {
-    if (fromId === toId) return;
-    setTabs((prev) => {
-      const fromIdx = prev.findIndex((t) => t.id === fromId);
-      const toIdx = prev.findIndex((t) => t.id === toId);
-      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(fromIdx, 1);
-      next.splice(toIdx, 0, moved);
-      saveTabs(next);
-      return next;
-    });
-  }, []);
+  const reorderTabs = useCallback(
+    (
+      fromId: string,
+      toId: string,
+      position: "before" | "after" = "before",
+    ) => {
+      if (fromId === toId) return;
+      setTabs((prev) => {
+        const fromIdx = prev.findIndex((t) => t.id === fromId);
+        const toIdx = prev.findIndex((t) => t.id === toId);
+        if (fromIdx === -1 || toIdx === -1) return prev;
+        // Insert position is the target's index (before) or +1 (after).
+        // After splicing the moved tab out, the target's index might shift
+        // left by one if it sat after the moved tab — compensate.
+        let insertIdx = position === "after" ? toIdx + 1 : toIdx;
+        if (fromIdx < insertIdx) insertIdx--;
+        if (insertIdx === fromIdx) return prev;
+        const next = [...prev];
+        const [moved] = next.splice(fromIdx, 1);
+        next.splice(insertIdx, 0, moved);
+        saveTabs(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const updateTab = useCallback((id: string, updates: Partial<TicketTab>) => {
     setTabs((prev) => {
