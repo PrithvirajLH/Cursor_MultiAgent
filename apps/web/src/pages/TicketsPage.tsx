@@ -22,6 +22,7 @@ import { BulkActionsToolbar } from "../components/BulkActionsToolbar";
 import { EmptyState } from "../components/EmptyState";
 import { ErrorState } from "../components/ErrorState";
 import { FilterPanel } from "../components/filters/FilterPanel";
+import { SaveViewButton } from "../components/SaveViewButton";
 import { TicketTableView } from "../components/TicketTableView";
 import { TicketsTableSkeleton } from "../components/skeletons";
 import { useFilters } from "../hooks/useFilters";
@@ -1215,6 +1216,13 @@ export function TicketsPage({
                   </span>
                 ) : null}
               </button>
+            ) : null}
+
+            {role !== "EMPLOYEE" ? (
+              <SaveViewButton
+                filters={filters}
+                disabled={!hasActiveFilters}
+              />
             ) : null}
 
             {onCreateTicket ? (
