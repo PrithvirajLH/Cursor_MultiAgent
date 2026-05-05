@@ -167,23 +167,36 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
             items={tabs.map((t) => t.id)}
             strategy={horizontalListSortingStrategy}
           >
-            {/* Scrollable ticket tabs */}
+            {/* Scrollable ticket tabs — Chrome-style: tabs flush together
+                with vertical dividers between inactive ones, active tab
+                "lifts" out of the strip via card bg + soft shadow. */}
             <div
               ref={scrollRef}
-              className="flex items-end gap-0.5 overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
+              className="flex items-end overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
               style={{ scrollbarWidth: "none" }}
             >
-              {tabs.map((tab) => (
-                <SortableTab
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === activeTabId}
-                  onClick={() => handleSwitchToTicket(tab)}
-                  onAuxClick={(e) => handleAuxClick(e, tab.id)}
-                  onContextMenu={(e) => handleContextMenu(e, tab.id)}
-                  onClose={(e) => handleClose(e, tab.id)}
-                />
-              ))}
+              {tabs.map((tab, idx) => {
+                const isActive = tab.id === activeTabId;
+                const next = tabs[idx + 1];
+                const nextActive = next ? next.id === activeTabId : false;
+                // Render the vertical divider between two consecutive
+                // inactive tabs only — touching an active tab would
+                // look noisy. The last inactive tab also drops it.
+                const showDivider =
+                  !isActive && next != null && !nextActive;
+                return (
+                  <SortableTab
+                    key={tab.id}
+                    tab={tab}
+                    isActive={isActive}
+                    showDivider={showDivider}
+                    onClick={() => handleSwitchToTicket(tab)}
+                    onAuxClick={(e) => handleAuxClick(e, tab.id)}
+                    onContextMenu={(e) => handleContextMenu(e, tab.id)}
+                    onClose={(e) => handleClose(e, tab.id)}
+                  />
+                );
+              })}
             </div>
           </SortableContext>
         </DndContext>
@@ -265,6 +278,7 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
 interface SortableTabProps {
   tab: TicketTab;
   isActive: boolean;
+  showDivider: boolean;
   onClick: () => void;
   onAuxClick: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -274,6 +288,7 @@ interface SortableTabProps {
 function SortableTab({
   tab,
   isActive,
+  showDivider,
   onClick,
   onAuxClick,
   onContextMenu,
@@ -315,6 +330,7 @@ function SortableTab({
       <TabContent
         tab={tab}
         isActive={isActive}
+        showDivider={showDivider && !isDragging}
         onClose={onClose}
         dragging={isDragging}
       />
@@ -327,24 +343,38 @@ function SortableTab({
 interface TabContentProps {
   tab: TicketTab;
   isActive: boolean;
+  showDivider?: boolean;
   onClose?: (e: React.MouseEvent) => void;
   dragging?: boolean;
 }
 
-function TabContent({ tab, isActive, onClose, dragging }: TabContentProps) {
+function TabContent({
+  tab,
+  isActive,
+  showDivider,
+  onClose,
+  dragging,
+}: TabContentProps) {
   const priorityStyle = PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
   const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
 
   return (
     <div
-      className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] ${
+      className={`group relative flex items-center gap-1.5 h-9 pl-3 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] ${
         dragging
-          ? "bg-card text-foreground"
+          ? "bg-card text-foreground shadow-md"
           : isActive
             ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
-            : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+            : "text-muted-foreground hover:text-foreground hover:bg-card/60"
       }`}
     >
+      {/* Vertical divider between consecutive inactive tabs (Chrome). */}
+      {showDivider && (
+        <span
+          className="absolute right-0 top-2 bottom-2 w-px bg-slate-300/60 dark:bg-slate-700"
+          aria-hidden
+        />
+      )}
       {/* Priority chip */}
       <span
         className={`flex-none h-[18px] px-1 rounded text-[10px] font-bold tabular-nums tracking-tight grid place-items-center ${priorityStyle.bg} ${priorityStyle.fg}`}
