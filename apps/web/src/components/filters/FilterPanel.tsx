@@ -84,20 +84,6 @@ export function FilterPanel({
     return (
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-foreground">
-            Saved Views
-          </label>
-          <div className="mt-2">
-            <SavedViewsDropdown
-              currentFilters={filters}
-              onApplyFilters={setFilters}
-              onSaveSuccess={onSaveSuccess}
-              onError={onError}
-            />
-          </div>
-        </div>
-
-        <div>
           <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Status
           </label>
