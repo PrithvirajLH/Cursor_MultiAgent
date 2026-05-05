@@ -87,10 +87,12 @@ function countTextClass(theme: "light" | "dark", active: boolean): string {
 
 interface SidebarTicketsSavedViewsProps {
   theme: "light" | "dark";
+  onBeforeNavigate?: () => void;
 }
 
 export function SidebarTicketsSavedViews({
   theme,
+  onBeforeNavigate,
 }: SidebarTicketsSavedViewsProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -129,7 +131,10 @@ export function SidebarTicketsSavedViews({
           <button
             key={v.id}
             type="button"
-            onClick={() => navigate(`/tickets${v.buildQuery()}`)}
+            onClick={() => {
+              onBeforeNavigate?.();
+              navigate(`/tickets${v.buildQuery()}`);
+            }}
             className={`w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
           >
             <span
@@ -165,6 +170,7 @@ export function SidebarTicketsSavedViews({
               onTickets={onTickets}
               searchParams={searchParams}
               theme={theme}
+              onBeforeNavigate={onBeforeNavigate}
             />
           ))}
         </>
@@ -178,9 +184,14 @@ export function SidebarTicketsSavedViews({
 interface SidebarTeamsProps {
   collapsed: boolean;
   theme: "light" | "dark";
+  onBeforeNavigate?: () => void;
 }
 
-export function SidebarTeams({ collapsed, theme }: SidebarTeamsProps) {
+export function SidebarTeams({
+  collapsed,
+  theme,
+  onBeforeNavigate,
+}: SidebarTeamsProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
@@ -221,9 +232,10 @@ export function SidebarTeams({ collapsed, theme }: SidebarTeamsProps) {
           <button
             key={t.id}
             type="button"
-            onClick={() =>
-              navigate(`/tickets?teamIds=${encodeURIComponent(t.id)}`)
-            }
+            onClick={() => {
+              onBeforeNavigate?.();
+              navigate(`/tickets?teamIds=${encodeURIComponent(t.id)}`);
+            }}
             className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors duration-150 ${
               active
                 ? dk
@@ -254,12 +266,14 @@ function UserSavedViewRow({
   onTickets,
   searchParams,
   theme,
+  onBeforeNavigate,
 }: {
   view: SavedViewRecord;
   count: number | undefined;
   onTickets: boolean;
   searchParams: URLSearchParams;
   theme: "light" | "dark";
+  onBeforeNavigate?: () => void;
 }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -278,7 +292,10 @@ function UserSavedViewRow({
     >
       <button
         type="button"
-        onClick={() => navigate(`/tickets${query}`)}
+        onClick={() => {
+          onBeforeNavigate?.();
+          navigate(`/tickets${query}`);
+        }}
         className="flex-1 min-w-0 flex items-center gap-2 text-left"
         style={{ color: "inherit" }}
       >
