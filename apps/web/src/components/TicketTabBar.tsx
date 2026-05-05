@@ -189,11 +189,25 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           >
             {/* Scrollable ticket tabs — Chrome-style: tabs flush together
                 with vertical dividers between inactive ones, active tab
-                "lifts" out of the strip via card bg + soft shadow. */}
+                "lifts" out of the strip via card bg + soft shadow.
+                Vertical mouse-wheel input is translated to horizontal
+                scroll so you can flip through tabs without a trackpad. */}
             <div
               ref={scrollRef}
               className="flex items-end overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
               style={{ scrollbarWidth: "none" }}
+              onWheel={(e) => {
+                // Only re-route purely-vertical wheels; let trackpads
+                // pass through so two-finger horizontal scroll still
+                // works natively.
+                if (
+                  Math.abs(e.deltaY) > Math.abs(e.deltaX) &&
+                  e.currentTarget.scrollWidth > e.currentTarget.clientWidth
+                ) {
+                  e.currentTarget.scrollLeft += e.deltaY;
+                  e.preventDefault();
+                }
+              }}
             >
               {tabs.map((tab, idx) => {
                 const isActive = tab.id === activeTabId;
@@ -389,6 +403,38 @@ function TabContent({
             : "text-muted-foreground hover:text-foreground hover:bg-card/60"
       }`}
     >
+      {/* Subtle Chrome-style "ears" at the active tab's bottom corners
+          — small 6×6 quarter-circle curves filled with the card color
+          so the tab visually blends into the content area below. */}
+      {(isActive || dragging) && (
+        <>
+          <svg
+            className="absolute -left-[6px] bottom-0 pointer-events-none"
+            width="6"
+            height="6"
+            viewBox="0 0 6 6"
+            aria-hidden
+          >
+            <path
+              d="M 6 0 L 6 6 L 0 6 A 6 6 0 0 1 6 0 Z"
+              fill="hsl(var(--card))"
+            />
+          </svg>
+          <svg
+            className="absolute -right-[6px] bottom-0 pointer-events-none"
+            width="6"
+            height="6"
+            viewBox="0 0 6 6"
+            aria-hidden
+          >
+            <path
+              d="M 0 0 L 0 6 L 6 6 A 6 6 0 0 0 0 0 Z"
+              fill="hsl(var(--card))"
+            />
+          </svg>
+        </>
+      )}
+
       {/* Vertical divider between consecutive inactive tabs (Chrome). */}
       {showDivider && (
         <span
