@@ -1,11 +1,18 @@
 import type { ReactNode } from 'react';
 import type { TicketDetail, TicketStatus } from '../../api/client';
-import { Prio, Avatar, SlaBar, toneFromName } from '../atoms';
+import { Avatar, toneFromName } from '../atoms';
 import { ticketToRow } from '../tickets/mappers';
 import { ActivityList } from './ActivityList';
 import { StatusSelector } from './StatusSelector';
 import { AssigneeSelector } from './AssigneeSelector';
-import { useAssignTicket, useTransitionTicket } from './ticket-mutations';
+import { PrioritySelector } from './PrioritySelector';
+import { SlaTracking } from './SlaTracking';
+import { AiSummaryPanel } from '../ticket-detail/AiSummaryPanel';
+import {
+  useAssignTicket,
+  useChangePriority,
+  useTransitionTicket,
+} from './ticket-mutations';
 
 interface PropertiesPaneProps {
   ticket: TicketDetail;
@@ -15,21 +22,18 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
   const row = ticketToRow(ticket);
   const transition = useTransitionTicket(ticket.id);
   const assign = useAssignTicket(ticket.id);
+  const changePriority = useChangePriority(ticket.id);
   const allowed = (ticket.allowedTransitions ?? []) as TicketStatus[];
-
-  const created = new Date(ticket.createdAt).toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-  const updated = new Date(ticket.updatedAt).toLocaleString([], {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
 
   return (
     <div className="flex flex-col">
-      {/* Status / priority / SLA */}
-      <Section title="Status">
+      {/* AI Classification at top */}
+      <section className="border-b" style={{ borderColor: 'var(--c-divider)' }}>
+        <AiSummaryPanel ticketId={ticket.id} />
+      </section>
+
+      {/* Status / Priority */}
+      <Section title="Actions">
         <Row label="State">
           <StatusSelector
             current={ticket.status}
@@ -41,39 +45,11 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
           />
         </Row>
         <Row label="Priority">
-          <span className="flex items-center gap-1.5">
-            <Prio level={ticket.priority} />
-            <span className="text-[12px] font-medium" style={{ color: 'var(--c-fg)' }}>
-              {ticket.priority}
-            </span>
-          </span>
-        </Row>
-        <Row label="SLA">
-          <div className="flex flex-col gap-1 w-full">
-            <div className="flex items-center gap-1.5">
-              <div className="flex-1 min-w-[60px]"><SlaBar pct={row.sla.pct} state={row.sla.state} /></div>
-              <span
-                className="font-mono text-[11px] font-semibold"
-                style={{
-                  color:
-                    row.sla.state === 'breach' ? 'var(--c-red)' :
-                    row.sla.state === 'warn'   ? 'var(--c-amber)' :
-                                                 'var(--c-fg-3)',
-                }}
-              >
-                {row.sla.text}
-              </span>
-            </div>
-          </div>
-        </Row>
-      </Section>
-
-      {/* Routing */}
-      <Section title="Routing">
-        <Row label="Team">
-          <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
-            {ticket.assignedTeam?.name ?? '—'}
-          </span>
+          <PrioritySelector
+            current={ticket.priority}
+            onChange={p => changePriority.mutate(p)}
+            disabled={changePriority.isPending}
+          />
         </Row>
         <Row label="Assignee">
           <AssigneeSelector
@@ -82,6 +58,16 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
             disabled={assign.isPending}
           />
         </Row>
+        <Row label="Department">
+          <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
+            {ticket.assignedTeam?.name ?? '—'}
+          </span>
+        </Row>
+        <Row label="Category">
+          <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
+            {ticket.category?.name ?? '—'}
+          </span>
+        </Row>
         <Row label="Channel">
           <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
             {ticket.channel ?? '—'}
@@ -89,10 +75,15 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
         </Row>
       </Section>
 
-      {/* Requester */}
-      <Section title="Requester">
+      {/* SLA Tracking */}
+      <Section title="SLA Tracking">
+        <SlaTracking ticket={ticket} />
+      </Section>
+
+      {/* Information (Requester) */}
+      <Section title="Information">
         {ticket.requester ? (
-          <div className="flex items-start gap-2 pt-1">
+          <div className="flex items-start gap-2 mb-2">
             <Avatar
               name={initials(ticket.requester.displayName)}
               size="lg"
@@ -105,28 +96,39 @@ export function PropertiesPane({ ticket }: PropertiesPaneProps) {
               <div className="text-[11px] truncate" style={{ color: 'var(--c-fg-4)' }}>
                 {ticket.requester.email}
               </div>
-              {ticket.requester.department && (
-                <div className="text-[11px] truncate mt-0.5" style={{ color: 'var(--c-fg-4)' }}>
-                  {ticket.requester.department}
-                </div>
-              )}
             </div>
           </div>
-        ) : (
-          <span className="text-[12px]" style={{ color: 'var(--c-fg-4)' }}>—</span>
+        ) : null}
+        <Row label="Requester">
+          <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
+            {ticket.requester?.displayName ?? '—'}
+          </span>
+        </Row>
+        <Row label="Email">
+          <span className="text-[11px] truncate" style={{ color: 'var(--c-fg-2)' }}>
+            {ticket.requester?.email ?? '—'}
+          </span>
+        </Row>
+        {ticket.requester?.department && (
+          <Row label="Facility">
+            <span className="text-[12px]" style={{ color: 'var(--c-fg)' }}>
+              {ticket.requester.department}
+            </span>
+          </Row>
         )}
-      </Section>
-
-      {/* Timestamps */}
-      <Section title="Timestamps">
+        <Row label="Reference">
+          <span className="font-mono text-[11px]" style={{ color: 'var(--c-fg-2)' }}>
+            {ticket.displayId ?? `#${ticket.number}`}
+          </span>
+        </Row>
         <Row label="Created">
           <span className="font-mono text-[11px]" style={{ color: 'var(--c-fg-2)' }}>
-            {created}
+            {new Date(ticket.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
           </span>
         </Row>
         <Row label="Updated">
           <span className="font-mono text-[11px]" style={{ color: 'var(--c-fg-2)' }}>
-            {updated}
+            {new Date(ticket.updatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
           </span>
         </Row>
         {ticket.resolvedAt && (
