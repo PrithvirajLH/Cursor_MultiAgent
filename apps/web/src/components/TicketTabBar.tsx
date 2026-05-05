@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Inbox } from "lucide-react";
 import {
   DndContext,
@@ -57,6 +57,26 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     tabId: string;
   } | null>(null);
   const isQueueActive = activeTabId === null || activeTabId === "__queue__";
+
+  // Keep the active tab visible — when it changes (or a hidden tab is
+  // activated by sidebar/list navigation), scroll the strip so the
+  // active tab is in the visible area. Otherwise it can sit off-screen
+  // while the count badge says e.g. "3" with only 2 tabs in view.
+  useEffect(() => {
+    if (!activeTabId || activeTabId === "__queue__") return;
+    const strip = scrollRef.current;
+    if (!strip) return;
+    const node = strip.querySelector<HTMLElement>(
+      `[data-tab-id="${activeTabId}"]`,
+    );
+    if (node) {
+      node.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "nearest",
+      });
+    }
+  }, [activeTabId]);
 
   // 5px activation distance lets the click handler fire when the user
   // just clicks; only when they actually move the mouse does drag start.
@@ -325,6 +345,7 @@ function SortableTab({
       onClick={onClick}
       onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
+      data-tab-id={tab.id}
       className="shrink-0 rounded-t-lg"
     >
       <TabContent
@@ -358,8 +379,6 @@ function TabContent({
   const priorityStyle = PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
   const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
 
-  const showEars = isActive || dragging;
-
   return (
     <div
       className={`group relative flex items-center gap-1.5 h-9 pl-3 pr-1.5 rounded-t-[10px] text-[12.5px] min-w-0 max-w-[260px] ${
@@ -370,46 +389,6 @@ function TabContent({
             : "text-muted-foreground hover:text-foreground hover:bg-card/60"
       }`}
     >
-      {/* Chrome-style "ears": small filled boxes at the bottom-outer
-          corners of the active tab. A radial-gradient mask cuts a
-          quarter-circle out of the inner-top corner so the visible
-          shape is a card-colored curve that smoothly blends the tab
-          into the content area below. */}
-      {showEars && (
-        <>
-          {/* Left ear — fills the bottom-right L-shape of a 14x14 box
-              with a quarter-circle "bite" carved out of the top-left
-              corner (the bar slate shows through there). The visible
-              card-colored area smoothly extends the active tab's
-              bottom-left corner into the content area. */}
-          <svg
-            className="absolute -left-[14px] bottom-0 pointer-events-none"
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            aria-hidden
-          >
-            <path
-              d="M 14 0 L 14 14 L 0 14 A 14 14 0 0 1 14 0 Z"
-              fill="hsl(var(--card))"
-            />
-          </svg>
-          {/* Right ear — mirrored on the active tab's right side. */}
-          <svg
-            className="absolute -right-[14px] bottom-0 pointer-events-none"
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            aria-hidden
-          >
-            <path
-              d="M 0 0 L 0 14 L 14 14 A 14 14 0 0 0 0 0 Z"
-              fill="hsl(var(--card))"
-            />
-          </svg>
-        </>
-      )}
-
       {/* Vertical divider between consecutive inactive tabs (Chrome). */}
       {showDivider && (
         <span
