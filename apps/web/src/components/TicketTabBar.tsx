@@ -1,9 +1,28 @@
 import { useRef, useState } from "react";
-import { X, Inbox, ChevronLeft } from "lucide-react";
+import { X, Inbox } from "lucide-react";
 import { useTicketTabs, type TicketTab } from "../contexts/TicketTabsContext";
 
 type TicketTabBarProps = {
   onSwitchTab: (ticketId: string | null) => void;
+};
+
+const PRIORITY_STYLE: Record<string, { bg: string; fg: string }> = {
+  P1: { bg: "bg-red-500/15", fg: "text-red-600 dark:text-red-400" },
+  P2: { bg: "bg-orange-500/15", fg: "text-orange-600 dark:text-orange-400" },
+  P3: { bg: "bg-blue-500/15", fg: "text-blue-600 dark:text-blue-400" },
+  P4: { bg: "bg-slate-500/15", fg: "text-slate-600 dark:text-slate-400" },
+};
+
+const STATUS_DOT: Record<string, string> = {
+  NEW: "bg-slate-400",
+  TRIAGED: "bg-slate-400",
+  ASSIGNED: "bg-amber-500",
+  IN_PROGRESS: "bg-amber-500",
+  WAITING_ON_REQUESTER: "bg-blue-500",
+  WAITING_ON_VENDOR: "bg-blue-500",
+  RESOLVED: "bg-emerald-500",
+  CLOSED: "bg-slate-400",
+  REOPENED: "bg-rose-500",
 };
 
 export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
@@ -55,6 +74,14 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     }
   }
 
+  function handleAuxClick(e: React.MouseEvent, tabId: string) {
+    // Middle-click closes the tab — matches browser convention.
+    if (e.button === 1) {
+      e.preventDefault();
+      handleClose(e, tabId);
+    }
+  }
+
   function handleContextMenu(e: React.MouseEvent, tabId: string) {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, tabId });
@@ -64,105 +91,120 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     setContextMenu(null);
   }
 
-  const priorityColor: Record<string, string> = {
-    P1: "bg-red-500",
-    P2: "bg-orange-400",
-    P3: "bg-blue-500",
-    P4: "bg-slate-400",
-  };
-
   return (
     <>
-      <div className="flex items-stretch bg-card border-b border-border px-1 h-10">
-        {/* Back to Queue button */}
+      <div className="relative flex items-end h-11 bg-muted/40 dark:bg-muted/20 border-b border-border pl-2 pr-1 select-none">
+        {/* Queue (home) button */}
         <button
+          type="button"
           onClick={handleSwitchToQueue}
-          className={`flex items-center gap-1.5 px-3 text-[12px] font-semibold transition-all border-b-2 shrink-0 ${
+          className={`flex items-center gap-1.5 h-9 px-3 mr-1.5 rounded-t-lg text-[12.5px] font-semibold transition-colors shrink-0 ${
             isQueueActive
-              ? "border-primary text-primary bg-primary/5"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40"
+              ? "bg-card text-foreground shadow-[inset_0_-1px_0_0_var(--background,white)]"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
           }`}
+          title="Queue"
         >
-          {!isQueueActive && <ChevronLeft className="h-3.5 w-3.5" />}
-          <Inbox className="h-3.5 w-3.5" />
+          <Inbox
+            className={`h-4 w-4 ${
+              isQueueActive ? "text-primary" : "text-muted-foreground"
+            }`}
+          />
           <span>Queue</span>
           {tabs.length > 0 && (
-            <span className={`ml-0.5 text-[10px] font-bold min-w-[18px] text-center rounded-full px-1 leading-[18px] ${
-              isQueueActive
-                ? "bg-primary/15 text-primary"
-                : "bg-muted text-muted-foreground"
-            }`}>
+            <span
+              className={`text-[10px] font-bold tabular-nums min-w-[18px] text-center rounded-full px-1 leading-[18px] ${
+                isQueueActive
+                  ? "bg-primary/15 text-primary"
+                  : "bg-foreground/10 text-muted-foreground"
+              }`}
+            >
               {tabs.length}
             </span>
           )}
         </button>
 
-        {/* Divider */}
-        {tabs.length > 0 && (
-          <div className="w-px bg-border my-2 mx-1 shrink-0" />
-        )}
-
         {/* Scrollable ticket tabs */}
         <div
           ref={scrollRef}
-          className="flex items-stretch gap-px overflow-x-auto flex-1 min-w-0"
+          className="flex items-end gap-0.5 overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
           style={{ scrollbarWidth: "none" }}
         >
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
+            const priorityStyle =
+              PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
+            const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
             return (
-              <button
+              <div
                 key={tab.id}
                 onClick={() => handleSwitchToTicket(tab)}
+                onAuxClick={(e) => handleAuxClick(e, tab.id)}
                 onContextMenu={(e) => handleContextMenu(e, tab.id)}
-                className={`group relative flex items-center gap-1.5 px-3 py-2 text-[12px] transition-all min-w-0 max-w-[200px] shrink-0 border-b-2 ${
+                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] transition-colors min-w-0 max-w-[260px] shrink-0 cursor-pointer ${
                   isActive
-                    ? "border-primary text-foreground bg-primary/5 font-medium"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/40"
+                    ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
                 }`}
               >
-                {/* Priority dot */}
+                {/* Priority chip */}
                 <span
-                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                    priorityColor[tab.priority] ?? "bg-slate-400"
-                  }`}
+                  className={`flex-none h-[18px] px-1 rounded text-[10px] font-bold tabular-nums tracking-tight grid place-items-center ${priorityStyle.bg} ${priorityStyle.fg}`}
+                >
+                  {tab.priority}
+                </span>
+
+                {/* Status dot */}
+                <span
+                  className={`h-1.5 w-1.5 rounded-full flex-none ${statusDot}`}
+                  aria-hidden
                 />
 
                 {/* ID + Subject */}
-                <span className="truncate">
-                  <span className={`font-mono text-[10px] ${isActive ? "text-primary" : "text-muted-foreground/70"}`}>
+                <span className="flex items-baseline gap-1.5 min-w-0 flex-1">
+                  <span
+                    className={`font-mono text-[10px] flex-none ${
+                      isActive
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground/70"
+                    }`}
+                  >
                     {tab.displayId}
                   </span>
-                  <span className="ml-1.5 truncate">{tab.subject}</span>
+                  <span className="truncate">{tab.subject}</span>
                 </span>
 
                 {/* Close */}
-                <span
+                <button
+                  type="button"
                   onClick={(e) => handleClose(e, tab.id)}
-                  className={`shrink-0 h-4 w-4 rounded-full flex items-center justify-center transition-all ml-auto ${
+                  className={`shrink-0 h-5 w-5 rounded grid place-items-center transition-all ${
                     isActive
-                      ? "text-muted-foreground hover:text-foreground hover:bg-destructive/10 hover:text-destructive"
-                      : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                   }`}
+                  aria-label={`Close ${tab.displayId}`}
+                  title="Close tab"
                 >
-                  <X className="h-2.5 w-2.5" />
-                </span>
-              </button>
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
             );
           })}
         </div>
 
-        {/* Close all (visible when 2+ tabs) */}
+        {/* Close all */}
         {tabs.length >= 2 && (
           <button
+            type="button"
             onClick={() => {
               closeAllTabs();
               onSwitchTab(null);
             }}
-            className="flex items-center px-2 text-[10px] text-muted-foreground/60 hover:text-destructive transition-colors shrink-0"
+            className="ml-1 h-9 px-2 grid place-items-center text-[11px] text-muted-foreground/70 hover:text-destructive transition-colors shrink-0 rounded-md hover:bg-accent/40"
             title="Close all tabs"
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
@@ -175,11 +217,11 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
             onClick={handleCloseContextMenu}
           />
           <div
-            className="fixed z-[9999] rounded-xl border border-border bg-card shadow-elevated py-1.5 min-w-[160px]"
+            className="fixed z-[9999] rounded-xl border border-border bg-popover shadow-xl py-1.5 min-w-[180px] backdrop-blur-md"
             style={{ top: contextMenu.y, left: contextMenu.x }}
           >
             <ContextMenuItem
-              label="Close Tab"
+              label="Close tab"
               onClick={() => {
                 const tabId = contextMenu.tabId;
                 handleCloseContextMenu();
@@ -196,7 +238,7 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
             />
             {tabs.length > 1 && (
               <ContextMenuItem
-                label="Close Other Tabs"
+                label="Close other tabs"
                 onClick={() => {
                   const tabId = contextMenu.tabId;
                   handleCloseContextMenu();
@@ -206,9 +248,9 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                 }}
               />
             )}
-            <div className="my-1 h-px bg-border/50 mx-2" />
+            <div className="my-1 h-px bg-border/60 mx-2" />
             <ContextMenuItem
-              label="Close All Tabs"
+              label="Close all tabs"
               destructive
               onClick={() => {
                 handleCloseContextMenu();
@@ -234,6 +276,7 @@ function ContextMenuItem({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`w-full text-left px-3 py-1.5 text-[12px] transition-colors ${
         destructive
