@@ -55,6 +55,11 @@ import { handleApiError } from "../utils/handleApiError";
 import type { Role } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
 import { formatStatus, formatTicketId } from "../utils/format";
+import {
+  clearMessageDraft,
+  readMessageDraft,
+  writeMessageDraft,
+} from "../utils/messageDraft";
 import { TICKET_DETAIL_LAYOUT_CLASSNAMES } from "./ticket-detail-layout";
 import {
   getNextTicketDetailTab,
@@ -166,7 +171,15 @@ export function TicketDetailPage({
   const [messageType, setMessageType] = useState<"PUBLIC" | "INTERNAL">(
     "PUBLIC",
   );
-  const [messageBody, setMessageBody] = useState("");
+  const [messageBody, setMessageBody] = useState(() =>
+    readMessageDraft(ticketId),
+  );
+
+  // Standalone /tickets/:id keeps this component mounted across ticket
+  // navigation, so reload the draft when ticketId changes.
+  useEffect(() => {
+    setMessageBody(readMessageDraft(ticketId));
+  }, [ticketId]);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -1207,6 +1220,7 @@ export function TicketDetailPage({
   const handleMessageBodyChange = useCallback(
     (nextBody: string) => {
       setMessageBody(nextBody);
+      writeMessageDraft(ticketId, nextBody);
 
       if (!ticketId) {
         return;
@@ -1245,6 +1259,7 @@ export function TicketDetailPage({
     };
     setMessages((prev) => [...prev, optimisticMessage]);
     setMessageBody("");
+    clearMessageDraft(ticketId);
 
     try {
       const serverMessage = await addTicketMessage(ticketId, {
