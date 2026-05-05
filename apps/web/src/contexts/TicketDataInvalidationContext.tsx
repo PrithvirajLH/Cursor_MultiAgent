@@ -23,6 +23,10 @@ export function TicketDataInvalidationProvider({
         // Invalidate lightweight aggregate queries so shared consumers (e.g. sidebar)
         // get fresh values without forcing full dashboard/manager refresh patterns.
         void queryClient.invalidateQueries({ queryKey: ["ticketCounts"] });
+        // Saved-view preset / "Mine" badge counts (useViewCounts).
+        void queryClient.invalidateQueries({ queryKey: ["view-count"] });
+        // Revamp sidebar's primary-nav counts (fetchTicketCounts).
+        void queryClient.invalidateQueries({ queryKey: ["ticket-counts"] });
       },
       notifyTicketReportsChanged: () => {
         // Keep a separate namespace for heavier report queries so we can treat them
