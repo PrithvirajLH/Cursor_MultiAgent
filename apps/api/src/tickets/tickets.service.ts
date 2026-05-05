@@ -1417,13 +1417,17 @@ export class TicketsService {
         id: true,
         displayName: true,
         email: true,
+        role: true,
       },
     });
     if (!assignee) {
       throw new BadRequestException('Assignee not found');
     }
 
-    if (ticket.assignedTeamId) {
+    // OWNERs have global write access and aren't required to hold an explicit
+    // TeamMember record; skip the membership check for them so "assign to me"
+    // works on tickets in teams they aren't formally a member of.
+    if (ticket.assignedTeamId && assignee.role !== UserRole.OWNER) {
       const membership = await tx.teamMember.findUnique({
         where: {
           teamId_userId: {
