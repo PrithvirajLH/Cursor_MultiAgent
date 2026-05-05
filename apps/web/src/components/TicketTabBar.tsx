@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { X, Inbox } from "lucide-react";
 import { useTicketTabs, type TicketTab } from "../contexts/TicketTabsContext";
 
@@ -42,10 +42,36 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     tabId: string;
   } | null>(null);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [draggingTabWidth, setDraggingTabWidth] = useState(0);
   const [dropTarget, setDropTarget] = useState<{
     id: string;
     position: "before" | "after";
   } | null>(null);
+
+  // Predicted tab order if the current drop were committed. Used to compute
+  // a per-tab translateX so the non-dragged tabs slide to make room *during*
+  // the drag (Chrome / VS Code-style live preview).
+  const tabIndexShift = useMemo<Record<string, number>>(() => {
+    const shifts: Record<string, number> = {};
+    if (!draggingTabId || !dropTarget) return shifts;
+    const fromIdx = tabs.findIndex((t) => t.id === draggingTabId);
+    const toIdx = tabs.findIndex((t) => t.id === dropTarget.id);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return shifts;
+    let insertIdx = dropTarget.position === "after" ? toIdx + 1 : toIdx;
+    if (fromIdx < insertIdx) insertIdx--;
+    if (insertIdx === fromIdx) return shifts;
+    const next = [...tabs];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(insertIdx, 0, moved);
+    next.forEach((t, newIdx) => {
+      if (t.id === draggingTabId) return;
+      const originalIdx = tabs.findIndex((orig) => orig.id === t.id);
+      if (originalIdx !== newIdx) {
+        shifts[t.id] = (newIdx - originalIdx) * draggingTabWidth;
+      }
+    });
+    return shifts;
+  }, [tabs, draggingTabId, dropTarget, draggingTabWidth]);
 
   const isQueueActive = activeTabId === null || activeTabId === "__queue__";
 
@@ -139,14 +165,6 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const isDragging = draggingTabId === tab.id;
-            const isDropTargetBefore =
-              dropTarget?.id === tab.id &&
-              dropTarget.position === "before" &&
-              draggingTabId !== tab.id;
-            const isDropTargetAfter =
-              dropTarget?.id === tab.id &&
-              dropTarget.position === "after" &&
-              draggingTabId !== tab.id;
             const priorityStyle =
               PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
             const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
@@ -159,6 +177,9 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                 onContextMenu={(e) => handleContextMenu(e, tab.id)}
                 onDragStart={(e) => {
                   setDraggingTabId(tab.id);
+                  setDraggingTabWidth(
+                    e.currentTarget.getBoundingClientRect().width,
+                  );
                   e.dataTransfer.effectAllowed = "move";
                   e.dataTransfer.setData("text/plain", tab.id);
                 }}
@@ -195,7 +216,15 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                   setDraggingTabId(null);
                   setDropTarget(null);
                 }}
-                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] transition-colors min-w-0 max-w-[260px] shrink-0 ${
+                style={{
+                  transform: `translateX(${tabIndexShift[tab.id] ?? 0}px)`,
+                  // Skip the transition on the tab actively being dragged
+                  // so its position isn't fighting the browser's drag image.
+                  transition: isDragging
+                    ? "none"
+                    : "transform 180ms cubic-bezier(0.2, 0, 0, 1)",
+                }}
+                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] shrink-0 ${
                   isActive
                     ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
@@ -207,22 +236,10 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                       : "cursor-grab active:cursor-grabbing"
                 }`}
               >
-                {/* Drop-target indicator: a primary-color stripe on the
-                    edge of the tab the user is hovering toward. Sides
-                    flip based on cursor position so the user sees the
-                    exact insertion point. */}
-                {isDropTargetBefore && (
-                  <span
-                    className="absolute -left-px top-1 bottom-0 w-0.5 rounded-full bg-primary shadow-[0_0_4px_rgba(0,0,0,0.1)]"
-                    aria-hidden
-                  />
-                )}
-                {isDropTargetAfter && (
-                  <span
-                    className="absolute -right-px top-1 bottom-0 w-0.5 rounded-full bg-primary shadow-[0_0_4px_rgba(0,0,0,0.1)]"
-                    aria-hidden
-                  />
-                )}
+                {/* Drop indicator is now communicated by the live tab
+                    slide (other tabs translate to make room), so we no
+                    longer render a stripe — the gap itself shows where
+                    the dragged tab will land. */}
                 {/* Priority chip */}
                 <span
                   className={`flex-none h-[18px] px-1 rounded text-[10px] font-bold tabular-nums tracking-tight grid place-items-center ${priorityStyle.bg} ${priorityStyle.fg}`}
