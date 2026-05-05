@@ -1424,14 +1424,19 @@ export function TicketsPage({
                 toggleAll: selection.toggleAll,
                 isAllSelected: selection.isAllSelected,
               }}
-              onRowClick={(ticket) => {
-                ticketTabs.openTab({
+              onRowClick={(ticket, opts) => {
+                const tab = {
                   id: ticket.id,
                   displayId: ticket.displayId ?? `#${ticket.number}`,
                   subject: ticket.subject,
                   status: ticket.status,
                   priority: ticket.priority,
-                });
+                };
+                if (opts?.newTab) {
+                  ticketTabs.openTab(tab);
+                } else {
+                  ticketTabs.replaceActiveTab(tab);
+                }
                 setActiveTicketId(ticket.id);
               }}
             />
@@ -1513,7 +1518,21 @@ export function TicketsPage({
               setActiveTicketId(null);
               ticketTabs.switchTab("__queue__");
             }}
-            onSelectTicket={(id) => setActiveTicketId(id)}
+            onSelectTicket={(ticket, opts) => {
+              const tab = {
+                id: ticket.id,
+                displayId: ticket.displayId ?? `#${ticket.number}`,
+                subject: ticket.subject,
+                status: ticket.status,
+                priority: ticket.priority,
+              };
+              if (opts?.newTab) {
+                ticketTabs.openTab(tab);
+              } else {
+                ticketTabs.replaceActiveTab(tab);
+              }
+              setActiveTicketId(ticket.id);
+            }}
           />
         </div>
       )}

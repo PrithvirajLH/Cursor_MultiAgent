@@ -132,7 +132,10 @@ export function TicketDetailPage({
   teamsList: TeamRef[];
   ticketId?: string;
   onBack?: () => void;
-  onSelectTicket?: (id: string) => void;
+  onSelectTicket?: (
+    ticket: import("../api/client").TicketRecord,
+    opts?: { newTab?: boolean },
+  ) => void;
 }) {
   const headerCtx = useHeaderContext();
   const { ticketId: ticketIdParam } = useParams();
@@ -1681,11 +1684,18 @@ export function TicketDetailPage({
           >
             <TicketDetailMidList
               currentTicketId={ticketId}
-              onSelectTicket={(id) => {
+              onSelectTicket={(ticket, opts) => {
                 if (onSelectTicket) {
-                  onSelectTicket(id);
+                  onSelectTicket(ticket, opts);
+                } else if (opts?.newTab) {
+                  // Standalone /tickets/:id route — open new browser tab.
+                  window.open(
+                    `/tickets/${ticket.id}${location.search}`,
+                    "_blank",
+                    "noopener",
+                  );
                 } else {
-                  navigate(`/tickets/${id}${location.search}`);
+                  navigate(`/tickets/${ticket.id}${location.search}`);
                 }
               }}
             />

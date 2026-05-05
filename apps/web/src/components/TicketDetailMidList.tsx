@@ -13,10 +13,14 @@ interface TicketDetailMidListProps {
   /** Ticket id of the row that should appear highlighted (the one currently open). */
   currentTicketId: string | undefined;
   /**
-   * If provided, called instead of navigating — used when the detail is
-   * embedded inside the queue tab so we just swap the active ticket.
+   * Called when a row is clicked. `opts.newTab` is true when the user used a
+   * Cmd/Ctrl+click, middle-click, or "Open in new tab" context action — the
+   * caller should add a tab instead of replacing the active one.
    */
-  onSelectTicket?: (id: string) => void;
+  onSelectTicket?: (
+    ticket: TicketRecord,
+    opts?: { newTab?: boolean },
+  ) => void;
 }
 
 /**
@@ -82,7 +86,10 @@ function MidListRow({
 }: {
   ticket: TicketRecord;
   isCurrent: boolean;
-  onSelectTicket?: (id: string) => void;
+  onSelectTicket?: (
+    ticket: TicketRecord,
+    opts?: { newTab?: boolean },
+  ) => void;
 }) {
   const requester =
     ticket.requester?.displayName ?? ticket.requester?.email ?? "—";
@@ -139,7 +146,20 @@ function MidListRow({
     <li>
       <button
         type="button"
-        onClick={() => onSelectTicket?.(ticket.id)}
+        onClick={(event) => {
+          const newTab = event.metaKey || event.ctrlKey;
+          onSelectTicket?.(ticket, { newTab });
+        }}
+        onAuxClick={(event) => {
+          if (event.button === 1) {
+            event.preventDefault();
+            onSelectTicket?.(ticket, { newTab: true });
+          }
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onSelectTicket?.(ticket, { newTab: true });
+        }}
         style={activeStyle}
         className={`${baseClass} ${activeBg}`}
       >

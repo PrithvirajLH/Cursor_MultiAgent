@@ -18,6 +18,12 @@ type TicketTabsContextValue = {
   tabs: TicketTab[];
   activeTabId: string | null;
   openTab: (tab: TicketTab) => void;
+  /**
+   * Swap the active tab's content for the given ticket. If no tab is active,
+   * behaves like openTab. If the ticket is already open in another tab, just
+   * switches to that existing tab without duplicating it.
+   */
+  replaceActiveTab: (tab: TicketTab) => void;
   closeTab: (id: string) => void;
   switchTab: (id: string) => void;
   closeOtherTabs: (id: string) => void;
@@ -97,6 +103,48 @@ export function TicketTabsProvider({ children }: { children: ReactNode }) {
     [setActiveTabId],
   );
 
+  const replaceActiveTab = useCallback(
+    (tab: TicketTab) => {
+      setTabs((prev) => {
+        // If the ticket is already open in some tab, just refresh its
+        // metadata and switch to it — no duplicate tab.
+        const existingIdx = prev.findIndex((t) => t.id === tab.id);
+        if (existingIdx !== -1) {
+          const updated = prev.map((t) =>
+            t.id === tab.id ? { ...t, ...tab } : t,
+          );
+          saveTabs(updated);
+          return updated;
+        }
+        // No active tab — fall back to appending.
+        if (!activeTabId) {
+          const next =
+            prev.length >= MAX_TABS
+              ? [...prev.slice(1), tab]
+              : [...prev, tab];
+          saveTabs(next);
+          return next;
+        }
+        // Replace the active tab in place.
+        const idx = prev.findIndex((t) => t.id === activeTabId);
+        if (idx === -1) {
+          const next =
+            prev.length >= MAX_TABS
+              ? [...prev.slice(1), tab]
+              : [...prev, tab];
+          saveTabs(next);
+          return next;
+        }
+        const next = [...prev];
+        next[idx] = tab;
+        saveTabs(next);
+        return next;
+      });
+      setActiveTabId(tab.id);
+    },
+    [activeTabId, setActiveTabId],
+  );
+
   const closeTab = useCallback(
     (id: string) => {
       setTabs((prev) => {
@@ -161,6 +209,7 @@ export function TicketTabsProvider({ children }: { children: ReactNode }) {
         tabs,
         activeTabId,
         openTab,
+        replaceActiveTab,
         closeTab,
         switchTab,
         closeOtherTabs,

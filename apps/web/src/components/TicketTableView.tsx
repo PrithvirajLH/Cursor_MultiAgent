@@ -46,7 +46,7 @@ type TicketTableViewProps = {
     toggleAll: () => void;
     isAllSelected: boolean;
   };
-  onRowClick: (ticket: TicketRecord) => void;
+  onRowClick: (ticket: TicketRecord, opts?: { newTab?: boolean }) => void;
 };
 
 export function TicketTableView({
@@ -70,9 +70,13 @@ export function TicketTableView({
   };
 
   const handleContextAction = (
-    action: "assign_me" | "status" | "priority" | "copy",
+    action: "open_new_tab" | "assign_me" | "status" | "priority" | "copy",
     ticket: TicketRecord,
   ) => {
+    if (action === "open_new_tab") {
+      onRowClick(ticket, { newTab: true });
+      return;
+    }
     if (action === "copy") {
       void navigator.clipboard.writeText(ticket.id);
       toast.success("Ticket ID copied to clipboard");
@@ -149,12 +153,25 @@ export function TicketTableView({
             return (
               <tr
                 key={ticket.id}
-                onClick={() => onRowClick(ticket)}
+                onClick={(event) => {
+                  // Cmd/Ctrl+click → open in a new tab (browser convention).
+                  const newTab = event.metaKey || event.ctrlKey;
+                  onRowClick(ticket, { newTab });
+                }}
+                onAuxClick={(event) => {
+                  // Middle-click → open in a new tab.
+                  if (event.button === 1) {
+                    event.preventDefault();
+                    onRowClick(ticket, { newTab: true });
+                  }
+                }}
                 onContextMenu={(e) => handleContextMenu(e, ticket)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    onRowClick(ticket);
+                    onRowClick(ticket, {
+                      newTab: event.metaKey || event.ctrlKey,
+                    });
                   }
                 }}
                 role="button"

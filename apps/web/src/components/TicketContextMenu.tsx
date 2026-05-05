@@ -1,17 +1,27 @@
 import { useEffect, useRef } from "react";
-import { UserPlus, Activity, ArrowUpCircle, Copy } from "lucide-react";
+import {
+  UserPlus,
+  Activity,
+  ArrowUpCircle,
+  Copy,
+  ExternalLink,
+} from "lucide-react";
 import type { TicketRecord } from "../api/client";
 import { formatTicketId } from "../utils/format";
+
+export type TicketContextMenuAction =
+  | "open_new_tab"
+  | "assign_me"
+  | "status"
+  | "priority"
+  | "copy";
 
 export type TicketContextMenuProps = {
   x: number;
   y: number;
   ticket: TicketRecord;
   onClose: () => void;
-  onAction: (
-    action: "assign_me" | "status" | "priority" | "copy",
-    ticket: TicketRecord,
-  ) => void;
+  onAction: (action: TicketContextMenuAction, ticket: TicketRecord) => void;
 };
 
 export function TicketContextMenu({
@@ -59,6 +69,19 @@ export function TicketContextMenu({
       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1 truncate">
         {formatTicketId(ticket)}
       </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAction("open_new_tab", ticket);
+          onClose();
+        }}
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted transition-colors text-left"
+      >
+        <ExternalLink className="h-4 w-4 text-slate-400 shrink-0" />
+        Open in new tab
+      </button>
+      <div className="my-0.5 border-b border-border" />
       <button
         type="button"
         onClick={(e) => {
