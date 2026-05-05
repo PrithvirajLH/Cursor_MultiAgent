@@ -160,7 +160,7 @@ export function SidebarTicketsSavedViews({
               dk ? "text-white/30" : "text-foreground/45"
             }`}
           >
-            Mine
+            Saved views
           </div>
           {userSavedViews.map((v, i) => (
             <UserSavedViewRow
