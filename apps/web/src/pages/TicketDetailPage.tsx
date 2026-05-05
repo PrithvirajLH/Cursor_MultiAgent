@@ -619,9 +619,10 @@ export function TicketDetailPage({
       setTicketError(null);
       setAccessDenied(false);
       if (isNewTicket) {
-        setTicket(null);
-        setMessages([]);
-        setEvents([]);
+        // Keep ticket / messages / events populated with the previous
+        // ticket's data until the new ticket's response arrives — the
+        // values get replaced atomically below. This avoids the skeleton
+        // flash users were seeing on every swap.
         setMessageCursor(null);
         setEventCursor(null);
         setMessagesHasMore(false);

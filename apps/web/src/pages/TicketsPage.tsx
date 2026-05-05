@@ -1509,7 +1509,6 @@ export function TicketsPage({
         /* Ticket detail view — embedded in tab */
         <div style={{ height: "calc(100vh - 40px)", overflow: "hidden" }}>
           <TicketDetailPage
-            key={activeTicketId}
             ticketId={activeTicketId}
             currentEmail={currentEmail}
             role={role}
