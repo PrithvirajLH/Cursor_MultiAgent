@@ -16,10 +16,7 @@ import {
   horizontalListSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable";
-import {
-  restrictToHorizontalAxis,
-  restrictToFirstScrollableAncestor,
-} from "@dnd-kit/modifiers";
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import { useTicketTabs, type TicketTab } from "../contexts/TicketTabsContext";
 
@@ -183,10 +180,10 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           modifiers={[
             // Lock the drag overlay to horizontal motion so the tab
             // can't drift up/down out of the bar — matches Chrome.
+            // Don't restrict to the scrollable ancestor here: that
+            // modifier was clamping the overlay past the tab's slot
+            // and made the ghost lag well behind the cursor.
             restrictToHorizontalAxis,
-            // Keep the overlay within the scrollable tab strip's bounds
-            // so it doesn't fly off into the page chrome.
-            restrictToFirstScrollableAncestor,
           ]}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
