@@ -1,5 +1,22 @@
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { X, Inbox } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  closestCenter,
+  type DragStartEvent,
+  type DragEndEvent,
+  type DragCancelEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useTicketTabs, type TicketTab } from "../contexts/TicketTabsContext";
 
 type TicketTabBarProps = {
@@ -41,40 +58,18 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     y: number;
     tabId: string;
   } | null>(null);
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
-  const [draggingTabWidth, setDraggingTabWidth] = useState(0);
-  const [dropTarget, setDropTarget] = useState<{
-    id: string;
-    position: "before" | "after";
-  } | null>(null);
-
-  // Per-tab translateX while dragging — derived from the predicted
-  // post-drop array order. The dragged tab stays in its slot (dimmed),
-  // so we compare each tab's original index to its new index in the
-  // simulated post-drop array and multiply by the dragged tab's width.
-  const tabIndexShift = useMemo<Record<string, number>>(() => {
-    const shifts: Record<string, number> = {};
-    if (!draggingTabId || !dropTarget) return shifts;
-    const fromIdx = tabs.findIndex((t) => t.id === draggingTabId);
-    const toIdx = tabs.findIndex((t) => t.id === dropTarget.id);
-    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return shifts;
-    let insertIdx = dropTarget.position === "after" ? toIdx + 1 : toIdx;
-    if (fromIdx < insertIdx) insertIdx--;
-    if (insertIdx === fromIdx) return shifts;
-    const next = [...tabs];
-    const [moved] = next.splice(fromIdx, 1);
-    next.splice(insertIdx, 0, moved);
-    next.forEach((t, newIdx) => {
-      if (t.id === draggingTabId) return;
-      const originalIdx = tabs.findIndex((orig) => orig.id === t.id);
-      if (originalIdx !== newIdx) {
-        shifts[t.id] = (newIdx - originalIdx) * draggingTabWidth;
-      }
-    });
-    return shifts;
-  }, [tabs, draggingTabId, dropTarget, draggingTabWidth]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const isQueueActive = activeTabId === null || activeTabId === "__queue__";
+  const draggingTab = draggingId
+    ? tabs.find((t) => t.id === draggingId) ?? null
+    : null;
+
+  // 5px activation distance lets the click handler fire when the user
+  // just clicks; only when they actually move the mouse does drag start.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
 
   function handleSwitchToQueue() {
     switchTab("__queue__");
@@ -108,7 +103,6 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
   }
 
   function handleAuxClick(e: React.MouseEvent, tabId: string) {
-    // Middle-click closes the tab — matches browser convention.
     if (e.button === 1) {
       e.preventDefault();
       handleClose(e, tabId);
@@ -122,6 +116,28 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
 
   function handleCloseContextMenu() {
     setContextMenu(null);
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    setDraggingId(event.active.id as string);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setDraggingId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const fromIdx = tabs.findIndex((t) => t.id === active.id);
+    const toIdx = tabs.findIndex((t) => t.id === over.id);
+    if (fromIdx === -1 || toIdx === -1) return;
+    // Mirror Chrome behavior: dragging right inserts after, dragging
+    // left inserts before. dnd-kit's collision detection picks the
+    // closest center, so this gives a natural insertion point.
+    const position = fromIdx < toIdx ? "after" : "before";
+    reorderTabs(active.id as string, over.id as string, position);
+  }
+
+  function handleDragCancel(_event: DragCancelEvent) {
+    setDraggingId(null);
   }
 
   return (
@@ -157,182 +173,54 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           )}
         </button>
 
-        {/* Scrollable ticket tabs */}
-        <div
-          ref={scrollRef}
-          className="flex items-end gap-0.5 overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
-          style={{ scrollbarWidth: "none" }}
-          onDragOver={(e) => {
-            // Permit drops in the empty space after the last tab.
-            if (draggingTabId) {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-            }
-          }}
-          onDrop={(e) => {
-            // Fallback: a drop landing on the bar's empty area (past the
-            // last tab) reorders to the end. Per-tab onDrop handlers
-            // stop propagation implicitly, so this only fires when the
-            // cursor wasn't on any tab.
-            const fromId = e.dataTransfer.getData("text/plain");
-            if (fromId && tabs.length > 0) {
-              const last = tabs[tabs.length - 1];
-              if (fromId !== last.id) {
-                reorderTabs(fromId, last.id, "after");
-              }
-            }
-            setDraggingTabId(null);
-            setDropTarget(null);
-          }}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
         >
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeTabId;
-            const isDragging = draggingTabId === tab.id;
-            const priorityStyle =
-              PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
-            const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
-            return (
-              <div
-                key={tab.id}
-                draggable
-                onClick={() => handleSwitchToTicket(tab)}
-                onAuxClick={(e) => handleAuxClick(e, tab.id)}
-                onContextMenu={(e) => handleContextMenu(e, tab.id)}
-                onDragStart={(e) => {
-                  setDraggingTabId(tab.id);
-                  setDraggingTabWidth(
-                    e.currentTarget.getBoundingClientRect().width,
-                  );
-                  e.dataTransfer.effectAllowed = "move";
-                  e.dataTransfer.setData("text/plain", tab.id);
-                }}
-                onDragOver={(e) => {
-                  if (!draggingTabId || draggingTabId === tab.id) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  // Decide insertion side from the cursor's X relative to
-                  // the target tab's midpoint — Chrome/VS Code-style.
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const isLeftHalf =
-                    e.clientX < rect.left + rect.width / 2;
-                  const nextPosition: "before" | "after" = isLeftHalf
-                    ? "before"
-                    : "after";
-                  // Skip the state update if nothing changed — dragover
-                  // fires every few ms; without this guard React would
-                  // re-render constantly and the slide could jitter.
-                  setDropTarget((prev) =>
-                    prev?.id === tab.id && prev.position === nextPosition
-                      ? prev
-                      : { id: tab.id, position: nextPosition },
-                  );
-                }}
-                // Note: deliberately no onDragLeave — native HTML5 DnD
-                // fires `dragleave` when the cursor crosses into a child
-                // element of the tab (priority chip, status dot, close
-                // button), which would clear dropTarget mid-hover and
-                // make the slide preview flicker. Instead we let
-                // onDragOver continuously set the target; when the user
-                // drops or cancels, onDrop / onDragEnd clears it.
-                onDrop={(e) => {
-                  e.preventDefault();
-                  const fromId = e.dataTransfer.getData("text/plain");
-                  // Compute the insertion position from the actual drop
-                  // event data instead of relying on the dropTarget
-                  // React state — that state can be stale here because
-                  // dragover's setDropTarget is async, and onDrop may
-                  // fire before React has re-rendered with the latest
-                  // hover. Reading e.clientX is always up-to-date.
-                  if (fromId && fromId !== tab.id) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const isLeftHalf =
-                      e.clientX < rect.left + rect.width / 2;
-                    reorderTabs(
-                      fromId,
-                      tab.id,
-                      isLeftHalf ? "before" : "after",
-                    );
-                  }
-                  setDraggingTabId(null);
-                  setDropTarget(null);
-                }}
-                onDragEnd={() => {
-                  setDraggingTabId(null);
-                  setDropTarget(null);
-                }}
-                style={{
-                  // Source tab keeps its full size during drag so the
-                  // browser's drag operation isn't disrupted (collapsing
-                  // the source mid-drag breaks the gesture in some
-                  // browsers). We dim it to a near-invisible ghost
-                  // (10% opacity) so the gap-where-it-lands preview from
-                  // the surrounding tabs is what the user reads.
-                  transform: isDragging
-                    ? "translateX(0)"
-                    : `translateX(${tabIndexShift[tab.id] ?? 0}px)`,
-                  opacity: isDragging ? 0.1 : 1,
-                  transition:
-                    "opacity 140ms ease-out, transform 180ms cubic-bezier(0.2, 0, 0, 1)",
-                }}
-                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] shrink-0 ${
-                  isActive
-                    ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-                } ${
-                  draggingTabId
-                    ? "cursor-grabbing"
-                    : "cursor-grab active:cursor-grabbing"
-                }`}
-              >
-                {/* Drop indicator is now communicated by the live tab
-                    slide (other tabs translate to make room), so we no
-                    longer render a stripe — the gap itself shows where
-                    the dragged tab will land. */}
-                {/* Priority chip */}
-                <span
-                  className={`flex-none h-[18px] px-1 rounded text-[10px] font-bold tabular-nums tracking-tight grid place-items-center ${priorityStyle.bg} ${priorityStyle.fg}`}
-                >
-                  {tab.priority}
-                </span>
-
-                {/* Status dot */}
-                <span
-                  className={`h-1.5 w-1.5 rounded-full flex-none ${statusDot}`}
-                  aria-hidden
+          <SortableContext
+            items={tabs.map((t) => t.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {/* Scrollable ticket tabs */}
+            <div
+              ref={scrollRef}
+              className="flex items-end gap-0.5 overflow-x-auto flex-1 min-w-0 [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {tabs.map((tab) => (
+                <SortableTab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeTabId}
+                  onClick={() => handleSwitchToTicket(tab)}
+                  onAuxClick={(e) => handleAuxClick(e, tab.id)}
+                  onContextMenu={(e) => handleContextMenu(e, tab.id)}
+                  onClose={(e) => handleClose(e, tab.id)}
                 />
+              ))}
+            </div>
+          </SortableContext>
 
-                {/* ID + Subject */}
-                <span className="flex items-baseline gap-1.5 min-w-0 flex-1">
-                  <span
-                    className={`font-mono text-[10px] flex-none ${
-                      isActive
-                        ? "text-muted-foreground"
-                        : "text-muted-foreground/70"
-                    }`}
-                  >
-                    {tab.displayId}
-                  </span>
-                  <span className="truncate">{tab.subject}</span>
-                </span>
-
-                {/* Close */}
-                <button
-                  type="button"
-                  onClick={(e) => handleClose(e, tab.id)}
-                  className={`shrink-0 h-5 w-5 rounded grid place-items-center transition-all ${
-                    isActive
-                      ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  }`}
-                  aria-label={`Close ${tab.displayId}`}
-                  title="Close tab"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+          {/* Floating tab that follows the cursor while dragging.
+              dnd-kit handles positioning + smoothing for us. */}
+          <DragOverlay
+            dropAnimation={{
+              duration: 200,
+              easing: "cubic-bezier(0.2, 0, 0, 1)",
+            }}
+          >
+            {draggingTab ? (
+              <TabContent
+                tab={draggingTab}
+                isActive={draggingTab.id === activeTabId}
+                isOverlay
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
 
         {/* Close all */}
         {tabs.length >= 2 && (
@@ -403,6 +291,129 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
         </>
       )}
     </>
+  );
+}
+
+/* ─── Sortable wrapper for each tab ──────────────────────────────── */
+
+interface SortableTabProps {
+  tab: TicketTab;
+  isActive: boolean;
+  onClick: () => void;
+  onAuxClick: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  onClose: (e: React.MouseEvent) => void;
+}
+
+function SortableTab({
+  tab,
+  isActive,
+  onClick,
+  onAuxClick,
+  onContextMenu,
+  onClose,
+}: SortableTabProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: tab.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        // Hide the source while it's being dragged — DragOverlay renders
+        // the floating copy. opacity:0 keeps the slot in place so
+        // surrounding tabs don't snap; the SortableContext's transition
+        // makes the gap glide as collisions change.
+        opacity: isDragging ? 0 : 1,
+      }}
+      {...attributes}
+      {...listeners}
+      onClick={onClick}
+      onAuxClick={onAuxClick}
+      onContextMenu={onContextMenu}
+      className={`shrink-0 ${isDragging ? "z-10" : ""}`}
+    >
+      <TabContent tab={tab} isActive={isActive} onClose={onClose} />
+    </div>
+  );
+}
+
+/* ─── Tab visual content (used both inline and in DragOverlay) ──── */
+
+interface TabContentProps {
+  tab: TicketTab;
+  isActive: boolean;
+  onClose?: (e: React.MouseEvent) => void;
+  isOverlay?: boolean;
+}
+
+function TabContent({ tab, isActive, onClose, isOverlay }: TabContentProps) {
+  const priorityStyle = PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
+  const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
+
+  return (
+    <div
+      className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] ${
+        isActive
+          ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
+          : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
+      } ${
+        isOverlay
+          ? "shadow-lg ring-1 ring-border bg-card text-foreground cursor-grabbing"
+          : "cursor-grab active:cursor-grabbing"
+      }`}
+    >
+      {/* Priority chip */}
+      <span
+        className={`flex-none h-[18px] px-1 rounded text-[10px] font-bold tabular-nums tracking-tight grid place-items-center ${priorityStyle.bg} ${priorityStyle.fg}`}
+      >
+        {tab.priority}
+      </span>
+
+      {/* Status dot */}
+      <span
+        className={`h-1.5 w-1.5 rounded-full flex-none ${statusDot}`}
+        aria-hidden
+      />
+
+      {/* ID + Subject */}
+      <span className="flex items-baseline gap-1.5 min-w-0 flex-1">
+        <span
+          className={`font-mono text-[10px] flex-none ${
+            isActive ? "text-muted-foreground" : "text-muted-foreground/70"
+          }`}
+        >
+          {tab.displayId}
+        </span>
+        <span className="truncate">{tab.subject}</span>
+      </span>
+
+      {/* Close — hidden in overlay (no interaction during drag) */}
+      {!isOverlay && onClose && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={onClose}
+          className={`shrink-0 h-5 w-5 rounded grid place-items-center transition-all ${
+            isActive
+              ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          }`}
+          aria-label={`Close ${tab.displayId}`}
+          title="Close tab"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
   );
 }
 
