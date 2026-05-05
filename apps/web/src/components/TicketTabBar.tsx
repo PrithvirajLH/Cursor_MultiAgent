@@ -48,26 +48,27 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     position: "before" | "after";
   } | null>(null);
 
-  // Predicted shift per tab while dragging. The dragged tab itself
-  // collapses to 0 width, so we compute shifts in the collapsed layout
-  // (other tabs squashed together) versus the final layout (dragged
-  // re-inserted at the drop position). Each non-dragged tab gets a
-  // translateX of one dragged-tab-width when it needs to slide right
-  // to open the gap where the dragged tab will land.
+  // Per-tab translateX while dragging — derived from the predicted
+  // post-drop array order. The dragged tab stays in its slot (dimmed),
+  // so we compare each tab's original index to its new index in the
+  // simulated post-drop array and multiply by the dragged tab's width.
   const tabIndexShift = useMemo<Record<string, number>>(() => {
     const shifts: Record<string, number> = {};
     if (!draggingTabId || !dropTarget) return shifts;
     const fromIdx = tabs.findIndex((t) => t.id === draggingTabId);
     const toIdx = tabs.findIndex((t) => t.id === dropTarget.id);
     if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return shifts;
-    // Convert toIdx (in original array) to insertIdx in the collapsed
-    // array (without the dragged tab).
     let insertIdx = dropTarget.position === "after" ? toIdx + 1 : toIdx;
     if (fromIdx < insertIdx) insertIdx--;
-    const collapsed = tabs.filter((t) => t.id !== draggingTabId);
-    collapsed.forEach((t, collapsedIdx) => {
-      if (collapsedIdx >= insertIdx) {
-        shifts[t.id] = draggingTabWidth;
+    if (insertIdx === fromIdx) return shifts;
+    const next = [...tabs];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(insertIdx, 0, moved);
+    next.forEach((t, newIdx) => {
+      if (t.id === draggingTabId) return;
+      const originalIdx = tabs.findIndex((orig) => orig.id === t.id);
+      if (originalIdx !== newIdx) {
+        shifts[t.id] = (newIdx - originalIdx) * draggingTabWidth;
       }
     });
     return shifts;
@@ -226,30 +227,21 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                   setDropTarget(null);
                 }}
                 style={{
-                  // While being dragged, collapse the tab to zero width
-                  // so it visually leaves the bar — the browser keeps a
-                  // ghost following the cursor, and the other tabs slide
-                  // to show where it'll land. If the user drops outside
-                  // the bar (no reorder happens) the transition smoothly
-                  // expands it back into its original spot.
-                  ...(isDragging
-                    ? {
-                        width: 0,
-                        paddingLeft: 0,
-                        paddingRight: 0,
-                        marginLeft: 0,
-                        marginRight: 0,
-                        opacity: 0,
-                        pointerEvents: "none",
-                      }
-                    : {
-                        transform: `translateX(${tabIndexShift[tab.id] ?? 0}px)`,
-                      }),
+                  // Source tab keeps its full size during drag so the
+                  // browser's drag operation isn't disrupted (collapsing
+                  // the source mid-drag breaks the gesture in some
+                  // browsers). We dim it to a near-invisible ghost
+                  // (10% opacity) so the gap-where-it-lands preview from
+                  // the surrounding tabs is what the user reads.
+                  transform: isDragging
+                    ? "translateX(0)"
+                    : `translateX(${tabIndexShift[tab.id] ?? 0}px)`,
+                  opacity: isDragging ? 0.1 : 1,
                   transition:
-                    "width 180ms cubic-bezier(0.2, 0, 0, 1), padding 180ms cubic-bezier(0.2, 0, 0, 1), margin 180ms cubic-bezier(0.2, 0, 0, 1), opacity 140ms ease-out, transform 180ms cubic-bezier(0.2, 0, 0, 1)",
+                    "opacity 140ms ease-out, transform 180ms cubic-bezier(0.2, 0, 0, 1)",
                 }}
-                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] overflow-hidden max-w-[260px] shrink-0 ${
-                  isActive && !isDragging
+                className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] min-w-0 max-w-[260px] shrink-0 ${
+                  isActive
                     ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
                 } ${
