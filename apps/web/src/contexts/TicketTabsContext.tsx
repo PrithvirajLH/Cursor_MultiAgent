@@ -30,6 +30,11 @@ type TicketTabsContextValue = {
   closeAllTabs: () => void;
   updateTab: (id: string, updates: Partial<TicketTab>) => void;
   setActiveTabId: (id: string | null) => void;
+  /**
+   * Reorder tabs by moving the tab with id `fromId` to the index that the tab
+   * with id `toId` currently occupies. Used for drag-and-drop reordering.
+   */
+  reorderTabs: (fromId: string, toId: string) => void;
 };
 
 const STORAGE_KEY = "csh-ticket-tabs";
@@ -195,6 +200,20 @@ export function TicketTabsProvider({ children }: { children: ReactNode }) {
     setActiveTabId(null);
   }, [setActiveTabId]);
 
+  const reorderTabs = useCallback((fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setTabs((prev) => {
+      const fromIdx = prev.findIndex((t) => t.id === fromId);
+      const toIdx = prev.findIndex((t) => t.id === toId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, moved);
+      saveTabs(next);
+      return next;
+    });
+  }, []);
+
   const updateTab = useCallback((id: string, updates: Partial<TicketTab>) => {
     setTabs((prev) => {
       const next = prev.map((t) => (t.id === id ? { ...t, ...updates } : t));
@@ -216,6 +235,7 @@ export function TicketTabsProvider({ children }: { children: ReactNode }) {
         closeAllTabs,
         updateTab,
         setActiveTabId,
+        reorderTabs,
       }}
     >
       {children}

@@ -33,6 +33,7 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     closeTab,
     closeOtherTabs,
     closeAllTabs,
+    reorderTabs,
   } = useTicketTabs();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{
@@ -40,6 +41,8 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
     y: number;
     tabId: string;
   } | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [dropTargetTabId, setDropTargetTabId] = useState<string | null>(null);
 
   const isQueueActive = activeTabId === null || activeTabId === "__queue__";
 
@@ -132,21 +135,62 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
         >
           {tabs.map((tab) => {
             const isActive = tab.id === activeTabId;
+            const isDragging = draggingTabId === tab.id;
+            const isDropTarget =
+              dropTargetTabId === tab.id && draggingTabId !== tab.id;
             const priorityStyle =
               PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
             const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
             return (
               <div
                 key={tab.id}
+                draggable
                 onClick={() => handleSwitchToTicket(tab)}
                 onAuxClick={(e) => handleAuxClick(e, tab.id)}
                 onContextMenu={(e) => handleContextMenu(e, tab.id)}
+                onDragStart={(e) => {
+                  setDraggingTabId(tab.id);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", tab.id);
+                }}
+                onDragOver={(e) => {
+                  if (!draggingTabId || draggingTabId === tab.id) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDropTargetTabId(tab.id);
+                }}
+                onDragLeave={() => {
+                  setDropTargetTabId((prev) =>
+                    prev === tab.id ? null : prev,
+                  );
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const fromId = e.dataTransfer.getData("text/plain");
+                  if (fromId && fromId !== tab.id) {
+                    reorderTabs(fromId, tab.id);
+                  }
+                  setDraggingTabId(null);
+                  setDropTargetTabId(null);
+                }}
+                onDragEnd={() => {
+                  setDraggingTabId(null);
+                  setDropTargetTabId(null);
+                }}
                 className={`group relative flex items-center gap-1.5 h-9 pl-2.5 pr-1.5 rounded-t-lg text-[12.5px] transition-colors min-w-0 max-w-[260px] shrink-0 cursor-pointer ${
                   isActive
                     ? "bg-card text-foreground font-medium shadow-[inset_0_-1px_0_0_var(--background,white)]"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/40"
-                }`}
+                } ${isDragging ? "opacity-40" : ""}`}
               >
+                {/* Drop-target indicator: a 2px primary stripe on the left
+                    edge of the tab the user is hovering over. */}
+                {isDropTarget && (
+                  <span
+                    className="absolute left-0 top-1.5 bottom-1 w-0.5 rounded-full bg-primary"
+                    aria-hidden
+                  />
+                )}
                 {/* Priority chip */}
                 <span
                   className={`flex-none h-[18px] px-1 rounded text-[10px] font-bold tabular-nums tracking-tight grid place-items-center ${priorityStyle.bg} ${priorityStyle.fg}`}
