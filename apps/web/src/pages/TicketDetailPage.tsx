@@ -47,6 +47,7 @@ import {
   statusBadgeClass,
 } from "../components/ticket-detail/utils";
 import { TopBar } from "../components/TopBar";
+import { TicketDetailMidList } from "../components/TicketDetailMidList";
 import { TicketDetailSkeleton } from "../components/skeletons";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
@@ -124,12 +125,14 @@ export function TicketDetailPage({
   teamsList,
   ticketId: ticketIdProp,
   onBack,
+  onSelectTicket,
 }: {
   currentEmail: string;
   role: Role;
   teamsList: TeamRef[];
   ticketId?: string;
   onBack?: () => void;
+  onSelectTicket?: (id: string) => void;
 }) {
   const headerCtx = useHeaderContext();
   const { ticketId: ticketIdParam } = useParams();
@@ -1671,7 +1674,24 @@ export function TicketDetailPage({
         )}
 
         <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.contentContainer}>
-          {/* Left: conversation / timeline panel */}
+          {/* Left: mid-list rail (queue at a glance) */}
+          <aside
+            className={TICKET_DETAIL_LAYOUT_CLASSNAMES.midList}
+            aria-label="Ticket list"
+          >
+            <TicketDetailMidList
+              currentTicketId={ticketId}
+              onSelectTicket={(id) => {
+                if (onSelectTicket) {
+                  onSelectTicket(id);
+                } else {
+                  navigate(`/tickets/${id}${location.search}`);
+                }
+              }}
+            />
+          </aside>
+
+          {/* Center: conversation / timeline panel */}
           <div className={TICKET_DETAIL_LAYOUT_CLASSNAMES.mainPanel}>
             <div className="flex flex-1 flex-col min-h-0">
               {/* Integrated Subject Header */}

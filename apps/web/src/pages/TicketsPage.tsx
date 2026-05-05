@@ -1512,6 +1512,7 @@ export function TicketsPage({
               setActiveTicketId(null);
               ticketTabs.switchTab("__queue__");
             }}
+            onSelectTicket={(id) => setActiveTicketId(id)}
           />
         </div>
       )}

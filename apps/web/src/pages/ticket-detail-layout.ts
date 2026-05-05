@@ -3,6 +3,8 @@ export const TICKET_DETAIL_LAYOUT_CLASSNAMES = {
     "flex flex-1 overflow-x-hidden overflow-y-auto lg:overflow-hidden",
   contentContainer:
     "flex w-full min-h-full flex-col lg:min-h-0 lg:flex-row",
+  midList:
+    "hidden lg:flex lg:w-[280px] lg:shrink-0 lg:flex-col lg:border-r lg:border-border lg:bg-card lg:overflow-y-auto",
   mainPanel:
     "flex min-h-[60vh] min-w-0 flex-1 flex-col bg-background lg:min-h-0 lg:border-r lg:border-border",
   sidebar:
