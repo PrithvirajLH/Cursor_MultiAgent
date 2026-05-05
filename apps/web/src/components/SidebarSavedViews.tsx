@@ -84,16 +84,41 @@ function countTextClass(theme: "light" | "dark", active: boolean): string {
   return dk ? "text-white/30" : "text-foreground/55";
 }
 
+/**
+ * If we're already on a ticket detail page (3-pane state), preserve that
+ * pathname so the user stays in the detail while only the filter changes.
+ * Otherwise, default to /tickets.
+ */
+function targetPathFor(pathname: string): string {
+  if (pathname.startsWith("/tickets/")) return pathname;
+  return "/tickets";
+}
+
+/**
+ * Stamp `scope=all` into the saved-view query when the view doesn't already
+ * specify a scope. Saved views express their full filter intent in the URL,
+ * but the legacy useFilters falls back to App-level presetScope (e.g. stale
+ * "assigned" from a prior nav) when scope is missing — that fallback would
+ * silently narrow the view's results. URL params win, so writing scope=all
+ * neutralizes the leak without touching App state.
+ */
+function withDefaultScope(query: string): string {
+  const sp = new URLSearchParams(
+    query.startsWith("?") ? query.slice(1) : query,
+  );
+  if (!sp.has("scope")) sp.set("scope", "all");
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
+
 /* ── Inside All Tickets branch: presets + user-saved "Mine" ─── */
 
 interface SidebarTicketsSavedViewsProps {
   theme: "light" | "dark";
-  onBeforeNavigate?: () => void;
 }
 
 export function SidebarTicketsSavedViews({
   theme,
-  onBeforeNavigate,
 }: SidebarTicketsSavedViewsProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -132,10 +157,11 @@ export function SidebarTicketsSavedViews({
           <button
             key={v.id}
             type="button"
-            onClick={() => {
-              onBeforeNavigate?.();
-              navigate(`/tickets${v.buildQuery()}`);
-            }}
+            onClick={() =>
+              navigate(
+                `${targetPathFor(pathname)}${withDefaultScope(v.buildQuery())}`,
+              )
+            }
             className={`w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
           >
             <span
@@ -171,7 +197,6 @@ export function SidebarTicketsSavedViews({
               onTickets={onTickets}
               searchParams={searchParams}
               theme={theme}
-              onBeforeNavigate={onBeforeNavigate}
             />
           ))}
         </>
@@ -185,14 +210,9 @@ export function SidebarTicketsSavedViews({
 interface SidebarTeamsProps {
   collapsed: boolean;
   theme: "light" | "dark";
-  onBeforeNavigate?: () => void;
 }
 
-export function SidebarTeams({
-  collapsed,
-  theme,
-  onBeforeNavigate,
-}: SidebarTeamsProps) {
+export function SidebarTeams({ collapsed, theme }: SidebarTeamsProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
@@ -233,10 +253,11 @@ export function SidebarTeams({
           <button
             key={t.id}
             type="button"
-            onClick={() => {
-              onBeforeNavigate?.();
-              navigate(`/tickets?teamIds=${encodeURIComponent(t.id)}`);
-            }}
+            onClick={() =>
+              navigate(
+                `${targetPathFor(pathname)}?teamIds=${encodeURIComponent(t.id)}&scope=all`,
+              )
+            }
             className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors duration-150 ${
               active
                 ? dk
@@ -267,16 +288,15 @@ function UserSavedViewRow({
   onTickets,
   searchParams,
   theme,
-  onBeforeNavigate,
 }: {
   view: SavedViewRecord;
   count: number | undefined;
   onTickets: boolean;
   searchParams: URLSearchParams;
   theme: "light" | "dark";
-  onBeforeNavigate?: () => void;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const qc = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -317,10 +337,9 @@ function UserSavedViewRow({
     >
       <button
         type="button"
-        onClick={() => {
-          onBeforeNavigate?.();
-          navigate(`/tickets${query}`);
-        }}
+        onClick={() =>
+          navigate(`${targetPathFor(pathname)}${withDefaultScope(query)}`)
+        }
         className="flex-1 min-w-0 flex items-center gap-2 text-left"
         style={{ color: "inherit" }}
       >

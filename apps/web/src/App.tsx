@@ -669,14 +669,6 @@ function AuthenticatedShell({
 
   /* ——— Sidebar nav items (memoized, 6.3) ——— */
 
-  // Saved views and team links carry their full filter intent in the URL.
-  // Reset App-level preset state to "all" so useFilters' fallback values
-  // don't leak (e.g. a stale scope=assigned narrowing the saved-view result).
-  const handleSavedViewBeforeNavigate = useCallback(() => {
-    setTicketPresetStatus("all");
-    setTicketPresetScope("all");
-  }, []);
-
   const visibleNav = useMemo(() => {
     const filtered = navItems
       .filter((item) => item.roles.includes(currentPersona.role))
@@ -694,19 +686,10 @@ function AuthenticatedShell({
       })),
       extraChildren:
         item.key === "tickets" ? (
-          <SidebarTicketsSavedViews
-            theme={theme}
-            onBeforeNavigate={handleSavedViewBeforeNavigate}
-          />
+          <SidebarTicketsSavedViews theme={theme} />
         ) : undefined,
     }));
-  }, [
-    adminMenuEnabled,
-    currentPersona.role,
-    ticketCounts,
-    theme,
-    handleSavedViewBeforeNavigate,
-  ]);
+  }, [adminMenuEnabled, currentPersona.role, ticketCounts, theme]);
 
   /* ——— Header context value (6.2 – eliminates prop drilling) ——— */
 
@@ -860,7 +843,6 @@ function AuthenticatedShell({
                   sidebar.isMobileViewport ? false : sidebar.isSidebarCollapsed
                 }
                 theme={theme}
-                onBeforeNavigate={handleSavedViewBeforeNavigate}
               />
             ) : null
           }
