@@ -93,7 +93,7 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
 
   return (
     <>
-      <div className="relative flex items-end h-11 bg-muted/40 dark:bg-muted/20 border-b border-border pl-2 pr-1 select-none">
+      <div className="relative flex items-end h-11 bg-slate-200 dark:bg-slate-900 border-b border-slate-300 dark:border-slate-800 pl-2 pr-1 select-none">
         {/* Queue (home) button */}
         <button
           type="button"
