@@ -37,7 +37,7 @@ export function TicketDetailMidList({
   const { apiParams } = useFilters();
   const { user, loading: authLoading } = useAuthSession();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ["tickets-mid-list", apiParams],
     queryFn: ({ signal }) => fetchTickets(apiParams, { signal }),
     staleTime: 30_000,
@@ -46,10 +46,19 @@ export function TicketDetailMidList({
   });
 
   const rows = useMemo(() => data?.data ?? [], [data]);
+  // `data === undefined` means the query hasn't returned yet — covers
+  // auth-not-ready (enabled: false leaves isLoading at false but data
+  // undefined) and the very first fetch. Without this check the panel
+  // briefly showed "No tickets match" before the data arrived.
+  const hasFetched = data !== undefined;
 
-  if (isLoading && rows.length === 0) {
+  if (!hasFetched) {
     return (
-      <div className="p-3 text-[12px] text-muted-foreground">Loading…</div>
+      <ul className="flex flex-col">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <MidListRowSkeleton key={i} />
+        ))}
+      </ul>
     );
   }
   if (isError) {
@@ -165,6 +174,24 @@ function MidListRow({
       >
         {content}
       </button>
+    </li>
+  );
+}
+
+function MidListRowSkeleton() {
+  return (
+    <li className="border-b border-border px-3 py-2.5">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <div className="h-4 w-7 rounded bg-muted/60 animate-pulse" />
+        <div className="h-3 w-24 rounded bg-muted/60 animate-pulse" />
+        <span className="flex-1" />
+        <div className="h-4 w-14 rounded bg-muted/60 animate-pulse" />
+      </div>
+      <div className="h-3.5 w-3/4 rounded bg-muted/60 animate-pulse mb-1.5" />
+      <div className="flex items-center gap-1.5">
+        <div className="h-4 w-4 rounded-full bg-muted/60 animate-pulse" />
+        <div className="h-3 w-20 rounded bg-muted/60 animate-pulse" />
+      </div>
     </li>
   );
 }
