@@ -628,37 +628,37 @@ function AuthenticatedShell({
         case "completed":
           setTicketPresetStatus("resolved");
           setTicketPresetScope("all");
-          navigate("/tickets");
+          navigate("/tickets?statusGroup=resolved");
           return;
         case "assigned":
           setTicketPresetStatus("open");
           setTicketPresetScope("assigned");
-          navigate("/tickets");
+          navigate("/tickets?scope=assigned&statusGroup=open");
           return;
         case "unassigned":
           setTicketPresetStatus("open");
           setTicketPresetScope("unassigned");
-          navigate("/tickets");
+          navigate("/tickets?scope=unassigned&statusGroup=open");
           return;
         case "created":
           setTicketPresetStatus("all");
           setTicketPresetScope("created");
-          navigate("/tickets");
+          navigate("/tickets?scope=created");
           return;
         case "created-open":
           setTicketPresetStatus("open");
           setTicketPresetScope("created");
-          navigate("/tickets");
+          navigate("/tickets?scope=created&statusGroup=open");
           return;
         case "created-resolved":
           setTicketPresetStatus("resolved");
           setTicketPresetScope("created");
-          navigate("/tickets");
+          navigate("/tickets?scope=created&statusGroup=resolved");
           return;
         case "tickets":
           setTicketPresetStatus("open");
           setTicketPresetScope("all");
-          navigate("/tickets");
+          navigate("/tickets?statusGroup=open");
           return;
         default:
           navigate("/dashboard");
