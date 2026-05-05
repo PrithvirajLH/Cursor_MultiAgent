@@ -619,10 +619,14 @@ export function TicketDetailPage({
       setTicketError(null);
       setAccessDenied(false);
       if (isNewTicket) {
-        // Keep ticket / messages / events populated with the previous
-        // ticket's data until the new ticket's response arrives — the
-        // values get replaced atomically below. This avoids the skeleton
-        // flash users were seeing on every swap.
+        // Clear ticket / messages / events immediately on swap so every
+        // pane shows a coherent loading state (skeletons + empty
+        // conversation) rather than the previous ticket's content. The
+        // top progress bar plus the loadingDetail-driven skeletons give
+        // the user a clear "loading new ticket" cue.
+        setTicket(null);
+        setMessages([]);
+        setEvents([]);
         setMessageCursor(null);
         setEventCursor(null);
         setMessagesHasMore(false);
@@ -1677,6 +1681,18 @@ export function TicketDetailPage({
           />
         </div>
       </div>
+      )}
+
+      {/* Top progress bar — visible while a ticket fetch is in flight.
+          Appears as a thin animated stripe across the top of the detail
+          panel so the user has an explicit "loading new ticket" cue. */}
+      {loadingDetail && (
+        <div
+          className="relative h-[3px] shrink-0 overflow-hidden bg-primary/10"
+          aria-hidden="true"
+        >
+          <div className="absolute inset-y-0 left-0 w-1/3 bg-primary animate-progress-slide" />
+        </div>
       )}
 
       {/* Main content */}
