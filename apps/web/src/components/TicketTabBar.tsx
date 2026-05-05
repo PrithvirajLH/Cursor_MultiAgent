@@ -192,16 +192,25 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
                   const rect = e.currentTarget.getBoundingClientRect();
                   const isLeftHalf =
                     e.clientX < rect.left + rect.width / 2;
-                  setDropTarget({
-                    id: tab.id,
-                    position: isLeftHalf ? "before" : "after",
-                  });
-                }}
-                onDragLeave={() => {
+                  const nextPosition: "before" | "after" = isLeftHalf
+                    ? "before"
+                    : "after";
+                  // Skip the state update if nothing changed — dragover
+                  // fires every few ms; without this guard React would
+                  // re-render constantly and the slide could jitter.
                   setDropTarget((prev) =>
-                    prev?.id === tab.id ? null : prev,
+                    prev?.id === tab.id && prev.position === nextPosition
+                      ? prev
+                      : { id: tab.id, position: nextPosition },
                   );
                 }}
+                // Note: deliberately no onDragLeave — native HTML5 DnD
+                // fires `dragleave` when the cursor crosses into a child
+                // element of the tab (priority chip, status dot, close
+                // button), which would clear dropTarget mid-hover and
+                // make the slide preview flicker. Instead we let
+                // onDragOver continuously set the target; when the user
+                // drops or cancels, onDrop / onDragEnd clears it.
                 onDrop={(e) => {
                   e.preventDefault();
                   const fromId = e.dataTransfer.getData("text/plain");
