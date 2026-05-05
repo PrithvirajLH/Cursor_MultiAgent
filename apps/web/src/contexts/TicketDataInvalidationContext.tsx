@@ -27,6 +27,8 @@ export function TicketDataInvalidationProvider({
         void queryClient.invalidateQueries({ queryKey: ["view-count"] });
         // Revamp sidebar's primary-nav counts (fetchTicketCounts).
         void queryClient.invalidateQueries({ queryKey: ["ticket-counts"] });
+        // Detail-screen mid-list rail (TicketDetailMidList).
+        void queryClient.invalidateQueries({ queryKey: ["tickets-mid-list"] });
       },
       notifyTicketReportsChanged: () => {
         // Keep a separate namespace for heavier report queries so we can treat them

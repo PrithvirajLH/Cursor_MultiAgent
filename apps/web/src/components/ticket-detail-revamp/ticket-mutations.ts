@@ -24,6 +24,10 @@ function invalidateAfterChange(qc: QueryClient, ticketId: string) {
   qc.invalidateQueries({ queryKey: ['tickets-revamp'] });
   qc.invalidateQueries({ queryKey: ['ticket-counts'] });
   qc.invalidateQueries({ queryKey: ['view-count'] });
+  // Legacy /tickets detail mid-list rail.
+  qc.invalidateQueries({ queryKey: ['tickets-mid-list'] });
+  // Legacy primary-nav badge counts (useTicketCountsQuery).
+  qc.invalidateQueries({ queryKey: ['ticketCounts'] });
 }
 
 /**
