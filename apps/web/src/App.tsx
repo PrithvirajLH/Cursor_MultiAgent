@@ -8,7 +8,6 @@ import {
 } from "react";
 import {
   BarChart3,
-  CheckCircle,
   ClipboardList,
   Clock,
   FileText,
@@ -199,10 +198,6 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
     label: "My Tickets",
     icon: FileText,
     roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
-    children: [
-      { key: "created-open", label: "Open", icon: FileText },
-      { key: "created-resolved", label: "Resolved", icon: CheckCircle },
-    ],
   },
   {
     key: "triage",
