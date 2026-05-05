@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { X } from "lucide-react";
@@ -277,10 +278,33 @@ function UserSavedViewRow({
 }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const remove = useMutation({
     mutationFn: () => deleteSavedView(view.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["saved-views"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["saved-views"] });
+      setConfirmOpen(false);
+    },
   });
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    function onPointer(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setConfirmOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmOpen(false);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [confirmOpen]);
 
   const dk = theme === "dark";
   const active = onTickets && userViewMatches(searchParams, view.filters);
@@ -288,7 +312,8 @@ function UserSavedViewRow({
 
   return (
     <div
-      className={`group w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
+      ref={wrapRef}
+      className={`group relative w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
     >
       <button
         type="button"
@@ -316,21 +341,60 @@ function UserSavedViewRow({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          if (window.confirm(`Delete saved view "${view.name}"?`)) {
-            remove.mutate();
-          }
+          setConfirmOpen((o) => !o);
         }}
         disabled={remove.isPending}
-        className={`opacity-0 group-hover:opacity-100 transition-opacity flex-none ${
+        className={`flex-none transition-opacity ${
+          confirmOpen
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100"
+        } ${
           dk
             ? "text-white/45 hover:text-white/85"
             : "text-foreground/55 hover:text-foreground"
         }`}
         aria-label={`Delete ${view.name}`}
+        aria-expanded={confirmOpen}
         title="Delete view"
       >
         <X className="h-3 w-3" />
       </button>
+
+      {confirmOpen && (
+        <div
+          role="dialog"
+          aria-label={`Confirm delete ${view.name}`}
+          className="absolute right-0 top-full mt-1 z-30 w-[220px] rounded-lg border border-border bg-card shadow-lg p-3 flex flex-col gap-2"
+        >
+          <p className="text-[12px] text-foreground">
+            Delete{" "}
+            <span className="font-semibold truncate">“{view.name}”</span>?
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmOpen(false);
+              }}
+              className="inline-flex h-7 items-center rounded-md border border-border bg-card px-2.5 text-[11px] font-medium text-foreground hover:bg-accent"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                remove.mutate();
+              }}
+              disabled={remove.isPending}
+              className="inline-flex h-7 items-center rounded-md bg-red-600 px-2.5 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {remove.isPending ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
