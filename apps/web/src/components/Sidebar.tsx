@@ -16,6 +16,7 @@ export type SidebarItem = {
   icon: LucideIcon;
   badge?: number;
   children?: SidebarItem[];
+  extraChildren?: ReactNode;
 };
 
 export const Sidebar = memo(function Sidebar({
@@ -173,13 +174,15 @@ export const Sidebar = memo(function Sidebar({
               </button>
 
               {/* Children (sub-items) */}
-              {!collapsed && item.children && item.children.length > 0 && (
+              {!collapsed &&
+                ((item.children && item.children.length > 0) ||
+                  item.extraChildren) && (
                 <div
                   className={`mt-0.5 ml-9 pl-3 border-l space-y-0.5 ${
                     dk ? "border-white/[0.08]" : "border-border"
                   }`}
                 >
-                  {item.children.map((child) => {
+                  {item.children?.map((child) => {
                     const childActive = activeKey === child.key;
                     return (
                       <button
@@ -224,6 +227,7 @@ export const Sidebar = memo(function Sidebar({
                       </button>
                     );
                   })}
+                  {item.extraChildren}
                 </div>
               )}
             </div>

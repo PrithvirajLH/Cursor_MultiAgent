@@ -37,7 +37,10 @@ import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 import { AdminSidebar } from "./components/AdminSidebar";
 import { SignInLandingPage } from "./components/auth/SignInLandingPage";
 import { Sidebar, type SidebarItem } from "./components/Sidebar";
-import { SidebarSavedViews } from "./components/SidebarSavedViews";
+import {
+  SidebarTeams,
+  SidebarTicketsSavedViews,
+} from "./components/SidebarSavedViews";
 import { ToastContainer } from "./components/ToastContainer";
 import { TopBar } from "./components/TopBar";
 import { TicketTabsProvider } from "./contexts/TicketTabsContext";
@@ -189,11 +192,7 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
     label: "All Tickets",
     icon: Ticket,
     roles: ["AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
-    children: [
-      { key: "assigned", label: "Assigned to Me", icon: Ticket },
-      { key: "unassigned", label: "Unassigned", icon: Ticket },
-      { key: "completed", label: "Completed", icon: CheckCircle },
-    ],
+    children: [{ key: "assigned", label: "Assigned to Me", icon: Ticket }],
   },
   {
     key: "created",
@@ -690,8 +689,12 @@ function AuthenticatedShell({
         icon: child.icon,
         badge: getSidebarChildBadge(child.key, ticketCounts),
       })),
+      extraChildren:
+        item.key === "tickets" ? (
+          <SidebarTicketsSavedViews theme={theme} />
+        ) : undefined,
     }));
-  }, [adminMenuEnabled, currentPersona.role, ticketCounts]);
+  }, [adminMenuEnabled, currentPersona.role, ticketCounts, theme]);
 
   /* ——— Header context value (6.2 – eliminates prop drilling) ——— */
 
@@ -840,7 +843,7 @@ function AuthenticatedShell({
           onToggleTheme={onToggleTheme}
           extraNavContent={
             isLeadOrAbove ? (
-              <SidebarSavedViews
+              <SidebarTeams
                 collapsed={
                   sidebar.isMobileViewport ? false : sidebar.isSidebarCollapsed
                 }

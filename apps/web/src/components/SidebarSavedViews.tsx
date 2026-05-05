@@ -19,11 +19,6 @@ import {
   viewFiltersToParams,
 } from "./shell/use-view-count";
 
-interface SidebarSavedViewsProps {
-  collapsed: boolean;
-  theme: "light" | "dark";
-}
-
 const TONE_COLOR: Record<ToneKey, string> = {
   red: "var(--c-red)",
   amber: "var(--c-amber)",
@@ -70,23 +65,40 @@ function userViewMatches(
   });
 }
 
-export function SidebarSavedViews({
-  collapsed,
+function rowClass(theme: "light" | "dark", active: boolean): string {
+  const dk = theme === "dark";
+  if (active) {
+    return dk
+      ? "text-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]"
+      : "text-primary bg-primary/[0.08] font-semibold";
+  }
+  return dk
+    ? "text-white/35 hover:text-white/62 hover:bg-white/[0.05]"
+    : "text-foreground/75 hover:text-foreground hover:bg-accent";
+}
+
+function countTextClass(theme: "light" | "dark", active: boolean): string {
+  const dk = theme === "dark";
+  if (active) return "text-primary";
+  return dk ? "text-white/30" : "text-foreground/55";
+}
+
+/* ── Inside All Tickets branch: presets + user-saved "Mine" ─── */
+
+interface SidebarTicketsSavedViewsProps {
+  theme: "light" | "dark";
+}
+
+export function SidebarTicketsSavedViews({
   theme,
-}: SidebarSavedViewsProps) {
+}: SidebarTicketsSavedViewsProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuthSession();
   const authReady = !!user && !authLoading;
   const onTickets = pathname === "/tickets" || pathname.startsWith("/tickets/");
-
-  const { data: teams } = useQuery({
-    queryKey: ["sidebar-teams"],
-    queryFn: ({ signal }) => fetchTeams({ signal }),
-    staleTime: 5 * 60_000,
-    enabled: authReady,
-  });
+  const dk = theme === "dark";
 
   const { data: userSavedViews } = useQuery({
     queryKey: ["saved-views"],
@@ -105,22 +117,11 @@ export function SidebarSavedViews({
     { enabled: authReady && !!userSavedViews?.length },
   );
 
-  if (collapsed) return null;
-
-  const dk = theme === "dark";
   const presetIsActive = (preset: SidebarPreset) =>
     onTickets && preset.matches(searchParams);
 
-  const teamList = (teams?.data ?? []).map((t, i) => ({
-    id: t.id,
-    label: t.name,
-    color: TEAM_COLORS[i % TEAM_COLORS.length],
-  }));
-
   return (
     <>
-      {/* Saved view presets */}
-      <SectionLabel theme={theme} label="Saved views" />
       {SAVED_VIEWS.map((v, i) => {
         const active = presetIsActive(v);
         const liveCount = presetCounts[i]?.count;
@@ -129,15 +130,7 @@ export function SidebarSavedViews({
             key={v.id}
             type="button"
             onClick={() => navigate(`/tickets${v.buildQuery()}`)}
-            className={`group w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors duration-150 ${
-              active
-                ? dk
-                  ? "bg-white/[0.09] text-white"
-                  : "bg-primary/[0.08] text-primary font-semibold"
-                : dk
-                  ? "text-white/45 hover:bg-white/[0.06] hover:text-white/75"
-                  : "text-foreground/75 hover:bg-accent hover:text-foreground"
-            }`}
+            className={`w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
           >
             <span
               className="h-1.5 w-1.5 rounded-full flex-none"
@@ -146,13 +139,7 @@ export function SidebarSavedViews({
             <span className="flex-1 text-left truncate">{v.label}</span>
             {liveCount !== undefined && (
               <span
-                className={`text-[10px] tabular-nums font-semibold ${
-                  active
-                    ? "text-primary"
-                    : dk
-                      ? "text-white/35"
-                      : "text-foreground/55"
-                }`}
+                className={`text-[10px] tabular-nums font-semibold ${countTextClass(theme, active)}`}
               >
                 {liveCount > 99 ? "99+" : liveCount}
               </span>
@@ -161,12 +148,17 @@ export function SidebarSavedViews({
         );
       })}
 
-      {/* User-saved views ("Mine") */}
       {userSavedViews && userSavedViews.length > 0 && (
         <>
-          <SectionLabel theme={theme} label="Mine" />
+          <div
+            className={`px-2.5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.07em] ${
+              dk ? "text-white/30" : "text-foreground/45"
+            }`}
+          >
+            Mine
+          </div>
           {userSavedViews.map((v, i) => (
-            <UserSavedViewLink
+            <UserSavedViewRow
               key={v.id}
               view={v}
               count={userViewCounts[i]?.count}
@@ -177,64 +169,86 @@ export function SidebarSavedViews({
           ))}
         </>
       )}
-
-      {/* Teams */}
-      {teamList.length > 0 && (
-        <>
-          <SectionLabel theme={theme} label="Teams" />
-          {teamList.map((t) => {
-            const active = onTickets && searchParams.get("teamIds") === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() =>
-                  navigate(`/tickets?teamIds=${encodeURIComponent(t.id)}`)
-                }
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors duration-150 ${
-                  active
-                    ? dk
-                      ? "bg-white/[0.09] text-white"
-                      : "bg-primary/[0.08] text-primary font-semibold"
-                    : dk
-                      ? "text-white/45 hover:bg-white/[0.06] hover:text-white/75"
-                      : "text-foreground/75 hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                <span
-                  className="h-2 w-2 rounded-sm flex-none"
-                  style={{ backgroundColor: t.color }}
-                />
-                <span className="flex-1 text-left truncate">{t.label}</span>
-              </button>
-            );
-          })}
-        </>
-      )}
     </>
   );
 }
 
-function SectionLabel({
-  theme,
-  label,
-}: {
+/* ── Top-level Teams section ───────────────────────────────────── */
+
+interface SidebarTeamsProps {
+  collapsed: boolean;
   theme: "light" | "dark";
-  label: string;
-}) {
+}
+
+export function SidebarTeams({ collapsed, theme }: SidebarTeamsProps) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
+  const { user, loading: authLoading } = useAuthSession();
+  const authReady = !!user && !authLoading;
+  const onTickets = pathname === "/tickets" || pathname.startsWith("/tickets/");
   const dk = theme === "dark";
+
+  const { data: teams } = useQuery({
+    queryKey: ["sidebar-teams"],
+    queryFn: ({ signal }) => fetchTeams({ signal }),
+    staleTime: 5 * 60_000,
+    enabled: authReady,
+  });
+
+  if (collapsed) return null;
+
+  const teamList = (teams?.data ?? []).map((t, i) => ({
+    id: t.id,
+    label: t.name,
+    color: TEAM_COLORS[i % TEAM_COLORS.length],
+  }));
+
+  if (teamList.length === 0) return null;
+
   return (
-    <div
-      className={`px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.07em] ${
-        dk ? "text-white/35" : "text-foreground/45"
-      }`}
-    >
-      {label}
-    </div>
+    <>
+      <div
+        className={`px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.07em] ${
+          dk ? "text-white/35" : "text-foreground/45"
+        }`}
+      >
+        Teams
+      </div>
+      {teamList.map((t) => {
+        const active = onTickets && searchParams.get("teamIds") === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() =>
+              navigate(`/tickets?teamIds=${encodeURIComponent(t.id)}`)
+            }
+            className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors duration-150 ${
+              active
+                ? dk
+                  ? "bg-white/[0.09] text-white"
+                  : "bg-primary/[0.08] text-primary font-semibold"
+                : dk
+                  ? "text-white/45 hover:bg-white/[0.06] hover:text-white/75"
+                  : "text-foreground/75 hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            <span
+              className="h-2 w-2 rounded-sm flex-none"
+              style={{ backgroundColor: t.color }}
+            />
+            <span className="flex-1 text-left truncate">{t.label}</span>
+          </button>
+        );
+      })}
+    </>
   );
 }
 
-function UserSavedViewLink({
+/* ── User-saved view row with hover-X delete ───────────────────── */
+
+function UserSavedViewRow({
   view,
   count,
   onTickets,
@@ -260,15 +274,7 @@ function UserSavedViewLink({
 
   return (
     <div
-      className={`group w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors duration-150 ${
-        active
-          ? dk
-            ? "bg-white/[0.09] text-white"
-            : "bg-primary/[0.08] text-primary font-semibold"
-          : dk
-            ? "text-white/45 hover:bg-white/[0.06]"
-            : "text-foreground/75 hover:bg-accent"
-      }`}
+      className={`group w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
     >
       <button
         type="button"
@@ -283,13 +289,7 @@ function UserSavedViewLink({
         <span className="flex-1 min-w-0 truncate">{view.name}</span>
         {count !== undefined && (
           <span
-            className={`text-[10px] tabular-nums font-semibold ${
-              active
-                ? "text-primary"
-                : dk
-                  ? "text-white/35"
-                  : "text-foreground/55"
-            }`}
+            className={`text-[10px] tabular-nums font-semibold ${countTextClass(theme, active)}`}
           >
             {count > 99 ? "99+" : count}
           </span>
@@ -305,7 +305,9 @@ function UserSavedViewLink({
         }}
         disabled={remove.isPending}
         className={`opacity-0 group-hover:opacity-100 transition-opacity flex-none ${
-          dk ? "text-white/45 hover:text-white/85" : "text-foreground/55 hover:text-foreground"
+          dk
+            ? "text-white/45 hover:text-white/85"
+            : "text-foreground/55 hover:text-foreground"
         }`}
         aria-label={`Delete ${view.name}`}
         title="Delete view"
