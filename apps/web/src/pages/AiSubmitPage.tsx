@@ -9,6 +9,7 @@ import {
   type AiClassifyResult,
   type AiClassifyResultCreated,
 } from "../api/client";
+import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 
 type Phase = "input" | "processing" | "created" | "clarification" | "error";
 
@@ -33,6 +34,8 @@ export function AiSubmitPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [clarificationQuestion, setClarificationQuestion] = useState("");
   const [originalText, setOriginalText] = useState("");
+  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
+    useTicketDataInvalidation();
 
   const simulateStepProgress = useCallback(() => {
     // Initialize all steps as pending
@@ -76,6 +79,10 @@ export function AiSubmitPage() {
         // Transition immediately — don't linger on completed steps
         if (response.status === "created") {
           setPhase("created");
+          // Refresh sidebar saved-view counts and reports so the new
+          // ticket shows up in "P1 today" / "Awaiting reply" / etc.
+          notifyTicketAggregatesChanged();
+          notifyTicketReportsChanged();
         } else if (response.status === "needs_clarification") {
           setClarificationQuestion(response.question);
           setPhase("clarification");
@@ -98,7 +105,11 @@ export function AiSubmitPage() {
         setPhase("error");
       }
     },
-    [simulateStepProgress],
+    [
+      simulateStepProgress,
+      notifyTicketAggregatesChanged,
+      notifyTicketReportsChanged,
+    ],
   );
 
   const handleClarificationSubmit = useCallback(
