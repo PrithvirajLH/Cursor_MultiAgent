@@ -16,7 +16,14 @@ import { PaginationDto } from '../../common/pagination.dto';
 const STATUS_GROUPS = ['open', 'resolved', 'all'] as const;
 const SORT_FIELDS = ['createdAt', 'completedAt', 'updatedAt'] as const;
 const SORT_ORDER = ['asc', 'desc'] as const;
-const SCOPES = ['all', 'assigned', 'unassigned', 'created'] as const;
+const SCOPES = [
+  'all',
+  'assigned',
+  'unassigned',
+  'created',
+  'watching',
+  'mentions',
+] as const;
 const SLA_STATUSES = ['on_track', 'at_risk', 'breached'] as const;
 
 function splitStrings(value: unknown): string[] | undefined {

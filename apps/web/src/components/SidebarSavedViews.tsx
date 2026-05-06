@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { X } from "lucide-react";
+import { AtSign, Eye, X } from "lucide-react";
 import {
   deleteSavedView,
   fetchSavedViews,
@@ -140,6 +140,31 @@ export function SidebarTicketsSavedViews({
     { enabled: authReady },
   );
 
+  // System views — Watching (followed tickets) and Mentions
+  // (tickets where the user has been @mentioned). Both lean on the
+  // server-side scope filter we added; counts come from the same
+  // useViewCounts hook so they auto-refresh on ticket mutations.
+  const systemViews = [
+    {
+      id: "watching" as const,
+      label: "Watching",
+      icon: Eye,
+      query: "?scope=watching",
+      params: { scope: "watching" } as Record<string, string>,
+    },
+    {
+      id: "mentions" as const,
+      label: "Mentions",
+      icon: AtSign,
+      query: "?scope=mentions",
+      params: { scope: "mentions" } as Record<string, string>,
+    },
+  ];
+  const systemCounts = useViewCounts(
+    systemViews.map((v) => v.params),
+    { enabled: authReady },
+  );
+
   const userViewCounts = useViewCounts(
     (userSavedViews ?? []).map((v) => viewFiltersToParams(v.filters)),
     { enabled: authReady && !!userSavedViews?.length },
@@ -150,6 +175,34 @@ export function SidebarTicketsSavedViews({
 
   return (
     <>
+      {/* System views: Watching + Mentions. Render with lucide icons
+          to distinguish from the tone-dot saved-view presets below. */}
+      {systemViews.map((v, i) => {
+        const active = onTickets && searchParams.get("scope") === v.id;
+        const liveCount = systemCounts[i]?.count;
+        const Icon = v.icon;
+        return (
+          <button
+            key={v.id}
+            type="button"
+            onClick={() =>
+              navigate(`${targetPathFor(pathname)}${v.query}`)
+            }
+            className={`w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${rowClass(theme, active)}`}
+          >
+            <Icon className="h-3.5 w-3.5 flex-none" />
+            <span className="flex-1 text-left truncate">{v.label}</span>
+            {liveCount !== undefined && (
+              <span
+                className={`text-[10px] tabular-nums font-semibold ${countTextClass(theme, active)}`}
+              >
+                {liveCount > 99 ? "99+" : liveCount}
+              </span>
+            )}
+          </button>
+        );
+      })}
+
       {SAVED_VIEWS.map((v, i) => {
         const active = presetIsActive(v);
         const liveCount = presetCounts[i]?.count;

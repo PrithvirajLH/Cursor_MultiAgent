@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   AccessLevel,
   MessageType,
+  NotificationType,
   Prisma,
   TeamAssignmentStrategy,
   TicketPriority,
@@ -285,6 +286,28 @@ export class TicketsService {
       filters.push({ assigneeId: null });
     } else if (query.scope === 'created') {
       filters.push({ requesterId: user.id });
+    } else if (query.scope === 'watching') {
+      // Only active (non-resolved/closed) tickets the user follows.
+      // Resolved/closed work falls off the Watching list automatically;
+      // the follower row stays so reopens still notify the user.
+      filters.push({
+        followers: { some: { userId: user.id } },
+        status: {
+          notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
+        },
+      });
+    } else if (query.scope === 'mentions') {
+      // Only tickets with an UNREAD mention notification for this user.
+      // Marking the notification read drops the ticket from the list.
+      filters.push({
+        notifications: {
+          some: {
+            userId: user.id,
+            type: NotificationType.TICKET_MENTIONED,
+            isRead: false,
+          },
+        },
+      });
     }
 
     if (teamIds.length) {
@@ -2230,7 +2253,11 @@ export class TicketsService {
       return ticket.assignedTeamId === user.primaryTeamId;
     }
 
-    if (!user.teamId || ticket.assignedTeamId !== user.teamId) {
+    const assignTeamScope = this.accessControl.operationalTeamIds(user);
+    if (
+      !ticket.assignedTeamId ||
+      !assignTeamScope.includes(ticket.assignedTeamId)
+    ) {
       return false;
     }
 

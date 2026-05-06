@@ -26,7 +26,13 @@ export type TicketFilters = {
   page: number;
   pageSize: number;
 };
-export type TicketScope = "all" | "assigned" | "unassigned" | "created";
+export type TicketScope =
+  | "all"
+  | "assigned"
+  | "unassigned"
+  | "created"
+  | "watching"
+  | "mentions";
 
 export type DashboardStats = {
   open: number;
