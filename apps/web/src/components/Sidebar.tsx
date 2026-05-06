@@ -56,7 +56,7 @@ export const Sidebar = memo(function Sidebar({
     <aside
       className={`fixed left-0 top-0 h-screen flex flex-col border-r ${
         dk ? "border-white/[0.07]" : "border-border"
-      } ${collapsed ? "w-[72px]" : "w-[248px]"} ${className ?? ""}`}
+      } ${collapsed ? "w-[64px]" : "w-[220px]"} ${className ?? ""}`}
       style={{
         background: dk ? "hsl(222 52% 7%)" : "hsl(var(--card))",
         transition: "width 300ms cubic-bezier(0.4, 0, 0.2, 1)",
@@ -64,12 +64,12 @@ export const Sidebar = memo(function Sidebar({
     >
       {/* ── Brand ── */}
       <div
-        className={`flex items-center px-4 py-[18px] border-b flex-shrink-0 ${
+        className={`flex items-center px-3 py-3 border-b flex-shrink-0 ${
           dk ? "border-white/[0.07]" : "border-border"
-        } ${collapsed ? "justify-center" : "gap-3"}`}
+        } ${collapsed ? "justify-center" : "gap-2.5"}`}
       >
         <div
-          className="flex-shrink-0 h-8 w-8 rounded-lg flex items-center justify-center font-bold text-[13px] text-white shadow-lg"
+          className="flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center font-bold text-[12px] text-white shadow-md"
           style={{
             background: dk
               ? "linear-gradient(135deg, #14d4f4 0%, #3b82f6 100%)"
@@ -80,7 +80,7 @@ export const Sidebar = memo(function Sidebar({
         </div>
         {!collapsed && (
           <span
-            className={`text-[15px] font-semibold tracking-tight ${
+            className={`text-[13.5px] font-semibold tracking-tight ${
               dk ? "text-white/90" : "text-foreground"
             }`}
           >
@@ -90,7 +90,7 @@ export const Sidebar = memo(function Sidebar({
       </div>
 
       {/* ── Navigation ── */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 space-y-0.5">
         {items.map((item) => {
           const isActive = activeKey === item.key;
           const label =
@@ -112,7 +112,7 @@ export const Sidebar = memo(function Sidebar({
                     : () => onSelect(item.key)
                 }
                 title={collapsed ? label : undefined}
-                className={`group relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-150 ${
+                className={`group relative w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[12.5px] font-medium transition-all duration-150 ${
                   collapsed ? "justify-center" : ""
                 } ${
                   isActive
@@ -133,7 +133,7 @@ export const Sidebar = memo(function Sidebar({
                 )}
 
                 <item.icon
-                  className={`flex-shrink-0 h-[18px] w-[18px] transition-colors duration-150 ${
+                  className={`flex-shrink-0 h-[16px] w-[16px] transition-colors duration-150 ${
                     isActive
                       ? "text-primary"
                       : dk
@@ -178,7 +178,7 @@ export const Sidebar = memo(function Sidebar({
                 ((item.children && item.children.length > 0) ||
                   item.extraChildren) && (
                 <div
-                  className={`mt-0.5 ml-9 pl-3 border-l space-y-0.5 ${
+                  className={`mt-0.5 ml-6 pl-2 border-l space-y-0.5 ${
                     dk ? "border-white/[0.08]" : "border-border"
                   }`}
                 >
@@ -189,7 +189,7 @@ export const Sidebar = memo(function Sidebar({
                         key={child.key}
                         type="button"
                         onClick={() => onSelect(child.key)}
-                        className={`w-full flex items-center gap-2 px-2.5 py-[7px] rounded-md text-[12.5px] font-medium transition-all duration-150 ${
+                        className={`w-full flex items-center gap-2 px-2 py-1 rounded text-[12px] font-medium transition-all duration-150 ${
                           childActive
                             ? dk
                               ? "text-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]"
@@ -239,11 +239,11 @@ export const Sidebar = memo(function Sidebar({
 
       {/* ── New Ticket Button ── */}
       {onCreateTicket && (
-        <div className="px-3 pb-2 flex-shrink-0">
+        <div className="px-2 pb-1.5 flex-shrink-0">
           <button
             type="button"
             onClick={onCreateTicket}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-[13px] font-semibold text-white transition-all duration-150 shadow-lg ${
+            className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[12.5px] font-semibold text-white transition-all duration-150 shadow-md ${
               collapsed ? "justify-center" : ""
             }`}
             style={{
@@ -261,7 +261,7 @@ export const Sidebar = memo(function Sidebar({
 
       {/* ── Theme toggle + Collapse ── */}
       <div
-        className={`px-2.5 pb-4 pt-2 border-t flex-shrink-0 space-y-1 ${
+        className={`px-2 pb-2.5 pt-1.5 border-t flex-shrink-0 space-y-0.5 ${
           dk ? "border-white/[0.07]" : "border-border"
         }`}
       >
@@ -270,7 +270,7 @@ export const Sidebar = memo(function Sidebar({
           <button
             type="button"
             onClick={onToggleTheme}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-all duration-150 ${
+            className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium transition-all duration-150 ${
               collapsed ? "justify-center" : ""
             } ${
               dk
@@ -302,7 +302,7 @@ export const Sidebar = memo(function Sidebar({
           <button
             type="button"
             onClick={onToggle}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-medium transition-all duration-150 ${
+            className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11.5px] font-medium transition-all duration-150 ${
               collapsed ? "justify-center" : ""
             } ${
               dk

@@ -557,8 +557,8 @@ function AuthenticatedShell({
   const desktopMainOffset = showAdminSidebar
     ? "lg:ml-[248px]"
     : sidebar.isSidebarCollapsed
-      ? "lg:ml-[72px]"
-      : "lg:ml-[248px]";
+      ? "lg:ml-[64px]"
+      : "lg:ml-[220px]";
   const showMobileBackdrop =
     sidebar.isMobileViewport &&
     (sidebar.mobileSidebarOpen || sidebar.mobileAdminSidebarOpen);
