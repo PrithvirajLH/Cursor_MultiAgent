@@ -287,11 +287,15 @@ export class TicketsService {
     } else if (query.scope === 'created') {
       filters.push({ requesterId: user.id });
     } else if (query.scope === 'watching') {
-      // Only active (non-resolved/closed) tickets the user follows.
-      // Resolved/closed work falls off the Watching list automatically;
-      // the follower row stays so reopens still notify the user.
+      // Active tickets the user follows but is NOT the assignee or
+      // requester for. Assigning a user (or being the requester) adds
+      // a follower row automatically — Watching is for tickets the
+      // user has explicitly subscribed to outside of those default
+      // relationships, so we exclude both. Resolved/closed work falls
+      // off the list; the follower row stays so reopens still notify.
       filters.push({
         followers: { some: { userId: user.id } },
+        NOT: [{ assigneeId: user.id }, { requesterId: user.id }],
         status: {
           notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
         },
