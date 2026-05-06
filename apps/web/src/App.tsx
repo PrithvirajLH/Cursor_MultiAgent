@@ -882,7 +882,7 @@ function AuthenticatedShell({
         )}
 
         <main
-          className={`flex-1 min-w-0 w-full h-screen overflow-y-auto ${shellLayoutPath ? "py-0" : "py-8"} ${desktopMainOffset}`}
+          className={`flex-1 min-w-0 h-screen overflow-y-auto ${shellLayoutPath ? "py-0" : "py-8"} ${desktopMainOffset}`}
           style={{ transition: "margin-left 300ms cubic-bezier(0.4, 0, 0.2, 1)" }}
         >
           {!shellLayoutPath && (
