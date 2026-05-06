@@ -15,16 +15,17 @@ export type ActivityPoint = {
   resolved: number;
 };
 
-// ── Shared dark-theme chart tokens ──
-const GRID_STROKE = "rgba(255,255,255,0.07)";
-const TICK_FILL   = "#94a3b8";
+// ── Theme-aware chart tokens ──
+// Use CSS vars so the chart respects light + dark themes.
+const GRID_STROKE = "hsl(var(--border))";
+const TICK_FILL = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "hsl(222,40%,13%)",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+  border: "1px solid hsl(var(--border))",
+  background: "hsl(var(--popover))",
+  boxShadow: "var(--shadow-elevated, 0 8px 32px rgba(0,0,0,0.18))",
   fontSize: "12px",
-  color: "hsl(213,45%,91%)",
+  color: "hsl(var(--popover-foreground))",
 };
 
 function ActivityTooltip({
