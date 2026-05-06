@@ -519,8 +519,13 @@ function AuthenticatedShell({
   const handleRealtimeNotificationsUpdated = useCallback(
     (payload?: { reason?: string; unreadCount?: number }) => {
       notifications.applyRealtimeUpdate(payload);
+      // Mentions sidebar count depends on unread TICKET_MENTIONED
+      // notifications, so a new mention or a read flip should refresh
+      // saved-view counts immediately. Watching list also needs to
+      // respect status changes that come in via the same realtime path.
+      notifyTicketAggregatesChanged();
     },
-    [notifications.applyRealtimeUpdate],
+    [notifications.applyRealtimeUpdate, notifyTicketAggregatesChanged],
   );
   const handleRealtimeTicketTyping = useCallback(
     (payload: RealtimeTicketTypingEventPayload) => {
@@ -725,8 +730,17 @@ function AuthenticatedShell({
         actionError: notifications.actionError,
         hasMore: notifications.hasMore,
         onLoadMore: notifications.loadMore,
-        onMarkAsRead: notifications.markAsRead,
-        onMarkAllAsRead: notifications.markAllAsRead,
+        // Wrap mark-as-read so the sidebar Mentions count refreshes
+        // immediately — without this it'd wait for the next realtime
+        // notifications.changed event.
+        onMarkAsRead: async (id: string) => {
+          await notifications.markAsRead(id);
+          notifyTicketAggregatesChanged();
+        },
+        onMarkAllAsRead: async () => {
+          await notifications.markAllAsRead();
+          notifyTicketAggregatesChanged();
+        },
         onRefresh: notifications.refresh,
       },
       theme,
