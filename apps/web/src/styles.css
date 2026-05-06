@@ -78,6 +78,24 @@
     --chart-4: 4 76% 40%;
     --chart-5: 213 79% 37%;
 
+    /* Status color tokens — used by Activity Trend, Status Donut, etc.
+       Light-mode versions need higher saturation + darker lightness so
+       lines/areas stay visible against a white card background. */
+    --status-new: 262 70% 50%;
+    --status-new-bg: 262 90% 96%;
+    --status-open: 142 60% 35%;
+    --status-open-bg: 142 76% 95%;
+    --status-progress: 193 85% 38%;
+    --status-progress-bg: 193 90% 95%;
+    --status-resolved: 158 60% 32%;
+    --status-resolved-bg: 158 70% 94%;
+    --status-waiting: 30 92% 38%;
+    --status-waiting-bg: 38 95% 95%;
+
+    --kpi-blue: 193 90% 95%;
+    --kpi-green: 142 76% 95%;
+    --kpi-yellow: 38 95% 95%;
+
     --radius: 4px;
     --shadow-soft: 0 1px 2px rgba(15, 20, 25, 0.04), 0 2px 8px rgba(15, 20, 25, 0.04);
     --shadow-card: 0 1px 3px rgba(15, 20, 25, 0.06), 0 6px 24px rgba(15, 20, 25, 0.05);
