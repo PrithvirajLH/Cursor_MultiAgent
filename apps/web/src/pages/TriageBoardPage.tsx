@@ -871,7 +871,7 @@ export function TriageBoardPage({
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] px-6 py-4">
+        <div className="mx-auto max-w-none px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -903,7 +903,7 @@ export function TriageBoardPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] p-6">
+      <div className="mx-auto max-w-none p-6">
         {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
         {actionError && (
           <p className="mb-2 text-sm text-red-600">{actionError}</p>

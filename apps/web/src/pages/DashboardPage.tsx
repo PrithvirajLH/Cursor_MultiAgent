@@ -1500,7 +1500,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
   return (
     <section className="min-h-screen bg-background">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
+        <div className="mx-auto w-full max-w-none px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -1542,7 +1542,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[1600px] px-6 py-8">
+      <div className="mx-auto w-full max-w-none px-6 py-8">
         <div className="space-y-8">
           {isEmployee ? (
             <div className="grid gap-8 lg:grid-cols-12">

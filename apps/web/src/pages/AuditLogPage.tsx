@@ -465,7 +465,7 @@ export function AuditLogPage() {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] py-4 px-6">
+        <div className="mx-auto max-w-none py-4 px-6">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -497,7 +497,7 @@ export function AuditLogPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] p-6">
+      <div className="mx-auto max-w-none p-6">
         <div className="mb-5 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <input

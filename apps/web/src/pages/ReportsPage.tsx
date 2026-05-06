@@ -1441,7 +1441,7 @@ export function ReportsPage({ role }: { role: Role }) {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] py-4 px-6">
+        <div className="mx-auto max-w-none py-4 px-6">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -1471,7 +1471,7 @@ export function ReportsPage({ role }: { role: Role }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
+      <div className="mx-auto max-w-none space-y-6 p-6">
         {warning ? (
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
             {warning}

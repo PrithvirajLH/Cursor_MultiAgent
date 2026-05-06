@@ -914,7 +914,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-[1600px] px-6 py-4">
+        <div className="mx-auto max-w-none px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -945,7 +945,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
       </div>
 
       <div className="border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-none flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div className="flex items-center gap-6">
             {[
               ["overview", "Overview"],
@@ -1012,7 +1012,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1600px] p-6">
+      <div className="mx-auto max-w-none p-6">
         {loading ? (
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
