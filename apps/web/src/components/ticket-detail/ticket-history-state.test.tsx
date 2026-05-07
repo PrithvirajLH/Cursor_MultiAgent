@@ -60,6 +60,8 @@ describe("ticket history error states", () => {
         messageInputRef={{ current: null }}
         attachmentInputRef={{ current: null }}
         conversationListRef={{ current: null }}
+        users={[]}
+        cannedVariables={{}}
       />,
     );
 
