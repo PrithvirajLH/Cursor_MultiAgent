@@ -24,8 +24,20 @@ async function bootstrap() {
       contentSecurityPolicy: {
         directives: {
           defaultSrc: ["'self'"],
-          scriptSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          scriptSrc: [
+            "'self'",
+            // SHA-256 of the inline theme-flash-prevention script in
+            // index.html. Browser blocks inline scripts unless this
+            // hash is allow-listed (or 'unsafe-inline' is used).
+            "'sha256-rtp2tIfEJmva/WePfn9n7TTUz6lRbshrzLy8v4Kpiwg='",
+          ],
+          styleSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            // Google Fonts stylesheet endpoint — styles.css @imports it.
+            'https://fonts.googleapis.com',
+          ],
+          fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
           imgSrc: ["'self'", 'data:', 'blob:'],
           connectSrc: ["'self'", 'https:', 'wss:'],
           frameAncestors: ["'none'"],
