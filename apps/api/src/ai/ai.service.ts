@@ -273,7 +273,9 @@ IMPORTANT: Return ONLY the JSON object. Format:
             description: ticketDraft?.description ?? this.buildDescription(intent, user),
             priority: ticketDraft?.priority ?? finalClassification.suggestedPriority,
             channel: input.channel ?? 'PORTAL',
-            assignedTeamId: ticketDraft?.assignedTeamId ?? finalClassification.department.id,
+            assignedTeamId:
+              ticketDraft?.assignedTeamId ??
+              (await this.resolveTeamId(finalClassification.department)),
             categoryId: ticketDraft?.categoryId ?? finalClassification.category?.id ?? null,
             displayId: 'AUTO',
             tags: ticketDraft?.tags ?? finalClassification.tags,
@@ -544,5 +546,43 @@ IMPORTANT: Return ONLY the JSON object. Format:
     parts.push('', '---', '', `**Original message:**`, intent.rawText);
 
     return parts.join('\n');
+  }
+
+  /**
+   * Resolve the AI classifier's department to a real Team id in this
+   * database. The agent reports both `name` and `id`; we trust `id`
+   * only if it actually exists, otherwise fall back to a case-
+   * insensitive name match. Returns null when nothing matches so the
+   * ticket gets created un-routed instead of failing the FK.
+   *
+   * Fixes the cross-environment problem where the classifier was
+   * configured against one DB (e.g. Supabase) and gets pointed at
+   * another (Azure Postgres) with different team UUIDs.
+   */
+  private async resolveTeamId(department: {
+    id?: string;
+    name?: string;
+  }): Promise<string | null> {
+    if (department.id) {
+      const byId = await this.prisma.team.findUnique({
+        where: { id: department.id },
+        select: { id: true },
+      });
+      if (byId) return byId.id;
+    }
+    if (department.name) {
+      const byName = await this.prisma.team.findFirst({
+        where: {
+          isActive: true,
+          name: { equals: department.name, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (byName) return byName.id;
+    }
+    this.logger.warn(
+      `Could not resolve AI department to a Team (id=${department.id ?? 'n/a'} name=${department.name ?? 'n/a'}). Creating ticket un-routed.`,
+    );
+    return null;
   }
 }

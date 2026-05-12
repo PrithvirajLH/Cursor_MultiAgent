@@ -59,7 +59,7 @@ export interface TicketDraft {
   description: string;
   priority: 'P1' | 'P2' | 'P3' | 'P4';
   channel: 'PORTAL' | 'EMAIL';
-  assignedTeamId: string;
+  assignedTeamId: string | null;
   categoryId: string | null;
   displayId: string;
   tags: string[];

@@ -37,7 +37,7 @@ export class TicketToolsService {
           description: input.draft.description,
           priority: input.draft.priority as 'P1' | 'P2' | 'P3' | 'P4',
           channel: input.draft.channel === 'EMAIL' ? 'EMAIL' : 'PORTAL',
-          assignedTeamId: input.draft.assignedTeamId,
+          assignedTeamId: input.draft.assignedTeamId ?? undefined,
           categoryId: input.draft.categoryId ?? undefined,
         },
         user,
