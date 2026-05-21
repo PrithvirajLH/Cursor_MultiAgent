@@ -50,7 +50,7 @@ describe('SLA business-hours due-date calculation', () => {
       .send({
         subject: `Business hours SLA ${Date.now()}`,
         description: 'Validate due date math',
-        priority: 'P2',
+        priority: 'SEV2',
         channel: 'PORTAL',
         assignedTeamId: fixtureTeamIds.it,
       })
@@ -94,7 +94,7 @@ describe('SLA business-hours due-date calculation', () => {
       .send({
         subject: `Business hours transfer ${Date.now()}`,
         description: 'Ensure transfer does not drift due dates',
-        priority: 'P2',
+        priority: 'SEV2',
         channel: 'PORTAL',
         assignedTeamId: fixtureTeamIds.it,
       })
@@ -108,7 +108,7 @@ describe('SLA business-hours due-date calculation', () => {
       .set(authHeader(fixtureEmails.owner))
       .send({
         ticketIds: [createdBody.id],
-        priority: 'P2',
+        priority: 'SEV2',
       })
       .expect(201);
 

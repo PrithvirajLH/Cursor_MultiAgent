@@ -4,10 +4,10 @@ export const DEFAULT_SLA_CONFIG: Record<
   TicketPriority,
   { firstResponseHours: number; resolutionHours: number }
 > = {
-  [TicketPriority.P1]: { firstResponseHours: 1, resolutionHours: 4 },
-  [TicketPriority.P2]: { firstResponseHours: 4, resolutionHours: 24 },
-  [TicketPriority.P3]: { firstResponseHours: 8, resolutionHours: 72 },
-  [TicketPriority.P4]: { firstResponseHours: 24, resolutionHours: 168 },
+  [TicketPriority.SEV1]: { firstResponseHours: 1, resolutionHours: 4 },
+  [TicketPriority.SEV2]: { firstResponseHours: 4, resolutionHours: 24 },
+  [TicketPriority.SEV3]: { firstResponseHours: 8, resolutionHours: 72 },
+  [TicketPriority.SEV4]: { firstResponseHours: 24, resolutionHours: 168 },
 };
 
 /**

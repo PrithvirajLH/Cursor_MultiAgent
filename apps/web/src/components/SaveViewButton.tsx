@@ -89,7 +89,7 @@ export function SaveViewButton({ filters, disabled = false }: SaveViewButtonProp
             onKeyDown={(e) => {
               if (e.key === "Enter" && canSave) save.mutate();
             }}
-            placeholder="e.g. P1 + my team"
+            placeholder="e.g. SEV1 + my team"
             className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
           />
           {save.isError && (

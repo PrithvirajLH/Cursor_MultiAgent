@@ -142,10 +142,10 @@ const OPEN_STATUSES = new Set([
 ]);
 
 const UI_TO_API_PRIORITY: Record<Exclude<PriorityFilter, "all">, string> = {
-  critical: "P1",
-  high: "P2",
-  medium: "P3",
-  low: "P4",
+  critical: "SEV1",
+  high: "SEV2",
+  medium: "SEV3",
+  low: "SEV4",
 };
 
 const EMPTY_KPIS: OverviewKpis = {

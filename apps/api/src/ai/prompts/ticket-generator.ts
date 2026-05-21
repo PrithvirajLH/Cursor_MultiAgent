@@ -33,10 +33,10 @@ Structure the description for the receiving agent:
 ## Priority Mapping
 
 Use the suggestedPriority from classification, but validate:
-- P1: Only if there are strong urgency signals AND wide impact (production down, security breach, many users affected)
-- P2: Urgency signals present but limited impact, or deadline within 24 hours
-- P3: Standard requests with no urgency signals
-- P4: Informational, no time pressure, "when you get a chance"
+- SEV1: Only if there are strong urgency signals AND wide impact (production down, security breach, many users affected)
+- SEV2: Urgency signals present but limited impact, or deadline within 24 hours
+- SEV3: Standard requests with no urgency signals
+- SEV4: Informational, no time pressure, "when you get a chance"
 
 ## Display ID Generation
 
@@ -58,7 +58,7 @@ After creating the ticket and SLA instance, return a JSON object:
 {
   "subject": "string",
   "description": "string",
-  "priority": "P1" | "P2" | "P3" | "P4",
+  "priority": "SEV1" | "SEV2" | "SEV3" | "SEV4",
   "channel": "PORTAL" | "EMAIL",
   "assignedTeamId": "string",
   "categoryId": "string | null",
@@ -90,7 +90,7 @@ export const toolDefinitions = [
               },
               priority: {
                 type: 'string',
-                enum: ['P1', 'P2', 'P3', 'P4'],
+                enum: ['SEV1', 'SEV2', 'SEV3', 'SEV4'],
                 description: 'Ticket priority',
               },
               channel: {
@@ -151,7 +151,7 @@ export const toolDefinitions = [
           },
           priority: {
             type: 'string',
-            enum: ['P1', 'P2', 'P3', 'P4'],
+            enum: ['SEV1', 'SEV2', 'SEV3', 'SEV4'],
             description: 'Priority level to determine SLA targets',
           },
         },

@@ -36,7 +36,7 @@ describe('Idempotency for mutating APIs', () => {
     const payload = {
       subject: `Idempotent create ${Date.now()}`,
       description: 'Idempotency test',
-      priority: 'P3',
+      priority: 'SEV3',
       channel: 'PORTAL',
       assignedTeamId: fixtureTeamIds.it,
     };
@@ -82,7 +82,7 @@ describe('Idempotency for mutating APIs', () => {
       .send({
         subject: `Idempotency mismatch A ${Date.now()}`,
         description: 'First payload',
-        priority: 'P3',
+        priority: 'SEV3',
         channel: 'PORTAL',
         assignedTeamId: fixtureTeamIds.it,
       })
@@ -95,7 +95,7 @@ describe('Idempotency for mutating APIs', () => {
       .send({
         subject: `Idempotency mismatch B ${Date.now()}`,
         description: 'Different payload',
-        priority: 'P3',
+        priority: 'SEV3',
         channel: 'PORTAL',
         assignedTeamId: fixtureTeamIds.it,
       })

@@ -105,7 +105,7 @@ export class AutomationActionDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['P1', 'P2', 'P3', 'P4'])
+  @IsIn(['SEV1', 'SEV2', 'SEV3', 'SEV4'])
   priority?: string;
 
   @IsOptional()

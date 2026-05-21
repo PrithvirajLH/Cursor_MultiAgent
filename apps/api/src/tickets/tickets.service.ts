@@ -657,10 +657,10 @@ export class TicketsService {
     ]);
 
     const byPriority: Record<TicketPriority, number> = {
-      [TicketPriority.P1]: 0,
-      [TicketPriority.P2]: 0,
-      [TicketPriority.P3]: 0,
-      [TicketPriority.P4]: 0,
+      [TicketPriority.SEV1]: 0,
+      [TicketPriority.SEV2]: 0,
+      [TicketPriority.SEV3]: 0,
+      [TicketPriority.SEV4]: 0,
     };
     for (const row of priorityRows) {
       byPriority[row.priority] = row._count._all;

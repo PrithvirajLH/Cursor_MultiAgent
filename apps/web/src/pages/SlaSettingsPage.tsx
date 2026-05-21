@@ -74,35 +74,35 @@ const PRIORITY_META: Record<
   { label: string; color: string; dot: string }
 > = {
   critical: {
-    label: "P1",
+    label: "SEV1",
     color: "bg-red-100 text-red-700",
     dot: "bg-red-500",
   },
   high: {
-    label: "P2",
+    label: "SEV2",
     color: "bg-orange-100 text-orange-700",
     dot: "bg-orange-500",
   },
   medium: {
-    label: "P3",
+    label: "SEV3",
     color: "bg-yellow-100 text-yellow-700",
     dot: "bg-yellow-500",
   },
-  low: { label: "P4", color: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+  low: { label: "SEV4", color: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
 };
 
 const API_TO_UI_PRIORITY: Record<string, PriorityKey> = {
-  P1: "critical",
-  P2: "high",
-  P3: "medium",
-  P4: "low",
+  SEV1: "critical",
+  SEV2: "high",
+  SEV3: "medium",
+  SEV4: "low",
 };
 
 const UI_TO_API_PRIORITY: Record<PriorityKey, string> = {
-  critical: "P1",
-  high: "P2",
-  medium: "P3",
-  low: "P4",
+  critical: "SEV1",
+  high: "SEV2",
+  medium: "SEV3",
+  low: "SEV4",
 };
 
 const NOTIFY_OPTIONS: { value: NotifyValue; label: string }[] = [

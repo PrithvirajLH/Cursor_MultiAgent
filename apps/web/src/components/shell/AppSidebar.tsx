@@ -105,7 +105,7 @@ export function AppSidebar() {
     enabled: authReady,
   });
 
-  // Live counts for the saved-view presets (P1 today, etc).
+  // Live counts for the saved-view presets (SEV1 today, etc).
   const presetCounts = useViewCounts(
     SAVED_VIEWS.map(v => querystringToParams(v.buildQuery())),
     { enabled: authReady },

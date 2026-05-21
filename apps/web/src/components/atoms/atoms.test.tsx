@@ -4,8 +4,8 @@ import { Pill, Prio, Avatar, SlaBar, AiChip, Icn, I, toneFromName } from './inde
 
 describe('atoms', () => {
   it('Pill renders children with tone class', () => {
-    const html = renderToStaticMarkup(<Pill tone="red">P1</Pill>);
-    expect(html).toContain('P1');
+    const html = renderToStaticMarkup(<Pill tone="red">SEV1</Pill>);
+    expect(html).toContain('SEV1');
   });
 
   it('Pill with dot renders inner dot span', () => {
@@ -15,7 +15,7 @@ describe('atoms', () => {
   });
 
   it('Prio renders 3 sub-bars', () => {
-    const html = renderToStaticMarkup(<Prio level="P1" />);
+    const html = renderToStaticMarkup(<Prio level="SEV1" />);
     expect(html.match(/<i /g)?.length).toBe(3);
   });
 

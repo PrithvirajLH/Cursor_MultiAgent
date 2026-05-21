@@ -79,7 +79,7 @@ export function SaveViewDialog({ filters, triggerLabel = 'Save view' }: SaveView
               if (e.key === 'Enter' && canSave) save.mutate();
               if (e.key === 'Escape') setOpen(false);
             }}
-            placeholder="e.g. P1 + my team"
+            placeholder="e.g. SEV1 + my team"
             className="w-full text-[12px] px-2 py-1 rounded border outline-none focus:border-[var(--c-accent)]"
             style={{ backgroundColor: 'var(--c-surface-2)', borderColor: 'var(--c-border)', color: 'var(--c-fg)' }}
           />

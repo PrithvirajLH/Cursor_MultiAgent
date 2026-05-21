@@ -37,10 +37,10 @@ export class ReportsService {
   ) {}
 
   private readonly priorities: TicketPriority[] = [
-    TicketPriority.P1,
-    TicketPriority.P2,
-    TicketPriority.P3,
-    TicketPriority.P4,
+    TicketPriority.SEV1,
+    TicketPriority.SEV2,
+    TicketPriority.SEV3,
+    TicketPriority.SEV4,
   ];
 
   private readonly csatEventTypes = [

@@ -25,10 +25,10 @@ interface TicketCreatedProps {
 }
 
 const PRIORITY_STYLES: Record<string, string> = {
-  P1: "bg-red-500/10 text-red-400 border-red-500/20",
-  P2: "bg-orange-500/10 text-orange-400 border-orange-500/20",
-  P3: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-  P4: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+  SEV1: "bg-red-500/10 text-red-400 border-red-500/20",
+  SEV2: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  SEV3: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  SEV4: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
 };
 
 export function TicketCreated({

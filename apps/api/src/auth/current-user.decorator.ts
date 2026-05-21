@@ -12,6 +12,8 @@ export type AuthUser = {
   teamRole?: string | null;
   /** For TEAM_ADMIN: the team they administer (primary team). */
   primaryTeamId?: string | null;
+  /** All teams this user belongs to (Ticket visibility uses this for AGENT/LEAD). */
+  memberTeamIds?: string[];
 };
 
 export type AuthRequest = Request & { user?: AuthUser };

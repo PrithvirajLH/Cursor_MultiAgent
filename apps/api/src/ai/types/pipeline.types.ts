@@ -36,7 +36,7 @@ export interface ClassificationResult {
   department: DepartmentMatch;
   category: DepartmentMatch | null;
   subcategory: DepartmentMatch | null;
-  suggestedPriority: 'P1' | 'P2' | 'P3' | 'P4';
+  suggestedPriority: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
   tags: string[];
   isMultiDepartment: boolean;
   alternativeDepartments: DepartmentMatch[];
@@ -57,7 +57,7 @@ export interface ConfidenceResult {
 export interface TicketDraft {
   subject: string;
   description: string;
-  priority: 'P1' | 'P2' | 'P3' | 'P4';
+  priority: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4';
   channel: 'PORTAL' | 'EMAIL';
   assignedTeamId: string | null;
   categoryId: string | null;

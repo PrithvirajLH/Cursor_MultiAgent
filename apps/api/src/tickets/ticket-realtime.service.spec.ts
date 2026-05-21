@@ -101,7 +101,7 @@ describe('TicketRealtimeService', () => {
     prisma.ticket.findUnique.mockResolvedValueOnce({
       id: 'ticket-1',
       status: 'IN_PROGRESS',
-      priority: 'P2',
+      priority: 'SEV2',
       updatedAt: new Date('2026-03-09T18:00:00.000Z'),
       assignedTeamId: 'team-1',
       assignedTeam: {

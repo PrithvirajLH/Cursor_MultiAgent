@@ -70,7 +70,7 @@ async function createTicket(server: SupertestApp, subject: string) {
     .send({
       subject,
       description: 'Lifecycle test ticket',
-      priority: 'P3',
+      priority: 'SEV3',
       channel: 'PORTAL',
       assignedTeamId: fixtureTeamIds.it,
     })
@@ -225,7 +225,7 @@ describe('Ticket lifecycle and rules', () => {
       .send({
         subject: `Printer issue ${Date.now()}`,
         description: 'Printer is jammed.',
-        priority: 'P3',
+        priority: 'SEV3',
         channel: 'PORTAL',
       })
       .expect(201);

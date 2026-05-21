@@ -203,22 +203,22 @@ function mapActivitySeries(
 
 function priorityLabel(priority?: string | null): string {
   const v = (priority ?? "").toUpperCase();
-  if (v === "P1" || v === "URGENT") return "P1";
-  if (v === "P2" || v === "HIGH") return "P2";
-  if (v === "P3" || v === "MEDIUM") return "P3";
-  if (v === "P4" || v === "LOW") return "P4";
+  if (v === "SEV1" || v === "URGENT") return "SEV1";
+  if (v === "SEV2" || v === "HIGH") return "SEV2";
+  if (v === "SEV3" || v === "MEDIUM") return "SEV3";
+  if (v === "SEV4" || v === "LOW") return "SEV4";
   return priority ?? "—";
 }
 
 function priorityClass(priority?: string | null): string {
   switch (priority) {
-    case "P1":
+    case "SEV1":
       return "bg-red-100 text-red-700";
-    case "P2":
+    case "SEV2":
       return "bg-orange-100 text-orange-700";
-    case "P3":
+    case "SEV3":
       return "bg-primary/10 text-primary";
-    case "P4":
+    case "SEV4":
     default:
       return "bg-white/[0.06] text-muted-foreground";
   }
@@ -411,11 +411,11 @@ function PriorityDonutChart({
       name: priorityLabel(item.priority),
       value: item.count,
       color:
-        item.priority === "P1"
+        item.priority === "SEV1"
           ? "#ef4444"
-          : item.priority === "P2"
+          : item.priority === "SEV2"
             ? "#fb923c"
-            : item.priority === "P3"
+            : item.priority === "SEV3"
               ? "#3b82f6"
               : "#9ca3af",
     }))

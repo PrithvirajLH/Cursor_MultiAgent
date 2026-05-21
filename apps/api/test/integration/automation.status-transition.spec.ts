@@ -73,7 +73,7 @@ async function createItTicket(server: SupertestApp, subject: string) {
     .send({
       subject,
       description: 'Automation transition test ticket',
-      priority: 'P3',
+      priority: 'SEV3',
       channel: 'PORTAL',
       assignedTeamId: fixtureTeamIds.it,
     })

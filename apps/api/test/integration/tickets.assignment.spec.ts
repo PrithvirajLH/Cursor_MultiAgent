@@ -67,7 +67,7 @@ describe('Round-robin assignment', () => {
       .send({
         subject: `RR Ticket A ${Date.now()}`,
         description: 'Round robin A',
-        priority: 'P3',
+        priority: 'SEV3',
         channel: 'PORTAL',
         assignedTeamId: team.id,
       })
@@ -79,7 +79,7 @@ describe('Round-robin assignment', () => {
       .send({
         subject: `RR Ticket B ${Date.now()}`,
         description: 'Round robin B',
-        priority: 'P3',
+        priority: 'SEV3',
         channel: 'PORTAL',
         assignedTeamId: team.id,
       })
@@ -91,7 +91,7 @@ describe('Round-robin assignment', () => {
       .send({
         subject: `RR Ticket C ${Date.now()}`,
         description: 'Round robin C',
-        priority: 'P3',
+        priority: 'SEV3',
         channel: 'PORTAL',
         assignedTeamId: team.id,
       })

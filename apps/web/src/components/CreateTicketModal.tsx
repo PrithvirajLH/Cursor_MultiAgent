@@ -51,7 +51,7 @@ export function CreateTicketModal({
     defaultValues: {
       subject: "",
       description: "",
-      priority: "P3",
+      priority: "SEV3",
       channel: "PORTAL",
       assignedTeamId: "",
       categoryId: "",
@@ -280,10 +280,10 @@ export function CreateTicketModal({
                 className={`${inputBase} ${errors.priority ? inputError : inputNormal}`}
                 {...register("priority")}
               >
-                <option value="P1">P1</option>
-                <option value="P2">P2</option>
-                <option value="P3">P3</option>
-                <option value="P4">P4</option>
+                <option value="SEV1">SEV1</option>
+                <option value="SEV2">SEV2</option>
+                <option value="SEV3">SEV3</option>
+                <option value="SEV4">SEV4</option>
               </select>
               {errors.priority && (
                 <p className="mt-1 text-xs text-red-600">

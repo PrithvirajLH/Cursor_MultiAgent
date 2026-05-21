@@ -114,7 +114,7 @@ async function createTicket(
     .send({
       subject,
       description: 'Inbound email threading test ticket',
-      priority: 'P3',
+      priority: 'SEV3',
       channel: 'PORTAL',
       assignedTeamId: fixtureTeamIds.it,
     })

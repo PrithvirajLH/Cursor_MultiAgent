@@ -26,10 +26,10 @@ enum TicketStatus {
 }
 
 enum TicketPriority {
-  P1
-  P2
-  P3
-  P4
+  SEV1
+  SEV2
+  SEV3
+  SEV4
 }
 
 enum TicketChannel {
@@ -203,7 +203,7 @@ model Ticket {
   subject        String         @db.VarChar(200)
   description    String         @db.Text
   status         TicketStatus   @default(NEW)
-  priority       TicketPriority @default(P3)
+  priority       TicketPriority @default(SEV3)
   channel        TicketChannel  @default(PORTAL)
   requesterId    String
   assignedTeamId String?

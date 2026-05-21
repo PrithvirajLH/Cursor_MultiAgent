@@ -98,7 +98,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
     {
       subject: z.string().max(255).describe('Ticket subject line'),
       description: z.string().describe('Ticket description'),
-      priority: z.enum(['P1', 'P2', 'P3', 'P4']).describe('Priority level'),
+      priority: z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']).describe('Priority level'),
       channel: z.enum(['PORTAL', 'EMAIL']).describe('Channel'),
       assignedTeamId: z.string().describe('Team ID to assign to'),
       categoryId: z.string().nullable().describe('Category ID or null'),
@@ -129,7 +129,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
     'Creates an SLA tracking instance for a ticket based on priority.',
     {
       ticketId: z.string().describe('Ticket ID'),
-      priority: z.enum(['P1', 'P2', 'P3', 'P4']).describe('Priority level'),
+      priority: z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']).describe('Priority level'),
     },
     async ({ ticketId, priority }) => {
       const result = await toolRegistry.executeTool('create_sla_instance', { ticketId, priority });

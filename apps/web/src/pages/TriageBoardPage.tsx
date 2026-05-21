@@ -63,10 +63,10 @@ const TRIAGE_COLUMNS: Array<{
 const TRIAGE_COLUMN_KEYS = TRIAGE_COLUMNS.map((column) => column.key);
 
 const PRIORITY_OPTIONS = [
-  { label: "P1", value: "P1" },
-  { label: "P2", value: "P2" },
-  { label: "P3", value: "P3" },
-  { label: "P4", value: "P4" },
+  { label: "SEV1", value: "SEV1" },
+  { label: "SEV2", value: "SEV2" },
+  { label: "SEV3", value: "SEV3" },
+  { label: "SEV4", value: "SEV4" },
 ];
 
 const CARD_MENU_WIDTH = 208;
@@ -804,14 +804,14 @@ export function TriageBoardPage({
   function getPriorityBadge(priority: string) {
     const normalized = priority.toUpperCase();
     const label =
-      normalized === "P1" || normalized === "URGENT"
-        ? "P1"
-        : normalized === "P2" || normalized === "HIGH"
-          ? "P2"
-          : normalized === "P3" || normalized === "MEDIUM"
-            ? "P3"
-            : normalized === "P4" || normalized === "LOW"
-              ? "P4"
+      normalized === "SEV1" || normalized === "URGENT"
+        ? "SEV1"
+        : normalized === "SEV2" || normalized === "HIGH"
+          ? "SEV2"
+          : normalized === "SEV3" || normalized === "MEDIUM"
+            ? "SEV3"
+            : normalized === "SEV4" || normalized === "LOW"
+              ? "SEV4"
               : priority;
     return { label, className: priorityBadgeClass(priority) };
   }

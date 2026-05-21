@@ -52,7 +52,7 @@ async function createTicket(
     .send({
       subject,
       description: 'Workflow validation ticket',
-      priority: 'P3',
+      priority: 'SEV3',
       channel: 'PORTAL',
       assignedTeamId: fixtureTeamIds.it,
     })

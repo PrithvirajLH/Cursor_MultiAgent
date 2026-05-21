@@ -161,22 +161,22 @@ export function formatFileSize(bytes: number) {
   return `${(kb / 1024).toFixed(1)} MB`;
 }
 
-/** Returns display label for priority; consistently P1, P2, P3, P4 across the app. */
+/** Returns display label for priority; consistently SEV1, SEV2, SEV3, SEV4 across the app. */
 export function formatPriority(priority?: string | null) {
   const value = (priority ?? "").toUpperCase();
   switch (value) {
-    case "P1":
+    case "SEV1":
     case "URGENT":
-      return "P1";
-    case "P2":
+      return "SEV1";
+    case "SEV2":
     case "HIGH":
-      return "P2";
-    case "P3":
+      return "SEV2";
+    case "SEV3":
     case "MEDIUM":
-      return "P3";
-    case "P4":
+      return "SEV3";
+    case "SEV4":
     case "LOW":
-      return "P4";
+      return "SEV4";
     default:
       return priority ?? "Unknown";
   }

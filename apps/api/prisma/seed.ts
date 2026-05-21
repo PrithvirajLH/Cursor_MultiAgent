@@ -38,6 +38,128 @@ function buildDisplayId(teamName: string | null, createdAt: Date, ticketNumber: 
   return `${getDepartmentCode(teamName)}_${yyyy}${mm}${dd}_${sequence}`;
 }
 
+/** Refreshes canned replies, ensures baseline SLA configs, and a sample automation rule for dev databases. */
+async function seedDevAuxiliaryData(args: {
+  itTeamId: string;
+  hrTeamId: string;
+  aiTeamId: string;
+  samId: string;
+}): Promise<void> {
+  const cannedPrefix = '[Seed]';
+  await prisma.cannedResponse.deleteMany({ where: { name: { startsWith: cannedPrefix } } });
+  await prisma.cannedResponse.createMany({
+    data: [
+      {
+        name: `${cannedPrefix} VPN / MFA — first response`,
+        content:
+          'Thanks for contacting IT.\n\nWe are provisioning VPN access and MFA for your account. You will receive a separate message with enrollment steps once activation completes (typically within one business day).\n\nIf you need urgent access, reply with your manager’s approval.',
+        teamId: args.itTeamId
+      },
+      {
+        name: `${cannedPrefix} HR onboarding — checklist`,
+        content:
+          'Hello,\n\nWelcome aboard. Please complete the onboarding checklist in the HR portal and upload any missing documents. If you have payroll or benefits questions, reply to this thread and we will route you to the right specialist.',
+        teamId: args.hrTeamId
+      },
+      {
+        name: `${cannedPrefix} Ticket received (generic)`,
+        content:
+          'We received your request and logged it in our queue. A team member will update you as soon as there is progress.',
+        teamId: args.aiTeamId
+      }
+    ]
+  });
+
+  const hasDefaultSla = (await prisma.slaPolicyConfig.count({ where: { isDefault: true } })) > 0;
+  if (!hasDefaultSla) {
+    await prisma.slaPolicyConfig.create({
+      data: {
+        name: 'Global Default SLA',
+        description: 'Default SLA targets from dev seed.',
+        isDefault: true,
+        enabled: true,
+        businessHoursOnly: true,
+        escalationEnabled: true,
+        escalationAfterPercent: 80,
+        breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
+        targets: {
+          create: [
+            { priority: TicketPriority.SEV1, firstResponseHours: 1, resolutionHours: 4 },
+            { priority: TicketPriority.SEV2, firstResponseHours: 4, resolutionHours: 24 },
+            { priority: TicketPriority.SEV3, firstResponseHours: 8, resolutionHours: 72 },
+            { priority: TicketPriority.SEV4, firstResponseHours: 24, resolutionHours: 168 }
+          ]
+        }
+      }
+    });
+  }
+
+  const itAssignment = await prisma.slaPolicyAssignment.findUnique({ where: { teamId: args.itTeamId } });
+  if (!itAssignment) {
+    await prisma.slaPolicyConfig.create({
+      data: {
+        name: `${cannedPrefix} IT SLA`,
+        description: 'Team-specific IT SLA from dev seed.',
+        enabled: true,
+        businessHoursOnly: true,
+        escalationEnabled: true,
+        escalationAfterPercent: 80,
+        breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
+        targets: {
+          create: [
+            { priority: TicketPriority.SEV1, firstResponseHours: 1, resolutionHours: 4 },
+            { priority: TicketPriority.SEV2, firstResponseHours: 4, resolutionHours: 24 },
+            { priority: TicketPriority.SEV3, firstResponseHours: 8, resolutionHours: 72 },
+            { priority: TicketPriority.SEV4, firstResponseHours: 24, resolutionHours: 168 }
+          ]
+        },
+        assignments: { create: [{ teamId: args.itTeamId }] }
+      }
+    });
+  }
+
+  const hrAssignment = await prisma.slaPolicyAssignment.findUnique({ where: { teamId: args.hrTeamId } });
+  if (!hrAssignment) {
+    await prisma.slaPolicyConfig.create({
+      data: {
+        name: `${cannedPrefix} HR SLA`,
+        description: 'Team-specific HR SLA from dev seed.',
+        enabled: true,
+        businessHoursOnly: true,
+        escalationEnabled: true,
+        escalationAfterPercent: 80,
+        breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
+        targets: {
+          create: [
+            { priority: TicketPriority.SEV1, firstResponseHours: 2, resolutionHours: 8 },
+            { priority: TicketPriority.SEV2, firstResponseHours: 6, resolutionHours: 32 },
+            { priority: TicketPriority.SEV3, firstResponseHours: 12, resolutionHours: 96 },
+            { priority: TicketPriority.SEV4, firstResponseHours: 24, resolutionHours: 168 }
+          ]
+        },
+        assignments: { create: [{ teamId: args.hrTeamId }] }
+      }
+    });
+  }
+
+  await prisma.automationRule.deleteMany({ where: { name: { startsWith: `${cannedPrefix} Automation:` } } });
+  await prisma.automationRule.create({
+    data: {
+      name: `${cannedPrefix} Automation: internal note on seed tickets`,
+      description:
+        'Sample rule: when subject contains "[Seed]", adds an internal note. Off by default — enable in Automation to try it on new tickets.',
+      trigger: 'TICKET_CREATED',
+      conditions: [{ field: 'subject', operator: 'contains', value: '[Seed]' }],
+      actions: [
+        { type: 'add_internal_note', body: 'Sample automation (dev seed) matched this ticket.' }
+      ],
+      isActive: false,
+      priority: 100,
+      createdById: args.samId
+    }
+  });
+}
+
 async function seedMinimal() {
   await prisma.ticketAccess.deleteMany();
   await prisma.ticketEvent.deleteMany();
@@ -288,6 +410,13 @@ async function seedDev() {
     skipDuplicates: true
   });
 
+  await seedDevAuxiliaryData({
+    itTeamId: itTeam.id,
+    hrTeamId: hrTeam.id,
+    aiTeamId: aiTeam.id,
+    samId: sam.id
+  });
+
   const now = new Date();
   const hoursAgo = (hours: number) => new Date(now.getTime() - hours * 60 * 60 * 1000);
   const seedPrefix = '[Seed]';
@@ -328,13 +457,13 @@ async function seedDev() {
     assigneeId?: string | null;
     categoryId?: string | null;
     createdAt: Date;
-    messages: { authorId: string; body: string; createdAt: Date }[];
+    messages: { authorId: string; body: string; createdAt: Date; type?: MessageType }[];
     statusHistory?: { from: TicketStatus; to: TicketStatus; at: Date }[];
   }[] = [
     {
       subject: `${seedPrefix} VPN access for new contractor`,
       description: 'Need VPN access for contractor starting Monday. Please provision and confirm MFA setup.',
-      priority: TicketPriority.P2,
+      priority: TicketPriority.SEV2,
       status: TicketStatus.IN_PROGRESS,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
@@ -344,6 +473,12 @@ async function seedDev() {
       createdAt: hoursAgo(120),
       messages: [
         { authorId: jane.id, body: 'Request submitted for VPN + MFA.', createdAt: hoursAgo(119) },
+        {
+          authorId: alex.id,
+          body: 'Internal: VPN group staged; pending DNS cutover.',
+          createdAt: hoursAgo(97),
+          type: MessageType.INTERNAL
+        },
         { authorId: alex.id, body: 'Working on provisioning. Will confirm shortly.', createdAt: hoursAgo(96) }
       ],
       statusHistory: [
@@ -355,7 +490,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Update AI model access policy`,
       description: 'Review and update the approval workflow for external model usage.',
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       status: TicketStatus.WAITING_ON_VENDOR,
       channel: TicketChannel.PORTAL,
       requesterId: sam.id,
@@ -376,7 +511,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Medicaid pending claim follow-up`,
       description: 'Claim #MP-44821 requires an eligibility verification update.',
-      priority: TicketPriority.P1,
+      priority: TicketPriority.SEV1,
       status: TicketStatus.ASSIGNED,
       channel: TicketChannel.EMAIL,
       requesterId: jane.id,
@@ -395,7 +530,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Executive laptop replacement`,
       description: 'White glove request: replace executive laptop before travel.',
-      priority: TicketPriority.P2,
+      priority: TicketPriority.SEV2,
       status: TicketStatus.NEW,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
@@ -410,7 +545,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Onboarding access checklist`,
       description: 'New hire onboarding checklist requires approvals.',
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       status: TicketStatus.TRIAGED,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
@@ -426,7 +561,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Payroll access revocation`,
       description: 'Please revoke payroll access for departing contractor.',
-      priority: TicketPriority.P4,
+      priority: TicketPriority.SEV4,
       status: TicketStatus.WAITING_ON_REQUESTER,
       channel: TicketChannel.EMAIL,
       requesterId: jane.id,
@@ -447,7 +582,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Wireless headset procurement`,
       description: 'Requesting a new wireless headset for support calls.',
-      priority: TicketPriority.P4,
+      priority: TicketPriority.SEV4,
       status: TicketStatus.RESOLVED,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
@@ -469,7 +604,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} VPN access — re-opened`,
       description: 'VPN access issue resurfaced after resolution.',
-      priority: TicketPriority.P2,
+      priority: TicketPriority.SEV2,
       status: TicketStatus.REOPENED,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
@@ -491,7 +626,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Account deprovisioning completed`,
       description: 'Completed account deprovisioning for contractor.',
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       status: TicketStatus.CLOSED,
       channel: TicketChannel.EMAIL,
       requesterId: jane.id,
@@ -514,7 +649,7 @@ async function seedDev() {
     {
       subject: `${seedPrefix} Unassigned intake for triage`,
       description: 'Unassigned intake ticket pending triage.',
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       status: TicketStatus.NEW,
       channel: TicketChannel.PORTAL,
       requesterId: jane.id,
@@ -524,6 +659,53 @@ async function seedDev() {
       createdAt: hoursAgo(12),
       messages: [
         { authorId: jane.id, body: 'Submitted ticket awaiting triage.', createdAt: hoursAgo(11) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} Shared drive quota warning`,
+      description: 'Finance shared drive is at 90% capacity; need cleanup or expansion.',
+      priority: TicketPriority.SEV3,
+      status: TicketStatus.IN_PROGRESS,
+      channel: TicketChannel.EMAIL,
+      requesterId: jane.id,
+      assignedTeamId: itTeam.id,
+      assigneeId: alex.id,
+      categoryId: accessCategory?.id ?? null,
+      createdAt: hoursAgo(48),
+      messages: [
+        { authorId: jane.id, body: 'Getting low-disk warnings on the finance share.', createdAt: hoursAgo(47) },
+        { authorId: alex.id, body: 'Reviewing largest folders and old versions.', createdAt: hoursAgo(20) }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(46) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(44) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(22) }
+      ]
+    },
+    {
+      subject: `${seedPrefix} Benefits enrollment window`,
+      description: 'Employee asking about open enrollment deadlines and plan changes.',
+      priority: TicketPriority.SEV4,
+      status: TicketStatus.WAITING_ON_REQUESTER,
+      channel: TicketChannel.PORTAL,
+      requesterId: jane.id,
+      assignedTeamId: hrTeam.id,
+      assigneeId: maria.id,
+      categoryId: hrOpsCategory?.id ?? null,
+      createdAt: hoursAgo(16),
+      messages: [
+        { authorId: jane.id, body: 'When can I switch medical plans?', createdAt: hoursAgo(15) },
+        {
+          authorId: maria.id,
+          body: 'Please confirm which plan you want to move to (A or B) and effective date.',
+          createdAt: hoursAgo(8)
+        }
+      ],
+      statusHistory: [
+        { from: TicketStatus.NEW, to: TicketStatus.TRIAGED, at: hoursAgo(14) },
+        { from: TicketStatus.TRIAGED, to: TicketStatus.ASSIGNED, at: hoursAgo(13) },
+        { from: TicketStatus.ASSIGNED, to: TicketStatus.IN_PROGRESS, at: hoursAgo(10) },
+        { from: TicketStatus.IN_PROGRESS, to: TicketStatus.WAITING_ON_REQUESTER, at: hoursAgo(9) }
       ]
     }
   ];
@@ -594,7 +776,7 @@ async function seedDev() {
       data: ticket.messages.map((message) => ({
         ticketId: createdTicket.id,
         authorId: message.authorId,
-        type: MessageType.PUBLIC,
+        type: message.type ?? MessageType.PUBLIC,
         body: message.body,
         createdAt: message.createdAt
       }))
@@ -721,10 +903,10 @@ async function seedTest() {
       breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
       targets: {
         create: [
-          { priority: TicketPriority.P1, firstResponseHours: 1, resolutionHours: 4 },
-          { priority: TicketPriority.P2, firstResponseHours: 4, resolutionHours: 24 },
-          { priority: TicketPriority.P3, firstResponseHours: 8, resolutionHours: 72 },
-          { priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+          { priority: TicketPriority.SEV1, firstResponseHours: 1, resolutionHours: 4 },
+          { priority: TicketPriority.SEV2, firstResponseHours: 4, resolutionHours: 24 },
+          { priority: TicketPriority.SEV3, firstResponseHours: 8, resolutionHours: 72 },
+          { priority: TicketPriority.SEV4, firstResponseHours: 24, resolutionHours: 168 },
         ],
       },
     },
@@ -742,10 +924,10 @@ async function seedTest() {
       breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
       targets: {
         create: [
-          { priority: TicketPriority.P1, firstResponseHours: 1, resolutionHours: 4 },
-          { priority: TicketPriority.P2, firstResponseHours: 4, resolutionHours: 24 },
-          { priority: TicketPriority.P3, firstResponseHours: 8, resolutionHours: 72 },
-          { priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+          { priority: TicketPriority.SEV1, firstResponseHours: 1, resolutionHours: 4 },
+          { priority: TicketPriority.SEV2, firstResponseHours: 4, resolutionHours: 24 },
+          { priority: TicketPriority.SEV3, firstResponseHours: 8, resolutionHours: 72 },
+          { priority: TicketPriority.SEV4, firstResponseHours: 24, resolutionHours: 168 },
         ],
       },
       assignments: {
@@ -766,10 +948,10 @@ async function seedTest() {
       breachNotifyRoles: [SlaNotifyRole.AGENT, SlaNotifyRole.LEAD],
       targets: {
         create: [
-          { priority: TicketPriority.P1, firstResponseHours: 2, resolutionHours: 8 },
-          { priority: TicketPriority.P2, firstResponseHours: 6, resolutionHours: 32 },
-          { priority: TicketPriority.P3, firstResponseHours: 12, resolutionHours: 96 },
-          { priority: TicketPriority.P4, firstResponseHours: 24, resolutionHours: 168 },
+          { priority: TicketPriority.SEV1, firstResponseHours: 2, resolutionHours: 8 },
+          { priority: TicketPriority.SEV2, firstResponseHours: 6, resolutionHours: 32 },
+          { priority: TicketPriority.SEV3, firstResponseHours: 12, resolutionHours: 96 },
+          { priority: TicketPriority.SEV4, firstResponseHours: 24, resolutionHours: 168 },
         ],
       },
       assignments: {
@@ -783,7 +965,7 @@ async function seedTest() {
       subject: 'VPN access request',
       description: 'Need VPN access for contractor',
       status: TicketStatus.ASSIGNED,
-      priority: TicketPriority.P2,
+      priority: TicketPriority.SEV2,
       channel: TicketChannel.PORTAL,
       requesterId: ids.requester,
       assignedTeamId: ids.teamIt,
@@ -800,7 +982,7 @@ async function seedTest() {
       subject: 'Laptop provisioning',
       description: 'Need a new laptop',
       status: TicketStatus.NEW,
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       channel: TicketChannel.PORTAL,
       requesterId: ids.requester,
       assignedTeamId: ids.teamIt
@@ -816,7 +998,7 @@ async function seedTest() {
       subject: 'HR onboarding',
       description: 'New hire onboarding package',
       status: TicketStatus.TRIAGED,
-      priority: TicketPriority.P2,
+      priority: TicketPriority.SEV2,
       channel: TicketChannel.EMAIL,
       requesterId: ids.requester,
       assignedTeamId: ids.teamHr
@@ -832,7 +1014,7 @@ async function seedTest() {
       subject: 'Benefits update',
       description: 'Update medical coverage information.',
       status: TicketStatus.NEW,
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       channel: TicketChannel.PORTAL,
       requesterId: ids.otherRequester,
       assignedTeamId: ids.teamHr

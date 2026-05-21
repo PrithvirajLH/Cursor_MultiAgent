@@ -442,7 +442,7 @@ export class RuleEngineService {
         case 'set_priority':
           if (
             action.priority &&
-            ['P1', 'P2', 'P3', 'P4'].includes(action.priority)
+            ['SEV1', 'SEV2', 'SEV3', 'SEV4'].includes(action.priority)
           ) {
             const fromPriority = current.priority;
             const newPriority = action.priority as TicketPriority;

@@ -80,7 +80,7 @@ export function AiSubmitPage() {
         if (response.status === "created") {
           setPhase("created");
           // Refresh sidebar saved-view counts and reports so the new
-          // ticket shows up in "P1 today" / "Awaiting reply" / etc.
+          // ticket shows up in "SEV1 today" / "Awaiting reply" / etc.
           notifyTicketAggregatesChanged();
           notifyTicketReportsChanged();
         } else if (response.status === "needs_clarification") {

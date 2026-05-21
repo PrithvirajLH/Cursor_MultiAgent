@@ -34,7 +34,7 @@ async function createTicket(server: SupertestApp) {
     .send({
       subject: `SLA instance test ${Date.now()}`,
       description: 'Track SLA instance creation',
-      priority: 'P2',
+      priority: 'SEV2',
       assignedTeamId: fixtureTeamIds.it,
     })
     .expect(201);
@@ -88,7 +88,7 @@ describe('SLA instances and breaches', () => {
     });
 
     const p2Target = assignment?.policy.targets.find(
-      (target) => target.priority === 'P2',
+      (target) => target.priority === 'SEV2',
     );
     expect(p2Target).toBeTruthy();
     expect(instance?.policyConfigId).toBe(assignment?.policyConfigId ?? null);
@@ -191,7 +191,7 @@ describe('SLA instances and breaches', () => {
     const updatedTicket = await prisma.ticket.findUnique({
       where: { id: ticket.id },
     });
-    expect(updatedTicket?.priority).toBe('P1');
+    expect(updatedTicket?.priority).toBe('SEV1');
 
     const outbox = await prisma.notificationOutbox.findMany({
       where: { ticketId: ticket.id, eventType: 'SLA_BREACHED' },

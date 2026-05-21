@@ -25,7 +25,7 @@ const STATUS_OPTIONS = [
   "REOPENED",
 ];
 
-const PRIORITY_OPTIONS = ["P1", "P2", "P3", "P4"];
+const PRIORITY_OPTIONS = ["SEV1", "SEV2", "SEV3", "SEV4"];
 
 type BulkActionsToolbarProps = {
   selectedCount: number;

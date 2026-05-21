@@ -190,7 +190,7 @@ export type TicketStatus =
   | "RESOLVED"
   | "CLOSED"
   | "REOPENED";
-export type TicketPriority = "P1" | "P2" | "P3" | "P4";
+export type TicketPriority = "SEV1" | "SEV2" | "SEV3" | "SEV4";
 export type TicketChannel = "PORTAL" | "EMAIL" | "API" | "AGENT_PORTAL";
 
 export type TicketRecord = {
@@ -764,7 +764,7 @@ export type TicketMetricsResponse = {
   total: number;
   open: number;
   resolved: number;
-  byPriority: { P1: number; P2: number; P3: number; P4: number };
+  byPriority: { SEV1: number; SEV2: number; SEV3: number; SEV4: number };
   byTeam: Array<{ teamId: string | null; total: number }>;
 };
 

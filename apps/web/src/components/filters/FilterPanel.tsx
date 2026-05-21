@@ -20,10 +20,10 @@ const STATUS_OPTIONS: MultiSelectOption[] = [
 ];
 
 const PRIORITY_OPTIONS: MultiSelectOption[] = [
-  { value: "P1", label: "P1" },
-  { value: "P2", label: "P2" },
-  { value: "P3", label: "P3" },
-  { value: "P4", label: "P4" },
+  { value: "SEV1", label: "SEV1" },
+  { value: "SEV2", label: "SEV2" },
+  { value: "SEV3", label: "SEV3" },
+  { value: "SEV4", label: "SEV4" },
 ];
 
 const SLA_STATUS_OPTIONS: MultiSelectOption[] = [

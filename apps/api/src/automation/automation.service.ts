@@ -323,9 +323,9 @@ export class AutomationService {
           }
           break;
         case 'set_priority':
-          if (!a.priority || !['P1', 'P2', 'P3', 'P4'].includes(a.priority)) {
+          if (!a.priority || !['SEV1', 'SEV2', 'SEV3', 'SEV4'].includes(a.priority)) {
             throw new BadRequestException(
-              `Action ${i + 1} (set_priority): priority must be P1, P2, P3, or P4.`,
+              `Action ${i + 1} (set_priority): priority must be SEV1, SEV2, SEV3, or SEV4.`,
             );
           }
           break;

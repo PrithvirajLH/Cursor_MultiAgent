@@ -22,10 +22,10 @@ type TicketTabBarProps = {
 };
 
 const PRIORITY_STYLE: Record<string, { bg: string; fg: string }> = {
-  P1: { bg: "bg-red-500/15", fg: "text-red-600 dark:text-red-400" },
-  P2: { bg: "bg-orange-500/15", fg: "text-orange-600 dark:text-orange-400" },
-  P3: { bg: "bg-blue-500/15", fg: "text-blue-600 dark:text-blue-400" },
-  P4: { bg: "bg-slate-500/15", fg: "text-slate-600 dark:text-slate-400" },
+  SEV1: { bg: "bg-red-500/15", fg: "text-red-600 dark:text-red-400" },
+  SEV2: { bg: "bg-orange-500/15", fg: "text-orange-600 dark:text-orange-400" },
+  SEV3: { bg: "bg-blue-500/15", fg: "text-blue-600 dark:text-blue-400" },
+  SEV4: { bg: "bg-slate-500/15", fg: "text-slate-600 dark:text-slate-400" },
 };
 
 const STATUS_DOT: Record<string, string> = {
@@ -390,7 +390,7 @@ function TabContent({
   onClose,
   dragging,
 }: TabContentProps) {
-  const priorityStyle = PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.P4;
+  const priorityStyle = PRIORITY_STYLE[tab.priority] ?? PRIORITY_STYLE.SEV4;
   const statusDot = STATUS_DOT[tab.status] ?? "bg-slate-400";
 
   return (

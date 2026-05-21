@@ -51,7 +51,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
     defaultValues: {
       subject: "",
       description: "",
-      priority: "P3",
+      priority: "SEV3",
       channel: "PORTAL",
       assignedTeamId: "",
       categoryId: "",
@@ -313,10 +313,10 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
                     }`}
                     {...register("priority")}
                   >
-                    <option value="P1">P1 – Critical</option>
-                    <option value="P2">P2 – High</option>
-                    <option value="P3">P3 – Medium</option>
-                    <option value="P4">P4 – Low</option>
+                    <option value="SEV1">SEV1 – Critical</option>
+                    <option value="SEV2">SEV2 – High</option>
+                    <option value="SEV3">SEV3 – Normal</option>
+                    <option value="SEV4">SEV4 – Low</option>
                   </select>
                   {errors.priority && (
                     <p className="mt-1 text-sm text-red-600">

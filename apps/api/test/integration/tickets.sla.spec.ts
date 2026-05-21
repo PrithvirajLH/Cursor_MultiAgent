@@ -24,7 +24,7 @@ async function createTicket(server: SupertestApp): Promise<TicketResponse> {
     .send({
       subject: 'SLA test ticket',
       description: 'Track SLA timings',
-      priority: 'P2',
+      priority: 'SEV2',
       assignedTeamId: fixtureTeamIds.it,
     })
     .expect(201);

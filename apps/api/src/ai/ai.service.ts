@@ -235,7 +235,7 @@ Channel: ${input.channel ?? 'PORTAL'}
 Requester ID: ${input.userId ?? user.id}
 
 IMPORTANT: Return ONLY the JSON object. Format:
-{"subject":"...","description":"...","priority":"P1|P2|P3|P4","channel":"PORTAL|EMAIL","assignedTeamId":"...","categoryId":"...|null","displayId":"...","tags":["..."]}`;
+{"subject":"...","description":"...","priority":"SEV1|SEV2|SEV3|SEV4","channel":"PORTAL|EMAIL","assignedTeamId":"...","categoryId":"...|null","displayId":"...","tags":["..."]}`;
 
       const result = await this.foundryClient.runAgent('ticketGenerator', step4Input);
       ticketDraft = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateTicketDraft(d));
@@ -473,7 +473,7 @@ Channel: ${input.channel ?? 'PORTAL'}
 Requester ID: ${input.userId ?? user.id}
 
 IMPORTANT: Return ONLY the JSON object. Format:
-{"subject":"...","description":"...","priority":"P1|P2|P3|P4","channel":"PORTAL|EMAIL","assignedTeamId":"...","categoryId":"...|null","displayId":"...","tags":["..."]}`;
+{"subject":"...","description":"...","priority":"SEV1|SEV2|SEV3|SEV4","channel":"PORTAL|EMAIL","assignedTeamId":"...","categoryId":"...|null","displayId":"...","tags":["..."]}`;
 
     let ticketDraft: TicketDraft;
     try {

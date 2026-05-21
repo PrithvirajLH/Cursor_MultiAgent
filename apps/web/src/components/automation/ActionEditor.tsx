@@ -9,7 +9,7 @@ const ACTION_TYPES = [
   { value: "add_internal_note", label: "Add internal note" },
 ] as const;
 
-const PRIORITIES = ["P1", "P2", "P3", "P4"];
+const PRIORITIES = ["SEV1", "SEV2", "SEV3", "SEV4"];
 const STATUSES = [
   "NEW",
   "TRIAGED",

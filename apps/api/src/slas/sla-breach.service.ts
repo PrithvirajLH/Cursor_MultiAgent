@@ -772,12 +772,12 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
 
   private nextPriority(priority: TicketPriority) {
     switch (priority) {
-      case TicketPriority.P4:
-        return TicketPriority.P3;
-      case TicketPriority.P3:
-        return TicketPriority.P2;
-      case TicketPriority.P2:
-        return TicketPriority.P1;
+      case TicketPriority.SEV4:
+        return TicketPriority.SEV3;
+      case TicketPriority.SEV3:
+        return TicketPriority.SEV2;
+      case TicketPriority.SEV2:
+        return TicketPriority.SEV1;
       default:
         return null;
     }

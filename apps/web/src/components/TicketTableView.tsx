@@ -224,7 +224,7 @@ export function TicketTableView({
                   <span
                     className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}
                   >
-                    {ticket.priority ?? "P3"}
+                    {ticket.priority ?? "SEV3"}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">

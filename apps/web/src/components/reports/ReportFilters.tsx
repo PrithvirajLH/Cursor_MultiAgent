@@ -108,10 +108,10 @@ export function ReportFilters({
           className="mt-1 rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground min-w-[100px]"
         >
           <option value="">All</option>
-          <option value="P1">P1</option>
-          <option value="P2">P2</option>
-          <option value="P3">P3</option>
-          <option value="P4">P4</option>
+          <option value="SEV1">SEV1</option>
+          <option value="SEV2">SEV2</option>
+          <option value="SEV3">SEV3</option>
+          <option value="SEV4">SEV4</option>
         </select>
       </div>
       <div>

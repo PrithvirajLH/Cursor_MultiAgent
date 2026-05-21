@@ -210,7 +210,7 @@ describe('InboundEmailService', () => {
     prisma.ticket.findFirst.mockResolvedValue({
       id: 'ticket-1',
       status: TicketStatus.NEW,
-      priority: TicketPriority.P3,
+      priority: TicketPriority.SEV3,
       assignedTeamId: 'team-1',
       assigneeId: null,
       dueAt: null,

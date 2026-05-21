@@ -23,10 +23,10 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  P1: "#f87171",
-  P2: "#fb923c",
-  P3: "#60a5fa",
-  P4: "#94a3b8",
+  SEV1: "#f87171",
+  SEV2: "#fb923c",
+  SEV3: "#60a5fa",
+  SEV4: "#94a3b8",
 };
 
 function colorForPriority(priority: string): string {

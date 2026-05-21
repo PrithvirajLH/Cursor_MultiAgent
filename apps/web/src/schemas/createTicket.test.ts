@@ -10,7 +10,7 @@ describe("createTicketSchema", () => {
     const result = createTicketSchema.safeParse({
       subject: "S".repeat(CREATE_TICKET_SUBJECT_MAX),
       description: "D".repeat(CREATE_TICKET_DESCRIPTION_MAX),
-      priority: "P3",
+      priority: "SEV3",
       channel: "PORTAL",
       assignedTeamId: "team-id",
       categoryId: "",
@@ -23,7 +23,7 @@ describe("createTicketSchema", () => {
     const result = createTicketSchema.safeParse({
       subject: "S".repeat(CREATE_TICKET_SUBJECT_MAX + 1),
       description: "D".repeat(CREATE_TICKET_DESCRIPTION_MAX + 1),
-      priority: "P3",
+      priority: "SEV3",
       channel: "PORTAL",
       assignedTeamId: "team-id",
       categoryId: "",

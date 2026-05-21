@@ -20,7 +20,7 @@ const OPERATORS = [
   { value: "isNotEmpty", label: "is not empty" },
 ] as const;
 
-const PRIORITIES = ["P1", "P2", "P3", "P4"];
+const PRIORITIES = ["SEV1", "SEV2", "SEV3", "SEV4"];
 const STATUSES = [
   "NEW",
   "TRIAGED",

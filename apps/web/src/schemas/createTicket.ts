@@ -18,7 +18,7 @@ export const createTicketSchema = z.object({
       CREATE_TICKET_DESCRIPTION_MAX,
       `Description must be ${CREATE_TICKET_DESCRIPTION_MAX} characters or fewer`,
     ),
-  priority: z.enum(["P1", "P2", "P3", "P4"]),
+  priority: z.enum(["SEV1", "SEV2", "SEV3", "SEV4"]),
   channel: z.enum(["PORTAL", "EMAIL"]),
   assignedTeamId: z.string().min(1, "Department is required"),
   categoryId: z.string(),

@@ -35,7 +35,7 @@ export class TicketToolsService {
         {
           subject: input.draft.subject,
           description: input.draft.description,
-          priority: input.draft.priority as 'P1' | 'P2' | 'P3' | 'P4',
+          priority: input.draft.priority as 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4',
           channel: input.draft.channel === 'EMAIL' ? 'EMAIL' : 'PORTAL',
           assignedTeamId: input.draft.assignedTeamId ?? undefined,
           categoryId: input.draft.categoryId ?? undefined,
@@ -85,7 +85,7 @@ export class TicketToolsService {
    */
   async createSlaInstance(
     ticketId: string,
-    _priority: 'P1' | 'P2' | 'P3' | 'P4',
+    _priority: 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4',
   ): Promise<ToolResult<{ id: string }>> {
     try {
       const sla = await this.prisma.slaInstance.findFirst({

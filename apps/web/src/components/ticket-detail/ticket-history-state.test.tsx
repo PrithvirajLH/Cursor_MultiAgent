@@ -16,7 +16,7 @@ function buildTicket(): TicketDetail {
     subject: "Printer offline",
     description: "The printer is offline.",
     status: "NEW",
-    priority: "P3",
+    priority: "SEV3",
     channel: "PORTAL",
     createdAt: "2026-03-10T10:00:00.000Z",
     updatedAt: "2026-03-10T10:00:00.000Z",

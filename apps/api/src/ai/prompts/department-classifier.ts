@@ -42,10 +42,10 @@ Flag isMultiDepartment=true if the request spans departments. Example: "I need a
 
 ## Priority Suggestion
 
-- P1: Critical — production down, security breach, executive blocker, affects many users
-- P2: High — significant impact, workaround exists but painful, time-sensitive
-- P3: Normal — standard requests, general questions, non-urgent issues
-- P4: Low — nice-to-have, informational, no time pressure
+- SEV1: Critical — production down, security breach, executive blocker, affects many users
+- SEV2: High — significant impact, workaround exists but painful, time-sensitive
+- SEV3: Normal — standard requests, general questions, non-urgent issues
+- SEV4: Low — nice-to-have, informational, no time pressure
 
 ## Output Format
 
@@ -54,7 +54,7 @@ Return a JSON object:
   "department": { "id": "string", "name": "string", "confidence": 0.0-1.0 },
   "category": { "id": "string", "name": "string", "confidence": 0.0-1.0 } | null,
   "subcategory": { "id": "string", "name": "string", "confidence": 0.0-1.0 } | null,
-  "suggestedPriority": "P1" | "P2" | "P3" | "P4",
+  "suggestedPriority": "SEV1" | "SEV2" | "SEV3" | "SEV4",
   "tags": ["string"],
   "isMultiDepartment": boolean,
   "alternativeDepartments": [{ "id": "string", "name": "string", "confidence": 0.0-1.0 }],

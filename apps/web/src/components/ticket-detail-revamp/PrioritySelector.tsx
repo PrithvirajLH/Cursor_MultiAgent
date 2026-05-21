@@ -8,13 +8,13 @@ interface PrioritySelectorProps {
   disabled?: boolean;
 }
 
-const ALL: TicketPriority[] = ['P1', 'P2', 'P3', 'P4'];
+const ALL: TicketPriority[] = ['SEV1', 'SEV2', 'SEV3', 'SEV4'];
 
 const LABEL: Record<TicketPriority, string> = {
-  P1: 'P1 · Urgent',
-  P2: 'P2 · High',
-  P3: 'P3 · Medium',
-  P4: 'P4 · Low',
+  SEV1: 'SEV1 · Critical',
+  SEV2: 'SEV2 · High',
+  SEV3: 'SEV3 · Normal',
+  SEV4: 'SEV4 · Low',
 };
 
 export function PrioritySelector({ current, onChange, disabled = false }: PrioritySelectorProps) {

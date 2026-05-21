@@ -187,14 +187,14 @@ function downloadCsv(
 function PriorityBadge({ priority }: { priority: string }) {
   const normalized = priority.toUpperCase();
   const label =
-    normalized === "P1" || normalized === "URGENT"
-      ? "P1"
-      : normalized === "P2" || normalized === "HIGH"
-        ? "P2"
-        : normalized === "P3" || normalized === "MEDIUM"
-          ? "P3"
-          : normalized === "P4" || normalized === "LOW"
-            ? "P4"
+    normalized === "SEV1" || normalized === "URGENT"
+      ? "SEV1"
+      : normalized === "SEV2" || normalized === "HIGH"
+        ? "SEV2"
+        : normalized === "SEV3" || normalized === "MEDIUM"
+          ? "SEV3"
+          : normalized === "SEV4" || normalized === "LOW"
+            ? "SEV4"
             : priority;
   return (
     <span
@@ -206,7 +206,7 @@ function PriorityBadge({ priority }: { priority: string }) {
 }
 
 async function fetchTopOpenEscalations() {
-  const priorities = ["P1", "P2", "P3", "P4"] as const;
+  const priorities = ["SEV1", "SEV2", "SEV3", "SEV4"] as const;
   const limit = 3;
   const selected: TicketRecord[] = [];
   const seenIds = new Set<string>();
@@ -564,7 +564,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         }
 
         const isEscalation =
-          (patched.priority === "P1" || patched.priority === "P2") &&
+          (patched.priority === "SEV1" || patched.priority === "SEV2") &&
           isOpenStatus(patched.status);
         if (!isEscalation) {
           next.splice(index, 1);

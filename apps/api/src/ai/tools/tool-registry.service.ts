@@ -68,7 +68,7 @@ export class ToolRegistryService {
     this.handlers.set('create_sla_instance', async (args) => {
       return this.ticketTools.createSlaInstance(
         args.ticketId as string,
-        args.priority as 'P1' | 'P2' | 'P3' | 'P4',
+        args.priority as 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4',
       );
     });
   }

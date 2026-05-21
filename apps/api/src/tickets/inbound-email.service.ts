@@ -206,7 +206,7 @@ export class InboundEmailService {
         {
           subject: payload.subject,
           description: payload.body,
-          priority: payload.priority ?? TicketPriority.P3,
+          priority: payload.priority ?? TicketPriority.SEV3,
           channel: TicketChannel.EMAIL,
           requesterId: requester.id,
         },

@@ -56,16 +56,16 @@ export type PriorityTone = "urgent" | "high" | "medium" | "low" | "neutral";
 export function getPriorityTone(priority?: string | null): PriorityTone {
   const value = (priority ?? "").toUpperCase();
   switch (value) {
-    case "P1":
+    case "SEV1":
     case "URGENT":
       return "urgent";
-    case "P2":
+    case "SEV2":
     case "HIGH":
       return "high";
-    case "P3":
+    case "SEV3":
     case "MEDIUM":
       return "medium";
-    case "P4":
+    case "SEV4":
     case "LOW":
       return "low";
     default:

@@ -172,7 +172,7 @@ describe("notification client caching", () => {
           statusCode: 400,
           message: [
             "subject must be a string",
-            "priority must be one of P1, P2, P3, P4",
+            "priority must be one of SEV1, SEV2, SEV3, SEV4",
           ],
           error: "Bad Request",
         }),
@@ -189,11 +189,11 @@ describe("notification client caching", () => {
     const error = await client.fetchTicketCounts().catch((caught) => caught);
 
     expect(error).toMatchObject({
-      message: "subject must be a string. priority must be one of P1, P2, P3, P4",
+      message: "subject must be a string. priority must be one of SEV1, SEV2, SEV3, SEV4",
       status: 400,
     });
     expect(handleApiError(error)).toBe(
-      "subject must be a string. priority must be one of P1, P2, P3, P4",
+      "subject must be a string. priority must be one of SEV1, SEV2, SEV3, SEV4",
     );
   });
 

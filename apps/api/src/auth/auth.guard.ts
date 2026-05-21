@@ -117,6 +117,13 @@ export class AuthGuard implements CanActivate {
 
     const resolvedTeamId = membership?.teamId ?? user.primaryTeamId ?? null;
 
+    const membershipRows = await this.prisma.teamMember.findMany({
+      where: { userId: user.id },
+      select: { teamId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const memberTeamIds = [...new Set(membershipRows.map((row) => row.teamId))];
+
     request.user = {
       id: user.id,
       email: user.email,
@@ -126,6 +133,7 @@ export class AuthGuard implements CanActivate {
       teamName: membership?.team?.name ?? null,
       teamRole: membership?.role ?? null,
       primaryTeamId: user.primaryTeamId ?? null,
+      memberTeamIds,
     };
 
     return true;

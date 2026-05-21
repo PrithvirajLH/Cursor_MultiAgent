@@ -56,11 +56,11 @@ function paramsMatch(actual: URLSearchParams, expected: Record<string, string>):
 export const SAVED_VIEWS: SidebarPreset[] = [
   {
     id: 'p1-today',
-    label: 'P1 today',
+    label: 'SEV1 today',
     tone: 'red',
-    buildQuery: () => qs({ priorities: 'P1', createdFrom: todayIso() }),
+    buildQuery: () => qs({ priorities: 'SEV1', createdFrom: todayIso() }),
     matches: p =>
-      paramsMatch(p, { priorities: 'P1', createdFrom: todayIso() }),
+      paramsMatch(p, { priorities: 'SEV1', createdFrom: todayIso() }),
   },
   {
     id: 'awaiting-24h',

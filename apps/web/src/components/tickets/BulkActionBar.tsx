@@ -21,7 +21,7 @@ const STATUS_OPTIONS: TicketStatus[] = [
   'REOPENED',
 ];
 
-const PRIORITY_OPTIONS: TicketPriority[] = ['P1', 'P2', 'P3', 'P4'];
+const PRIORITY_OPTIONS: TicketPriority[] = ['SEV1', 'SEV2', 'SEV3', 'SEV4'];
 
 const buttonStyle = {
   borderColor: 'var(--c-border-strong)',

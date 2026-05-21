@@ -100,7 +100,7 @@ const CONDITION_OPS = [
   "isEmpty",
   "isNotEmpty",
 ];
-const PRIORITY_OPTIONS = ["P1", "P2", "P3", "P4"];
+const PRIORITY_OPTIONS = ["SEV1", "SEV2", "SEV3", "SEV4"];
 const STATUS_OPTIONS = [
   "NEW",
   "TRIAGED",
@@ -1218,9 +1218,9 @@ export function AutomationRulesPage({
       }
       if (
         action.type === "set_priority" &&
-        !["P1", "P2", "P3", "P4"].includes(action.priority ?? "")
+        !["SEV1", "SEV2", "SEV3", "SEV4"].includes(action.priority ?? "")
       ) {
-        const message = `Action ${n}: priority must be P1, P2, P3, or P4.`;
+        const message = `Action ${n}: priority must be SEV1, SEV2, SEV3, or SEV4.`;
         setError(message);
         toast.error(message);
         return;

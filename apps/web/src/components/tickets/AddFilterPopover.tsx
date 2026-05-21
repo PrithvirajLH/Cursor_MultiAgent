@@ -19,7 +19,7 @@ const STATUSES = [
   'REOPENED',
 ];
 
-const PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+const PRIORITIES = ['SEV1', 'SEV2', 'SEV3', 'SEV4'];
 
 const SLA_STATES: Array<{ value: SlaStatusFilter; label: string }> = [
   { value: 'on_track', label: 'On track' },

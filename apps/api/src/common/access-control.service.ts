@@ -9,6 +9,17 @@ import { AuthUser } from '../auth/current-user.decorator';
 @Injectable()
 export class AccessControlService {
   /**
+   * Teams used for AGENT/LEAD ticket visibility: all memberships, falling back to resolved session teamId.
+   */
+  operationalTeamIds(user: AuthUser): string[] {
+    const fromRows = user.memberTeamIds?.filter(Boolean) ?? [];
+    if (fromRows.length > 0) {
+      return fromRows;
+    }
+    return user.teamId ? [user.teamId] : [];
+  }
+
+  /**
    * Returns a Prisma TicketWhereInput filter that restricts ticket visibility
    * based on the authenticated user's role and team membership.
    */
@@ -30,25 +41,26 @@ export class AccessControlService {
       return { requesterId: user.id };
     }
 
-    if (!user.teamId) {
+    const teamScope = this.operationalTeamIds(user);
+    if (!teamScope.length) {
       return { requesterId: user.id };
     }
 
     if (user.role === UserRole.LEAD) {
       return {
-        OR: [
-          { assignedTeamId: user.teamId },
-          { accessGrants: { some: { teamId: user.teamId } } },
-        ],
+        OR: teamScope.flatMap((teamId) => [
+          { assignedTeamId: teamId },
+          { accessGrants: { some: { teamId } } },
+        ]),
       };
     }
 
     return {
-      OR: [
-        { assignedTeamId: user.teamId, assigneeId: user.id },
-        { assignedTeamId: user.teamId, assigneeId: null },
-        { accessGrants: { some: { teamId: user.teamId } } },
-      ],
+      OR: teamScope.flatMap((teamId) => [
+        { assignedTeamId: teamId, assigneeId: user.id },
+        { assignedTeamId: teamId, assigneeId: null },
+        { accessGrants: { some: { teamId } } },
+      ]),
     };
   }
 
@@ -77,15 +89,24 @@ export class AccessControlService {
       return Prisma.sql`${col('requesterId')} = ${user.id}`;
     }
 
-    if (!user.teamId) {
+    const teamScopeSql = this.operationalTeamIds(user);
+    if (!teamScopeSql.length) {
       return Prisma.sql`${col('requesterId')} = ${user.id}`;
     }
 
     if (user.role === UserRole.LEAD) {
-      return Prisma.sql`(${col('assignedTeamId')} = ${user.teamId} OR ${accessGrant(user.teamId)})`;
+      const parts = teamScopeSql.map(
+        (teamId) =>
+          Prisma.sql`(${col('assignedTeamId')} = ${teamId} OR ${accessGrant(teamId)})`,
+      );
+      return Prisma.join(parts, ' OR ');
     }
 
-    return Prisma.sql`((${col('assignedTeamId')} = ${user.teamId} AND (${col('assigneeId')} = ${user.id} OR ${col('assigneeId')} IS NULL)) OR ${accessGrant(user.teamId)})`;
+    const agentParts = teamScopeSql.map(
+      (teamId) =>
+        Prisma.sql`((${col('assignedTeamId')} = ${teamId} AND (${col('assigneeId')} = ${user.id} OR ${col('assigneeId')} IS NULL)) OR ${accessGrant(teamId)})`,
+    );
+    return Prisma.join(agentParts, ' OR ');
   }
 
   /**
@@ -115,20 +136,27 @@ export class AccessControlService {
       return ticket.requesterId === user.id;
     }
 
-    if (!user.teamId) {
+    const teamScope = this.operationalTeamIds(user);
+    if (!teamScope.length) {
       return ticket.requesterId === user.id;
     }
 
     const hasReadGrant =
-      ticket.accessGrants?.some((grant) => grant.teamId === user.teamId) ??
-      false;
+      ticket.accessGrants?.some((grant) =>
+        grant.teamId != null ? teamScope.includes(grant.teamId) : false,
+      ) ?? false;
 
     if (user.role === UserRole.LEAD) {
-      return ticket.assignedTeamId === user.teamId || hasReadGrant;
+      return (
+        (ticket.assignedTeamId != null &&
+          teamScope.includes(ticket.assignedTeamId)) ||
+        hasReadGrant
+      );
     }
 
     const isAgentAccess =
-      ticket.assignedTeamId === user.teamId &&
+      ticket.assignedTeamId != null &&
+      teamScope.includes(ticket.assignedTeamId) &&
       (ticket.assigneeId === user.id || ticket.assigneeId === null);
 
     return isAgentAccess || hasReadGrant;
@@ -157,16 +185,21 @@ export class AccessControlService {
       return ticket.requesterId === user.id;
     }
 
-    if (!user.teamId) {
+    const teamScopeWrite = this.operationalTeamIds(user);
+    if (!teamScopeWrite.length) {
       return false;
     }
 
     if (user.role === UserRole.LEAD) {
-      return ticket.assignedTeamId === user.teamId;
+      return (
+        ticket.assignedTeamId != null &&
+        teamScopeWrite.includes(ticket.assignedTeamId)
+      );
     }
 
     return (
-      ticket.assignedTeamId === user.teamId &&
+      ticket.assignedTeamId != null &&
+      teamScopeWrite.includes(ticket.assignedTeamId) &&
       (ticket.assigneeId === user.id || ticket.assigneeId === null)
     );
   }

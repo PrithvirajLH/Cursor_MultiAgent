@@ -22,10 +22,10 @@ import { UpdateSlaPolicyDto } from './dto/update-sla.dto';
 import { DEFAULT_SLA_CONFIG } from '../common/config.utils';
 
 const PRIORITIES: TicketPriority[] = [
-  TicketPriority.P1,
-  TicketPriority.P2,
-  TicketPriority.P3,
-  TicketPriority.P4,
+  TicketPriority.SEV1,
+  TicketPriority.SEV2,
+  TicketPriority.SEV3,
+  TicketPriority.SEV4,
 ];
 
 const WEEK_DAYS = [
@@ -801,7 +801,7 @@ export class SlasService {
   ) {
     if (targets.length !== PRIORITIES.length) {
       throw new BadRequestException(
-        'SLA targets must include all priorities (P1-P4)',
+        'SLA targets must include all priorities (SEV1-SEV4)',
       );
     }
     const map = new Map<
