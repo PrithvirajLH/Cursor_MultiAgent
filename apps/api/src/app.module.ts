@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { AutomationModule } from './automation/automation.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
+import { AgentsAdminModule } from './agents-admin/agents-admin.module';
 import { CategoriesModule } from './categories/categories.module';
 import { CommonModule } from './common/common.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
@@ -21,6 +22,7 @@ import { ReportsModule } from './reports/reports.module';
 import { RoutingRulesModule } from './routing/routing.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
 import { SlasModule } from './slas/slas.module';
+import { TagsModule } from './tags/tags.module';
 import { TeamsModule } from './teams/teams.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { UsersModule } from './users/users.module';
@@ -99,6 +101,8 @@ import { parsePositiveInt } from './common/config.utils';
     RoutingRulesModule,
     SavedViewsModule,
     SlasModule,
+    TagsModule,
+    AgentsAdminModule,
     TeamsModule,
     TicketsModule,
     UsersModule,

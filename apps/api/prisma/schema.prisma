@@ -42,6 +42,11 @@ enum MessageType {
   INTERNAL
 }
 
+enum TagSource {
+  AI
+  MANUAL
+}
+
 enum TeamRole {
   AGENT
   LEAD
@@ -116,6 +121,8 @@ model User {
   graphProfile       Json?
   role               UserRole      @default(EMPLOYEE)
   primaryTeamId      String?       // for TEAM_ADMIN: the team they administer
+  isActive           Boolean       @default(true)
+  deactivatedAt      DateTime?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
@@ -235,6 +242,7 @@ model Ticket {
   notifications  Notification[]
   customFieldValues CustomFieldValue[]
   automationExecutions AutomationExecution[]
+  tags           TicketTag[]
 
   @@index([status, updatedAt])
   @@index([assignedTeamId, status, updatedAt])
@@ -498,6 +506,33 @@ model TicketFollower {
   @@unique([ticketId, userId])
   @@index([ticketId])
   @@index([userId])
+}
+
+model Tag {
+  id         String      @id @default(uuid())
+  name       String      @unique             // normalized: trim + lowercase
+  color      String?
+  createdAt  DateTime    @default(now())
+  createdById String?
+
+  ticketTags TicketTag[]
+
+  @@index([name])
+}
+
+model TicketTag {
+  ticketId    String
+  tagId       String
+  source      TagSource  @default(MANUAL)
+  createdAt   DateTime   @default(now())
+  createdById String?
+
+  ticket      Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag         Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, tagId])
+  @@index([tagId])
+  @@index([ticketId])
 }
 
 model NotificationOutbox {

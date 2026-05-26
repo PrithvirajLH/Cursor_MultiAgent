@@ -1414,4 +1414,99 @@ export class ReportsService {
       },
     };
   }
+
+  /**
+   * Tag analytics: top tags by volume, median time-to-resolve per tag,
+   * and per-team tag distribution. Scoped by role.
+   */
+  async getTagAnalytics(days: number, user: AuthUser) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Scope: OWNER sees all; LEAD/TEAM_ADMIN limited to their team.
+    let teamScopeSql = Prisma.empty;
+    if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
+      teamScopeSql = Prisma.sql`AND t."assignedTeamId" = ${user.primaryTeamId}`;
+    } else if (user.role === UserRole.LEAD && user.teamId) {
+      teamScopeSql = Prisma.sql`AND t."assignedTeamId" = ${user.teamId}`;
+    }
+
+    const topTagsRows = await this.prisma.$queryRaw<
+      Array<{ name: string; count: bigint }>
+    >`
+      SELECT tg.name, COUNT(*)::bigint AS count
+      FROM "TicketTag" tt
+      JOIN "Tag" tg ON tg.id = tt."tagId"
+      JOIN "Ticket" t ON t.id = tt."ticketId"
+      WHERE t."createdAt" >= ${since}
+        ${teamScopeSql}
+      GROUP BY tg.name
+      ORDER BY count DESC, tg.name ASC
+      LIMIT 20
+    `;
+
+    const mttrRows = await this.prisma.$queryRaw<
+      Array<{ name: string; median_hours: number; sample_size: bigint }>
+    >`
+      SELECT
+        tg.name,
+        percentile_cont(0.5) WITHIN GROUP (
+          ORDER BY EXTRACT(EPOCH FROM (t."resolvedAt" - t."createdAt")) / 3600
+        )::float8 AS median_hours,
+        COUNT(*)::bigint AS sample_size
+      FROM "TicketTag" tt
+      JOIN "Tag" tg ON tg.id = tt."tagId"
+      JOIN "Ticket" t ON t.id = tt."ticketId"
+      WHERE t."resolvedAt" IS NOT NULL
+        AND t."resolvedAt" >= ${since}
+        ${teamScopeSql}
+      GROUP BY tg.name
+      HAVING COUNT(*) >= 3
+      ORDER BY median_hours DESC, tg.name ASC
+      LIMIT 20
+    `;
+
+    const perTeamRows = await this.prisma.$queryRaw<
+      Array<{ team_name: string; name: string; count: bigint }>
+    >`
+      SELECT
+        tm.name AS team_name,
+        tg.name,
+        COUNT(*)::bigint AS count
+      FROM "TicketTag" tt
+      JOIN "Tag" tg ON tg.id = tt."tagId"
+      JOIN "Ticket" t ON t.id = tt."ticketId"
+      JOIN "Team" tm ON tm.id = t."assignedTeamId"
+      WHERE t."createdAt" >= ${since}
+        ${teamScopeSql}
+      GROUP BY tm.name, tg.name
+      ORDER BY tm.name ASC, count DESC
+    `;
+
+    // Group per-team rows: keep top 5 tags per team.
+    const teamMap = new Map<string, Array<{ name: string; count: number }>>();
+    for (const row of perTeamRows) {
+      const list = teamMap.get(row.team_name) ?? [];
+      if (list.length < 5) {
+        list.push({ name: row.name, count: Number(row.count) });
+        teamMap.set(row.team_name, list);
+      }
+    }
+    const perTeam = Array.from(teamMap.entries()).map(([teamName, tags]) => ({
+      teamName,
+      tags,
+    }));
+
+    return {
+      topTags: topTagsRows.map((r) => ({
+        name: r.name,
+        count: Number(r.count),
+      })),
+      mttrByTag: mttrRows.map((r) => ({
+        name: r.name,
+        medianHours: Number(r.median_hours),
+        sampleSize: Number(r.sample_size),
+      })),
+      perTeam,
+    };
+  }
 }

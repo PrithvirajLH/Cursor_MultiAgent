@@ -34,6 +34,7 @@ import {
   type TicketStatus,
 } from "../api/client";
 import { useTicketTabs } from "../contexts/TicketTabsContext";
+import { TagChips } from "../components/tags/TagChips";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
 import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
@@ -311,6 +312,15 @@ export function TicketDetailPage({
       return isCurrentUserOnAssignedTeam;
     const isAssignee = ticket.assignee?.email === currentEmail;
     return isCurrentUserOnAssignedTeam && (isAssignee || !ticket.assignee);
+  }, [currentEmail, isCurrentUserOnAssignedTeam, role, ticket]);
+
+  // Peer agent: same team, not the assignee. Can read + post INTERNAL notes only.
+  const isPeerAgent = useMemo(() => {
+    if (!ticket) return false;
+    if (role !== "AGENT") return false;
+    if (!isCurrentUserOnAssignedTeam) return false;
+    if (!ticket.assignee) return false; // unassigned tickets are open to any agent
+    return ticket.assignee.email !== currentEmail;
   }, [currentEmail, isCurrentUserOnAssignedTeam, role, ticket]);
 
   const canUpload = ticket
@@ -1162,6 +1172,12 @@ export function TicketDetailPage({
     if (role === "EMPLOYEE") setMessageType("PUBLIC");
   }, [role]);
 
+  // Force INTERNAL when the viewer is a peer agent (server enforces the same
+  // rule; this just keeps the UI honest).
+  useEffect(() => {
+    if (isPeerAgent) setMessageType("INTERNAL");
+  }, [isPeerAgent]);
+
   useEffect(() => {
     if (!copyToast) return;
     const t = window.setTimeout(() => setCopyToast(null), 3000);
@@ -1466,18 +1482,22 @@ export function TicketDetailPage({
     }
   }, [ticket, isFollowing, refreshAfterMutation]);
 
-  const handleAttachmentUpload = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      if (!ticketId) return;
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
+  const uploadAttachmentFiles = useCallback(
+    async (files: File[]) => {
+      if (!ticketId || files.length === 0) return;
       setAttachmentError(null);
       setAttachmentUploading(true);
       try {
-        for (const file of Array.from(files))
+        for (const file of files)
           await uploadTicketAttachment(ticketId, file);
         void refreshAfterMutation(ticketId);
-        setCopyToast({ message: "Attachment uploaded.", type: "success" });
+        setCopyToast({
+          message:
+            files.length === 1
+              ? "Attachment uploaded."
+              : `${files.length} attachments uploaded.`,
+          type: "success",
+        });
       } catch {
         setAttachmentError("Unable to upload attachment.");
         setCopyToast({
@@ -1486,10 +1506,58 @@ export function TicketDetailPage({
         });
       } finally {
         setAttachmentUploading(false);
-        event.target.value = "";
       }
     },
     [ticketId, refreshAfterMutation],
+  );
+
+  const handleAttachmentUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+      await uploadAttachmentFiles(Array.from(files));
+      event.target.value = "";
+    },
+    [uploadAttachmentFiles],
+  );
+
+  const handlePasteFiles = useCallback(
+    async (files: File[]) => {
+      if (!ticketId || files.length === 0) return;
+      setAttachmentError(null);
+      setAttachmentUploading(true);
+      try {
+        for (const file of files) {
+          const previewUrl = URL.createObjectURL(file);
+          const attachment = await uploadTicketAttachment(ticketId, file);
+          // Only inline images — other files stay only in the Attachments tab
+          if (file.type.startsWith("image/")) {
+            messageInputRef.current?.insertAttachmentImage({
+              attachmentId: attachment.id,
+              previewUrl,
+              alt: file.name,
+            });
+          }
+        }
+        void refreshAfterMutation(ticketId);
+        setCopyToast({
+          message:
+            files.length === 1
+              ? "Attachment uploaded."
+              : `${files.length} attachments uploaded.`,
+          type: "success",
+        });
+      } catch {
+        setAttachmentError("Unable to upload attachment.");
+        setCopyToast({
+          message: "Unable to upload attachment.",
+          type: "error",
+        });
+      } finally {
+        setAttachmentUploading(false);
+      }
+    },
+    [ticketId, refreshAfterMutation, messageInputRef],
   );
 
   const handleAttachmentDownload = useCallback(
@@ -1766,6 +1834,13 @@ export function TicketDetailPage({
                             No description provided.
                           </p>
                         )}
+                        <div className="mt-3">
+                          <TagChips
+                            ticketId={ticket.id}
+                            tags={ticket.tags ?? []}
+                            canEdit={canManage}
+                          />
+                        </div>
                       </div>
                       <div className="flex shrink-0 items-start gap-2">
                         <button
@@ -1955,6 +2030,7 @@ export function TicketDetailPage({
                         onMessageBodyChange={handleMessageBodyChange}
                         onMessageInputBlur={handleMessageInputBlur}
                         canManage={canManage}
+                        isPeerAgent={isPeerAgent}
                         canUpload={canUpload}
                         onReply={() => void handleReply()}
                         onLoadMore={() =>
@@ -1964,6 +2040,7 @@ export function TicketDetailPage({
                           ticketId && void loadMessagesPage(ticketId, true)
                         }
                         onAttachmentUpload={handleAttachmentUpload}
+                        onPasteFiles={handlePasteFiles}
                         onAttachmentDownload={(id, name) =>
                           void handleAttachmentDownload(id, name)
                         }

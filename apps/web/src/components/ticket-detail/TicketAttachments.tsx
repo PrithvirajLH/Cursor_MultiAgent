@@ -17,38 +17,15 @@ export function TicketAttachments({
   const [expandedAttachmentId, setExpandedAttachmentId] = useState<
     string | null
   >(null);
-
-  if (!ticket.attachments.length) {
-    return (
-      <div
-        id="panel-attachments"
-        role="tabpanel"
-        aria-label="Attachments"
-        className="flex flex-1 items-center justify-center px-6 py-8"
-      >
-        <div className="max-w-md rounded-2xl border border-dashed border-border bg-card px-8 py-10 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
-            <Paperclip className="h-5 w-5" />
-          </div>
-          <h2 className="text-sm font-semibold text-foreground">
-            No attachments yet
-          </h2>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Files you upload to this ticket will appear here.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
 
   const expandedAttachment =
     ticket.attachments.find(
       (attachment) => attachment.id === expandedAttachmentId,
     ) ?? null;
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -90,6 +67,29 @@ export function TicketAttachments({
     } finally {
       setPreviewLoading(false);
     }
+  }
+
+  if (!ticket.attachments.length) {
+    return (
+      <div
+        id="panel-attachments"
+        role="tabpanel"
+        aria-label="Attachments"
+        className="flex flex-1 items-center justify-center px-6 py-8"
+      >
+        <div className="max-w-md rounded-2xl border border-dashed border-border bg-card px-8 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white">
+            <Paperclip className="h-5 w-5" />
+          </div>
+          <h2 className="text-sm font-semibold text-foreground">
+            No attachments yet
+          </h2>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Files you upload to this ticket will appear here.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

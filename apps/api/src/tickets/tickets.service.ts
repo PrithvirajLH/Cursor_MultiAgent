@@ -15,6 +15,7 @@ import {
   MessageType,
   NotificationType,
   Prisma,
+  TagSource,
   TeamAssignmentStrategy,
   TicketPriority,
   TicketStatus,
@@ -31,6 +32,7 @@ import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { InboundEmailService } from './inbound-email.service';
+import { TagsService } from '../tags/tags.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { parsePositiveInt } from '../common/config.utils';
 import { AddTicketMessageDto } from './dto/add-ticket-message.dto';
@@ -98,6 +100,7 @@ export class TicketsService {
     private readonly slaCalc: TicketSlaCalculationService,
     @Inject(forwardRef(() => InboundEmailService))
     private readonly inboundEmailService: InboundEmailService,
+    private readonly tagsService: TagsService,
   ) {
     const customTransitionsStr = this.config.get<string>(
       'TICKET_STATUS_TRANSITIONS',
@@ -330,6 +333,16 @@ export class TicketsService {
       filters.push({ requesterId: { in: requesterIds } });
     } else if (query.requesterId) {
       filters.push({ requesterId: query.requesterId });
+    }
+
+    if (query.tags?.length) {
+      // AND semantics: ticket must carry every requested tag.
+      const tagNames = query.tags
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+      for (const name of tagNames) {
+        filters.push({ tags: { some: { tag: { name } } } });
+      }
     }
 
     if (query.createdFrom) {
@@ -609,9 +622,15 @@ export class TicketsService {
       atRisk: 0n,
       overdue: 0n,
     };
+    const assignedToMe = Number(row.assignedToMe ?? 0);
+    // Agents see their own triage board (scope=assigned), so the sidebar badge
+    // should reflect their personal queue, not the full team's NEW-unassigned
+    // count. Other roles keep the team-wide triage count.
+    const triage =
+      user.role === UserRole.AGENT ? assignedToMe : Number(row.triage ?? 0);
     return {
-      assignedToMe: Number(row.assignedToMe ?? 0),
-      triage: Number(row.triage ?? 0),
+      assignedToMe,
+      triage,
       open: Number(row.open ?? 0),
       unassigned: Number(row.unassigned ?? 0),
       resolved: Number(row.resolved ?? 0),
@@ -773,6 +792,10 @@ export class TicketsService {
         assignedTeam: true,
         category: true,
         accessGrants: true,
+        tags: {
+          include: { tag: true },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -801,10 +824,17 @@ export class TicketsService {
       }),
     ]);
 
-    const { accessGrants, ...rest } = ticket;
+    const { accessGrants, tags: tagRows, ...rest } = ticket;
     void accessGrants;
+    const tags = tagRows.map((row) => ({
+      id: row.tag.id,
+      name: row.tag.name,
+      color: row.tag.color,
+      source: row.source,
+    }));
     return {
       ...rest,
+      tags,
       followers,
       attachments,
       customFieldValues,
@@ -926,7 +956,11 @@ export class TicketsService {
     };
   }
 
-  async create(payload: CreateTicketDto, user: AuthUser, options?: { skipRequiredCustomFields?: boolean }) {
+  async create(
+    payload: CreateTicketDto,
+    user: AuthUser,
+    options?: { skipRequiredCustomFields?: boolean; tagSource?: TagSource },
+  ) {
     const requesterId = payload.requesterId ?? user.id;
 
     if (user.role === UserRole.EMPLOYEE && requesterId !== user.id) {
@@ -1008,6 +1042,16 @@ export class TicketsService {
           assignedTeam: true,
         },
       });
+
+      if (payload.tags?.length) {
+        await this.tagsService.attachManyToTicket(
+          ticket.id,
+          payload.tags,
+          options?.tagSource ?? TagSource.MANUAL,
+          user.id,
+          tx,
+        );
+      }
 
       const displayId = this.buildDisplayId(
         ticket.assignedTeam?.name ?? null,
@@ -1183,13 +1227,21 @@ export class TicketsService {
       }
     }
 
-    if (!this.canWriteTicket(user, ticket)) {
+    if (!this.accessControl.canPostMessage(user, ticket)) {
       throw new ForbiddenException('No write access to this ticket');
     }
 
+    // Peer agents (same team, not the assignee) can only leave INTERNAL notes.
+    // We override silently regardless of what the client sent — the UI also
+    // hides the toggle, but defense-in-depth.
+    const isPeerAgent = this.accessControl.isPeerAgent(user, ticket);
+    const effectiveType: MessageType = isPeerAgent
+      ? MessageType.INTERNAL
+      : (payload.type ?? MessageType.PUBLIC);
+
     const shouldSetFirstResponse =
       user.role !== UserRole.EMPLOYEE &&
-      (payload.type ?? MessageType.PUBLIC) === MessageType.PUBLIC;
+      effectiveType === MessageType.PUBLIC;
 
     const now = new Date();
     const message = await this.prisma.$transaction(async (tx) => {
@@ -1198,7 +1250,7 @@ export class TicketsService {
           ticketId,
           authorId: user.id,
           body: payload.body,
-          type: payload.type,
+          type: effectiveType,
           createdAt: now,
         },
         include: {

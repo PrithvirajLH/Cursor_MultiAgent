@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, TicketStatus, UserRole } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListUsersDto } from './dto/list-users.dto';
@@ -19,6 +21,14 @@ export class UsersService {
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
 
+    const statusFilter = query.status ?? 'active';
+    const activeWhere: Prisma.UserWhereInput =
+      statusFilter === 'active'
+        ? { isActive: true }
+        : statusFilter === 'inactive'
+          ? { isActive: false }
+          : {};
+
     const queryWhere: Prisma.UserWhereInput = {
       role: query.role,
       OR: query.q
@@ -29,6 +39,7 @@ export class UsersService {
             { email: { contains: query.q, mode: 'insensitive' as const } },
           ]
         : undefined,
+      ...activeWhere,
     };
     const scopeWhere = this.buildListScopeWhere(actor);
     const where: Prisma.UserWhereInput = {
@@ -50,6 +61,8 @@ export class UsersService {
           department: true,
           location: true,
           primaryTeamId: true,
+          isActive: true,
+          deactivatedAt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -137,5 +150,190 @@ export class UsersService {
       where: { id: userId },
       data: { role: payload.role, primaryTeamId },
     });
+  }
+
+  async deactivate(userId: string, actor: AuthUser) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can deactivate users');
+    }
+    if (actor.id === userId) {
+      throw new BadRequestException('You cannot deactivate yourself');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, role: true, email: true, displayName: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.isActive) {
+      throw new ConflictException('User is already inactive');
+    }
+    if (user.role === UserRole.OWNER) {
+      throw new ForbiddenException('Cannot deactivate another owner');
+    }
+
+    const summary = await this.prisma.$transaction(async (tx) => {
+      const openTicketStatuses: TicketStatus[] = [
+        TicketStatus.NEW,
+        TicketStatus.TRIAGED,
+        TicketStatus.ASSIGNED,
+        TicketStatus.IN_PROGRESS,
+        TicketStatus.WAITING_ON_REQUESTER,
+        TicketStatus.WAITING_ON_VENDOR,
+        TicketStatus.REOPENED,
+      ];
+
+      const unassign = await tx.ticket.updateMany({
+        where: { assigneeId: userId, status: { in: openTicketStatuses } },
+        data: { assigneeId: null, status: TicketStatus.NEW },
+      });
+
+      // Routing rules that pin to this user lose their assignee but keep the team rule
+      await tx.routingRule.updateMany({
+        where: { assigneeId: userId },
+        data: { assigneeId: null },
+      });
+
+      const teamRemoval = await tx.teamMember.deleteMany({
+        where: { userId },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          isActive: false,
+          deactivatedAt: new Date(),
+          primaryTeamId: null,
+        },
+      });
+
+      return {
+        ticketsUnassigned: unassign.count,
+        teamsRemoved: teamRemoval.count,
+      };
+    });
+
+    await this.recordAdminAuditEvent('USER_DEACTIVATED', { userId, email: user.email, displayName: user.displayName, ...summary }, actor);
+
+    return { ok: true, ...summary };
+  }
+
+  async reactivate(userId: string, actor: AuthUser) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can reactivate users');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, email: true, displayName: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.isActive) {
+      throw new ConflictException('User is already active');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { isActive: true, deactivatedAt: null },
+    });
+
+    await this.recordAdminAuditEvent('USER_REACTIVATED', { userId, email: user.email, displayName: user.displayName }, actor);
+
+    return { ok: true };
+  }
+
+  async setPrimaryTeam(userId: string, teamId: string | null, actor: AuthUser) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can change primary team');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, email: true, displayName: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (teamId !== null) {
+      const team = await this.prisma.team.findUnique({ where: { id: teamId } });
+      if (!team) {
+        throw new BadRequestException('Team not found');
+      }
+    } else if (user.role === UserRole.TEAM_ADMIN) {
+      throw new BadRequestException(
+        'TEAM_ADMIN role requires a primary team — clear the role first',
+      );
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { primaryTeamId: teamId },
+      select: { id: true, primaryTeamId: true, role: true },
+    });
+    await this.recordAdminAuditEvent(
+      'USER_PRIMARY_TEAM_SET',
+      { userId, email: user.email, displayName: user.displayName, primaryTeamId: teamId },
+      actor,
+    );
+    return updated;
+  }
+
+  /**
+   * Returns the impact a deactivation would have without changing anything.
+   * Used by the UI to show "this will unassign N tickets, remove from M teams" before confirming.
+   */
+  async deactivationPreview(userId: string, actor: AuthUser) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can preview deactivation');
+    }
+    const openTicketStatuses: TicketStatus[] = [
+      TicketStatus.NEW,
+      TicketStatus.TRIAGED,
+      TicketStatus.ASSIGNED,
+      TicketStatus.IN_PROGRESS,
+      TicketStatus.WAITING_ON_REQUESTER,
+      TicketStatus.WAITING_ON_VENDOR,
+      TicketStatus.REOPENED,
+    ];
+    const [ticketsOpen, memberships, user] = await Promise.all([
+      this.prisma.ticket.count({
+        where: { assigneeId: userId, status: { in: openTicketStatuses } },
+      }),
+      this.prisma.teamMember.findMany({
+        where: { userId },
+        include: { team: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, displayName: true, isActive: true },
+      }),
+    ]);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return {
+      email: user.email,
+      displayName: user.displayName,
+      isActive: user.isActive,
+      ticketsOpen,
+      teams: memberships.map((m) => m.team.name),
+    };
+  }
+
+  private async recordAdminAuditEvent(
+    type: string,
+    payload: Record<string, unknown>,
+    actor: AuthUser,
+  ) {
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO "AdminAuditEvent" ("id", "type", "payload", "createdById", "teamId", "actorEmail", "actorName", "teamName", "createdAt")
+        VALUES (${randomUUID()}, ${type}, ${JSON.stringify(payload)}::jsonb, ${actor.id}, ${null}, ${actor.email}, ${actor.displayName ?? actor.email}, ${null}, now())
+      `;
+    } catch {
+      // Non-blocking audit log write
+    }
   }
 }

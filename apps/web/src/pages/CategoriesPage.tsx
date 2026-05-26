@@ -46,7 +46,8 @@ function emptyForm(): CategoryForm {
   };
 }
 
-export function CategoriesPage() {
+export function CategoriesPage({ role }: { role?: string } = {}) {
+  const canEdit = role === "OWNER";
   const headerCtx = useHeaderContext();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<CategoryRef[]>([]);
@@ -341,14 +342,16 @@ export function CategoriesPage() {
             Refresh
           </button>
 
-          <button
-            type="button"
-            onClick={startCreate}
-            className="inline-flex items-center space-x-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Category</span>
-          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={startCreate}
+              className="inline-flex items-center space-x-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Category</span>
+            </button>
+          ) : null}
         </div>
 
         <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -475,22 +478,26 @@ export function CategoriesPage() {
                         {category.description || "—"}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center space-x-1">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(category)}
-                            className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteTarget(category)}
-                            className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                        {canEdit ? (
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(category)}
+                              className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteTarget(category)}
+                              className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </td>
                     </tr>
                   ))

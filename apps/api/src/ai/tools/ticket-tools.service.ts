@@ -31,17 +31,24 @@ export class TicketToolsService {
     user: AuthUser,
   ): Promise<ToolResult<{ id: string; number: number; displayId: string | null }>> {
     try {
+      // Use the user's original message verbatim as the ticket description.
+      // The AI's structured "What/Who/Context" rewrite is still persisted in
+      // the AI_CLASSIFICATION event below and surfaced in the AI panel.
+      const descriptionText =
+        input.rawText?.trim() || input.draft.description;
+
       const ticket = await this.ticketsService.create(
         {
           subject: input.draft.subject,
-          description: input.draft.description,
+          description: descriptionText,
           priority: input.draft.priority as 'SEV1' | 'SEV2' | 'SEV3' | 'SEV4',
           channel: input.draft.channel === 'EMAIL' ? 'EMAIL' : 'PORTAL',
           assignedTeamId: input.draft.assignedTeamId ?? undefined,
           categoryId: input.draft.categoryId ?? undefined,
+          tags: input.draft.tags ?? undefined,
         },
         user,
-        { skipRequiredCustomFields: true },
+        { skipRequiredCustomFields: true, tagSource: 'AI' },
       );
 
       // Log AI classification event with analysis data

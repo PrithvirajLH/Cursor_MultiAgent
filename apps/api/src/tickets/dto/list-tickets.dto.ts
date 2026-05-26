@@ -143,6 +143,12 @@ export class ListTicketsDto extends PaginationDto {
   q?: string;
 
   @IsOptional()
+  @Transform(({ value }) => splitStrings(value))
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
   @IsIn(SORT_FIELDS)
   sort?: (typeof SORT_FIELDS)[number];
 

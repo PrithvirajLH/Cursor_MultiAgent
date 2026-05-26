@@ -57,6 +57,22 @@ function formatConversationDay(iso: string) {
   });
 }
 
+/**
+ * True when a message body contains only attachment image(s) and no real text —
+ * used to render the message without the colored chat bubble (image is the bubble).
+ */
+function isImageOnlyBody(body: string): boolean {
+  if (!body) return false;
+  if (!/data-attachment-id=/.test(body)) return false;
+  // Strip <img> tags and structural break/paragraph tags, then check for leftover text.
+  const withoutImgs = body
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/<\/?(br|p|div)\b[^>]*>/gi, "")
+    .replace(/&nbsp;/gi, " ")
+    .trim();
+  return withoutImgs.length === 0;
+}
+
 export type TicketConversationProps = {
   ticket: TicketDetail;
   messages: Array<
@@ -72,11 +88,13 @@ export type TicketConversationProps = {
   onMessageBodyChange: (body: string) => void;
   onMessageInputBlur: () => void;
   canManage: boolean;
+  isPeerAgent?: boolean;
   canUpload: boolean;
   onReply: () => void;
   onLoadMore: () => void;
   onRetryLoad: () => void;
   onAttachmentUpload: (event: ChangeEvent<HTMLInputElement>) => void;
+  onPasteFiles?: (files: File[]) => void;
   onAttachmentDownload: (id: string, fileName: string) => void;
   onAttachmentView: (id: string) => void;
   attachmentUploading: boolean;
@@ -112,11 +130,13 @@ export const TicketConversation = memo(function TicketConversation({
   onMessageBodyChange,
   onMessageInputBlur,
   canManage,
+  isPeerAgent = false,
   canUpload,
   onReply,
   onLoadMore,
   onRetryLoad,
   onAttachmentUpload,
+  onPasteFiles,
   onAttachmentDownload,
   onAttachmentView,
   attachmentUploading,
@@ -235,6 +255,9 @@ export const TicketConversation = memo(function TicketConversation({
             const shouldShowDateDivider =
               previousMessage == null ||
               !isSameDay(previousMessage.createdAt, message.createdAt);
+            // Image-only messages (just attachment image(s), no real text) render
+            // without the colored bubble — the image is the visual element.
+            const isImageOnly = isImageOnlyBody(message.body);
 
             return (
               <div key={message.id}>
@@ -293,19 +316,23 @@ export const TicketConversation = memo(function TicketConversation({
                     ) : null}
 
                     <div
-                      className={`inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
-                        isCurrentUser
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : isInternal
-                            ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-                            : "border-border bg-card text-foreground"
-                      } ${
-                        isCurrentUser
-                          ? `${isGroupStart ? "rounded-tr-[20px]" : "rounded-tr-md"} ${isGroupEnd ? "rounded-br-[20px]" : "rounded-br-md"} rounded-tl-[20px] rounded-bl-[20px]`
-                          : `${isGroupStart ? "rounded-tl-[20px]" : "rounded-tl-md"} ${isGroupEnd ? "rounded-bl-[20px]" : "rounded-bl-md"} rounded-tr-[20px] rounded-br-[20px]`
-                      }`}
+                      className={
+                        isImageOnly
+                          ? "inline-flex max-w-full"
+                          : `inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
+                              isCurrentUser
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : isInternal
+                                  ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                                  : "border-border bg-card text-foreground"
+                            } ${
+                              isCurrentUser
+                                ? `${isGroupStart ? "rounded-tr-[20px]" : "rounded-tr-md"} ${isGroupEnd ? "rounded-br-[20px]" : "rounded-br-md"} rounded-tl-[20px] rounded-bl-[20px]`
+                                : `${isGroupStart ? "rounded-tl-[20px]" : "rounded-tl-md"} ${isGroupEnd ? "rounded-bl-[20px]" : "rounded-bl-md"} rounded-tr-[20px] rounded-br-[20px]`
+                            }`
+                      }
                     >
-                      {message.body.includes("\n") ? (
+                      {!isImageOnly && message.body.includes("\n") ? (
                         <pre className="w-full whitespace-pre-wrap break-words text-sm">
                           {message.body}
                         </pre>
@@ -313,7 +340,7 @@ export const TicketConversation = memo(function TicketConversation({
                         <MessageBody
                           body={message.body}
                           invert={isCurrentUser}
-                          className="flex w-full items-center"
+                          className={isImageOnly ? "" : "flex w-full items-center"}
                         />
                       )}
                     </div>
@@ -364,9 +391,18 @@ export const TicketConversation = memo(function TicketConversation({
               placeholder="Type a message… (use @ to mention someone)"
               users={users}
               cannedVariables={cannedVariables}
+              onPasteFiles={canUpload ? onPasteFiles : undefined}
             />
             <div className="flex items-center justify-end gap-1.5 border-t border-border bg-card px-3 py-2 text-muted-foreground">
-              {canManage ? (
+              {isPeerAgent ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-400"
+                  title="You can only leave internal notes on tickets assigned to a teammate. The requester will not see this message."
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  <span>Internal note only</span>
+                </span>
+              ) : canManage ? (
                 <button
                   type="button"
                   onClick={() =>

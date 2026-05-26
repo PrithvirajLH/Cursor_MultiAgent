@@ -53,6 +53,7 @@ function parseFilters(
     assigneeIds: parseArray(searchParams.get("assigneeIds")),
     requesterIds: parseArray(searchParams.get("requesterIds")),
     slaStatus: parseArray(searchParams.get("slaStatus")) as SlaStatusFilter[],
+    tags: parseArray(searchParams.get("tags")),
     createdFrom: parseDate(searchParams.get("createdFrom")),
     createdTo: parseDate(searchParams.get("createdTo")),
     updatedFrom: parseDate(searchParams.get("updatedFrom")),
@@ -85,6 +86,8 @@ function filtersToSearchParams(
     params.set("requesterIds", filters.requesterIds.join(","));
   if (filters.slaStatus && filters.slaStatus.length > 0)
     params.set("slaStatus", filters.slaStatus.join(","));
+  if (filters.tags && filters.tags.length > 0)
+    params.set("tags", filters.tags.join(","));
   if (filters.createdFrom) params.set("createdFrom", filters.createdFrom);
   if (filters.createdTo) params.set("createdTo", filters.createdTo);
   if (filters.updatedFrom) params.set("updatedFrom", filters.updatedFrom);
@@ -149,6 +152,7 @@ export function useFilters(
       filters.assigneeIds.length > 0 ||
       filters.requesterIds.length > 0 ||
       filters.slaStatus.length > 0 ||
+      filters.tags.length > 0 ||
       !!filters.createdFrom ||
       !!filters.createdTo ||
       !!filters.updatedFrom ||
@@ -177,6 +181,7 @@ export function useFilters(
     if (filters.assigneeIds.length) p.assigneeIds = filters.assigneeIds;
     if (filters.requesterIds.length) p.requesterIds = filters.requesterIds;
     if (filters.slaStatus.length) p.slaStatus = filters.slaStatus;
+    if (filters.tags.length) p.tags = filters.tags;
     if (filters.createdFrom) p.createdFrom = filters.createdFrom;
     if (filters.createdTo) p.createdTo = filters.createdTo;
     if (filters.updatedFrom) p.updatedFrom = filters.updatedFrom;

@@ -197,24 +197,9 @@ export function AiSummaryPanel({ ticketId }: AiSummaryPanelProps) {
             </div>
           )}
 
-          {/* Tags */}
-          {data.tags && data.tags.length > 0 && (
-            <div className="px-4 py-3.5">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Tags
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {data.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Tags now live on the ticket header (TagChips component) as
+              first-class data — keeping a duplicate here would just confuse
+              users. Removed intentionally. */}
         </div>
       )}
     </div>

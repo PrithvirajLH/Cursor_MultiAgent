@@ -114,6 +114,19 @@ const RoutingRulesPage = lazy(() =>
 const CategoriesPage = lazy(() =>
   import("./pages/CategoriesPage").then((m) => ({ default: m.CategoriesPage })),
 );
+const AdminTagsPage = lazy(() =>
+  import("./pages/AdminTagsPage").then((m) => ({ default: m.AdminTagsPage })),
+);
+const AgentsDirectoryPage = lazy(() =>
+  import("./pages/AgentsDirectoryPage").then((m) => ({
+    default: m.AgentsDirectoryPage,
+  })),
+);
+const AgentProfilePage = lazy(() =>
+  import("./pages/AgentProfilePage").then((m) => ({
+    default: m.AgentProfilePage,
+  })),
+);
 const CustomFieldsAdminPage = lazy(() =>
   import("./pages/CustomFieldsAdminPage").then((m) => ({
     default: m.CustomFieldsAdminPage,
@@ -203,7 +216,7 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
     key: "triage",
     label: "Triage Board",
     icon: ClipboardList,
-    roles: ["LEAD", "TEAM_ADMIN", "OWNER"],
+    roles: ["AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
   },
   {
     key: "manager",
@@ -269,6 +282,9 @@ function isShellLayoutPath(pathname: string): boolean {
   if (pathname === "/custom-fields" || pathname.startsWith("/custom-fields/"))
     return true;
   if (pathname === "/categories" || pathname.startsWith("/categories/"))
+    return true;
+  if (pathname === "/admin/tags") return true;
+  if (pathname === "/admin/agents" || pathname.startsWith("/admin/agents/"))
     return true;
   return (
     pathname === "/dashboard" ||
@@ -409,6 +425,16 @@ const routeTitleOverrides: {
     prefix: "/reports",
     title: "Reports",
     subtitle: "Analytics and insights for helpdesk operations.",
+  },
+  {
+    prefix: "/admin/tags",
+    title: "Tags",
+    subtitle: "Rename, merge, or delete ticket tags.",
+  },
+  {
+    prefix: "/admin/agents",
+    title: "Agents",
+    subtitle: "Agent performance and per-person analytics.",
   },
 ];
 
@@ -772,6 +798,7 @@ function AuthenticatedShell({
     currentPersona.role === "LEAD" ||
     currentPersona.role === "TEAM_ADMIN" ||
     currentPersona.role === "OWNER";
+  const canViewTriage = isLeadOrAbove || currentPersona.role === "AGENT";
   const canViewReports = canAccessReports(currentPersona.role);
   const isAdminOrOwner =
     currentPersona.role === "TEAM_ADMIN" || currentPersona.role === "OWNER";
@@ -937,7 +964,7 @@ function AuthenticatedShell({
                     <Route
                       path="/triage"
                       element={guardRoute(
-                        isLeadOrAbove,
+                        canViewTriage,
                         (
                           <TriageBoardPage
                             teamsList={teamsList}
@@ -1049,8 +1076,29 @@ function AuthenticatedShell({
                     <Route
                       path="/categories"
                       element={guardRoute(
-                        currentPersona.role === "OWNER",
-                        <CategoriesPage />,
+                        isAdminOrOwner,
+                        <CategoriesPage role={currentPersona.role} />,
+                      )}
+                    />
+                    <Route
+                      path="/admin/tags"
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <AdminTagsPage role={currentPersona.role} />,
+                      )}
+                    />
+                    <Route
+                      path="/admin/agents"
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <AgentsDirectoryPage />,
+                      )}
+                    />
+                    <Route
+                      path="/admin/agents/:id"
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        <AgentProfilePage />,
                       )}
                     />
                     <Route

@@ -108,6 +108,9 @@ export type UserRef = {
   role?: string;
   department?: string | null;
   location?: string | null;
+  primaryTeamId?: string | null;
+  isActive?: boolean;
+  deactivatedAt?: string | null;
   graphProfile?: {
     jobTitle?: string | null;
     officeLocation?: string | null;
@@ -278,6 +281,7 @@ export type TicketDetail = TicketRecord & {
   attachments: Attachment[];
   customFieldValues?: CustomFieldValueRecord[];
   allowedTransitions?: string[];
+  tags?: TagRef[];
 };
 
 export type TicketMessagePage = {
@@ -1118,6 +1122,7 @@ type FetchUsersParams = {
   q?: string;
   page?: number;
   pageSize?: number;
+  status?: "active" | "inactive" | "all";
 };
 
 export function fetchUsers(
@@ -1129,11 +1134,35 @@ export function fetchUsers(
   if (params?.q) query.set("q", params.q);
   if (params?.page) query.set("page", String(params.page));
   if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  if (params?.status) query.set("status", params.status);
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiFetch<{ data: UserRef[]; meta: PaginationMeta }>(
     `/users${suffix}`,
     options,
   );
+}
+
+export function previewUserDeactivation(userId: string) {
+  return apiFetch<{
+    email: string;
+    displayName: string;
+    isActive: boolean;
+    ticketsOpen: number;
+    teams: string[];
+  }>(`/users/${userId}/deactivation-preview`);
+}
+
+export function deactivateUser(userId: string) {
+  return apiFetch<{ ok: true; ticketsUnassigned: number; teamsRemoved: number }>(
+    `/users/${userId}/deactivate`,
+    { method: "POST" },
+  );
+}
+
+export function reactivateUser(userId: string) {
+  return apiFetch<{ ok: true }>(`/users/${userId}/reactivate`, {
+    method: "POST",
+  });
 }
 
 export function fetchCurrentUser() {
@@ -1156,6 +1185,157 @@ export function syncCurrentUserProfile(
     method: "PATCH",
     body: JSON.stringify({ graphProfile }),
   });
+}
+
+// ─── Tags ────────────────────────────────────────────────────────────
+
+export type TagRef = {
+  id: string;
+  name: string;
+  color: string | null;
+  source?: "AI" | "MANUAL";
+};
+
+export type TagAutocompleteEntry = {
+  id: string;
+  name: string;
+  color: string | null;
+  ticketCount: number;
+};
+
+export type AdminTagEntry = {
+  id: string;
+  name: string;
+  color: string | null;
+  ticketCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+export function fetchTagAutocomplete(q?: string, limit = 20) {
+  const query = new URLSearchParams();
+  if (q) query.set("q", q);
+  query.set("limit", String(limit));
+  return apiFetch<TagAutocompleteEntry[]>(`/tags?${query.toString()}`);
+}
+
+export function fetchAdminTags() {
+  return apiFetch<AdminTagEntry[]>("/admin/tags");
+}
+
+export function createTagStandalone(name: string) {
+  return apiFetch<TagRef>("/admin/tags", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function addTagToTicket(ticketId: string, name: string) {
+  return apiFetch<TagRef>(`/tickets/${ticketId}/tags`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function removeTagFromTicket(ticketId: string, tagId: string) {
+  return apiFetch<{ ok: true }>(
+    `/tickets/${ticketId}/tags/${tagId}`,
+    { method: "DELETE" },
+  );
+}
+
+export function renameTag(tagId: string, name: string) {
+  return apiFetch<TagRef>(`/admin/tags/${tagId}/rename`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function mergeTags(fromIds: string[], intoId: string) {
+  return apiFetch<{ ok: true; movedRows: number; deletedTags: number }>(
+    `/admin/tags/merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ fromIds, intoId }),
+    },
+  );
+}
+
+export function deleteTag(tagId: string) {
+  return apiFetch<{ ok: true }>(`/admin/tags/${tagId}`, { method: "DELETE" });
+}
+
+export type TagAnalytics = {
+  topTags: Array<{ name: string; count: number }>;
+  mttrByTag: Array<{ name: string; medianHours: number; sampleSize: number }>;
+  perTeam: Array<{
+    teamName: string;
+    tags: Array<{ name: string; count: number }>;
+  }>;
+};
+
+export function fetchTagAnalytics(days = 30) {
+  return apiFetch<TagAnalytics>(`/reports/tag-analytics?days=${days}`);
+}
+
+// ─── Agents Admin ────────────────────────────────────────────────────
+
+export type AgentListRow = {
+  id: string;
+  displayName: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+  primaryTeamName: string | null;
+  openCount: number;
+  resolvedCount: number;
+  medianResolutionHours: number | null;
+  lastActivityAt: string | null;
+};
+
+export type AgentProfile = {
+  user: {
+    id: string;
+    displayName: string;
+    email: string;
+    role: string;
+    department: string | null;
+    location: string | null;
+    isActive: boolean;
+    deactivatedAt: string | null;
+    primaryTeamName: string | null;
+    teamMemberships: Array<{ teamId: string; teamName: string; role: string }>;
+  };
+  counts: { open: number; resolved: number; reopened: number };
+  bySev: Record<"SEV1" | "SEV2" | "SEV3" | "SEV4", { open: number; resolved: number }>;
+  timings: {
+    medianResolutionHours: number | null;
+    medianFirstResponseHours: number | null;
+    slaCompliancePct: number | null;
+    slaSampleSize: number;
+    lastActivityAt: string | null;
+  };
+  dailyResolved: Array<{ date: string; count: number }>;
+  recentTickets: Array<{
+    id: string;
+    displayId: string | null;
+    number: number;
+    subject: string;
+    status: string;
+    priority: string;
+    createdAt: string;
+    updatedAt: string;
+    resolvedAt: string | null;
+  }>;
+  topTags: Array<{ name: string; count: number }>;
+};
+
+export function fetchAgentsList() {
+  return apiFetch<AgentListRow[]>("/admin/agents");
+}
+
+export function fetchAgentProfile(userId: string) {
+  return apiFetch<AgentProfile>(`/admin/agents/${userId}`);
 }
 
 export async function fetchAllUsers(
@@ -1275,6 +1455,29 @@ export function removeTeamMember(teamId: string, memberId: string) {
   return apiFetch<{ id: string }>(`/teams/${teamId}/members/${memberId}`, {
     method: "DELETE",
   });
+}
+
+export function setUserPrimaryTeam(userId: string, primaryTeamId: string | null) {
+  return apiFetch<{ id: string; primaryTeamId: string | null; role: string }>(
+    `/users/${userId}/primary-team`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ primaryTeamId }),
+    },
+  );
+}
+
+export function updateUserRole(
+  userId: string,
+  payload: { role: string; primaryTeamId?: string | null },
+) {
+  return apiFetch<{ id: string; role: string; primaryTeamId: string | null }>(
+    `/users/${userId}/role`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function fetchRoutingRules() {

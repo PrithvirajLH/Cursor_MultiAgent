@@ -13,6 +13,7 @@ export type TicketFilters = {
   assigneeIds: string[];
   requesterIds: string[];
   slaStatus: SlaStatusFilter[];
+  tags: string[];
   createdFrom: string;
   createdTo: string;
   updatedFrom: string;

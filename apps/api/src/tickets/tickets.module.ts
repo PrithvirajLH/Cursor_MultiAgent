@@ -3,6 +3,7 @@ import { CustomFieldsModule } from '../custom-fields/custom-fields.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SlasModule } from '../slas/slas.module';
+import { TagsModule } from '../tags/tags.module';
 import { AttachmentsController } from './attachments.controller';
 import { InboundEmailService } from './inbound-email.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
@@ -17,6 +18,7 @@ import { TicketsService } from './tickets.service';
     NotificationsModule,
     RealtimeModule,
     SlasModule,
+    TagsModule,
   ],
   controllers: [TicketsController, AttachmentsController],
   providers: [

@@ -55,10 +55,11 @@ export class AccessControlService {
       };
     }
 
+    // AGENT: can VIEW any ticket assigned to their team (read access for peers).
+    // Edit-permission is enforced separately by canEditTicket.
     return {
       OR: teamScope.flatMap((teamId) => [
-        { assignedTeamId: teamId, assigneeId: user.id },
-        { assignedTeamId: teamId, assigneeId: null },
+        { assignedTeamId: teamId },
         { accessGrants: { some: { teamId } } },
       ]),
     };
@@ -102,9 +103,12 @@ export class AccessControlService {
       return Prisma.join(parts, ' OR ');
     }
 
+    // AGENT visibility mirrors buildTicketAccessFilter: any ticket on their
+    // team (peer agents can read), plus tickets with an explicit access grant
+    // to their team.
     const agentParts = teamScopeSql.map(
       (teamId) =>
-        Prisma.sql`((${col('assignedTeamId')} = ${teamId} AND (${col('assigneeId')} = ${user.id} OR ${col('assigneeId')} IS NULL)) OR ${accessGrant(teamId)})`,
+        Prisma.sql`(${col('assignedTeamId')} = ${teamId} OR ${accessGrant(teamId)})`,
     );
     return Prisma.join(agentParts, ' OR ');
   }
@@ -154,12 +158,49 @@ export class AccessControlService {
       );
     }
 
+    // AGENT can read any ticket assigned to one of their teams; edits are
+    // restricted separately by canEditTicket.
     const isAgentAccess =
       ticket.assignedTeamId != null &&
-      teamScope.includes(ticket.assignedTeamId) &&
-      (ticket.assigneeId === user.id || ticket.assigneeId === null);
+      teamScope.includes(ticket.assignedTeamId);
 
     return isAgentAccess || hasReadGrant;
+  }
+
+  /**
+   * Returns true when the AGENT viewing the ticket is NOT the assignee but
+   * still on the team. Used by the message endpoint to force INTERNAL type
+   * for peer-agent notes. Other roles return false (their write/edit gate
+   * already covers them).
+   */
+  isPeerAgent(
+    user: AuthUser,
+    ticket: { assignedTeamId: string | null; assigneeId: string | null },
+  ): boolean {
+    if (user.role !== UserRole.AGENT) return false;
+    if (ticket.assigneeId === user.id) return false;
+    const teamScope = this.operationalTeamIds(user);
+    return (
+      ticket.assignedTeamId != null &&
+      teamScope.includes(ticket.assignedTeamId)
+    );
+  }
+
+  /**
+   * Can the user post a message on this ticket?
+   * Broader than canWriteTicket: peer agents (same team, not assignee) are
+   * allowed to post — addMessage forces their type to INTERNAL.
+   */
+  canPostMessage(
+    user: AuthUser,
+    ticket: {
+      requesterId: string;
+      assignedTeamId: string | null;
+      assigneeId: string | null;
+    },
+  ): boolean {
+    if (this.canWriteTicket(user, ticket)) return true;
+    return this.isPeerAgent(user, ticket);
   }
 
   /**

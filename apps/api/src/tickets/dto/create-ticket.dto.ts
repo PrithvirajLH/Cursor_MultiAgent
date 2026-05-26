@@ -66,4 +66,10 @@ export class CreateTicketDto {
   @ValidateNested({ each: true })
   @Type(() => CustomFieldValueItemDto)
   customFieldValues?: CustomFieldValueItemDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  tags?: string[];
 }

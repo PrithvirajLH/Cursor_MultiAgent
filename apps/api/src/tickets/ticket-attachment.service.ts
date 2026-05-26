@@ -467,19 +467,30 @@ export class TicketAttachmentService {
   }
 
   assertAttachmentDownloadAllowed(scanStatus: AttachmentScanStatus) {
+    // Bypass the AV gate when ATTACHMENT_SCAN_ENABLED=false. Used until the
+    // scanner webhook is wired up so PENDING attachments are still downloadable.
+    // INFECTED still blocks unconditionally — that's an explicit positive signal
+    // and ignoring it would mean serving known-bad files.
+    const scanEnabled =
+      (this.config.get<string>('ATTACHMENT_SCAN_ENABLED') ?? 'true') === 'true';
+
     if (scanStatus === AttachmentScanStatus.CLEAN) {
+      return;
+    }
+
+    if (scanStatus === AttachmentScanStatus.INFECTED) {
+      throw new ForbiddenException(
+        'Attachment was flagged as infected and cannot be downloaded',
+      );
+    }
+
+    if (!scanEnabled) {
       return;
     }
 
     if (scanStatus === AttachmentScanStatus.PENDING) {
       throw new ForbiddenException(
         'Attachment scan is still pending; download is blocked',
-      );
-    }
-
-    if (scanStatus === AttachmentScanStatus.INFECTED) {
-      throw new ForbiddenException(
-        'Attachment was flagged as infected and cannot be downloaded',
       );
     }
 

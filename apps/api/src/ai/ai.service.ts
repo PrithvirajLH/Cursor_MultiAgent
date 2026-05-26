@@ -273,9 +273,10 @@ IMPORTANT: Return ONLY the JSON object. Format:
             description: ticketDraft?.description ?? this.buildDescription(intent, user),
             priority: ticketDraft?.priority ?? finalClassification.suggestedPriority,
             channel: input.channel ?? 'PORTAL',
-            assignedTeamId:
-              ticketDraft?.assignedTeamId ??
-              (await this.resolveTeamId(finalClassification.department)),
+            assignedTeamId: await this.resolveTeamId({
+              id: ticketDraft?.assignedTeamId ?? undefined,
+              name: finalClassification.department.name,
+            }),
             categoryId: ticketDraft?.categoryId ?? finalClassification.category?.id ?? null,
             displayId: 'AUTO',
             tags: ticketDraft?.tags ?? finalClassification.tags,

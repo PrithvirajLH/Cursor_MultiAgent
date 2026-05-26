@@ -88,6 +88,7 @@ function cloneTicketFilters(filters: TicketFilters): TicketFilters {
     assigneeIds: [...filters.assigneeIds],
     requesterIds: [...filters.requesterIds],
     slaStatus: [...filters.slaStatus],
+    tags: [...filters.tags],
   };
 }
 
@@ -103,6 +104,7 @@ function clearedTicketFilters(
     assigneeIds: [],
     requesterIds: [],
     slaStatus: [],
+    tags: [],
     createdFrom: "",
     createdTo: "",
     updatedFrom: "",
@@ -1198,6 +1200,21 @@ export function TicketsPage({
               <option value="SEV3">SEV3</option>
               <option value="SEV4">SEV4</option>
             </select>
+
+            <input
+              type="text"
+              aria-label="Filter by tags (comma-separated)"
+              placeholder="Tags (csv)"
+              value={filters.tags.join(", ")}
+              onChange={(event) => {
+                const tags = event.target.value
+                  .split(",")
+                  .map((s) => s.trim().toLowerCase())
+                  .filter(Boolean);
+                setFilters({ tags });
+              }}
+              className="h-10 w-44 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
+            />
 
             <select
               aria-label="Sort tickets"

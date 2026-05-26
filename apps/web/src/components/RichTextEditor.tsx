@@ -24,7 +24,16 @@ import DOMPurify from "dompurify";
 
 // Note: getValue() reads the current DOM and sanitizes immediately. Use this for "Send" so we never
 // send stale state when onChange is debounced.
-export type RichTextEditorRef = { focus: () => void; getValue: () => string };
+export type RichTextEditorRef = {
+  focus: () => void;
+  getValue: () => string;
+  /** Insert an attachment image at the saved cursor position (or end if no cursor saved). */
+  insertAttachmentImage: (params: {
+    attachmentId: string;
+    previewUrl: string;
+    alt: string;
+  }) => void;
+};
 
 const ALLOWED_TAGS = [
   "p",
@@ -43,8 +52,20 @@ const ALLOWED_TAGS = [
   "a",
   "blockquote",
   "span",
+  "img",
 ];
-const ALLOWED_ATTR = ["href", "target", "rel", "class", "data-user-id"];
+const ALLOWED_ATTR = [
+  "href",
+  "target",
+  "rel",
+  "class",
+  "data-user-id",
+  "src",
+  "alt",
+  "data-attachment-id",
+  "width",
+  "height",
+];
 
 /** Sanitize HTML for storage (keep data-user-id for mentions). Normalizes <div> to <p> so contentEditable line breaks are preserved. */
 function sanitizeEditorHtml(html: string): string {
@@ -123,6 +144,12 @@ type RichTextEditorProps = {
   minRows?: number;
   maxRows?: number;
   className?: string;
+  /**
+   * Called when the user pastes one or more files (images/documents) into the editor.
+   * The default browser behavior of inlining the file content is prevented when this
+   * callback is provided.
+   */
+  onPasteFiles?: (files: File[]) => void;
 };
 
 export const RichTextEditor = forwardRef<
@@ -139,6 +166,7 @@ export const RichTextEditor = forwardRef<
     minRows = 2,
     maxRows = 12,
     className = "",
+    onPasteFiles,
   },
   ref,
 ) {
@@ -174,8 +202,48 @@ export const RichTextEditor = forwardRef<
         if (html === EMPTY_HTML || html.trim() === "<br>") return "";
         return sanitizeEditorHtml(html);
       },
+      insertAttachmentImage({ attachmentId, previewUrl, alt }) {
+        const el = editableRef.current;
+        if (!el) return;
+        el.focus();
+        // Restore previously-saved range (the paste handler stores one before
+        // calling out for upload). Fall back to end-of-content.
+        const savedRange = savedRangeRef.current;
+        const sel = window.getSelection();
+        if (sel && savedRange) {
+          sel.removeAllRanges();
+          sel.addRange(savedRange);
+        }
+        const img = document.createElement("img");
+        img.setAttribute("data-attachment-id", attachmentId);
+        img.setAttribute("alt", alt);
+        img.setAttribute("src", previewUrl);
+        img.style.maxWidth = "240px";
+        img.style.height = "auto";
+        img.style.borderRadius = "6px";
+        img.style.display = "block";
+        img.style.marginTop = "4px";
+        const current = sel?.rangeCount ? sel.getRangeAt(0) : null;
+        if (current) {
+          current.deleteContents();
+          current.insertNode(img);
+          // Move caret right after the inserted image
+          const after = document.createRange();
+          after.setStartAfter(img);
+          after.collapse(true);
+          sel?.removeAllRanges();
+          sel?.addRange(after);
+          savedRangeRef.current = after.cloneRange();
+        } else {
+          el.appendChild(img);
+        }
+        // Re-emit value so parent state updates with the new <img>.
+        const html = sanitizeEditorHtml(el.innerHTML);
+        lastSentHtmlRef.current = html;
+        onChange(html);
+      },
     }),
-    [],
+    [onChange],
   );
 
   const filteredUsers = useMemo(() => {
@@ -314,6 +382,36 @@ export const RichTextEditor = forwardRef<
       setMentionQuery("");
     },
     [mentionAtOffset, onChange, getHtml],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      if (!onPasteFiles) return;
+      const clipboardItems = e.clipboardData?.items;
+      if (!clipboardItems) return;
+      const files: File[] = [];
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        // Only treat real file entries as attachments — skip plain text items
+        // so pasting text continues to work as before.
+        if (item.kind === "file") {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        // Save the current selection so insertAttachmentImage (called after
+        // upload completes async) can drop the <img> exactly where the user
+        // pasted.
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+        }
+        onPasteFiles(files);
+      }
+    },
+    [onPasteFiles],
   );
 
   const handleKeyDown = useCallback(
@@ -592,6 +690,7 @@ export const RichTextEditor = forwardRef<
           data-placeholder={placeholder}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
         />
       </div>
 

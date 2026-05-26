@@ -14,6 +14,16 @@ export class ReportsController {
     return this.reportsService.getSummary(query, user);
   }
 
+  @Get('tag-analytics')
+  getTagAnalytics(
+    @Query('days') daysRaw: string | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const parsed = daysRaw ? Number.parseInt(daysRaw, 10) : 30;
+    const days = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 365) : 30;
+    return this.reportsService.getTagAnalytics(days, user);
+  }
+
   @Get('ticket-volume')
   getTicketVolume(
     @Query() query: ReportQueryDto,

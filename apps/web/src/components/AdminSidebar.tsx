@@ -7,6 +7,7 @@ import {
   FileText,
   Shield,
   Tags,
+  Users,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,8 @@ type AdminRoute =
   | "/custom-fields"
   | "/audit-log"
   | "/categories"
+  | "/admin/tags"
+  | "/admin/agents"
   | "/reports"
   | "/ai-debug";
 
@@ -30,6 +33,8 @@ type AdminSidebarItem = {
     | "custom-fields"
     | "audit-log"
     | "categories"
+    | "tags"
+    | "agents"
     | "reports"
     | "ai-debug";
   label: string;
@@ -85,8 +90,24 @@ const adminItems: AdminSidebarItem[] = [
     label: "Categories",
     route: "/categories",
     icon: Tags,
-    roles: ["OWNER"],
+    roles: ["TEAM_ADMIN", "OWNER"],
     description: "Ticket categorization",
+  },
+  {
+    key: "tags",
+    label: "Tags",
+    route: "/admin/tags",
+    icon: Tags,
+    roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Manage ticket tags (rename, merge, delete)",
+  },
+  {
+    key: "agents",
+    label: "Agents",
+    route: "/admin/agents",
+    icon: Users,
+    roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Agent performance and analytics",
   },
   {
     key: "reports",

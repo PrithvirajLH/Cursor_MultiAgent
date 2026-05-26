@@ -130,12 +130,16 @@ export function TriageBoardPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [teamFilterId, setTeamFilterId] = useState("all");
   const isOwner = role === "OWNER";
+  // Agents see their own queue by default; everyone else sees the team queue.
+  const [scope, setScope] = useState<"mine" | "team">(
+    role === "AGENT" ? "mine" : "team",
+  );
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
     useTicketDataInvalidation();
 
   useEffect(() => {
     loadTickets();
-  }, [teamFilterId, isOwner]);
+  }, [teamFilterId, isOwner, scope]);
 
   useEffect(() => {
     const handleTicketChanged = (event: Event) => {
@@ -316,6 +320,7 @@ export function TriageBoardPage({
         pageSize: 100,
         includeTotal: false,
         teamId: isOwner && teamFilterId !== "all" ? teamFilterId : undefined,
+        scope: scope === "mine" ? "assigned" : undefined,
       });
       if (loadRequestIdRef.current !== requestId) {
         return;
@@ -910,6 +915,36 @@ export function TriageBoardPage({
         )}
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
+          {/* Agents see their own board only — no toggle. Leads/admins/owners
+              get the Mine/Team switch so they can flip between personal queue
+              and full team. */}
+          {role !== "AGENT" ? (
+            <div className="inline-flex rounded-md border border-border bg-card p-0.5 text-sm">
+              <button
+                type="button"
+                onClick={() => setScope("mine")}
+                className={`rounded px-3 py-1.5 font-medium transition-colors ${
+                  scope === "mine"
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Mine
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope("team")}
+                className={`rounded px-3 py-1.5 font-medium transition-colors ${
+                  scope === "team"
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Team
+              </button>
+            </div>
+          ) : null}
+
           <div className="relative min-w-[260px] flex-1 max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input

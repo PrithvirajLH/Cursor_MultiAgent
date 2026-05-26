@@ -68,3 +68,10 @@ app9.zip
 # Deploy artifact (created by create-deploy-zip.ps1)
 Codex_Ticketing_System_deploy.zip
 deploy-to-azure.ps1
+
+# Playwright MCP session artifacts
+.playwright-mcp/
+screenshots/
+
+# One-off rollback script — contains DB credentials, never commit
+rollback.ps1

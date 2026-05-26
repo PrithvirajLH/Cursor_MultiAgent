@@ -1,18 +1,45 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { AlertCircle, ChevronDown, ShieldAlert, Users } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  ShieldAlert,
+  UserMinus,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import {
   addTeamMember,
+  deactivateUser,
   fetchAllUsers,
   fetchTeamMembers,
+  previewUserDeactivation,
+  reactivateUser,
   removeTeamMember,
+  setUserPrimaryTeam,
   updateTeamMember,
+  updateUserRole,
   type TeamMember,
   type TeamRef,
   type UserRef,
 } from "../api/client";
+
+const INACTIVE_USERS_SENTINEL = "__inactive_users__";
+
+type DeactivationTarget = {
+  userId: string;
+  displayName: string;
+  email: string;
+};
+
+type DeactivationPreview = {
+  ticketsOpen: number;
+  teams: string[];
+};
 import { TopBar } from "../components/TopBar";
 import { useHeaderContext } from "../contexts/HeaderContext";
+import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 import {
   REALTIME_ADMIN_CHANGED_EVENT,
   type RealtimeAdminChangedEventPayload,
@@ -26,26 +53,30 @@ const ELIGIBLE_MEMBER_USER_ROLES = new Set([
   "TEAM_ADMIN",
 ]);
 
-function getAllowedTeamRolesForUser(userRole?: string | null): string[] {
-  if (userRole === "TEAM_ADMIN") {
-    return ["ADMIN"];
-  }
+function getRoleDropdownOptions(
+  userRole: string | null | undefined,
+  isOwnerViewer: boolean,
+): string[] {
   if (userRole === "EMPLOYEE") {
     return ["AGENT"];
   }
-  return ["AGENT", "LEAD"];
+  if (userRole === "TEAM_ADMIN") {
+    return isOwnerViewer ? ["AGENT", "LEAD", "TEAM_ADMIN"] : ["ADMIN"];
+  }
+  return isOwnerViewer ? ["AGENT", "LEAD", "TEAM_ADMIN"] : ["AGENT", "LEAD"];
 }
 
 function RoleBadge({ role }: { role: string }) {
+  const label = role === "TEAM_ADMIN" ? "TEAM ADMIN" : role;
   const tone =
-    role === "ADMIN"
+    role === "ADMIN" || role === "TEAM_ADMIN"
       ? "bg-orange-100 text-orange-700"
       : role === "LEAD"
         ? "bg-purple-100 text-purple-700"
         : "bg-blue-100 text-blue-700";
   return (
     <span className={`rounded-lg px-2 py-1 text-xs font-medium ${tone}`}>
-      {role}
+      {label}
     </span>
   );
 }
@@ -53,17 +84,26 @@ function RoleBadge({ role }: { role: string }) {
 function MemberRoleDropdown({
   member,
   disabled,
+  isOwnerViewer,
+  currentTeamId,
   onChange,
 }: {
   member: TeamMember;
   disabled: boolean;
+  isOwnerViewer: boolean;
+  currentTeamId: string;
   onChange: (member: TeamMember, role: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const roleOptions = useMemo(
-    () => getAllowedTeamRolesForUser(member.user.role ?? null),
-    [member.user.role],
+    () => getRoleDropdownOptions(member.user.role ?? null, isOwnerViewer),
+    [member.user.role, isOwnerViewer],
   );
+  const isPrimaryAdminTeam =
+    member.user.role === "TEAM_ADMIN" &&
+    member.user.primaryTeamId === currentTeamId;
+  const displayRole = isPrimaryAdminTeam ? "TEAM_ADMIN" : member.role;
+  const currentValue = isPrimaryAdminTeam ? "TEAM_ADMIN" : member.role;
 
   useEffect(() => {
     function closeOnOutsideClick(event: MouseEvent) {
@@ -90,11 +130,11 @@ function MemberRoleDropdown({
             : "bg-card hover:bg-accent"
         }`}
       >
-        <RoleBadge role={member.role} />
+        <RoleBadge role={displayRole} />
         {!disabled ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : null}
       </button>
       {open && !disabled ? (
-        <div className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-border bg-card shadow-lg">
+        <div className="absolute left-0 top-full z-20 mt-1 w-40 rounded-lg border border-border bg-card shadow-lg">
           {roleOptions.map((roleValue) => (
             <button
               key={`${member.id}-${roleValue}`}
@@ -104,7 +144,7 @@ function MemberRoleDropdown({
                 onChange(member, roleValue);
               }}
               className={`block w-full px-4 py-2 text-left text-sm hover:bg-accent ${
-                member.role === roleValue ? "bg-blue-50" : ""
+                currentValue === roleValue ? "bg-blue-50" : ""
               }`}
             >
               <RoleBadge role={roleValue} />
@@ -142,6 +182,7 @@ export function TeamPage({
 }) {
   const location = useLocation();
   const headerCtx = useHeaderContext();
+  const { notifyTicketAggregatesChanged } = useTicketDataInvalidation();
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -159,10 +200,22 @@ export function TeamPage({
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const usersRequestSeqRef = useRef(0);
   const membersRequestSeqRef = useRef(0);
+  const inactiveRequestSeqRef = useRef(0);
+
+  const [inactiveUsers, setInactiveUsers] = useState<UserRef[]>([]);
+  const [loadingInactive, setLoadingInactive] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] =
+    useState<DeactivationTarget | null>(null);
+  const [deactivatePreview, setDeactivatePreview] =
+    useState<DeactivationPreview | null>(null);
+  const [deactivateConfirmEmail, setDeactivateConfirmEmail] = useState("");
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
 
   const isAdmin = role === "OWNER" || role === "TEAM_ADMIN";
   const isOwner = role === "OWNER";
   const isReadOnly = role === "LEAD";
+  const viewingInactive = selectedTeamId === INACTIVE_USERS_SENTINEL;
   const requestedTeamId =
     (
       location.state as {
@@ -220,11 +273,16 @@ export function TeamPage({
       setMembers([]);
       return;
     }
+    if (selectedTeamId === INACTIVE_USERS_SENTINEL) {
+      setMembers([]);
+      void loadInactiveUsers();
+      return;
+    }
     void loadMembers(selectedTeamId);
   }, [selectedTeamId]);
 
   useEffect(() => {
-    if (!selectedTeamId) return;
+    if (!selectedTeamId || selectedTeamId === INACTIVE_USERS_SENTINEL) return;
     const stillExists = teamsList.some((team) => team.id === selectedTeamId);
     if (!stillExists) {
       setSelectedTeamId("");
@@ -304,6 +362,92 @@ export function TeamPage({
     }
   }
 
+  async function loadInactiveUsers() {
+    const requestSeq = ++inactiveRequestSeqRef.current;
+    setLoadingInactive(true);
+    setMemberError(null);
+    try {
+      const response = await fetchAllUsers({ status: "inactive" });
+      if (inactiveRequestSeqRef.current !== requestSeq) return;
+      setInactiveUsers(response.data);
+    } catch {
+      if (inactiveRequestSeqRef.current !== requestSeq) return;
+      setMemberError("Unable to load inactive users.");
+      setInactiveUsers([]);
+    } finally {
+      if (inactiveRequestSeqRef.current !== requestSeq) return;
+      setLoadingInactive(false);
+    }
+  }
+
+  async function openDeactivateModal(target: DeactivationTarget) {
+    setDeactivateTarget(target);
+    setDeactivatePreview(null);
+    setDeactivateConfirmEmail("");
+    setDeactivateError(null);
+    try {
+      const preview = await previewUserDeactivation(target.userId);
+      setDeactivatePreview({
+        ticketsOpen: preview.ticketsOpen,
+        teams: preview.teams,
+      });
+    } catch {
+      setDeactivateError("Unable to load deactivation details.");
+    }
+  }
+
+  function closeDeactivateModal() {
+    setDeactivateTarget(null);
+    setDeactivatePreview(null);
+    setDeactivateConfirmEmail("");
+    setDeactivateError(null);
+    setDeactivateLoading(false);
+  }
+
+  async function handleConfirmDeactivate() {
+    if (!deactivateTarget) return;
+    if (
+      deactivateConfirmEmail.trim().toLowerCase() !==
+      deactivateTarget.email.toLowerCase()
+    ) {
+      setDeactivateError("Email confirmation does not match.");
+      return;
+    }
+    setDeactivateLoading(true);
+    setDeactivateError(null);
+    const targetUserId = deactivateTarget.userId;
+    try {
+      await deactivateUser(targetUserId);
+      // Optimistic update: drop the row immediately so the user sees the change.
+      setMembers((prev) =>
+        prev.filter((member) => member.user.id !== targetUserId),
+      );
+      setAllUsers((prev) => prev.filter((user) => user.id !== targetUserId));
+      // Refresh sidebar saved-view counts (Unassigned, etc.) since the
+      // backend just bulk-set assigneeId=null on this user's open tickets.
+      notifyTicketAggregatesChanged();
+      closeDeactivateModal();
+    } catch {
+      setDeactivateError("Unable to deactivate user.");
+      setDeactivateLoading(false);
+    }
+  }
+
+  async function handleReactivate(userId: string) {
+    if (deactivateLoading) return;
+    setDeactivateLoading(true);
+    setMemberError(null);
+    try {
+      await reactivateUser(userId);
+      setInactiveUsers((prev) => prev.filter((u) => u.id !== userId));
+      await loadUsers();
+    } catch {
+      setMemberError("Unable to reactivate user.");
+    } finally {
+      setDeactivateLoading(false);
+    }
+  }
+
   async function handleAddMember() {
     if (
       !selectedTeamId ||
@@ -335,14 +479,58 @@ export function TeamPage({
     setActionLoading(true);
     setActionError(null);
     try {
+      if (roleValue === "TEAM_ADMIN") {
+        // Promote global user role + set this team as their primary admin team,
+        // then promote their team-member role to ADMIN.
+        await updateUserRole(member.user.id, {
+          role: "TEAM_ADMIN",
+          primaryTeamId: selectedTeamId,
+        });
+        await updateTeamMember(selectedTeamId, member.id, { role: "ADMIN" });
+        await loadMembers(selectedTeamId);
+        return;
+      }
+      // Switching away from TEAM_ADMIN: demote global role first.
+      if (
+        member.user.role === "TEAM_ADMIN" &&
+        member.user.primaryTeamId === selectedTeamId
+      ) {
+        await updateUserRole(member.user.id, {
+          role: roleValue === "LEAD" ? "LEAD" : "AGENT",
+          primaryTeamId: null,
+        });
+      }
       await updateTeamMember(selectedTeamId, member.id, { role: roleValue });
+      await loadMembers(selectedTeamId);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Unable to update member role.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSetPrimaryTeam(member: TeamMember) {
+    if (!selectedTeamId || actionLoading) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await setUserPrimaryTeam(member.user.id, selectedTeamId);
       setMembers((prev) =>
         prev.map((item) =>
-          item.id === member.id ? { ...item, role: roleValue } : item,
+          item.user.id === member.user.id
+            ? {
+                ...item,
+                user: { ...item.user, primaryTeamId: selectedTeamId },
+              }
+            : item,
         ),
       );
-    } catch {
-      setActionError("Unable to update member role.");
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Unable to set primary team.",
+      );
     } finally {
       setActionLoading(false);
     }
@@ -394,8 +582,10 @@ export function TeamPage({
   const selectedUser =
     availableUsers.find((user) => user.id === selectedUserId) ?? null;
   const addRoleOptions = useMemo(
-    () => getAllowedTeamRolesForUser(selectedUser?.role ?? null),
-    [selectedUser?.role],
+    () => getRoleDropdownOptions(selectedUser?.role ?? null, isOwner).filter(
+      (r) => r !== "TEAM_ADMIN",
+    ),
+    [selectedUser?.role, isOwner],
   );
   const canAddSelectedUser =
     selectedUserId.length > 0 &&
@@ -476,7 +666,11 @@ export function TeamPage({
                     <div className="flex items-center gap-2">
                       <Users className="h-5 w-5 text-muted-foreground" />
                       <span className="text-foreground">
-                        {selectedTeam ? selectedTeam.name : "Select department"}
+                        {viewingInactive
+                          ? "Inactive users"
+                          : selectedTeam
+                            ? selectedTeam.name
+                            : "Select department"}
                       </span>
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground" />
@@ -501,6 +695,26 @@ export function TeamPage({
                           {team.name}
                         </button>
                       ))}
+                      {isOwner ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeamId(INACTIVE_USERS_SENTINEL);
+                            setMemberError(null);
+                            setShowTeamDropdown(false);
+                          }}
+                          className={`block w-full border-t border-border px-4 py-2 text-left text-sm hover:bg-accent ${
+                            viewingInactive
+                              ? "bg-blue-50 text-blue-700"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <UserMinus className="h-4 w-4" />
+                            Inactive users
+                          </span>
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -547,7 +761,7 @@ export function TeamPage({
             </div>
           ) : null}
 
-          {selectedTeamId ? (
+          {selectedTeamId && !viewingInactive ? (
             <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
               <div>
                 <div className="mb-4 flex items-center justify-between">
@@ -593,9 +807,22 @@ export function TeamPage({
                                   .toUpperCase()}
                               </div>
                               <div>
-                                <h4 className="text-sm font-semibold text-foreground">
-                                  {member.user.displayName}
-                                </h4>
+                                {isOwner ? (
+                                  <a
+                                    href={`/admin/agents/${member.user.id}`}
+                                    className="text-sm font-semibold text-foreground hover:underline"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      window.location.href = `/admin/agents/${member.user.id}`;
+                                    }}
+                                  >
+                                    {member.user.displayName}
+                                  </a>
+                                ) : (
+                                  <h4 className="text-sm font-semibold text-foreground">
+                                    {member.user.displayName}
+                                  </h4>
+                                )}
                                 <p className="text-sm text-muted-foreground">
                                   {member.user.email}
                                 </p>
@@ -606,8 +833,23 @@ export function TeamPage({
                               <MemberRoleDropdown
                                 member={member}
                                 disabled={isReadOnly || actionLoading}
+                                isOwnerViewer={isOwner}
+                                currentTeamId={selectedTeamId}
                                 onChange={handleRoleChange}
                               />
+                              {isOwner &&
+                              member.user.role === "TEAM_ADMIN" &&
+                              member.user.primaryTeamId !== selectedTeamId ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSetPrimaryTeam(member)}
+                                  disabled={actionLoading}
+                                  title="Retarget this user's primary admin team to the team currently being viewed."
+                                  className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Make this their primary team
+                                </button>
+                              ) : null}
                               {isAdmin ? (
                                 <button
                                   type="button"
@@ -616,6 +858,24 @@ export function TeamPage({
                                   className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   Remove
+                                </button>
+                              ) : null}
+                              {isOwner ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void openDeactivateModal({
+                                      userId: member.user.id,
+                                      displayName: member.user.displayName,
+                                      email: member.user.email,
+                                    })
+                                  }
+                                  disabled={actionLoading || deactivateLoading}
+                                  title="Deactivate user (off-board)"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-red-500 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <UserMinus className="h-4 w-4" />
+                                  Deactivate
                                 </button>
                               ) : null}
                             </div>
@@ -754,8 +1014,185 @@ export function TeamPage({
               </div>
             </div>
           ) : null}
+
+          {viewingInactive ? (
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Inactive users
+                </h3>
+                {loadingInactive ? (
+                  <span className="text-sm text-muted-foreground">
+                    Loading...
+                  </span>
+                ) : null}
+              </div>
+              <div className="space-y-3">
+                {loadingInactive ? (
+                  <>
+                    <MemberSkeleton />
+                    <MemberSkeleton />
+                  </>
+                ) : null}
+
+                {!loadingInactive && inactiveUsers.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-border bg-muted py-8 text-center">
+                    <UserMinus className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No inactive users.
+                    </p>
+                  </div>
+                ) : null}
+
+                {!loadingInactive
+                  ? inactiveUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className="rounded-xl border border-border bg-card p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
+                              {user.displayName
+                                .split(" ")
+                                .map((chunk) => chunk[0] ?? "")
+                                .slice(0, 2)
+                                .join("")
+                                .toUpperCase()}
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-semibold text-foreground">
+                                {user.displayName}
+                              </h4>
+                              <p className="text-sm text-muted-foreground">
+                                {user.email}
+                              </p>
+                              {user.deactivatedAt ? (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Deactivated{" "}
+                                  {new Date(
+                                    user.deactivatedAt,
+                                  ).toLocaleDateString()}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleReactivate(user.id)}
+                            disabled={deactivateLoading}
+                            className="inline-flex items-center gap-1 rounded-lg border border-green-500 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            Reactivate
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {deactivateTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Deactivate {deactivateTarget.displayName}?
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {deactivateTarget.email}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDeactivateModal}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {deactivatePreview ? (
+                <ul className="list-disc space-y-1 pl-5">
+                  <li>
+                    {deactivatePreview.ticketsOpen === 0
+                      ? "No open tickets to unassign."
+                      : `Unassigns ${deactivatePreview.ticketsOpen} open ticket${
+                          deactivatePreview.ticketsOpen === 1 ? "" : "s"
+                        } (they'll move to the team queue as NEW).`}
+                  </li>
+                  <li>
+                    {deactivatePreview.teams.length === 0
+                      ? "Not a member of any teams."
+                      : `Removes from ${deactivatePreview.teams.length} team${
+                          deactivatePreview.teams.length === 1 ? "" : "s"
+                        }: ${deactivatePreview.teams.join(", ")}.`}
+                  </li>
+                  <li>Hides them from assignee dropdowns.</li>
+                  <li>
+                    Past ticket history will still show their name.
+                  </li>
+                </ul>
+              ) : (
+                <p>Loading impact summary...</p>
+              )}
+            </div>
+
+            <label className="mb-2 block text-sm font-medium text-foreground">
+              Type their email to confirm
+            </label>
+            <input
+              type="email"
+              value={deactivateConfirmEmail}
+              onChange={(e) => {
+                setDeactivateConfirmEmail(e.target.value);
+                if (deactivateError) setDeactivateError(null);
+              }}
+              placeholder={deactivateTarget.email}
+              className="mb-3 w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              autoFocus
+            />
+
+            {deactivateError ? (
+              <div className="mb-3 inline-flex items-center gap-1 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4" />
+                <span>{deactivateError}</span>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDeactivateModal}
+                disabled={deactivateLoading}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDeactivate()}
+                disabled={
+                  deactivateLoading ||
+                  !deactivatePreview ||
+                  deactivateConfirmEmail.trim().toLowerCase() !==
+                    deactivateTarget.email.toLowerCase()
+                }
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deactivateLoading ? "Deactivating..." : "Deactivate user"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

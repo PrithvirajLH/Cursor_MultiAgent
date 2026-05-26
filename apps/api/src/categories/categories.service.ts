@@ -25,13 +25,27 @@ export class CategoriesService {
       );
     }
 
-    const where = {
+    const where: {
+      isActive?: boolean;
+      parentId?: string;
+      name?: { contains: string; mode: 'insensitive' };
+      tickets?: { some: { assignedTeamId: string } };
+    } = {
       isActive: query.includeInactive ? undefined : true,
       parentId: query.parentId ?? undefined,
       name: query.q
         ? { contains: query.q, mode: 'insensitive' as const }
         : undefined,
     };
+
+    // TEAM_ADMIN sees only categories used on their team's tickets (Categories
+    // are global, so this gives a scoped read-only view matching the Tags pattern).
+    if (user.role === UserRole.TEAM_ADMIN) {
+      if (!user.primaryTeamId) {
+        return { data: [] };
+      }
+      where.tickets = { some: { assignedTeamId: user.primaryTeamId } };
+    }
 
     const data = await this.prisma.category.findMany({
       where,

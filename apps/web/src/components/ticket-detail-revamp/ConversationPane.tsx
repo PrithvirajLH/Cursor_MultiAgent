@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addTicketMessage,
@@ -14,6 +14,7 @@ import { useAuthSession } from '../../hooks/useAuthSession';
 import { Pill, Prio, Avatar, Icn, I, toneFromName } from '../atoms';
 import { MessageBody } from '../MessageBody';
 import { RichTextEditor, type RichTextEditorRef } from '../RichTextEditor';
+import { TagChips } from '../tags/TagChips';
 import { TicketTimeline } from '../ticket-detail/TicketTimeline';
 import { ticketToRow } from '../tickets/mappers';
 
@@ -98,11 +99,19 @@ function ConversationHeader({
   statusTone: ReturnType<typeof ticketToRow>['statusTone'];
   statusLabel: string;
 }) {
+  const { user } = useAuthSession();
   const requesterName = ticket.requester?.displayName ?? '—';
   const created = new Date(ticket.createdAt).toLocaleString([], {
     dateStyle: 'medium',
     timeStyle: 'short',
   });
+  const canEditTags =
+    !!user &&
+    (user.role === 'OWNER' ||
+      user.role === 'LEAD' ||
+      user.role === 'TEAM_ADMIN' ||
+      (user.role === 'AGENT' &&
+        (ticket.assignee?.id === user.id || ticket.assignee == null)));
 
   return (
     <header
@@ -148,6 +157,14 @@ function ConversationHeader({
         </span>
         <span>·</span>
         <span className="font-mono">Created {created}</span>
+      </div>
+
+      <div className="mt-1">
+        <TagChips
+          ticketId={ticket.id}
+          tags={ticket.tags ?? []}
+          canEdit={canEditTags}
+        />
       </div>
     </header>
   );
@@ -369,11 +386,24 @@ function Bubble({ message, isMine }: { message: TicketMessage; isMine: boolean }
 
 function Composer({ ticket }: { ticket: TicketDetail }) {
   const qc = useQueryClient();
+  const { user } = useAuthSession();
+  // Peer agent: AGENT role viewing a ticket assigned to someone else.
+  // They can only post INTERNAL notes — no toggle, no public option.
+  const isPeerAgent =
+    user?.role === 'AGENT' &&
+    ticket.assignee != null &&
+    ticket.assignee.id !== user.id;
   const [body, setBody] = useState('');
-  const [kind, setKind] = useState<ComposerKind>('public');
+  const [kind, setKind] = useState<ComposerKind>(
+    isPeerAgent ? 'internal' : 'public',
+  );
   const editorRef = useRef<RichTextEditorRef | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { user } = useAuthSession();
+
+  // Keep kind locked to 'internal' if peer-agent status changes after mount.
+  useEffect(() => {
+    if (isPeerAgent && kind !== 'internal') setKind('internal');
+  }, [isPeerAgent, kind]);
 
   // Fetch some users for @mention autocomplete (legacy RichTextEditor expects array)
   const { data: usersData } = useQuery({
@@ -429,7 +459,10 @@ function Composer({ ticket }: { ticket: TicketDetail }) {
       style={{ backgroundColor: 'var(--c-surface)', borderColor: 'var(--c-border)' }}
     >
       <div className="flex border-b" style={{ borderColor: 'var(--c-divider)' }}>
-        {(['public', 'internal'] as ComposerKind[]).map(k => {
+        {(isPeerAgent
+          ? (['internal'] as ComposerKind[])
+          : (['public', 'internal'] as ComposerKind[])
+        ).map(k => {
           const active = k === kind;
           return (
             <button
@@ -477,6 +510,23 @@ function Composer({ ticket }: { ticket: TicketDetail }) {
               ? 'Internal note (only visible to agents). Type @ to mention. ⌘+Enter to send.'
               : 'Reply to requester. Type @ to mention. ⌘+Enter to send.'
           }
+          onPasteFiles={async (files) => {
+            for (const file of files) {
+              const previewUrl = URL.createObjectURL(file);
+              try {
+                const att = await upload.mutateAsync(file);
+                if (file.type.startsWith('image/')) {
+                  editorRef.current?.insertAttachmentImage?.({
+                    attachmentId: att.id,
+                    previewUrl,
+                    alt: file.name,
+                  });
+                }
+              } catch {
+                URL.revokeObjectURL(previewUrl);
+              }
+            }
+          }}
         />
 
         <div className="flex items-center gap-2">

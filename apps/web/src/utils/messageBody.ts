@@ -31,8 +31,19 @@ const ALLOWED_TAGS = [
   "a",
   "blockquote",
   "span",
+  "img",
 ];
-const ALLOWED_ATTR = ["href", "target", "rel", "class"];
+const ALLOWED_ATTR = [
+  "href",
+  "target",
+  "rel",
+  "class",
+  "src",
+  "alt",
+  "data-attachment-id",
+  "width",
+  "height",
+];
 
 /** Valid opening tag pattern: <tagname followed by space, >, or /> (avoids treating "<3" or "<not html>" as HTML). */
 const VALID_TAG_START = new RegExp(

@@ -42,6 +42,7 @@ import {
 } from "../api/client";
 import { TopBar } from "../components/TopBar";
 import { EmptyState } from "../components/EmptyState";
+import { TagAnalyticsPanel } from "../components/tags/TagAnalyticsPanel";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { useToast } from "../hooks/useToast";
@@ -2576,6 +2577,10 @@ export function ReportsPage({ role }: { role: Role }) {
                 </div>
               </div>
             ) : null}
+
+            <div className="mt-6">
+              <TagAnalyticsPanel days={30} />
+            </div>
           </div>
         </div>
       </div>

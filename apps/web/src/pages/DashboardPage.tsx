@@ -742,7 +742,55 @@ export function DashboardPage({ role }: DashboardPageProps) {
 
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [range, setRange] = useState<"3" | "7" | "30">("30");
+  const [range, setRange] = useState<"3" | "7" | "30" | "custom">("30");
+  // ISO date strings (yyyy-mm-dd). Default custom window = last 30 days.
+  const [customFrom, setCustomFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [customTo, setCustomTo] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+
+  const renderRangeFilter = () => (
+    <div className="flex items-center gap-2">
+      <select
+        value={range}
+        onChange={(event) =>
+          setRange(event.target.value as "3" | "7" | "30" | "custom")
+        }
+        className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
+      >
+        <option value="3">Last 3 days</option>
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="custom">Custom range…</option>
+      </select>
+      {range === "custom" ? (
+        <>
+          <input
+            type="date"
+            value={customFrom}
+            max={customTo}
+            onChange={(e) => setCustomFrom(e.target.value)}
+            className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-none hover:border-primary/40 transition"
+            aria-label="From date"
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <input
+            type="date"
+            value={customTo}
+            min={customFrom}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setCustomTo(e.target.value)}
+            className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-none hover:border-primary/40 transition"
+            aria-label="To date"
+          />
+        </>
+      ) : null}
+    </div>
+  );
   const [sort, setSort] = useState<"recent" | "oldest">("recent");
 
   const [recentTickets, setRecentTickets] = useState<TicketRecord[]>([]);
@@ -1205,12 +1253,26 @@ export function DashboardPage({ role }: DashboardPageProps) {
       }
 
       try {
-        const rangeDays = Number(range);
-        const from = new Date();
-        from.setDate(from.getDate() - rangeDays);
-        const updatedFrom = from.toISOString();
-        const reportFrom = updatedFrom.slice(0, 10);
-        const reportTo = new Date().toISOString().slice(0, 10);
+        let updatedFrom: string;
+        let updatedTo: string | undefined;
+        let reportFrom: string;
+        let reportTo: string;
+        if (range === "custom") {
+          // Treat customFrom as start-of-day, customTo as end-of-day in local TZ
+          const fromDate = new Date(`${customFrom}T00:00:00`);
+          const toDate = new Date(`${customTo}T23:59:59.999`);
+          updatedFrom = fromDate.toISOString();
+          updatedTo = toDate.toISOString();
+          reportFrom = customFrom;
+          reportTo = customTo;
+        } else {
+          const rangeDays = Number(range);
+          const from = new Date();
+          from.setDate(from.getDate() - rangeDays);
+          updatedFrom = from.toISOString();
+          reportFrom = updatedFrom.slice(0, 10);
+          reportTo = new Date().toISOString().slice(0, 10);
+        }
         const order = sort === "oldest" ? "asc" : "desc";
 
         if (isEmployee) {
@@ -1221,6 +1283,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
               order,
               scope: "created",
               updatedFrom,
+              updatedTo,
               includeTotal: false,
             }).catch(() => EMPTY_TICKETS),
             fetchTicketCounts().catch(() => EMPTY_COUNTS),
@@ -1277,6 +1340,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   order,
                   scope: "assigned",
                   updatedFrom,
+                  updatedTo,
                   includeTotal: false,
                 }).catch(() => EMPTY_TICKETS)
               : Promise.resolve(EMPTY_TICKETS),
@@ -1359,7 +1423,17 @@ export function DashboardPage({ role }: DashboardPageProps) {
             overdue: counts.overdue,
           });
 
-          setActivity(mapActivitySeries(activityRes.data, rangeDays));
+          {
+            const fromMs = new Date(`${reportFrom}T00:00:00`).getTime();
+            const toMs = new Date(`${reportTo}T00:00:00`).getTime();
+            const rangeDaysForActivity = Math.max(
+              1,
+              Math.round((toMs - fromMs) / (1000 * 60 * 60 * 24)),
+            );
+            setActivity(
+              mapActivitySeries(activityRes.data, rangeDaysForActivity),
+            );
+          }
           setStatusBreakdown(
             (isAgent
               ? statusRes.data
@@ -1400,7 +1474,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
     return () => {
       active = false;
     };
-  }, [role, range, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
+  }, [role, range, customFrom, customTo, sort, isEmployee, isAgent, isLead, isTeamAdmin, isOwner]);
 
   const roleMeta = ROLE_META[role] ?? ROLE_META.EMPLOYEE;
 
@@ -1781,17 +1855,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       Monitor your team's workload and SLA compliance
                     </p>
                   </div>
-                  <select
-                    value={range}
-                    onChange={(event) =>
-                      setRange(event.target.value as "3" | "7" | "30")
-                    }
-                    className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
-                  >
-                    <option value="3">Last 3 days</option>
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                  </select>
+                  {renderRangeFilter()}
                 </div>
 
                 <div className="bg-card rounded-[24px] p-6 border border-border min-h-[300px] flex flex-col">
@@ -1924,17 +1988,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       Manage triage configurations and active queue health
                     </p>
                   </div>
-                  <select
-                    value={range}
-                    onChange={(event) =>
-                      setRange(event.target.value as "3" | "7" | "30")
-                    }
-                    className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
-                  >
-                    <option value="3">Last 3 days</option>
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                  </select>
+                  {renderRangeFilter()}
                 </div>
 
                 {/* Operational Warnings Bento */}
@@ -2113,17 +2167,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       Cross-team performance and business metrics
                     </p>
                   </div>
-                  <select
-                    value={range}
-                    onChange={(event) =>
-                      setRange(event.target.value as "3" | "7" | "30")
-                    }
-                    className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
-                  >
-                    <option value="3">Last 3 days</option>
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                  </select>
+                  {renderRangeFilter()}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Query,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
@@ -32,5 +33,41 @@ export class UsersController {
       throw new ForbiddenException('Only owners can update user roles');
     }
     return this.usersService.updateRole(id, payload, actor);
+  }
+
+  @Get(':id/deactivation-preview')
+  async deactivationPreview(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.usersService.deactivationPreview(id, actor);
+  }
+
+  @Post(':id/deactivate')
+  async deactivate(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.usersService.deactivate(id, actor);
+  }
+
+  @Post(':id/reactivate')
+  async reactivate(
+    @Param('id') id: string,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.usersService.reactivate(id, actor);
+  }
+
+  @Patch(':id/primary-team')
+  async setPrimaryTeam(
+    @Param('id') id: string,
+    @Body() payload: { primaryTeamId: string | null },
+    @CurrentUser() actor: AuthUser,
+  ) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can change primary team');
+    }
+    return this.usersService.setPrimaryTeam(id, payload?.primaryTeamId ?? null, actor);
   }
 }
