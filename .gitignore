@@ -75,3 +75,9 @@ screenshots/
 
 # One-off rollback script — contains DB credentials, never commit
 rollback.ps1
+
+# Removed from GitHub (kept locally)
+docs/
+.github/
+e2e/
+update/
