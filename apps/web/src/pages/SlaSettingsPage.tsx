@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import {
+  Plus,
+  ShieldCheck,
+  Users,
+  Clock,
+  CheckCircle2,
+  Gauge,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import {
   createSlaPolicyConfig,
   deleteSlaPolicyConfig,
   fetchReportSlaComplianceByPriority,
+  fetchReportSlaComplianceByTeam,
   fetchReportSlaCompliance,
   fetchSlaBusinessHoursSettings,
   fetchSlaPolicyConfigs,
@@ -13,11 +23,16 @@ import {
   type SlaBusinessHoursSettings,
   type SlaComplianceResponse,
   type SlaComplianceByPriorityResponse,
+  type SlaComplianceByTeamResponse,
   type SlaPolicyConfigRecord,
   type SlaPolicyNotifyRole,
   type TeamRef,
 } from "../api/client";
 import { TopBar } from "../components/TopBar";
+import { Drawer } from "../components/ui/Drawer";
+import { StatCard } from "../components/ui/StatCard";
+import { PageTabs } from "../components/ui/PageTabs";
+import { EmptyState } from "../components/ui/EmptyState";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { useToast } from "../hooks/useToast";
@@ -1209,6 +1224,9 @@ export function SlaSettingsPage({
   const [priorityOverviewData, setPriorityOverviewData] = useState<
     SlaComplianceByPriorityResponse["data"]
   >([]);
+  const [teamOverviewData, setTeamOverviewData] = useState<
+    SlaComplianceByTeamResponse["data"]
+  >([]);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
 
@@ -1278,12 +1296,14 @@ export function SlaSettingsPage({
   }, [policies, searchQuery]);
 
   useEffect(() => {
+    // Drop the selection only if the policy it points at no longer exists
+    // (e.g. deleted). The drawer opens on explicit click, never auto-opens.
     if (
       selectedPolicyId &&
-      policies.some((policy) => policy.id === selectedPolicyId)
-    )
-      return;
-    setSelectedPolicyId(policies[0]?.id ?? null);
+      !policies.some((policy) => policy.id === selectedPolicyId)
+    ) {
+      setSelectedPolicyId(null);
+    }
   }, [policies, selectedPolicyId]);
 
   const selectedPolicy = useMemo(
@@ -1388,7 +1408,7 @@ export function SlaSettingsPage({
     setOverviewLoading(true);
     setOverviewError(null);
     try {
-      const [response, priorityResponse] = await Promise.all([
+      const [response, priorityResponse, teamResponse] = await Promise.all([
         fetchReportSlaCompliance({
           from: ymd(fromDate),
           to: ymd(today),
@@ -1397,12 +1417,18 @@ export function SlaSettingsPage({
           from: ymd(fromDate),
           to: ymd(today),
         }),
+        fetchReportSlaComplianceByTeam({
+          from: ymd(fromDate),
+          to: ymd(today),
+        }),
       ]);
       setOverviewData(response.data);
       setPriorityOverviewData(priorityResponse.data);
+      setTeamOverviewData(teamResponse.data);
     } catch {
       setOverviewData(null);
       setPriorityOverviewData([]);
+      setTeamOverviewData([]);
       setOverviewError("Unable to load SLA compliance overview from backend.");
     } finally {
       setOverviewLoading(false);
@@ -1580,51 +1606,15 @@ export function SlaSettingsPage({
         <div className="border-t border-border bg-card">
           <div className="mx-auto max-w-none px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex space-x-6">
-                {[
-                  {
-                    id: "policies",
-                    label: "Policies",
-                    icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
-                  },
-                  {
-                    id: "overview",
-                    label: "Overview",
-                    icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
-                  },
-                  {
-                    id: "business-hours",
-                    label: "Business Hours",
-                    icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
-                  },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id as TabKey)}
-                    className={`-mb-px flex items-center space-x-1.5 border-b-2 pb-3 text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? "border-blue-600 text-primary"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d={tab.icon}
-                      />
-                    </svg>
-                    <span>{tab.label}</span>
-                  </button>
-                ))}
-              </div>
+              <PageTabs<TabKey>
+                tabs={[
+                  { id: "policies", label: "Policies", icon: ShieldCheck },
+                  { id: "overview", label: "Coverage", icon: Users },
+                  { id: "business-hours", label: "Business Hours", icon: Clock },
+                ]}
+                active={activeTab}
+                onChange={setActiveTab}
+              />
               {canEdit && (
                 <button
                   type="button"
@@ -1649,76 +1639,24 @@ export function SlaSettingsPage({
 
         {activeTab === "policies" && (
           <div>
-            <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-              {[
-                {
-                  label: "Total Policies",
-                  value: policies.length,
-                  color: "text-primary",
-                  bg: "bg-blue-50",
-                },
-                {
-                  label: "Active Policies",
-                  value: policies.filter((policy) => policy.enabled).length,
-                  color: "text-green-600",
-                  bg: "bg-green-50",
-                },
-                {
-                  label: "Teams Covered",
-                  value: coveredTeams,
-                  color: "text-purple-600",
-                  bg: "bg-purple-50",
-                },
-                {
-                  label: "Avg Compliance",
-                  value: `${overallCompliance}%`,
-                  color:
-                    overallCompliance >= 90
-                      ? "text-green-600"
-                      : overallCompliance >= 80
-                        ? "text-yellow-600"
-                        : "text-red-600",
-                  bg:
-                    overallCompliance >= 90
-                      ? "bg-green-50"
-                      : overallCompliance >= 80
-                        ? "bg-yellow-50"
-                        : "bg-red-50",
-                },
-              ].map((kpi) => (
-                <div
-                  key={kpi.label}
-                  className="card rounded-xl border border-border bg-card p-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {kpi.label}
-                      </p>
-                      <p className={`mt-0.5 text-2xl font-bold ${kpi.color}`}>
-                        {kpi.value}
-                      </p>
-                    </div>
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${kpi.bg}`}
-                    >
-                      <svg
-                        className={`h-5 w-5 ${kpi.color}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
+            <div className="mb-5 rounded-xl border border-border bg-card p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-50 text-primary dark:bg-blue-500/10">
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
-              ))}
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Service-level agreements
+                  </h2>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    A policy defines the response and resolution time targets a
+                    team commits to per priority. Select a policy to view or edit
+                    its targets, business hours and escalation — or open{" "}
+                    <span className="font-medium text-foreground">Coverage</span>{" "}
+                    to see which teams each policy applies to.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="mb-4 flex items-center justify-between">
@@ -1752,8 +1690,7 @@ export function SlaSettingsPage({
               </div>
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-12">
-              <div className="space-y-3 lg:col-span-5">
+            <div className="space-y-3">
                 {loadingLive && (
                   <div className="space-y-3">
                     {Array.from({ length: 3 }).map((_, i) => (
@@ -1774,122 +1711,95 @@ export function SlaSettingsPage({
                 )}
 
                 {!loadingLive && filteredPolicies.length === 0 && (
-                  <div className="rounded-xl border border-border bg-card py-12 text-center text-sm text-muted-foreground">
-                    No policies match your search.
-                  </div>
+                  <EmptyState
+                    icon={<ShieldCheck className="h-6 w-6" />}
+                    title={
+                      searchQuery ? "No matching policies" : "No SLA policies yet"
+                    }
+                    description={
+                      searchQuery
+                        ? "Try a different search term."
+                        : "Create your first policy to start tracking response and resolution targets."
+                    }
+                    action={
+                      canEdit && !searchQuery ? (
+                        <button
+                          type="button"
+                          onClick={handleCreate}
+                          className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+                        >
+                          <Plus className="h-4 w-4" />
+                          New Policy
+                        </button>
+                      ) : undefined
+                    }
+                  />
                 )}
 
                 {filteredPolicies.map((policy) => (
                   <div
                     key={policy.id}
                     onClick={() => setSelectedPolicyId(policy.id)}
-                    className={`cursor-pointer rounded-lg border-2 bg-card p-4 transition-all hover:-translate-y-0.5 hover:shadow-sm ${
+                    className={`group flex cursor-pointer items-center gap-4 rounded-xl border bg-card px-4 py-3 transition-all hover:border-primary/40 hover:shadow-sm ${
                       selectedPolicyId === policy.id
-                        ? "border-primary bg-blue-50/60"
+                        ? "border-primary ring-1 ring-primary/30"
                         : "border-border"
                     }`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-foreground">
-                            {policy.name}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-semibold text-foreground">
+                          {policy.name}
+                        </span>
+                        {policy.isDefault && (
+                          <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-500/15 dark:text-blue-400">
+                            Default
                           </span>
-                          {policy.isDefault && (
-                            <span className="rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                              Default
-                            </span>
-                          )}
-                          {!policy.enabled && (
-                            <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-muted-foreground">
-                              Disabled
-                            </span>
-                          )}
-                          <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                            Live
+                        )}
+                        {!policy.enabled && (
+                          <span className="rounded-md bg-accent px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                            Disabled
                           </span>
-                        </div>
+                        )}
+                        <span className="rounded-md bg-green-100 px-1.5 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-500/15 dark:text-green-400">
+                          Live
+                        </span>
+                      </div>
+                      {policy.description && (
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {policy.description}
                         </p>
-                        <div className="mt-2 flex items-center space-x-3">
-                          {policy.compliance > 0 && (
-                            <div className="flex items-center space-x-1.5">
-                              <div className="h-1.5 w-16 rounded-full bg-accent">
-                                <div
-                                  className={`h-1.5 rounded-full ${complianceBg(policy.compliance)}`}
-                                  style={{ width: `${policy.compliance}%` }}
-                                />
-                              </div>
-                              <span
-                                className={`text-xs font-medium ${complianceColor(policy.compliance)}`}
-                              >
-                                {policy.compliance}%
-                              </span>
-                            </div>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {policy.appliedTo.length} team
-                            {policy.appliedTo.length !== 1 ? "s" : ""}
-                          </span>
-                        </div>
-                      </div>
-
-                      {canEdit && (
-                        <div
-                          className="ml-2 flex flex-shrink-0 items-center space-x-1"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(policy)}
-                            className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary"
-                          >
-                            <svg
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                              />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={role !== "OWNER" && policy.isDefault}
-                            onClick={() => handleDelete(policy)}
-                            className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <svg
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </button>
-                        </div>
                       )}
+                      <div className="mt-1.5 flex items-center gap-3">
+                        {policy.compliance > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-1.5 w-16 rounded-full bg-accent">
+                              <div
+                                className={`h-1.5 rounded-full ${complianceBg(policy.compliance)}`}
+                                style={{ width: `${policy.compliance}%` }}
+                              />
+                            </div>
+                            <span
+                              className={`text-xs font-medium ${complianceColor(policy.compliance)}`}
+                            >
+                              {policy.compliance}%
+                            </span>
+                          </div>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {policy.appliedTo.length} team
+                          {policy.appliedTo.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-4 gap-1 border-t border-border pt-3">
+                    <div className="hidden flex-shrink-0 items-center gap-4 border-l border-border pl-4 md:flex">
                       {PRIORITIES.map((priority) => (
-                        <div key={priority} className="text-center">
+                        <div key={priority} className="w-12 text-center">
                           <span
-                            className={`mb-1 inline-block h-2 w-2 rounded-full ${PRIORITY_META[priority].dot}`}
+                            className={`mx-auto mb-1 block h-2 w-2 rounded-full ${PRIORITY_META[priority].dot}`}
                           />
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
                             {PRIORITY_META[priority].label}
                           </p>
                           <p className="text-xs font-semibold text-foreground">
@@ -1898,58 +1808,65 @@ export function SlaSettingsPage({
                         </div>
                       ))}
                     </div>
+
+                    {canEdit && (
+                      <div
+                        className="flex flex-shrink-0 items-center gap-1"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(policy)}
+                          aria-label="Edit policy"
+                          className="rounded p-1.5 text-muted-foreground hover:bg-blue-50 hover:text-primary dark:hover:bg-blue-500/10"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={role !== "OWNER" && policy.isDefault}
+                          onClick={() => handleDelete(policy)}
+                          aria-label="Delete policy"
+                          className="rounded p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
 
-              <div className="lg:col-span-7">
-                {selectedPolicy ? (
-                  <div className="overflow-hidden rounded-xl border border-border bg-card">
-                    <div className="flex items-center justify-between border-b border-border px-5 py-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100">
-                          <svg
-                            className="h-4 w-4 text-primary"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                            />
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-foreground">
-                            {selectedPolicy.name}
-                          </h3>
-                          <p className="text-xs text-muted-foreground">
-                            {selectedPolicy.description}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                          Live
-                        </span>
-                        {canEdit && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleEdit(selectedPolicy)}
-                              className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-primary hover:bg-blue-50"
-                            >
-                              Edit
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-5 p-5">
+            {selectedPolicy && (
+              <Drawer
+                open
+                onClose={() => setSelectedPolicyId(null)}
+                widthClassName="max-w-xl"
+                icon={
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-500/15">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                  </div>
+                }
+                title={selectedPolicy.name}
+                description={selectedPolicy.description}
+                headerActions={
+                  <>
+                    <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-400">
+                      Live
+                    </span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(selectedPolicy)}
+                        className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-primary hover:bg-blue-50 dark:border-blue-500/30 dark:hover:bg-blue-500/10"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </>
+                }
+              >
+                <div className="space-y-5">
                       {selectedPolicy.compliance > 0 && (
                         <div className="rounded-xl border border-border bg-muted p-4">
                           <div className="mb-2 flex items-center justify-between">
@@ -2081,44 +1998,55 @@ export function SlaSettingsPage({
                       <p className="text-xs text-muted-foreground">
                         Created {selectedPolicy.createdAt}
                       </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-card p-8 text-center">
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent">
-                      <svg
-                        className="h-6 w-6 text-muted-foreground"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Select a policy to view details
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Click any policy card on the left to inspect its
-                      configuration.
-                    </p>
-                  </div>
-                )}
-              </div>
+                </div>
+              </Drawer>
+            )}
+
+          </div>
+        )}
+
+        {activeTab === "overview" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <StatCard
+                label="Total Policies"
+                value={policies.length}
+                icon={ShieldCheck}
+                tone="blue"
+              />
+              <StatCard
+                label="Active Policies"
+                value={policies.filter((policy) => policy.enabled).length}
+                icon={CheckCircle2}
+                tone="green"
+              />
+              <StatCard
+                label="Teams Covered"
+                value={coveredTeams}
+                icon={Users}
+                tone="purple"
+              />
+              <StatCard
+                label="Avg Compliance"
+                value={`${overallCompliance}%`}
+                icon={Gauge}
+                tone={
+                  overallCompliance >= 90
+                    ? "green"
+                    : overallCompliance >= 80
+                      ? "amber"
+                      : "red"
+                }
+              />
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-xl border border-border bg-card">
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
               <div className="border-b border-border px-5 py-4">
                 <h3 className="text-sm font-semibold text-foreground">
                   Team-Policy Assignment
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Overview of which SLA policy is active for each team.
+                  Which SLA policy is currently active for each team.
                 </p>
               </div>
               <div className="divide-y divide-border">
@@ -2128,20 +2056,8 @@ export function SlaSettingsPage({
                     className="flex items-center justify-between px-5 py-3 hover:bg-muted"
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent">
-                        <svg
-                          className="h-4 w-4 text-muted-foreground"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-muted-foreground">
+                        <Users className="h-4 w-4" />
                       </div>
                       <span className="text-sm font-medium text-foreground">
                         {team.name}
@@ -2150,7 +2066,7 @@ export function SlaSettingsPage({
                     <div className="flex items-center space-x-3">
                       {policy ? (
                         <>
-                          <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                          <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-400">
                             {policy.name}
                           </span>
                           {policy.compliance > 0 && (
@@ -2171,286 +2087,183 @@ export function SlaSettingsPage({
                 ))}
               </div>
             </div>
-          </div>
-        )}
 
-        {activeTab === "overview" && (
-          <div className="space-y-5">
-            <div className="grid gap-5 md:grid-cols-3">
-              <div className="rounded-xl border border-border bg-card p-5 md:col-span-2">
-                <h3 className="mb-4 text-sm font-semibold text-foreground">
-                  SLA Outcome Breakdown - Last 30 Days
-                </h3>
-                <div className="space-y-4">
-                  {[
-                    {
-                      key: "first-response",
-                      label: "First Response SLA",
-                      met: overviewData?.firstResponseMet ?? 0,
-                      breached: overviewData?.firstResponseBreached ?? 0,
-                      color: "bg-blue-500",
-                    },
-                    {
-                      key: "resolution",
-                      label: "Resolution SLA",
-                      met: overviewData?.resolutionMet ?? 0,
-                      breached: overviewData?.resolutionBreached ?? 0,
-                      color: "bg-green-500",
-                    },
-                  ].map((row) => {
-                    const total = row.met + row.breached;
-                    const metPercent =
-                      total > 0 ? Math.round((row.met / total) * 100) : 0;
-                    return (
-                      <div key={row.key}>
-                        <div className="mb-1 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${row.color}`}
-                            />
+            <div className="grid gap-5 lg:grid-cols-2">
+              <div className="rounded-xl border border-border bg-card p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    SLA Outcome
+                  </h3>
+                  <span className="text-xs text-muted-foreground">
+                    Last 30 days
+                  </span>
+                </div>
+                {overviewLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : (
+                  <div className="space-y-4">
+                    {[
+                      {
+                        key: "first-response",
+                        label: "First Response",
+                        met: overviewData?.firstResponseMet ?? 0,
+                        breached: overviewData?.firstResponseBreached ?? 0,
+                      },
+                      {
+                        key: "resolution",
+                        label: "Resolution",
+                        met: overviewData?.resolutionMet ?? 0,
+                        breached: overviewData?.resolutionBreached ?? 0,
+                      },
+                    ].map((row) => {
+                      const total = row.met + row.breached;
+                      const pct =
+                        total > 0 ? Math.round((row.met / total) * 100) : 0;
+                      return (
+                        <div key={row.key}>
+                          <div className="mb-1 flex items-center justify-between text-xs">
                             <span className="font-medium text-foreground">
                               {row.label}
                             </span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-muted-foreground">
-                              Met: {row.met}
-                            </span>
-                            <span className="text-muted-foreground">
-                              Breached: {row.breached}
-                            </span>
                             <span
-                              className={`font-semibold ${metPercent >= 90 ? "text-green-600" : metPercent >= 75 ? "text-yellow-600" : "text-red-600"}`}
+                              className={`font-semibold ${complianceColor(pct)}`}
                             >
-                              {metPercent}% met
+                              {pct}% met
                             </span>
                           </div>
+                          <div className="h-2 w-full rounded-full bg-accent">
+                            <div
+                              className={`h-2 rounded-full ${complianceBg(pct)}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {row.met} met · {row.breached} breached
+                          </p>
                         </div>
-                        <div className="h-3 w-full rounded-full bg-accent">
-                          <div
-                            className={`h-3 rounded-full ${row.color}`}
-                            style={{ width: `${metPercent}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {overviewError && (
+                  <p className="mt-3 text-xs text-red-600">{overviewError}</p>
+                )}
               </div>
 
               <div className="rounded-xl border border-border bg-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-foreground">
-                  Breach Summary
-                </h3>
-                {overviewLoading && (
-                  <p className="text-sm text-muted-foreground">
-                    Loading report data...
-                  </p>
-                )}
-                {!overviewLoading && (
-                  <div className="space-y-3">
-                    {[
-                      {
-                        label: "Breached (First Response)",
-                        value: overviewData?.firstResponseBreached ?? 0,
-                        color: "text-red-600",
-                        bg: "bg-red-50",
-                      },
-                      {
-                        label: "Breached (Resolution)",
-                        value: overviewData?.resolutionBreached ?? 0,
-                        color: "text-red-600",
-                        bg: "bg-red-50",
-                      },
-                      {
-                        label: "Breached (Total)",
-                        value: overviewData?.breached ?? 0,
-                        color: "text-red-600",
-                        bg: "bg-red-50",
-                      },
-                      {
-                        label: "Compliant (Total)",
-                        value: overviewData?.met ?? 0,
-                        color: "text-green-600",
-                        bg: "bg-green-50",
-                      },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className={`flex items-center justify-between rounded-lg p-3 ${item.bg}`}
-                      >
-                        <span className="text-xs text-foreground">
-                          {item.label}
-                        </span>
-                        <span className={`text-base font-bold ${item.color}`}>
-                          {item.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="mt-4 border-t border-border pt-4">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Overall</span>
-                    <span
-                      className={`font-semibold ${complianceColor(overallCompliance)}`}
-                    >
-                      {overallCompliance}% compliant
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-2 w-full rounded-full bg-accent">
-                    <div
-                      className={`h-2 rounded-full ${complianceBg(overallCompliance)}`}
-                      style={{ width: `${overallCompliance}%` }}
-                    />
-                  </div>
-                  {overviewError && (
-                    <p className="mt-2 text-xs text-purple-700">
-                      {overviewError}
-                    </p>
-                  )}
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Compliance by Priority
+                  </h3>
+                  <span className="text-xs text-muted-foreground">
+                    Last 30 days
+                  </span>
                 </div>
+                {priorityOverviewData.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No priority SLA data available.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {priorityOverviewData.map((item) => {
+                      const key = API_TO_UI_PRIORITY[item.priority] ?? "medium";
+                      const pct =
+                        item.total > 0
+                          ? Math.round((item.met / item.total) * 100)
+                          : 0;
+                      return (
+                        <div key={item.priority}>
+                          <div className="mb-1 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${PRIORITY_META[key].dot}`}
+                              />
+                              <span className="font-medium text-foreground">
+                                {PRIORITY_META[key].label}
+                              </span>
+                            </div>
+                            <span
+                              className={`font-semibold ${complianceColor(pct)}`}
+                            >
+                              {pct}% met
+                            </span>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-accent">
+                            <div
+                              className={`h-2 rounded-full ${complianceBg(pct)}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            {item.met} met · {item.breached} breached
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5">
-              <h3 className="mb-4 text-sm font-semibold text-foreground">
-                Compliance by Priority (Last 30 Days)
-              </h3>
-              {priorityOverviewData.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No priority SLA data available.
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Compliance by Department
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Each team&apos;s own ticket compliance over the last 30 days.
+                  </p>
+                </div>
+                {overviewError && (
+                  <span className="text-xs text-red-600">Unavailable</span>
+                )}
+              </div>
+              {overviewLoading ? (
+                <p className="px-5 py-4 text-sm text-muted-foreground">
+                  Loading…
+                </p>
+              ) : teamOverviewData.length === 0 ? (
+                <p className="px-5 py-4 text-sm text-muted-foreground">
+                  No SLA data for any department yet.
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {priorityOverviewData.map((item) => {
-                    const key = API_TO_UI_PRIORITY[item.priority] ?? "medium";
-                    const label = PRIORITY_META[key].label;
-                    const metPercent =
-                      item.total > 0
-                        ? Math.round((item.met / item.total) * 100)
-                        : 0;
-                    return (
-                      <div key={item.priority}>
-                        <div className="mb-1 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${PRIORITY_META[key].dot}`}
-                            />
-                            <span className="font-medium text-foreground">
-                              {label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-muted-foreground">
-                              Met: {item.met}
-                            </span>
-                            <span className="text-muted-foreground">
-                              Breached: {item.breached}
-                            </span>
-                            <span
-                              className={`font-semibold ${complianceColor(metPercent)}`}
-                            >
-                              {metPercent}% met
-                            </span>
-                          </div>
+                <div className="divide-y divide-border">
+                  {teamOverviewData.map((team) => (
+                    <div
+                      key={team.teamId}
+                      className="flex items-center gap-4 px-5 py-3 hover:bg-muted"
+                    >
+                      <div className="flex min-w-0 items-center gap-3 md:w-48">
+                        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-accent text-muted-foreground">
+                          <Users className="h-4 w-4" />
                         </div>
-                        <div className="h-2.5 w-full rounded-full bg-accent">
+                        <span className="truncate text-sm font-medium text-foreground">
+                          {team.teamName}
+                        </span>
+                      </div>
+                      <div className="hidden flex-1 items-center md:flex">
+                        <div className="h-2 w-full rounded-full bg-accent">
                           <div
-                            className={`h-2.5 rounded-full ${complianceBg(metPercent)}`}
-                            style={{ width: `${metPercent}%` }}
+                            className={`h-2 rounded-full ${complianceBg(team.compliance)}`}
+                            style={{ width: `${team.compliance}%` }}
                           />
                         </div>
                       </div>
-                    );
-                  })}
+                      <span
+                        className={`w-12 flex-shrink-0 text-right text-sm font-semibold ${complianceColor(team.compliance)}`}
+                      >
+                        {team.compliance}%
+                      </span>
+                      <span className="hidden w-32 flex-shrink-0 text-right text-[11px] text-muted-foreground sm:block">
+                        {team.met} met · {team.breached} breached
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-border bg-card">
-              <div className="border-b border-border px-5 py-4">
-                <h3 className="text-sm font-semibold text-foreground">
-                  Policy Performance
-                </h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-border bg-muted">
-                    <tr>
-                      {["Policy", "Status", "Teams", "Compliance"].map(
-                        (heading) => (
-                          <th
-                            key={heading}
-                            className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-                          >
-                            {heading}
-                          </th>
-                        ),
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {policies.map((policy) => (
-                      <tr key={policy.id} className="hover:bg-muted">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-sm font-medium text-foreground">
-                              {policy.name}
-                            </span>
-                            {policy.isDefault && (
-                              <span className="rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                                Default
-                              </span>
-                            )}
-                            <span className="rounded-lg bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                              Live
-                            </span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {policy.description}
-                          </p>
-                        </td>
-                        <td className="px-5 py-3">
-                          <span
-                            className={`rounded-lg px-2 py-1 text-xs font-medium ${policy.enabled ? "bg-green-100 text-green-700" : "bg-accent text-muted-foreground"}`}
-                          >
-                            {policy.enabled ? "Active" : "Disabled"}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-foreground">
-                          {policy.appliedTo.length === 0 ? (
-                            <span className="italic text-muted-foreground">None</span>
-                          ) : (
-                            policy.appliedTo.join(", ")
-                          )}
-                        </td>
-                        <td className="px-5 py-3">
-                          {policy.compliance > 0 ? (
-                            <div className="flex items-center space-x-2">
-                              <div className="h-1.5 w-16 rounded-full bg-accent">
-                                <div
-                                  className={`h-1.5 rounded-full ${complianceBg(policy.compliance)}`}
-                                  style={{ width: `${policy.compliance}%` }}
-                                />
-                              </div>
-                              <span
-                                className={`text-sm font-semibold ${complianceColor(policy.compliance)}`}
-                              >
-                                {policy.compliance}%
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
         )}
 

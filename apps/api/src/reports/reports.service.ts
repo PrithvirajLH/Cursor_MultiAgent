@@ -449,6 +449,102 @@ export class ReportsService {
     };
   }
 
+  /**
+   * Per-team (department) SLA compliance: the same breach evaluation as
+   * getSlaCompliance, but grouped by assignedTeamId so each department gets its
+   * own met/breached counts and compliance %.
+   */
+  async getSlaComplianceByTeam(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const evaluationAt = this.reportEvaluationAt(toEndExclusive);
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const conditions = this.rawConditions(
+      fromDate,
+      toEndExclusive,
+      scoped.teamId,
+      scoped.priority,
+      scoped.categoryId,
+      scoped.channel,
+      scoped.status,
+      scoped.assigneeId,
+      undefined,
+      dateField,
+    );
+    conditions.push(
+      Prisma.sql`("firstResponseDueAt" IS NOT NULL OR "dueAt" IS NOT NULL)`,
+    );
+    const rows = await this.prisma.$queryRaw<
+      {
+        team_id: string | null;
+        met: bigint;
+        breached: bigint;
+        first_response_met: bigint;
+        first_response_breached: bigint;
+        resolution_met: bigint;
+        resolution_breached: bigint;
+      }[]
+    >`
+      WITH base AS (
+        SELECT "assignedTeamId" AS team_id,
+          ("firstResponseDueAt" IS NOT NULL) AS has_fr,
+          ("dueAt" IS NOT NULL) AS has_res,
+          ("firstResponseDueAt" IS NOT NULL AND (
+            ("firstResponseAt" IS NULL AND ${evaluationAt} > "firstResponseDueAt") OR
+            ("firstResponseAt" IS NOT NULL AND "firstResponseAt" > "firstResponseDueAt")
+          )) AS fr_breached,
+          ("dueAt" IS NOT NULL AND (
+            ("resolvedAt" IS NULL AND ${evaluationAt} > "dueAt") OR
+            ("resolvedAt" IS NOT NULL AND "resolvedAt" > "dueAt")
+          )) AS res_breached
+        FROM "Ticket"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      )
+      SELECT
+        team_id,
+        count(*) FILTER (WHERE NOT fr_breached AND NOT res_breached)::bigint AS met,
+        count(*) FILTER (WHERE fr_breached OR res_breached)::bigint AS breached,
+        count(*) FILTER (WHERE has_fr AND NOT fr_breached)::bigint AS first_response_met,
+        count(*) FILTER (WHERE has_fr AND fr_breached)::bigint AS first_response_breached,
+        count(*) FILTER (WHERE has_res AND NOT res_breached)::bigint AS resolution_met,
+        count(*) FILTER (WHERE has_res AND res_breached)::bigint AS resolution_breached
+      FROM base
+      GROUP BY team_id
+    `;
+
+    const teamIds = rows
+      .map((row) => row.team_id)
+      .filter((id): id is string => Boolean(id));
+    const teams = await this.prisma.team.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, name: true },
+    });
+    const teamMap = new Map(teams.map((t) => [t.id, t.name]));
+
+    const data = rows.map((row) => {
+      const met = Number(row.met);
+      const breached = Number(row.breached);
+      const total = met + breached;
+      return {
+        teamId: row.team_id ?? 'unassigned',
+        teamName: row.team_id
+          ? (teamMap.get(row.team_id) ?? 'Unknown team')
+          : 'Unassigned',
+        met,
+        breached,
+        total,
+        compliance: total > 0 ? Math.round((met / total) * 100) : 0,
+        firstResponseMet: Number(row.first_response_met),
+        firstResponseBreached: Number(row.first_response_breached),
+        resolutionMet: Number(row.resolution_met),
+        resolutionBreached: Number(row.resolution_breached),
+      };
+    });
+    data.sort((a, b) => b.total - a.total);
+    return { data };
+  }
+
   async getSlaComplianceByPriority(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);

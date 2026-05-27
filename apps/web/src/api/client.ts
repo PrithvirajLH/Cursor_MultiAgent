@@ -174,6 +174,27 @@ export type CategoryRef = {
   parent?: CategoryRef | null;
 };
 
+export type RoutingConditionField =
+  | "subject"
+  | "message"
+  | "priority"
+  | "category"
+  | "channel"
+  | "sender";
+export type RoutingConditionOp = "contains" | "not_contains" | "is" | "is_not";
+export type RoutingActionType =
+  | "assign_team"
+  | "assign_member"
+  | "set_priority"
+  | "add_tag";
+export type RoutingMatchType = "ALL" | "ANY";
+export type RoutingCondition = {
+  field: RoutingConditionField;
+  op: RoutingConditionOp;
+  value: string;
+};
+export type RoutingActionItem = { type: RoutingActionType; value: string };
+
 export type RoutingRule = {
   id: string;
   name: string;
@@ -182,6 +203,9 @@ export type RoutingRule = {
   assigneeId?: string | null;
   priority: number;
   isActive: boolean;
+  matchType?: RoutingMatchType;
+  conditions?: RoutingCondition[];
+  actions?: RoutingActionItem[];
   team?: TeamRef;
   assignee?: UserRef | null;
 };
@@ -1610,11 +1634,14 @@ export function updateSlaBusinessHoursSettings(payload: {
 
 export function createRoutingRule(payload: {
   name: string;
-  keywords: string[];
+  keywords?: string[];
   teamId?: string;
   assigneeId?: string;
   priority?: number;
   isActive?: boolean;
+  matchType?: RoutingMatchType;
+  conditions?: RoutingCondition[];
+  actions?: RoutingActionItem[];
 }) {
   return apiFetch<RoutingRule>("/routing-rules", {
     method: "POST",
@@ -1631,6 +1658,9 @@ export function updateRoutingRule(
     assigneeId?: string;
     priority?: number;
     isActive?: boolean;
+    matchType?: RoutingMatchType;
+    conditions?: RoutingCondition[];
+    actions?: RoutingActionItem[];
   },
 ) {
   return apiFetch<RoutingRule>(`/routing-rules/${id}`, {
@@ -2088,6 +2118,21 @@ export type SlaComplianceByPriorityResponse = {
     resolutionBreached: number;
   }>;
 };
+
+export type SlaComplianceByTeamResponse = {
+  data: Array<{
+    teamId: string;
+    teamName: string;
+    met: number;
+    breached: number;
+    total: number;
+    compliance: number;
+    firstResponseMet: number;
+    firstResponseBreached: number;
+    resolutionMet: number;
+    resolutionBreached: number;
+  }>;
+};
 export type ResolutionTimeResponse = {
   data: { label: string; id?: string; avgHours: number; count: number }[];
 };
@@ -2209,6 +2254,11 @@ export function fetchReportSlaComplianceByPriority(params: ReportQuery) {
     `/reports/sla-compliance-by-priority${reportQueryString(params)}`,
   );
 }
+export function fetchReportSlaComplianceByTeam(params: ReportQuery) {
+  return apiFetch<SlaComplianceByTeamResponse>(
+    `/reports/sla-compliance-by-team${reportQueryString(params)}`,
+  );
+}
 export function fetchReportResolutionTime(params: ReportQuery) {
   return apiFetch<ResolutionTimeResponse>(
     `/reports/resolution-time${reportQueryString(params)}`,
@@ -2286,12 +2336,21 @@ export function fetchReportTransfers(params: ReportQuery) {
 }
 
 // ——— Audit Log ———
+export type AuditLogCategory =
+  | "tickets"
+  | "routing"
+  | "sla"
+  | "automation"
+  | "custom_fields"
+  | "ai";
+
 export type AuditLogEntry = {
   id: string;
   ticketId: string;
   ticketNumber: number;
   ticketDisplayId: string | null;
   type: string;
+  category: AuditLogCategory;
   payload: Record<string, unknown> | null;
   createdAt: string;
   createdById: string | null;
@@ -2304,15 +2363,18 @@ export type AuditLogParams = {
   userId?: string;
   type?: string;
   search?: string;
+  category?: AuditLogCategory;
   page?: number;
   pageSize?: number;
 };
 
 export type AuditLogCategoryCounts = {
+  tickets: number;
   sla: number;
   routing: number;
   automation: number;
   custom_fields: number;
+  ai: number;
 };
 
 export type AuditLogResponse = {

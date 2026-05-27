@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Download } from "lucide-react";
+import { Download, Filter } from "lucide-react";
 import {
   createSavedView,
   fetchAllUsers,
@@ -221,7 +221,7 @@ function formatStatus(status: string): string {
 
 function defaultFilters(): ReportsFilters {
   return {
-    range: "last_14",
+    range: "last_30",
     teamId: "all",
     channel: "all",
     status: "all",
@@ -535,6 +535,7 @@ export function ReportsPage({ role }: { role: Role }) {
   const headerCtx = useHeaderContext();
   const toast = useToast();
   const [tab, setTab] = useState<ReportsTab>("overview");
+  const [showFilters, setShowFilters] = useState(false);
   const [teams, setTeams] = useState<TeamRef[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [activeView, setActiveView] = useState("");
@@ -1236,6 +1237,14 @@ export function ReportsPage({ role }: { role: Role }) {
         filters.channel);
   const scopeLabel = `${selectedTeamName} - ${selectedChannelLabel}`;
 
+  const activeFilters = [
+    filters.teamId !== "all",
+    filters.channel !== "all",
+    filters.status !== "all",
+    filters.priority !== "all",
+    filters.assignee !== "all",
+  ].filter(Boolean).length;
+
   const kpis = useMemo<OverviewKpis>(() => {
     if (!sources.summary || !slaData) {
       return {
@@ -1370,6 +1379,16 @@ export function ReportsPage({ role }: { role: Role }) {
   const csatAverage = csatSummary?.average ?? null;
   const csatResponses = csatSummary?.responses ?? 0;
 
+  // The summary loaded fine but nothing matched the selected window/filters.
+  // Surface this clearly so an empty range doesn't read as "broken reports".
+  const hasActiveFilters =
+    filters.teamId !== "all" ||
+    filters.priority !== "all" ||
+    filters.channel !== "all" ||
+    filters.status !== "all" ||
+    filters.assignee !== "all";
+  const noDataInRange = !loading && sources.summary && kpis.tickets === 0;
+
   function resetFilters() {
     setFilters(defaultFilters());
     toast.success("Filters reset");
@@ -1479,21 +1498,83 @@ export function ReportsPage({ role }: { role: Role }) {
           </div>
         ) : null}
 
-        <div className="max-w-[560px]">
-          <div className="rounded-xl border border-border bg-card p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Saved views
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
+        {noDataInRange ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            <span>
+              No ticket activity for <strong>{rangeLabel}</strong>
+              {hasActiveFilters ? " with the current filters" : ""}. The reports
+              are working — there's just nothing in this window. Try a wider date
+              range.
+            </span>
+            {filters.range !== "last_30" ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setFilters((prev) => ({ ...prev, range: "last_30" }))
+                }
+                className="flex-shrink-0 rounded-lg border border-amber-300 bg-card px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
+              >
+                View last 30 days
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="rounded-xl border border-border bg-card p-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Quick date range */}
+            <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+              {(
+                [
+                  ["last_7", "7 days"],
+                  ["last_14", "14 days"],
+                  ["last_30", "30 days"],
+                ] as [RangeKey, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    setFilters((prev) => ({ ...prev, range: value }))
+                  }
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    filters.range === value
+                      ? "bg-primary text-white"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Advanced filters toggle */}
+            <button
+              type="button"
+              onClick={() => setShowFilters((value) => !value)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium ${
+                activeFilters > 0
+                  ? "border-primary/40 bg-primary/5 text-primary"
+                  : "border-border text-foreground hover:bg-muted"
+              }`}
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+              {activeFilters > 0 ? (
+                <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-white">
+                  {activeFilters}
+                </span>
+              ) : null}
+            </button>
+
+            <div className="ml-auto flex flex-wrap items-center gap-2">
               <select
                 value={activeView}
                 onChange={(event) => applyView(event.target.value)}
-                className="rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-transparent focus:ring-2 focus:ring-ring"
               >
                 <option value="" disabled>
-                  {savedViews.length > 0
-                    ? "Select saved view"
-                    : "No saved views"}
+                  {savedViews.length > 0 ? "Saved views" : "No saved views"}
                 </option>
                 {savedViews.map((view) => (
                   <option key={view.id} value={view.id}>
@@ -1503,17 +1584,15 @@ export function ReportsPage({ role }: { role: Role }) {
               </select>
               <button
                 type="button"
-                onClick={() => {
-                  void saveCurrentView();
-                }}
+                onClick={() => void saveCurrentView()}
                 disabled={!canSaveViews}
-                className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                className={`rounded-lg border px-3 py-2 text-sm font-medium ${
                   canSaveViews
-                    ? "bg-primary text-white hover:bg-primary/90"
-                    : "cursor-not-allowed border border-border bg-accent text-muted-foreground"
+                    ? "border-border text-foreground hover:bg-muted"
+                    : "cursor-not-allowed border-border bg-accent text-muted-foreground"
                 }`}
               >
-                Save current
+                Save view
               </button>
               <button
                 type="button"
@@ -1523,35 +1602,53 @@ export function ReportsPage({ role }: { role: Role }) {
                 Reset
               </button>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {savedViews.find((view) => view.id === activeView)?.desc ??
-                "No saved view selected."}
-            </p>
           </div>
+
+          {/* Applied filter chips */}
+          {activeFilters > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+              {filters.teamId !== "all" ? (
+                <Chip
+                  label={`Team: ${selectedTeamName}`}
+                  onRemove={() => setFilters((p) => ({ ...p, teamId: "all" }))}
+                />
+              ) : null}
+              {filters.channel !== "all" ? (
+                <Chip
+                  label={`Channel: ${selectedChannelLabel}`}
+                  onRemove={() => setFilters((p) => ({ ...p, channel: "all" }))}
+                />
+              ) : null}
+              {filters.status !== "all" ? (
+                <Chip
+                  label={`Status: ${formatStatus(filters.status)}`}
+                  onRemove={() => setFilters((p) => ({ ...p, status: "all" }))}
+                />
+              ) : null}
+              {filters.priority !== "all" ? (
+                <Chip
+                  label={`Priority: ${filters.priority}`}
+                  onRemove={() => setFilters((p) => ({ ...p, priority: "all" }))}
+                />
+              ) : null}
+              {filters.assignee !== "all" ? (
+                <Chip
+                  label={`Assignee: ${
+                    assignees.find((a) => a.id === filters.assignee)
+                      ?.displayName ??
+                    assignees.find((a) => a.id === filters.assignee)?.email ??
+                    "Selected"
+                  }`}
+                  onRemove={() => setFilters((p) => ({ ...p, assignee: "all" }))}
+                />
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
+        {showFilters ? (
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[180px]">
-              <label className="mb-1 block text-xs font-medium text-foreground">
-                Date range
-              </label>
-              <select
-                value={filters.range}
-                onChange={(event) =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    range: event.target.value as RangeKey,
-                  }))
-                }
-                className="w-full rounded-lg border border-border bg-card text-foreground px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
-              >
-                <option value="last_7">Last 7 days</option>
-                <option value="last_14">Last 14 days</option>
-                <option value="last_30">Last 30 days</option>
-                <option value="custom">Custom</option>
-              </select>
-            </div>
             <div className="min-w-[180px]">
               <label className="mb-1 block text-xs font-medium text-foreground">
                 Team
@@ -1664,6 +1761,7 @@ export function ReportsPage({ role }: { role: Role }) {
             {/* Compare toggle removed (flag still supported internally if needed) */}
           </div>
         </div>
+        ) : null}
 
         <div className="rounded-xl border border-border bg-card px-4 pt-3">
           <div className="flex flex-wrap gap-6 border-b border-border">
@@ -1760,10 +1858,9 @@ export function ReportsPage({ role }: { role: Role }) {
                   />
                 </div>
 
-                <div className="grid gap-5 lg:grid-cols-12">
-                  <div className="lg:col-span-7">
-                    <CardShell
-                      title="Volume vs solved"
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <CardShell
+                    title="Volume vs solved"
                       sub="Daily trend. Compare uses current UI state."
                       right={
                         <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
@@ -1846,11 +1943,8 @@ export function ReportsPage({ role }: { role: Role }) {
                         </div>
                       </div>
                     </CardShell>
-                  </div>
-
-                  <div className="space-y-5 lg:col-span-5">
-                    <CardShell
-                      title="SLA health"
+                  <CardShell
+                    title="SLA health"
                       sub="First response and resolution compliance."
                     >
                       <div className="grid grid-cols-2 gap-4">
@@ -1886,28 +1980,38 @@ export function ReportsPage({ role }: { role: Role }) {
                         </p>
                       </div>
                     </CardShell>
+                  </div>
 
-                    <CardShell
-                      title="Top categories"
-                      sub="Highest volume categories"
-                    >
+                  <CardShell
+                    title="Top categories"
+                    sub="Highest volume categories"
+                  >
                       {hasCategories ? (
-                        <div className="space-y-2">
-                          {topCategories.map((category) => (
-                            <div
-                              key={category.name}
-                              className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-muted"
-                            >
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-medium text-foreground">
+                        <div className="grid gap-x-8 gap-y-2.5 sm:grid-cols-2">
+                          {topCategories.map((category) => {
+                            const maxCategory = topCategories[0]?.count || 1;
+                            return (
+                              <div
+                                key={category.name}
+                                className="flex items-center gap-3 text-sm"
+                              >
+                                <span className="w-40 truncate font-medium text-foreground">
                                   {category.name}
-                                </p>
+                                </span>
+                                <div className="h-2 flex-1 rounded-full bg-accent">
+                                  <div
+                                    className="h-2 rounded-full bg-primary"
+                                    style={{
+                                      width: `${(category.count / maxCategory) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">
+                                  {category.count}
+                                </span>
                               </div>
-                              <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
-                                {category.count}
-                              </span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <EmptyState
@@ -1916,9 +2020,7 @@ export function ReportsPage({ role }: { role: Role }) {
                           compact
                         />
                       )}
-                    </CardShell>
-                  </div>
-                </div>
+                  </CardShell>
               </div>
             ) : null}
 

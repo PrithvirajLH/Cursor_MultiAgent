@@ -177,6 +177,10 @@ export class TicketsService {
     exists: boolean;
     checkedAtMs: number;
   } | null = null;
+  private routingExpandedColumnCache: {
+    exists: boolean;
+    checkedAtMs: number;
+  } | null = null;
 
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
   private toEndExclusive(dateStr: string): Date {
@@ -970,10 +974,25 @@ export class TicketsService {
     }
 
     const routedTarget = payload.assignedTeamId
-      ? { teamId: payload.assignedTeamId, assigneeId: null }
-      : await this.routeTarget(payload.subject, payload.description);
+      ? {
+          teamId: payload.assignedTeamId,
+          assigneeId: null,
+          setPriority: null as TicketPriority | null,
+          addTags: [] as string[],
+        }
+      : await this.routeTarget({
+          subject: payload.subject,
+          description: payload.description,
+          priority: payload.priority ?? null,
+          channel: payload.channel ?? null,
+          categoryId: payload.categoryId ?? null,
+          requesterId,
+        });
     const routedTeamId = routedTarget?.teamId ?? null;
     const routedAssigneeId = routedTarget?.assigneeId ?? null;
+    // Routing actions may override priority and add tags.
+    const effectivePriority = routedTarget?.setPriority ?? payload.priority;
+    const routedTags = routedTarget?.addTags ?? [];
 
     const updatedTicket = await this.prisma.$transaction(async (tx) => {
       if (payload.assigneeId) {
@@ -1028,7 +1047,7 @@ export class TicketsService {
         data: {
           subject: payload.subject,
           description: payload.description,
-          priority: payload.priority,
+          priority: effectivePriority,
           channel: payload.channel,
           requesterId,
           assignedTeamId: routedTeamId,
@@ -1043,10 +1062,11 @@ export class TicketsService {
         },
       });
 
-      if (payload.tags?.length) {
+      const tagsToAttach = [...(payload.tags ?? []), ...routedTags];
+      if (tagsToAttach.length) {
         await this.tagsService.attachManyToTicket(
           ticket.id,
-          payload.tags,
+          tagsToAttach,
           options?.tagSource ?? TagSource.MANUAL,
           user.id,
           tx,
@@ -2526,57 +2546,175 @@ export class TicketsService {
     return `${words[0][0]}${words[1][0]}`.toUpperCase();
   }
 
-  private async routeTarget(subject: string, description: string) {
-    const text = `${subject} ${description}`.toLowerCase();
+  private async routeTarget(ctx: {
+    subject: string;
+    description: string;
+    priority?: TicketPriority | null;
+    channel?: string | null;
+    categoryId?: string | null;
+    requesterId?: string | null;
+  }) {
     const includeAssignee = await this.hasRoutingAssigneeColumn();
-    const rules = includeAssignee
-      ? await this.prisma.$queryRaw<
-          Array<{
-            teamId: string;
-            assigneeId: string | null;
-            name: string;
-            keywords: string[];
-          }>
-        >`
-          SELECT "teamId", "assigneeId", "name", "keywords"
-          FROM "RoutingRule"
-          WHERE "isActive" = true
-          ORDER BY "priority" ASC, "name" ASC
-        `
-      : await this.prisma.$queryRaw<
-          Array<{
-            teamId: string;
-            assigneeId: string | null;
-            name: string;
-            keywords: string[];
-          }>
-        >`
-          SELECT "teamId", NULL::text AS "assigneeId", "name", "keywords"
-          FROM "RoutingRule"
-          WHERE "isActive" = true
-          ORDER BY "priority" ASC, "name" ASC
-        `;
+    const includeExpanded = await this.hasRoutingExpandedColumns();
+
+    const assigneeCol = includeAssignee
+      ? Prisma.sql`"assigneeId"`
+      : Prisma.sql`NULL::text AS "assigneeId"`;
+    const matchTypeCol = includeExpanded
+      ? Prisma.sql`"matchType"`
+      : Prisma.sql`'ALL' AS "matchType"`;
+    const conditionsCol = includeExpanded
+      ? Prisma.sql`"conditions"`
+      : Prisma.sql`'[]'::jsonb AS "conditions"`;
+    const actionsCol = includeExpanded
+      ? Prisma.sql`"actions"`
+      : Prisma.sql`'[]'::jsonb AS "actions"`;
+
+    const rules = await this.prisma.$queryRaw<
+      Array<{
+        teamId: string;
+        assigneeId: string | null;
+        name: string;
+        keywords: string[];
+        matchType: string;
+        conditions: Array<{ field: string; op: string; value: string }> | null;
+        actions: Array<{ type: string; value: string }> | null;
+      }>
+    >`
+      SELECT "teamId", ${assigneeCol}, "name", "keywords",
+        ${matchTypeCol}, ${conditionsCol}, ${actionsCol}
+      FROM "RoutingRule"
+      WHERE "isActive" = true
+      ORDER BY "priority" ASC, "name" ASC
+    `;
+
+    // Resolve the requester's email only if a rule actually tests the sender.
+    let senderEmail: string | null = null;
+    const needsSender = rules.some(
+      (r) =>
+        Array.isArray(r.conditions) &&
+        r.conditions.some((c) => c.field === 'sender'),
+    );
+    if (needsSender && ctx.requesterId) {
+      const requester = await this.prisma.user.findUnique({
+        where: { id: ctx.requesterId },
+        select: { email: true },
+      });
+      senderEmail = requester?.email ?? null;
+    }
+
+    const evalCtx = {
+      subject: ctx.subject ?? '',
+      description: ctx.description ?? '',
+      priority: ctx.priority ?? null,
+      channel: ctx.channel ?? null,
+      categoryId: ctx.categoryId ?? null,
+      senderEmail,
+    };
+    const legacyText = `${evalCtx.subject} ${evalCtx.description}`.toLowerCase();
 
     for (const rule of rules) {
-      const matches = rule.keywords.some((keyword) =>
-        text.includes(keyword.toLowerCase()),
-      );
-      if (matches) {
-        let assigneeId = rule.assigneeId ?? null;
-        if (assigneeId) {
-          const membership = await this.prisma.teamMember.findFirst({
-            where: { teamId: rule.teamId, userId: assigneeId },
-            select: { id: true },
-          });
-          if (!membership) {
-            assigneeId = null;
-          }
-        }
-        return { teamId: rule.teamId, assigneeId };
+      const conditions = Array.isArray(rule.conditions) ? rule.conditions : [];
+      const matched =
+        conditions.length > 0
+          ? this.evaluateRoutingConditions(conditions, rule.matchType, evalCtx)
+          : rule.keywords.some((keyword) =>
+              legacyText.includes(keyword.toLowerCase()),
+            );
+      if (!matched) {
+        continue;
       }
+
+      let teamId = rule.teamId;
+      let assigneeId = rule.assigneeId ?? null;
+      let setPriority: TicketPriority | null = null;
+      const addTags: string[] = [];
+      const actions = Array.isArray(rule.actions) ? rule.actions : [];
+      for (const action of actions) {
+        if (action.type === 'assign_team' && action.value) {
+          teamId = action.value;
+        } else if (action.type === 'assign_member' && action.value) {
+          assigneeId = action.value;
+        } else if (action.type === 'set_priority' && action.value) {
+          const candidate = action.value.toUpperCase();
+          if ((Object.values(TicketPriority) as string[]).includes(candidate)) {
+            setPriority = candidate as TicketPriority;
+          }
+        } else if (action.type === 'add_tag' && action.value) {
+          addTags.push(action.value);
+        }
+      }
+
+      if (assigneeId) {
+        const membership = await this.prisma.teamMember.findFirst({
+          where: { teamId, userId: assigneeId },
+          select: { id: true },
+        });
+        if (!membership) {
+          assigneeId = null;
+        }
+      }
+
+      return { teamId, assigneeId, setPriority, addTags };
     }
 
     return null;
+  }
+
+  private evaluateRoutingConditions(
+    conditions: Array<{ field: string; op: string; value: string }>,
+    matchType: string,
+    ctx: {
+      subject: string;
+      description: string;
+      priority: TicketPriority | null;
+      channel: string | null;
+      categoryId: string | null;
+      senderEmail: string | null;
+    },
+  ): boolean {
+    const evalOne = (c: { field: string; op: string; value: string }) => {
+      let hay: string;
+      switch (c.field) {
+        case 'subject':
+          hay = ctx.subject;
+          break;
+        case 'message':
+          hay = ctx.description;
+          break;
+        case 'priority':
+          hay = ctx.priority ?? '';
+          break;
+        case 'channel':
+          hay = ctx.channel ?? '';
+          break;
+        case 'category':
+          hay = ctx.categoryId ?? '';
+          break;
+        case 'sender':
+          hay = ctx.senderEmail ?? '';
+          break;
+        default:
+          return false;
+      }
+      const needle = (c.value ?? '').toLowerCase().trim();
+      const subject = hay.toLowerCase().trim();
+      switch (c.op) {
+        case 'contains':
+          return subject.includes(needle);
+        case 'not_contains':
+          return !subject.includes(needle);
+        case 'is':
+          return subject === needle;
+        case 'is_not':
+          return subject !== needle;
+        default:
+          return false;
+      }
+    };
+    return matchType === 'ANY'
+      ? conditions.some(evalOne)
+      : conditions.every(evalOne);
   }
 
   /**
@@ -2675,6 +2813,33 @@ export class TicketsService {
       checkedAtMs: now,
     };
     return this.routingAssigneeColumnCache.exists;
+  }
+
+  private async hasRoutingExpandedColumns() {
+    const now = Date.now();
+    if (
+      this.routingExpandedColumnCache &&
+      now - this.routingExpandedColumnCache.checkedAtMs <=
+        this.schemaCheckCacheTtlMs
+    ) {
+      return this.routingExpandedColumnCache.exists;
+    }
+
+    const rows = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'RoutingRule'
+          AND column_name = 'conditions'
+      ) AS "exists"
+    `;
+
+    this.routingExpandedColumnCache = {
+      exists: Boolean(rows[0]?.exists),
+      checkedAtMs: now,
+    };
+    return this.routingExpandedColumnCache.exists;
   }
 
   // ——— Delegations to extracted services ———

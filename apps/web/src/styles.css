@@ -404,6 +404,24 @@
   animation: slide-in-right 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Full slide-over (Drawer). `backwards` fill leaves NO transform at rest, so the
+   panel never becomes a containing block that would clip fixed children. */
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.animate-drawer-in {
+  animation: drawer-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-overlay-in {
+  animation: overlay-in 0.25s ease-out backwards;
+}
+
 /* ─── Staggered Card Entrance ─── */
 .card-stagger > * { animation: card-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .card-stagger > *:nth-child(1) { animation-delay: 0ms; }

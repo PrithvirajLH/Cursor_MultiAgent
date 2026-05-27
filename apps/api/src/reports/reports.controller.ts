@@ -48,6 +48,14 @@ export class ReportsController {
     return this.reportsService.getSlaComplianceByPriority(query, user);
   }
 
+  @Get('sla-compliance-by-team')
+  getSlaComplianceByTeam(
+    @Query() query: ReportQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.reportsService.getSlaComplianceByTeam(query, user);
+  }
+
   @Get('resolution-time')
   getResolutionTime(
     @Query() query: ResolutionTimeQueryDto,

@@ -5,20 +5,36 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export type AuditEventType = string;
 
+type AuditCategory =
+  | 'tickets'
+  | 'routing'
+  | 'sla'
+  | 'automation'
+  | 'custom_fields'
+  | 'ai';
+type AuditCategoryCounts = Record<AuditCategory, number>;
+
+const EMPTY_AUDIT_CATEGORY_COUNTS: AuditCategoryCounts = {
+  tickets: 0,
+  routing: 0,
+  sla: 0,
+  automation: 0,
+  custom_fields: 0,
+  ai: 0,
+};
+
 export type AuditLogEntry = {
   id: string;
   ticketId: string;
   ticketNumber: number;
   ticketDisplayId: string | null;
   type: string;
+  category: AuditCategory;
   payload: Record<string, unknown> | null;
   createdAt: Date;
   createdById: string | null;
   createdBy: { id: string; displayName: string; email: string } | null;
 };
-
-type AuditCategory = 'sla' | 'routing' | 'automation' | 'custom_fields';
-type AuditCategoryCounts = Record<AuditCategory, number>;
 
 type AdminAuditEventRow = {
   id: string;
@@ -37,6 +53,7 @@ type CombinedAuditRow = {
   ticketNumber: number | null;
   ticketDisplayId: string | null;
   type: string;
+  category: AuditCategory;
   payload: unknown;
   createdAt: Date;
   createdById: string | null;
@@ -62,6 +79,7 @@ export class AuditService {
       userId?: string;
       type?: string;
       search?: string;
+      category?: string;
       page?: number;
       pageSize?: number;
     },
@@ -102,6 +120,7 @@ export class AuditService {
       userId?: string;
       type?: string;
       search?: string;
+      category?: string;
     },
     user: AuthUser,
   ): AsyncGenerator<string> {
@@ -149,6 +168,7 @@ export class AuditService {
       userId?: string;
       type?: string;
       search?: string;
+      category?: string;
     },
     user: AuthUser,
     limit: number,
@@ -158,53 +178,36 @@ export class AuditService {
     total: number;
     categoryCounts: AuditCategoryCounts;
   }> {
-    const combinedQuery = await this.buildCombinedAuditQuery(params, user);
+    const withCategory = await this.buildCategorizedAuditQuery(params, user);
+    const categoryFilter = params.category
+      ? Prisma.sql`WHERE "wc"."category" = ${params.category}`
+      : Prisma.empty;
 
     const [rows, totalRows, categoryRows] = await Promise.all([
       this.prisma.$queryRaw<CombinedAuditRow[]>`
-        SELECT *
-        FROM ${combinedQuery} AS "combined"
-        ORDER BY "createdAt" DESC, "entryId" DESC
+        SELECT * FROM ${withCategory} AS "wc"
+        ${categoryFilter}
+        ORDER BY "wc"."createdAt" DESC, "wc"."entryId" DESC
         LIMIT ${limit}
         OFFSET ${offset}
       `,
       this.prisma.$queryRaw<[{ count: bigint }]>`
         SELECT count(*)::bigint AS "count"
-        FROM ${combinedQuery} AS "combined"
+        FROM ${withCategory} AS "wc"
+        ${categoryFilter}
       `,
+      // Counts per category ignore the selected category so the filter pills
+      // always show every category's total within the other active filters.
       this.prisma.$queryRaw<Array<{ category: AuditCategory; count: bigint }>>`
         SELECT "category", count(*)::bigint AS "count"
-        FROM (
-          SELECT
-            CASE
-              WHEN lower("type") LIKE '%custom%'
-                OR lower("type") LIKE '%field%'
-                OR lower(COALESCE("payload"::text, '')) LIKE '%customfield%'
-              THEN 'custom_fields'
-              WHEN lower("type") LIKE '%automation%'
-                OR lower("type") LIKE '%auto%'
-                OR lower(COALESCE("payload"::text, '')) LIKE '%automation%'
-              THEN 'automation'
-              WHEN lower("type") LIKE '%assign%'
-                OR lower("type") LIKE '%transfer%'
-                OR lower("type") LIKE '%team%'
-              THEN 'routing'
-              ELSE 'sla'
-            END AS "category"
-          FROM ${combinedQuery} AS "combined"
-        ) AS "categorized"
+        FROM ${withCategory} AS "wc"
         GROUP BY "category"
       `,
     ]);
 
     const data = rows.map((row) => this.mapCombinedAuditRow(row));
 
-    const categoryCounts: AuditCategoryCounts = {
-      sla: 0,
-      routing: 0,
-      automation: 0,
-      custom_fields: 0,
-    };
+    const categoryCounts: AuditCategoryCounts = { ...EMPTY_AUDIT_CATEGORY_COUNTS };
     for (const row of categoryRows) {
       categoryCounts[row.category] = Number(row.count);
     }
@@ -214,6 +217,43 @@ export class AuditService {
       total: Number(totalRows[0]?.count ?? 0),
       categoryCounts,
     };
+  }
+
+  /** Deterministic event-type → category mapping (single source of truth). */
+  private categoryCaseSql(): Prisma.Sql {
+    // Deterministic event-type → category mapping. Branch order matters: more
+    // specific matches win. Keep aligned with the frontend CATEGORY_META set.
+    return Prisma.sql`
+      CASE
+        WHEN lower("combined"."type") IN ('ai_classification', 'ai_pipeline_trace')
+          THEN 'ai'
+        WHEN lower("combined"."type") LIKE '%custom%field%' THEN 'custom_fields'
+        WHEN lower("combined"."type") LIKE '%automation%' THEN 'automation'
+        WHEN lower("combined"."type") LIKE '%sla%'
+          OR lower("combined"."type") = 'priority_bumped' THEN 'sla'
+        WHEN lower("combined"."type") IN ('ticket_assigned', 'ticket_transferred')
+          OR lower("combined"."type") LIKE '%routing%' THEN 'routing'
+        ELSE 'tickets'
+      END
+    `;
+  }
+
+  /** Combined ticket + admin audit rows, each tagged with a derived category. */
+  private async buildCategorizedAuditQuery(
+    params: {
+      dateFrom?: string;
+      dateTo?: string;
+      userId?: string;
+      type?: string;
+      search?: string;
+    },
+    user: AuthUser,
+  ): Promise<Prisma.Sql> {
+    const combinedQuery = await this.buildCombinedAuditQuery(params, user);
+    return Prisma.sql`(
+      SELECT "combined".*, ${this.categoryCaseSql()} AS "category"
+      FROM ${combinedQuery} AS "combined"
+    )`;
   }
 
   private async buildCombinedAuditQuery(
@@ -281,29 +321,35 @@ export class AuditService {
       userId?: string;
       type?: string;
       search?: string;
+      category?: string;
     },
     user: AuthUser,
     limit: number,
     cursor?: CombinedAuditCursor,
   ): Promise<CombinedAuditRow[]> {
-    const combinedQuery = await this.buildCombinedAuditQuery(params, user);
-    const cursorClause = cursor
-      ? Prisma.sql`
-          WHERE (
-            "createdAt" < ${cursor.createdAt}
-            OR (
-              "createdAt" = ${cursor.createdAt}
-              AND "entryId" < ${cursor.entryId}
-            )
-          )
-        `
-      : Prisma.empty;
+    const withCategory = await this.buildCategorizedAuditQuery(params, user);
+    const conditions: Prisma.Sql[] = [];
+    if (params.category) {
+      conditions.push(Prisma.sql`"wc"."category" = ${params.category}`);
+    }
+    if (cursor) {
+      conditions.push(Prisma.sql`(
+        "wc"."createdAt" < ${cursor.createdAt}
+        OR (
+          "wc"."createdAt" = ${cursor.createdAt}
+          AND "wc"."entryId" < ${cursor.entryId}
+        )
+      )`);
+    }
+    const whereClause =
+      conditions.length > 0
+        ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+        : Prisma.empty;
 
     return this.prisma.$queryRaw<CombinedAuditRow[]>`
-      SELECT *
-      FROM ${combinedQuery} AS "combined"
-      ${cursorClause}
-      ORDER BY "createdAt" DESC, "entryId" DESC
+      SELECT * FROM ${withCategory} AS "wc"
+      ${whereClause}
+      ORDER BY "wc"."createdAt" DESC, "wc"."entryId" DESC
       LIMIT ${limit}
     `;
   }
@@ -315,6 +361,7 @@ export class AuditService {
       ticketNumber: row.ticketNumber ?? 0,
       ticketDisplayId: row.ticketDisplayId ?? null,
       type: row.type,
+      category: row.category,
       payload: (row.payload as Record<string, unknown> | null) ?? null,
       createdAt: row.createdAt,
       createdById: row.createdById,
@@ -463,6 +510,7 @@ export class AuditService {
         ticketNumber: e.ticket.number,
         ticketDisplayId: e.ticket.displayId,
         type: e.type,
+        category: 'tickets' as AuditCategory,
         payload: e.payload as Record<string, unknown> | null,
         createdAt: e.createdAt,
         createdById: e.createdById,
@@ -474,6 +522,7 @@ export class AuditService {
         ticketNumber: 0,
         ticketDisplayId: null,
         type: e.type,
+        category: 'tickets' as AuditCategory,
         payload: (e.payload as Record<string, unknown> | null) ?? null,
         createdAt: e.createdAt,
         createdById: e.createdById,
@@ -771,12 +820,7 @@ export class AuditService {
   }
 
   private countCategories(entries: AuditLogEntry[]): AuditCategoryCounts {
-    const counts: AuditCategoryCounts = {
-      sla: 0,
-      routing: 0,
-      automation: 0,
-      custom_fields: 0,
-    };
+    const counts: AuditCategoryCounts = { ...EMPTY_AUDIT_CATEGORY_COUNTS };
     for (const entry of entries) {
       counts[this.inferCategory(entry)] += 1;
     }

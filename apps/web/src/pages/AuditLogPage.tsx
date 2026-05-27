@@ -1,37 +1,71 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Search } from "lucide-react";
+import { Download, Search, Copy, ArrowRight, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
   fetchAuditLog,
   fetchAuditLogExport,
+  type AuditLogCategory,
   type AuditLogCategoryCounts,
   type AuditLogEntry,
 } from "../api/client";
 import { TopBar } from "../components/TopBar";
+import { Drawer } from "../components/ui/Drawer";
+import { EmptyState } from "../components/ui/EmptyState";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { handleApiError } from "../utils/handleApiError";
 
-type LogCategory = "sla" | "routing" | "automation" | "custom_fields";
-
-const CATEGORY_LABELS: Record<LogCategory, string> = {
-  sla: "SLA",
-  routing: "Routing",
-  automation: "Automation",
-  custom_fields: "Custom Fields",
+const CATEGORY_META: Record<
+  AuditLogCategory,
+  { label: string; chip: string; dot: string }
+> = {
+  tickets: {
+    label: "Tickets",
+    chip: "bg-slate-500/10 text-slate-600 dark:text-slate-300",
+    dot: "bg-slate-400",
+  },
+  routing: {
+    label: "Routing",
+    chip: "bg-green-500/10 text-green-600 dark:text-green-400",
+    dot: "bg-green-500",
+  },
+  sla: {
+    label: "SLA",
+    chip: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    dot: "bg-blue-500",
+  },
+  automation: {
+    label: "Automation",
+    chip: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dot: "bg-amber-500",
+  },
+  custom_fields: {
+    label: "Custom Fields",
+    chip: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+    dot: "bg-purple-500",
+  },
+  ai: {
+    label: "AI",
+    chip: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+    dot: "bg-cyan-500",
+  },
 };
 
-const CATEGORY_COLORS: Record<LogCategory, string> = {
-  sla: "bg-blue-500/10 text-blue-400",
-  routing: "bg-green-500/10 text-green-400",
-  automation: "bg-amber-500/10 text-amber-400",
-  custom_fields: "bg-purple-500/10 text-purple-400",
-};
+const CATEGORY_ORDER: AuditLogCategory[] = [
+  "tickets",
+  "routing",
+  "sla",
+  "automation",
+  "custom_fields",
+  "ai",
+];
 
 const EMPTY_CATEGORY_COUNTS: AuditLogCategoryCounts = {
-  sla: 0,
+  tickets: 0,
   routing: 0,
+  sla: 0,
   automation: 0,
   custom_fields: 0,
+  ai: 0,
 };
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -40,6 +74,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   TICKET_TRANSFERRED: "Transferred Ticket",
   TICKET_STATUS_CHANGED: "Status Changed",
   TICKET_PRIORITY_CHANGED: "Priority Changed",
+  TICKET_CATEGORY_CHANGED: "Category Changed",
   MESSAGE_ADDED: "Message Added",
   ATTACHMENT_ADDED: "Attachment Added",
   FOLLOWER_ADDED: "Follower Added",
@@ -54,6 +89,14 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   SLA_PAUSED: "SLA Paused",
   SLA_RESUMED: "SLA Resumed",
   SLA_BREACHED: "SLA Breached",
+  SLA_AT_RISK: "SLA At Risk",
+  PRIORITY_BUMPED: "Priority Auto-Bumped",
+  AI_CLASSIFICATION: "AI Classification",
+  AI_PIPELINE_TRACE: "AI Pipeline Trace",
+  INBOUND_EMAIL_RECEIVED: "Inbound Email Received",
+  CSAT_SUBMITTED: "CSAT Submitted",
+  ATTACHMENT_SCAN_STATUS_CHANGED: "Attachment Scanned",
+  INTERNAL: "Internal Note",
 };
 
 function toTitleCase(raw: string): string {
@@ -67,36 +110,6 @@ function eventTypeLabel(type: string): string {
   return EVENT_TYPE_LABELS[type] ?? toTitleCase(type);
 }
 
-function inferCategory(entry: AuditLogEntry): LogCategory {
-  const type = entry.type.toLowerCase();
-  const payloadKeys = Object.keys(entry.payload ?? {}).map((key) =>
-    key.toLowerCase(),
-  );
-
-  if (
-    type.includes("custom") ||
-    type.includes("field") ||
-    payloadKeys.some((key) => key.includes("customfield"))
-  ) {
-    return "custom_fields";
-  }
-  if (
-    type.includes("automation") ||
-    type.includes("auto") ||
-    payloadKeys.some((key) => key.includes("automation"))
-  ) {
-    return "automation";
-  }
-  if (
-    type.includes("assign") ||
-    type.includes("transfer") ||
-    type.includes("team")
-  ) {
-    return "routing";
-  }
-  return "sla";
-}
-
 function actorName(entry: AuditLogEntry): string {
   return entry.createdBy?.displayName || entry.createdBy?.email || "System";
 }
@@ -105,15 +118,84 @@ function actorKey(entry: AuditLogEntry): string {
   return entry.createdBy?.id || "system";
 }
 
-function formatTimestamp(iso: string): string {
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+const AVATAR_TONES = [
+  "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+  "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300",
+  "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300",
+  "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
+  "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",
+  "bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-300",
+];
+function avatarTone(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1)
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[hash % AVATAR_TONES.length];
+}
+
+function formatTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatFullTimestamp(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString("en-US", {
+    weekday: "short",
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function relativeTime(iso: string): string {
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const sec = Math.round(diffMs / 1000);
+  if (sec < 45) return "just now";
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.round(hr / 24);
+  if (day < 30) return `${day} day${day === 1 ? "" : "s"} ago`;
+  const mo = Math.round(day / 30);
+  if (mo < 12) return `${mo} month${mo === 1 ? "" : "s"} ago`;
+  return `${Math.round(mo / 12)} year(s) ago`;
+}
+
+function dayLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+  if (sameDay(date, today)) return "Today";
+  if (sameDay(date, yesterday)) return "Yesterday";
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 }
 
@@ -142,132 +224,55 @@ function detailLabel(key: string): string {
 function detailValue(value: unknown): string {
   if (value == null) return "—";
   if (Array.isArray(value)) {
-    const rendered = value.map((item) => detailValue(item)).filter(Boolean);
-    return rendered.join(", ");
+    return value
+      .map((item) => detailValue(item))
+      .filter(Boolean)
+      .join(", ");
   }
   if (value && typeof value === "object") {
     const text = JSON.stringify(value);
     return text.length > 80 ? `${text.slice(0, 77)}...` : text;
   }
   const text = String(value).trim();
-  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
-function payloadChips(
-  payload: Record<string, unknown>,
-  omit: string[] = [],
-  max = 3,
-): string[] {
-  const omitted = new Set(omit);
-  const chips: string[] = [];
-  for (const [key, value] of Object.entries(payload)) {
-    if (omitted.has(key) || value == null) continue;
-    const rendered = detailValue(value);
-    if (!rendered || rendered === "—") continue;
-    chips.push(`${detailLabel(key)}: ${rendered}`);
-    if (chips.length >= max) break;
-  }
-  return chips;
-}
-
-function formatDetails(entry: AuditLogEntry): {
-  summary: string;
-  chips: string[];
-} {
+/** One-line human summary used in the table's Summary column. */
+function summarize(entry: AuditLogEntry): string {
   const payload = (entry.payload ?? {}) as Record<string, unknown>;
-  const ticketLabel =
-    entry.ticketDisplayId ??
-    (entry.ticketNumber > 0 ? `#${entry.ticketNumber}` : null);
+  const fromTo =
+    payload.from != null && payload.to != null
+      ? `${String(payload.from)} → ${String(payload.to)}`
+      : null;
   switch (entry.type) {
-    case "TICKET_STATUS_CHANGED": {
-      const from = payload.from != null ? String(payload.from) : null;
-      const to = payload.to != null ? String(payload.to) : null;
-      const summary =
-        from && to ? `Status changed: ${from} -> ${to}` : "Status updated";
-      return { summary, chips: payloadChips(payload, ["from", "to"]) };
-    }
-    case "TICKET_PRIORITY_CHANGED": {
-      const from = payload.from != null ? String(payload.from) : null;
-      const to = payload.to != null ? String(payload.to) : null;
-      const summary =
-        from && to ? `Priority changed: ${from} -> ${to}` : "Priority updated";
-      return { summary, chips: payloadChips(payload, ["from", "to"]) };
-    }
+    case "TICKET_STATUS_CHANGED":
+      return fromTo ? `Status: ${fromTo}` : "Status updated";
+    case "TICKET_PRIORITY_CHANGED":
+      return fromTo ? `Priority: ${fromTo}` : "Priority updated";
     case "TICKET_ASSIGNED": {
-      const assignee =
-        payload.assigneeName ??
-        payload.assigneeEmail ??
-        payload.assigneeId ??
-        null;
-      const summary = assignee
-        ? `Assigned to ${String(assignee)}`
-        : "Ticket assigned";
-      return {
-        summary,
-        chips: payloadChips(payload, [
-          "assigneeName",
-          "assigneeEmail",
-          "assigneeId",
-        ]),
-      };
+      const a = payload.assigneeName ?? payload.assigneeEmail ?? null;
+      return a ? `Assigned to ${String(a)}` : "Ticket assigned";
     }
     case "TICKET_TRANSFERRED": {
-      const team = payload.toTeamName ?? payload.toTeamId ?? null;
-      const summary = team
-        ? `Transferred to team ${String(team)}`
-        : "Ticket transferred";
-      return {
-        summary,
-        chips: payloadChips(payload, ["toTeamName", "toTeamId"]),
-      };
+      const t = payload.toTeamName ?? payload.toTeamId ?? null;
+      return t ? `Transferred to ${String(t)}` : "Ticket transferred";
     }
-    case "ATTACHMENT_ADDED": {
-      const fileName = payload.fileName;
-      const summary = fileName
-        ? `Attachment uploaded: ${String(fileName)}`
+    case "ATTACHMENT_ADDED":
+      return payload.fileName
+        ? `Uploaded ${String(payload.fileName)}`
         : "Attachment uploaded";
-      return { summary, chips: payloadChips(payload, ["fileName"]) };
-    }
     case "MESSAGE_ADDED":
-      return {
-        summary: "Message added",
-        chips: payloadChips(payload),
-      };
-    case "FOLLOWER_ADDED":
-      return {
-        summary: "Follower added",
-        chips: payloadChips(payload),
-      };
-    case "FOLLOWER_REMOVED":
-      return {
-        summary: "Follower removed",
-        chips: payloadChips(payload),
-      };
+      return "Message added";
     case "CUSTOM_FIELD_UPDATED": {
-      const field =
-        payload.customFieldName ??
-        payload.fieldName ??
-        payload.customFieldId ??
-        null;
-      const summary = field
-        ? `Updated custom field: ${String(field)}`
-        : "Custom field updated";
-      return {
-        summary,
-        chips: payloadChips(payload, [
-          "customFieldName",
-          "fieldName",
-          "customFieldId",
-        ]),
-      };
+      const f = payload.customFieldName ?? payload.fieldName ?? null;
+      return f ? `Updated field ${String(f)}` : "Custom field updated";
     }
-    default:
-      return {
-        summary:
-          eventTypeLabel(entry.type) ||
-          (ticketLabel ? `Ticket ${ticketLabel}` : "No additional details"),
-        chips: payloadChips(payload),
-      };
+    default: {
+      const keys = Object.keys(payload).filter((k) => payload[k] != null);
+      if (keys.length === 0) return eventTypeLabel(entry.type);
+      const first = keys[0];
+      return `${detailLabel(first)}: ${detailValue(payload[first])}`;
+    }
   }
 }
 
@@ -280,6 +285,12 @@ function downloadCsvContent(content: string, fileName: string) {
   anchor.click();
   window.URL.revokeObjectURL(url);
 }
+
+function ymd(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+type QuickRange = "today" | "7d" | "30d" | "all";
 
 export function AuditLogPage() {
   const headerCtx = useHeaderContext();
@@ -298,19 +309,24 @@ export function AuditLogPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | LogCategory>(
+  const [categoryFilter, setCategoryFilter] = useState<"all" | AuditLogCategory>(
     "all",
   );
   const [userFilter, setUserFilter] = useState("all");
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [quickRange, setQuickRange] = useState<QuickRange>("all");
+
+  const [selected, setSelected] = useState<AuditLogEntry | null>(null);
 
   useEffect(() => {
     void loadAuditLog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     page,
     search,
+    categoryFilter,
     userFilter,
     eventTypeFilter,
     dateFrom,
@@ -320,15 +336,8 @@ export function AuditLogPage() {
 
   async function loadAuditLog() {
     if (dateFrom && dateTo && dateFrom > dateTo) {
-      setError("Date from must be before date to.");
+      setError("'From' date must be before 'To' date.");
       setEntries([]);
-      setMeta((prev) => ({
-        ...prev,
-        page: 1,
-        total: 0,
-        totalPages: 1,
-        categoryCounts: EMPTY_CATEGORY_COUNTS,
-      }));
       return;
     }
     setLoading(true);
@@ -339,6 +348,7 @@ export function AuditLogPage() {
         pageSize,
         userId: userFilter === "all" ? undefined : userFilter,
         type: eventTypeFilter === "all" ? undefined : eventTypeFilter,
+        category: categoryFilter === "all" ? undefined : categoryFilter,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         search: search.trim() || undefined,
@@ -358,54 +368,55 @@ export function AuditLogPage() {
     }
   }
 
-  const rows = useMemo(() => {
-    return entries.map((entry) => {
-      const category = inferCategory(entry);
-      const action = eventTypeLabel(entry.type);
-      const actor = actorName(entry);
-      const details = formatDetails(entry);
-      return {
-        ...entry,
-        category,
-        action,
-        actor,
-        actorId: actorKey(entry),
-        details: details.summary,
-        detailChips: details.chips,
-        timestamp: formatTimestamp(entry.createdAt),
-      };
-    });
-  }, [entries]);
-
   const eventTypeOptions = useMemo(() => {
     const values = new Set<string>(Object.keys(EVENT_TYPE_LABELS));
-    rows.forEach((row) => values.add(row.type));
+    entries.forEach((e) => values.add(e.type));
     if (eventTypeFilter !== "all") values.add(eventTypeFilter);
     return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [rows, eventTypeFilter]);
+  }, [entries, eventTypeFilter]);
 
   const userOptions = useMemo(() => {
     const map = new Map<string, string>();
-    rows.forEach((row) => {
-      map.set(row.actorId, row.actor);
-    });
+    entries.forEach((e) => map.set(actorKey(e), actorName(e)));
     return Array.from(map.entries()).map(([value, label]) => ({
       value,
       label,
     }));
-  }, [rows]);
+  }, [entries]);
 
-  const filteredRows = useMemo(
-    () =>
-      rows.filter(
-        (row) => categoryFilter === "all" || row.category === categoryFilter,
-      ),
-    [rows, categoryFilter],
-  );
+  // Group the (server-sorted) entries into day buckets for the table.
+  const dayGroups = useMemo(() => {
+    const groups: { label: string; rows: AuditLogEntry[] }[] = [];
+    for (const entry of entries) {
+      const label = dayLabel(entry.createdAt);
+      const last = groups[groups.length - 1];
+      if (last && last.label === label) last.rows.push(entry);
+      else groups.push({ label, rows: [entry] });
+    }
+    return groups;
+  }, [entries]);
 
-  const countsByCategory = useMemo(() => {
-    return meta.categoryCounts;
-  }, [meta.categoryCounts]);
+  const totalActive = meta.total;
+  const userLabel = userOptions.find((u) => u.value === userFilter)?.label;
+
+  function setRange(range: QuickRange) {
+    setQuickRange(range);
+    setPage(1);
+    const today = new Date();
+    if (range === "all") {
+      setDateFrom("");
+      setDateTo("");
+      return;
+    }
+    setDateTo(ymd(today));
+    if (range === "today") {
+      setDateFrom(ymd(today));
+    } else {
+      const from = new Date(today);
+      from.setDate(today.getDate() - (range === "7d" ? 6 : 29));
+      setDateFrom(ymd(from));
+    }
+  }
 
   function clearFilters() {
     setSearch("");
@@ -414,47 +425,31 @@ export function AuditLogPage() {
     setEventTypeFilter("all");
     setDateFrom("");
     setDateTo("");
+    setQuickRange("all");
     setPage(1);
   }
+
+  const hasActiveFilters =
+    Boolean(search.trim()) ||
+    categoryFilter !== "all" ||
+    userFilter !== "all" ||
+    eventTypeFilter !== "all" ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo);
 
   async function exportCsv() {
     setExporting(true);
     setError(null);
     try {
-      if (categoryFilter === "all") {
-        const csv = await fetchAuditLogExport({
-          userId: userFilter === "all" ? undefined : userFilter,
-          type: eventTypeFilter === "all" ? undefined : eventTypeFilter,
-          dateFrom: dateFrom || undefined,
-          dateTo: dateTo || undefined,
-          search: search.trim() || undefined,
-        });
-        downloadCsvContent(csv, "audit-logs.csv");
-        return;
-      }
-
-      const csvRows = [
-        ["Timestamp", "User", "Category", "Action", "Details", "Ticket"],
-        ...filteredRows.map((row) => [
-          row.timestamp,
-          row.actor,
-          CATEGORY_LABELS[row.category],
-          row.action,
-          row.detailChips.length > 0
-            ? `${row.details} | ${row.detailChips.join(" | ")}`
-            : row.details,
-          row.ticketDisplayId ??
-            (row.ticketNumber > 0 ? `#${row.ticketNumber}` : "N/A"),
-        ]),
-      ];
-      const csv = csvRows
-        .map((row) =>
-          row
-            .map((value) => `"${String(value).replaceAll('"', '""')}"`)
-            .join(","),
-        )
-        .join("\n");
-      downloadCsvContent(csv, `audit-logs-${categoryFilter}.csv`);
+      const csv = await fetchAuditLogExport({
+        userId: userFilter === "all" ? undefined : userFilter,
+        type: eventTypeFilter === "all" ? undefined : eventTypeFilter,
+        category: categoryFilter === "all" ? undefined : categoryFilter,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: search.trim() || undefined,
+      });
+      downloadCsvContent(csv, "audit-log.csv");
     } catch (err) {
       setError(handleApiError(err));
     } finally {
@@ -462,10 +457,13 @@ export function AuditLogPage() {
     }
   }
 
+  const inputClass =
+    "rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground text-sm focus:border-transparent focus:ring-2 focus:ring-ring";
+
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none py-4 px-6">
+        <div className="mx-auto max-w-none px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -476,10 +474,11 @@ export function AuditLogPage() {
               leftContent={
                 <div className="min-w-0">
                   <h1 className="text-xl font-semibold text-foreground">
-                    Audit Logs
+                    Audit Log
                   </h1>
                   <p className="mt-0.5 text-sm text-muted-foreground">
-                    Track changes and activity.
+                    An immutable record of every change, for compliance and
+                    investigation.
                   </p>
                 </div>
               }
@@ -487,10 +486,11 @@ export function AuditLogPage() {
           ) : (
             <div className="min-w-0">
               <h1 className="text-xl font-semibold text-foreground">
-                Audit Logs
+                Audit Log
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
-                Track changes and activity.
+                An immutable record of every change, for compliance and
+                investigation.
               </p>
             </div>
           )}
@@ -498,35 +498,51 @@ export function AuditLogPage() {
       </div>
 
       <div className="mx-auto max-w-none p-6">
-        <div className="mb-5 flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[220px] flex-1">
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {/* Toolbar */}
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[240px] flex-1">
             <input
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
                 setPage(1);
               }}
-              placeholder="Search logs..."
-              className="w-full rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground py-2 pl-9 pr-3 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+              placeholder="Search events, users, tickets, payloads…"
+              className={`${inputClass} w-full py-2 pl-9 pr-3`}
             />
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           </div>
 
-          <select
-            value={categoryFilter}
-            onChange={(event) => {
-              setCategoryFilter(event.target.value as "all" | LogCategory);
-              setPage(1);
-            }}
-            className="custom-select min-w-[140px]"
-          >
-            <option value="all">All Categories</option>
-            {(Object.keys(CATEGORY_LABELS) as LogCategory[]).map((category) => (
-              <option key={category} value={category}>
-                {CATEGORY_LABELS[category]}
-              </option>
+          {/* Quick ranges */}
+          <div className="flex items-center rounded-lg border border-border bg-card p-0.5">
+            {(
+              [
+                ["today", "Today"],
+                ["7d", "7d"],
+                ["30d", "30d"],
+                ["all", "All"],
+              ] as [QuickRange, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRange(value)}
+                className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  quickRange === value
+                    ? "bg-primary text-white"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
             ))}
-          </select>
+          </div>
 
           <select
             value={userFilter}
@@ -534,9 +550,9 @@ export function AuditLogPage() {
               setUserFilter(event.target.value);
               setPage(1);
             }}
-            className="custom-select min-w-[140px]"
+            className={`${inputClass} min-w-[130px] px-3 py-2`}
           >
-            <option value="all">All Users</option>
+            <option value="all">All users</option>
             {userOptions.map((user) => (
               <option key={user.value} value={user.value}>
                 {user.label}
@@ -550,9 +566,9 @@ export function AuditLogPage() {
               setEventTypeFilter(event.target.value);
               setPage(1);
             }}
-            className="custom-select min-w-[150px]"
+            className={`${inputClass} min-w-[150px] px-3 py-2`}
           >
-            <option value="all">All Event Types</option>
+            <option value="all">All event types</option>
             {eventTypeOptions.map((type) => (
               <option key={type} value={type}>
                 {eventTypeLabel(type)}
@@ -560,250 +576,235 @@ export function AuditLogPage() {
             ))}
           </select>
 
-          <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
-            <span className="text-xs font-medium text-muted-foreground">From</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value);
-                setPage(1);
-              }}
-              className="rounded border-0 bg-transparent p-0 text-sm text-foreground focus:ring-0"
-            />
-          </label>
-
-          <label className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
-            <span className="text-xs font-medium text-muted-foreground">To</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value);
-                setPage(1);
-              }}
-              className="rounded border-0 bg-transparent p-0 text-sm text-foreground focus:ring-0"
-            />
-          </label>
-
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            Clear
-          </button>
-
           <button
             type="button"
             disabled={exporting}
-            onClick={() => {
-              void exportCsv();
-            }}
-            className="inline-flex items-center space-x-2 rounded-lg border border-blue-200 px-3 py-2 text-sm text-primary hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground"
+            onClick={() => void exportCsv()}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Download className="h-4 w-4" />
-            <span>{exporting ? "Exporting..." : "Export"}</span>
+            <span>{exporting ? "Exporting…" : "Export CSV"}</span>
           </button>
-
-          <span className="ml-auto text-xs text-muted-foreground">
-            {categoryFilter === "all"
-              ? `Page ${meta.page} of ${meta.totalPages} (${meta.total} total)`
-              : `${filteredRows.length} of ${rows.length} entries on current page`}
-          </span>
         </div>
 
-        <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {(Object.keys(CATEGORY_LABELS) as LogCategory[]).map((category) => (
-            <button
-              key={category}
-              type="button"
-              onClick={() =>
-                setCategoryFilter((prev) =>
-                  prev === category ? "all" : category,
-                )
-              }
-              className={`flex items-center space-x-3 rounded-xl border border-border bg-card p-3 text-left transition-all ${
-                categoryFilter === category ? "ring-2 ring-blue-500" : ""
-              }`}
-            >
-              <div
-                className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                  CATEGORY_COLORS[category].split(" ")[0]
+        {/* Category pills */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setCategoryFilter("all");
+              setPage(1);
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              categoryFilter === "all"
+                ? "bg-foreground text-background"
+                : "bg-card text-muted-foreground hover:text-foreground border border-border"
+            }`}
+          >
+            All <span className="ml-1 tabular-nums opacity-70">{totalActive}</span>
+          </button>
+          {CATEGORY_ORDER.map((category) => {
+            const active = categoryFilter === category;
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => {
+                  setCategoryFilter(active ? "all" : category);
+                  setPage(1);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  active
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <span
-                  className={`text-sm font-semibold ${
-                    CATEGORY_COLORS[category].split(" ")[1]
-                  }`}
-                >
-                  {CATEGORY_LABELS[category].charAt(0)}
+                  className={`h-1.5 w-1.5 rounded-full ${CATEGORY_META[category].dot}`}
+                />
+                {CATEGORY_META[category].label}
+                <span className="tabular-nums opacity-70">
+                  {meta.categoryCounts[category]}
                 </span>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {CATEGORY_LABELS[category]}
-                </p>
-                <p className="text-sm font-bold text-foreground">
-                  {countsByCategory[category]}
-                </p>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
 
+        {/* Applied filter chips */}
+        {hasActiveFilters && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground">Filters:</span>
+            {search.trim() && (
+              <FilterChip
+                label={`“${search.trim()}”`}
+                onClear={() => {
+                  setSearch("");
+                  setPage(1);
+                }}
+              />
+            )}
+            {categoryFilter !== "all" && (
+              <FilterChip
+                label={CATEGORY_META[categoryFilter].label}
+                onClear={() => {
+                  setCategoryFilter("all");
+                  setPage(1);
+                }}
+              />
+            )}
+            {userFilter !== "all" && (
+              <FilterChip
+                label={userLabel ?? "User"}
+                onClear={() => {
+                  setUserFilter("all");
+                  setPage(1);
+                }}
+              />
+            )}
+            {eventTypeFilter !== "all" && (
+              <FilterChip
+                label={eventTypeLabel(eventTypeFilter)}
+                onClear={() => {
+                  setEventTypeFilter("all");
+                  setPage(1);
+                }}
+              />
+            )}
+            {(dateFrom || dateTo) && (
+              <FilterChip
+                label={`${dateFrom || "…"} → ${dateTo || "…"}`}
+                onClear={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                  setQuickRange("all");
+                  setPage(1);
+                }}
+              />
+            )}
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {/* Table */}
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           {loading ? (
-            <>
-              <div className="flex items-center gap-4 border-b border-border bg-muted px-4 py-3">
-                <div className="h-4 w-40 skeleton-shimmer rounded" />
-                <div className="h-4 w-24 skeleton-shimmer rounded" />
-                <div className="h-4 w-24 skeleton-shimmer rounded" />
-                <div className="h-4 w-32 skeleton-shimmer rounded" />
-                <div className="h-4 w-20 skeleton-shimmer rounded" />
-              </div>
+            <div className="divide-y divide-border">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div
-                  key={`row-skel-${i}`}
-                  className="flex items-center gap-4 border-b border-border px-4 py-3.5 last:border-0"
+                  key={`skel-${i}`}
+                  className="flex items-center gap-4 px-4 py-3.5"
                 >
-                  <div className="h-4 w-40 skeleton-shimmer rounded" />
-                  <div className="h-4 w-24 skeleton-shimmer rounded" />
-                  <div className="h-4 w-24 skeleton-shimmer rounded" />
+                  <div className="h-7 w-7 skeleton-shimmer rounded-full" />
                   <div className="h-4 w-32 skeleton-shimmer rounded" />
                   <div className="h-4 w-20 skeleton-shimmer rounded" />
+                  <div className="h-4 w-40 skeleton-shimmer rounded" />
+                  <div className="ml-auto h-4 w-16 skeleton-shimmer rounded" />
                 </div>
               ))}
-            </>
-          ) : error ? (
-            <div className="p-6 text-sm text-red-600">{error}</div>
-          ) : filteredRows.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="text-sm font-semibold text-foreground">
-                No matching log entries
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Try adjusting your filters.
-              </p>
             </div>
+          ) : entries.length === 0 ? (
+            <EmptyState
+              bordered={false}
+              icon={<Search className="h-6 w-6" />}
+              title="No matching events"
+              description={
+                hasActiveFilters
+                  ? "No audit events match these filters. Try widening the date range or clearing filters."
+                  : "Activity will appear here as changes happen across the system."
+              }
+              action={
+                hasActiveFilters ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                  >
+                    Clear filters
+                  </button>
+                ) : undefined
+              }
+            />
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full table-fixed divide-y divide-slate-200 text-sm">
+              <table className="min-w-full text-sm">
                 <thead className="bg-muted">
-                  <tr>
-                    <th className="w-44 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Date
-                    </th>
-                    <th className="w-48 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      User
-                    </th>
-                    <th className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Category
-                    </th>
-                    <th className="w-48 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Event
-                    </th>
-                    <th className="w-40 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Ticket
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Details
-                    </th>
-                    <th className="w-36 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Event ID
-                    </th>
+                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <th className="w-24 px-4 py-2.5">Time</th>
+                    <th className="w-52 px-4 py-2.5">User</th>
+                    <th className="w-32 px-4 py-2.5">Category</th>
+                    <th className="w-48 px-4 py-2.5">Event</th>
+                    <th className="w-32 px-4 py-2.5">Ticket</th>
+                    <th className="px-4 py-2.5">Summary</th>
+                    <th className="w-8 px-4 py-2.5" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-card">
-                  {filteredRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-muted">
-                      <td className="px-4 py-3 align-top text-xs text-muted-foreground">
-                        {row.timestamp}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <p
-                          className="truncate font-medium text-foreground"
-                          title={row.actor}
+                <tbody>
+                  {dayGroups.map((group) => (
+                    <DayGroup key={group.label} label={group.label}>
+                      {group.rows.map((entry) => (
+                        <tr
+                          key={entry.id}
+                          onClick={() => setSelected(entry)}
+                          className="cursor-pointer border-b border-border last:border-0 hover:bg-muted"
                         >
-                          {row.actor}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <span
-                          className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${CATEGORY_COLORS[row.category]}`}
-                        >
-                          {CATEGORY_LABELS[row.category]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 align-top text-foreground">
-                        {row.action}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        {row.ticketId && row.ticketNumber > 0 ? (
-                          <Link
-                            to={`/tickets/${row.ticketId}`}
-                            className="font-medium text-blue-700 hover:text-blue-800 hover:underline"
-                          >
-                            {row.ticketDisplayId ?? `#${row.ticketNumber}`}
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-top text-foreground">
-                        <p
-                          className="line-clamp-2 font-medium text-foreground"
-                          title={row.details}
-                        >
-                          {row.details}
-                        </p>
-                        {row.detailChips.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {row.detailChips.map((chip, index) => (
+                          <td className="px-4 py-3 align-top text-xs text-muted-foreground">
+                            {formatTime(entry.createdAt)}
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="flex items-center gap-2.5">
                               <span
-                                key={`${row.id}-chip-${index}`}
-                                className="rounded bg-accent px-2 py-0.5 text-xs text-foreground"
-                                title={chip}
+                                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${avatarTone(
+                                  actorKey(entry),
+                                )}`}
                               >
-                                {chip}
+                                {initials(actorName(entry))}
                               </span>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 align-top">
-                        <span className="inline-flex items-center gap-1.5">
-                          <span
-                            className="font-mono text-xs text-muted-foreground"
-                            title={row.id}
-                          >
-                            {row.id.slice(0, 8)}…
-                          </span>
-                          <button
-                            type="button"
-                            title="Copy full ID"
-                            onClick={() => {
-                              void navigator.clipboard.writeText(row.id);
-                            }}
-                            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-muted-foreground transition-colors"
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-3.5 w-3.5"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                              <span className="truncate font-medium text-foreground">
+                                {actorName(entry)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${CATEGORY_META[entry.category].chip}`}
                             >
-                              <rect x="9" y="9" width="13" height="13" rx="2" />
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                            </svg>
-                          </button>
-                        </span>
-                      </td>
-                    </tr>
+                              {CATEGORY_META[entry.category].label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top font-medium text-foreground">
+                            {eventTypeLabel(entry.type)}
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            {entry.ticketId && entry.ticketNumber > 0 ? (
+                              <Link
+                                to={`/tickets/${entry.ticketId}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="font-medium text-primary hover:underline"
+                              >
+                                {entry.ticketDisplayId ?? `#${entry.ticketNumber}`}
+                              </Link>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-top text-muted-foreground">
+                            <span className="line-clamp-1" title={summarize(entry)}>
+                              {summarize(entry)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top text-muted-foreground">
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </td>
+                        </tr>
+                      ))}
+                    </DayGroup>
                   ))}
                 </tbody>
               </table>
@@ -811,44 +812,225 @@ export function AuditLogPage() {
           )}
         </div>
 
-        {categoryFilter === "all" && meta.totalPages > 1 && (
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page <= 1 || loading}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground"
-            >
-              Prev
-            </button>
+        {/* Pagination */}
+        {meta.totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
-              Page {meta.page} of {meta.totalPages}
+              Page {meta.page} of {meta.totalPages} · {meta.total} events
             </span>
-            <button
-              type="button"
-              onClick={() =>
-                setPage((prev) => Math.min(meta.totalPages, prev + 1))
-              }
-              disabled={page >= meta.totalPages || loading}
-              className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page <= 1 || loading}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setPage((prev) => Math.min(meta.totalPages, prev + 1))
+                }
+                disabled={page >= meta.totalPages || loading}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <AuditDetailDrawer entry={selected} onClose={() => setSelected(null)} />
+      )}
+    </section>
+  );
+}
+
+function FilterChip({
+  label,
+  onClear,
+}: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 font-medium text-foreground">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="Remove filter"
+        className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
+
+function DayGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <tr>
+        <td
+          colSpan={7}
+          className="border-b border-border bg-background/60 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+        >
+          {label}
+        </td>
+      </tr>
+      {children}
+    </>
+  );
+}
+
+function AuditDetailDrawer({
+  entry,
+  onClose,
+}: {
+  entry: AuditLogEntry;
+  onClose: () => void;
+}) {
+  const payload = (entry.payload ?? {}) as Record<string, unknown>;
+  const hasDiff = payload.from != null && payload.to != null;
+  const payloadKeys = Object.keys(payload).filter(
+    (k) => !(hasDiff && (k === "from" || k === "to")),
+  );
+  const meta = CATEGORY_META[entry.category];
+  const name = actorName(entry);
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      widthClassName="max-w-xl"
+      icon={
+        <span
+          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${meta.chip}`}
+        >
+          <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+        </span>
+      }
+      title={eventTypeLabel(entry.type)}
+      description={meta.label}
+      headerActions={
+        <button
+          type="button"
+          onClick={() => void navigator.clipboard.writeText(entry.id)}
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+          title={entry.id}
+        >
+          <Copy className="h-3.5 w-3.5" /> Event ID
+        </button>
+      }
+    >
+      <div className="space-y-5">
+        {/* Actor + time */}
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 p-4">
+          <span
+            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-semibold ${avatarTone(
+              actorKey(entry),
+            )}`}
+          >
+            {initials(name)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {name}
+            </p>
+            {entry.createdBy?.email && (
+              <p className="truncate text-xs text-muted-foreground">
+                {entry.createdBy.email}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            When
+          </p>
+          <p className="text-sm text-foreground">
+            {formatFullTimestamp(entry.createdAt)}
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {relativeTime(entry.createdAt)} ·{" "}
+            {new Date(entry.createdAt).toISOString()} UTC
+          </p>
+        </div>
+
+        {entry.ticketId && entry.ticketNumber > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Ticket
+            </p>
+            <Link
+              to={`/tickets/${entry.ticketId}`}
+              className="text-sm font-medium text-primary hover:underline"
             >
-              Next
-            </button>
+              {entry.ticketDisplayId ?? `#${entry.ticketNumber}`}
+            </Link>
           </div>
         )}
 
-        {categoryFilter !== "all" && meta.totalPages > 1 && (
-          <p className="mt-3 text-xs text-amber-600">
-            Category filtering applies to the currently loaded page. Clear
-            category filter to page through all logs.
-          </p>
+        {hasDiff && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Change
+            </p>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="rounded-md bg-red-50 px-2 py-1 font-medium text-red-700 line-through dark:bg-red-500/10 dark:text-red-400">
+                {String(payload.from)}
+              </span>
+              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              <span className="rounded-md bg-green-50 px-2 py-1 font-medium text-green-700 dark:bg-green-500/10 dark:text-green-400">
+                {String(payload.to)}
+              </span>
+            </div>
+          </div>
         )}
 
-        <div className="mt-4 text-xs text-muted-foreground">
-          Tip: search keywords like <code>deleted</code>, <code>status</code>,
-          or ticket IDs.
+        {payloadKeys.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Details
+            </p>
+            <dl className="divide-y divide-border overflow-hidden rounded-xl border border-border">
+              {payloadKeys.map((key) => (
+                <div
+                  key={key}
+                  className="flex items-start justify-between gap-4 bg-card px-3 py-2"
+                >
+                  <dt className="text-xs font-medium text-muted-foreground">
+                    {detailLabel(key)}
+                  </dt>
+                  <dd className="max-w-[60%] break-words text-right text-xs text-foreground">
+                    {detailValue(payload[key])}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Raw payload
+          </p>
+          <pre className="max-h-72 overflow-auto rounded-xl border border-border bg-muted/50 p-3 text-[11px] leading-relaxed text-foreground">
+            {JSON.stringify(entry.payload ?? {}, null, 2)}
+          </pre>
         </div>
       </div>
-    </section>
+    </Drawer>
   );
 }

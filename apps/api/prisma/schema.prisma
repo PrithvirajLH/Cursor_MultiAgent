@@ -400,6 +400,11 @@ model RoutingRule {
   assigneeId String?
   priority  Int      @default(100)
   isActive  Boolean  @default(true)
+  // Expanded rule engine. `keywords`/`teamId`/`assigneeId` are kept in sync
+  // (mirrored from conditions/actions) so the legacy executor stays valid.
+  matchType  String  @default("ALL") // "ALL" (AND) | "ANY" (OR)
+  conditions Json    @default("[]")  // [{ field, op, value }]
+  actions    Json    @default("[]")  // [{ type, value }]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
