@@ -207,7 +207,7 @@ export function MessageBody({
               src={lightbox.src}
               alt={lightbox.alt}
               onClick={(e) => e.stopPropagation()}
-              className="max-h-[86vh] max-w-[92vw] cursor-default rounded-xl shadow-2xl ring-1 ring-white/10"
+              className="max-h-[calc(86vh/var(--ui-zoom))] max-w-[calc(92vw/var(--ui-zoom))] cursor-default rounded-xl shadow-2xl ring-1 ring-white/10"
             />
           </div>,
           document.body,

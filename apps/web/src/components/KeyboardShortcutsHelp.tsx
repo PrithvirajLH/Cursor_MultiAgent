@@ -96,7 +96,7 @@ export function KeyboardShortcutsHelp({
           </button>
         </div>
 
-        <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="p-4 space-y-4 max-h-[calc(70vh/var(--ui-zoom))] overflow-y-auto">
           <div>
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
               Global

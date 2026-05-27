@@ -264,7 +264,7 @@ function AgentModal({
         aria-modal="true"
         aria-label={`Agent details for ${agent.name}`}
         tabIndex={-1}
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-card shadow-xl"
+        className="max-h-[calc(90vh/var(--ui-zoom))] w-full max-w-2xl overflow-y-auto rounded-lg bg-card shadow-xl"
       >
         <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-6 py-4">
           <div className="flex items-center gap-3">

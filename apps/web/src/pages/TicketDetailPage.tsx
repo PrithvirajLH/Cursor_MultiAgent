@@ -15,22 +15,27 @@ import {
   addTicketMessage,
   ApiError,
   assignTicket,
+  bulkPriorityTickets,
   downloadAttachment,
+  fetchCategories,
   followTicket,
   fetchTeamMembers,
   fetchTicketById,
   fetchTicketEvents,
   fetchTicketMessages,
   sendTicketTypingSignal,
+  setTicketCategory,
   transitionTicket,
   transferTicket,
   unfollowTicket,
   uploadTicketAttachment,
+  type CategoryRef,
   type TeamMember,
   type TeamRef,
   type TicketDetail,
   type TicketEvent,
   type TicketMessage,
+  type TicketPriority,
   type TicketStatus,
 } from "../api/client";
 import { useTicketTabs } from "../contexts/TicketTabsContext";
@@ -56,6 +61,7 @@ import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationCon
 import { handleApiError } from "../utils/handleApiError";
 import type { Role } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
+import { getUiZoom } from "../utils/uiZoom";
 import { formatStatus, formatTicketId } from "../utils/format";
 import {
   clearMessageDraft,
@@ -217,6 +223,7 @@ export function TicketDetailPage({
 
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [categories, setCategories] = useState<CategoryRef[]>([]);
 
   const [copyToast, setCopyToast] = useState<{
     message: string;
@@ -232,6 +239,21 @@ export function TicketDetailPage({
   const [typingUsersById, setTypingUsersById] = useState<
     Record<string, TypingUserEntry>
   >({});
+
+  // Categories for the editable Category dropdown in the sidebar.
+  useEffect(() => {
+    let cancelled = false;
+    fetchCategories()
+      .then((res) => {
+        if (!cancelled) setCategories(res.data);
+      })
+      .catch(() => {
+        /* non-fatal: category editor falls back to read-only */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ——— Refs ——— */
 
@@ -1462,6 +1484,62 @@ export function TicketDetailPage({
     notifyTicketReportsChanged,
   ]);
 
+  const changePriority = useCallback(
+    async (priority: string) => {
+      if (!ticket || priority === ticket.priority) return;
+      const previous = ticket.priority;
+      setActionError(null);
+      setActionLoading(true);
+      setTicket((prev) =>
+        prev ? { ...prev, priority: priority as TicketPriority } : prev,
+      );
+      try {
+        await bulkPriorityTickets([ticket.id], priority);
+        void refreshAfterMutation(ticket.id);
+        notifyTicketAggregatesChanged();
+        setCopyToast({ message: `Priority set to ${priority}.`, type: "success" });
+      } catch {
+        setTicket((prev) => (prev ? { ...prev, priority: previous } : prev));
+        setActionError("Unable to change priority.");
+        setCopyToast({ message: "Unable to change priority.", type: "error" });
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [ticket, refreshAfterMutation, notifyTicketAggregatesChanged],
+  );
+
+  const changeCategory = useCallback(
+    async (categoryId: string | null) => {
+      if (!ticket || categoryId === (ticket.category?.id ?? null)) return;
+      const previous = ticket.category ?? null;
+      setActionError(null);
+      setActionLoading(true);
+      const nextCategory =
+        categories.find((c) => c.id === categoryId) ?? null;
+      setTicket((prev) =>
+        prev ? { ...prev, category: nextCategory } : prev,
+      );
+      try {
+        await setTicketCategory(ticket.id, categoryId);
+        void refreshAfterMutation(ticket.id);
+        setCopyToast({
+          message: categoryId
+            ? `Category set to ${nextCategory?.name ?? "category"}.`
+            : "Category cleared.",
+          type: "success",
+        });
+      } catch {
+        setTicket((prev) => (prev ? { ...prev, category: previous } : prev));
+        setActionError("Unable to change category.");
+        setCopyToast({ message: "Unable to change category.", type: "error" });
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [ticket, categories, refreshAfterMutation],
+  );
+
   const handleFollowToggle = useCallback(async () => {
     if (!ticket) return;
     setFollowError(null);
@@ -1522,40 +1600,38 @@ export function TicketDetailPage({
   );
 
   const handlePasteFiles = useCallback(
-    async (files: File[]) => {
-      if (!ticketId || files.length === 0) return;
+    async (items: { file: File; tempId?: string }[]) => {
+      if (!ticketId || items.length === 0) return;
       setAttachmentError(null);
       setAttachmentUploading(true);
-      try {
-        for (const file of files) {
-          const previewUrl = URL.createObjectURL(file);
+      let anyFailed = false;
+      // Upload in the background; images were already inserted inline with a
+      // loading state, so we just resolve each as it finishes.
+      for (const { file, tempId } of items) {
+        try {
           const attachment = await uploadTicketAttachment(ticketId, file);
-          // Only inline images — other files stay only in the Attachments tab
-          if (file.type.startsWith("image/")) {
-            messageInputRef.current?.insertAttachmentImage({
-              attachmentId: attachment.id,
-              previewUrl,
-              alt: file.name,
-            });
+          if (tempId) {
+            messageInputRef.current?.resolveUploadingImage(
+              tempId,
+              attachment.id,
+            );
+          }
+        } catch {
+          anyFailed = true;
+          if (tempId) {
+            messageInputRef.current?.resolveUploadingImage(tempId, null);
           }
         }
-        void refreshAfterMutation(ticketId);
-        setCopyToast({
-          message:
-            files.length === 1
-              ? "Attachment uploaded."
-              : `${files.length} attachments uploaded.`,
-          type: "success",
-        });
-      } catch {
+      }
+      setAttachmentUploading(false);
+      if (anyFailed) {
         setAttachmentError("Unable to upload attachment.");
         setCopyToast({
           message: "Unable to upload attachment.",
           type: "error",
         });
-      } finally {
-        setAttachmentUploading(false);
       }
+      void refreshAfterMutation(ticketId);
     },
     [ticketId, refreshAfterMutation, messageInputRef],
   );
@@ -1658,9 +1734,12 @@ export function TicketDetailPage({
       }
       const containerRect = currentContainer!.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
+      // rect deltas are visual px; the indicator lives in the zoomed container,
+      // so convert to zoomed-CSS px by dividing by the zoom. See getUiZoom().
+      const z = getUiZoom();
       setTabIndicator({
-        left: targetRect.left - containerRect.left,
-        width: targetRect.width,
+        left: (targetRect.left - containerRect.left) / z,
+        width: targetRect.width / z,
       });
     }
 
@@ -2166,6 +2245,9 @@ export function TicketDetailPage({
                 transferMembers={transferMembers}
                 teamsList={teamsList}
                 onTransfer={() => void handleTransfer()}
+                categories={categories}
+                onPriorityChange={(p) => void changePriority(p)}
+                onCategoryChange={(c) => void changeCategory(c)}
                 expandedSections={expandedSections}
                 toggleSection={toggleSection}
                 loadingDetail={loadingDetail}

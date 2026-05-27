@@ -14,6 +14,7 @@ import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import type { CurrentUserSession, NotificationRecord } from "../api/client";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { initialsFor } from "../utils/format";
+import { getUiZoom } from "../utils/uiZoom";
 import { NotificationCenter } from "./NotificationCenter";
 
 type NotificationProps = {
@@ -66,7 +67,7 @@ export function ProfilePopoverPanel({
     <div
       id={panelId}
       ref={panelRef}
-      className="w-[340px] max-h-[70vh] overflow-y-auto rounded-xl border shadow-elevated"
+      className="w-[340px] max-h-[calc(70vh/var(--ui-zoom))] overflow-y-auto rounded-xl border shadow-elevated"
       role="dialog"
       aria-labelledby={titleId}
       style={{
@@ -220,7 +221,10 @@ export function TopBar({
         document.documentElement.clientWidth - menuWidth - padding,
       ),
     );
-    setMenuPosition({ top: rect.bottom + padding, left });
+    // Fixed elements render at value*zoom while rect coords are visual — divide
+    // by the zoom so the menu anchors under the trigger. See getUiZoom().
+    const z = getUiZoom();
+    setMenuPosition({ top: (rect.bottom + padding) / z, left: left / z });
   }, [userMenuOpen]);
 
   useEffect(() => {

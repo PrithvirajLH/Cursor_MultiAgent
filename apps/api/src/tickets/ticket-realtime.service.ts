@@ -15,6 +15,7 @@ export type TicketRealtimeReason =
   | 'transferred'
   | 'status_changed'
   | 'priority_changed'
+  | 'category_changed'
   | 'followers_changed'
   | 'attachment_added'
   | 'attachment_scan_status_changed'

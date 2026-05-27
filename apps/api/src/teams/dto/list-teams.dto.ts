@@ -6,4 +6,9 @@ export class ListTeamsDto extends PaginationDto {
   @IsString()
   @MaxLength(80)
   q?: string;
+
+  /** "true" to include deactivated teams (owner only). */
+  @IsOptional()
+  @IsString()
+  includeInactive?: string;
 }

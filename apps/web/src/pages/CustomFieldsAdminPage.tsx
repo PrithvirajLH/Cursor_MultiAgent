@@ -663,7 +663,7 @@ export function CustomFieldsAdminPage({ role }: { role?: Role }) {
             aria-modal="true"
             aria-label={form.id ? "Edit custom field" : "Create custom field"}
             tabIndex={-1}
-            className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-xl bg-card shadow-2xl"
+            className="flex max-h-[calc(92vh/var(--ui-zoom))] w-full max-w-lg flex-col rounded-xl bg-card shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <p className="text-base font-semibold text-foreground">

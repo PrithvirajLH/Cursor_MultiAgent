@@ -302,7 +302,7 @@ function RuleEditorModal({
         aria-modal="true"
         aria-label={isNew ? "Create routing rule" : "Edit routing rule"}
         tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-card shadow-2xl"
+        className="flex max-h-[calc(92vh/var(--ui-zoom))] w-full max-w-2xl flex-col rounded-xl bg-card shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div>

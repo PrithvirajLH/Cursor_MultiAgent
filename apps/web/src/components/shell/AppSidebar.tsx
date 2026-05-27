@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,6 +9,7 @@ import {
   type SavedViewRecord,
 } from '../../api/client';
 import { useAuthSession } from '../../hooks/useAuthSession';
+import { ConfirmDialog } from '../ConfirmDialog';
 import { Icn, I, Avatar } from '../atoms';
 import {
   PRIMARY_NAV_PRESETS,
@@ -336,6 +338,7 @@ interface UserSavedViewLinkProps {
 
 function UserSavedViewLink({ view, count, onTicketsRevamp, searchParams }: UserSavedViewLinkProps) {
   const qc = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
   const remove = useMutation({
     mutationFn: () => deleteSavedView(view.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['saved-views'] }),
@@ -370,9 +373,7 @@ function UserSavedViewLink({ view, count, onTicketsRevamp, searchParams }: UserS
         )}
       </Link>
       <button
-        onClick={() => {
-          if (window.confirm(`Delete saved view "${view.name}"?`)) remove.mutate();
-        }}
+        onClick={() => setConfirming(true)}
         disabled={remove.isPending}
         className="opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ color: 'var(--c-fg-4)' }}
@@ -381,6 +382,24 @@ function UserSavedViewLink({ view, count, onTicketsRevamp, searchParams }: UserS
       >
         <Icn d={I.x} s={11} />
       </button>
+      <ConfirmDialog
+        open={confirming}
+        destructive
+        title="Delete saved view?"
+        confirmLabel="Delete"
+        message={
+          <>
+            Delete the saved view{" "}
+            <span className="font-medium text-foreground">{view.name}</span>?
+          </>
+        }
+        loading={remove.isPending}
+        onConfirm={() => {
+          remove.mutate();
+          setConfirming(false);
+        }}
+        onCancel={() => setConfirming(false)}
+      />
     </div>
   );
 }

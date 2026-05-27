@@ -1360,7 +1360,7 @@ export function TicketsPage({
 
       {/* Queue view — ticket list */}
       {isQueueView ? (
-      <div className="p-6 min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] overflow-y-auto">
+      <div className="p-6 min-h-[calc(100vh/var(--ui-zoom)_-_200px)] max-h-[calc(100vh/var(--ui-zoom)_-_200px)] overflow-y-auto">
         <p className="text-sm text-muted-foreground">{countLabel}</p>
 
         <div
@@ -1456,6 +1456,11 @@ export function TicketsPage({
                 }
                 setActiveTicketId(ticket.id);
               }}
+              onTicketMutated={() => {
+                void loadTickets();
+                notifyTicketAggregatesChanged();
+                notifyTicketReportsChanged();
+              }}
             />
 
         {listMeta && listMeta.total > 0 ? (
@@ -1524,7 +1529,7 @@ export function TicketsPage({
       </div>
       ) : (
         /* Ticket detail view — embedded in tab */
-        <div style={{ height: "calc(100vh - 40px)", overflow: "hidden" }}>
+        <div style={{ height: "calc(100vh / var(--ui-zoom) - 40px)", overflow: "hidden" }}>
           <TicketDetailPage
             ticketId={activeTicketId}
             currentEmail={currentEmail}

@@ -11,13 +11,16 @@ import {
 } from "lucide-react";
 import {
   addTeamMember,
+  createTeam,
   deactivateUser,
+  fetchAllTeamsAdmin,
   fetchAllUsers,
   fetchTeamMembers,
   previewUserDeactivation,
   reactivateUser,
   removeTeamMember,
   setUserPrimaryTeam,
+  updateTeam,
   updateTeamMember,
   updateUserRole,
   type TeamMember,
@@ -26,6 +29,20 @@ import {
 } from "../api/client";
 
 const INACTIVE_USERS_SENTINEL = "__inactive_users__";
+const INACTIVE_TEAMS_SENTINEL = "__inactive_teams__";
+
+const ASSIGNMENT_STRATEGY_OPTIONS = [
+  { value: "QUEUE_ONLY", label: "Queue only (manual pickup)" },
+  { value: "ROUND_ROBIN", label: "Round robin (auto-rotate)" },
+] as const;
+
+type TeamFormState = {
+  mode: "create" | "edit";
+  teamId?: string;
+  name: string;
+  description: string;
+  assignmentStrategy: string;
+};
 
 type DeactivationTarget = {
   userId: string;
@@ -38,6 +55,7 @@ type DeactivationPreview = {
   teams: string[];
 };
 import { TopBar } from "../components/TopBar";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 import {
@@ -176,9 +194,12 @@ function MemberSkeleton() {
 export function TeamPage({
   teamsList,
   role,
+  onTeamsChanged,
 }: {
   teamsList: TeamRef[];
   role: Role;
+  /** Called after a team is created/edited/(de)activated so the app can refetch teams. */
+  onTeamsChanged?: () => void | Promise<void>;
 }) {
   const location = useLocation();
   const headerCtx = useHeaderContext();
@@ -212,10 +233,24 @@ export function TeamPage({
   const [deactivateLoading, setDeactivateLoading] = useState(false);
   const [deactivateError, setDeactivateError] = useState<string | null>(null);
 
+  // Team create/edit modal + deactivated-teams management (owner only)
+  const [teamForm, setTeamForm] = useState<TeamFormState | null>(null);
+  const [teamFormLoading, setTeamFormLoading] = useState(false);
+  const [teamFormError, setTeamFormError] = useState<string | null>(null);
+  const [inactiveTeams, setInactiveTeams] = useState<TeamRef[]>([]);
+  const [loadingInactiveTeams, setLoadingInactiveTeams] = useState(false);
+  const [confirmDeactivateTeam, setConfirmDeactivateTeam] =
+    useState<TeamRef | null>(null);
+  const [confirmRemoveMember, setConfirmRemoveMember] =
+    useState<TeamMember | null>(null);
+
   const isAdmin = role === "OWNER" || role === "TEAM_ADMIN";
   const isOwner = role === "OWNER";
   const isReadOnly = role === "LEAD";
   const viewingInactive = selectedTeamId === INACTIVE_USERS_SENTINEL;
+  const viewingInactiveTeams = selectedTeamId === INACTIVE_TEAMS_SENTINEL;
+  const selectedTeam =
+    teamsList.find((t) => t.id === selectedTeamId) ?? null;
   const requestedTeamId =
     (
       location.state as {
@@ -278,11 +313,21 @@ export function TeamPage({
       void loadInactiveUsers();
       return;
     }
+    if (selectedTeamId === INACTIVE_TEAMS_SENTINEL) {
+      setMembers([]);
+      void loadInactiveTeams();
+      return;
+    }
     void loadMembers(selectedTeamId);
   }, [selectedTeamId]);
 
   useEffect(() => {
-    if (!selectedTeamId || selectedTeamId === INACTIVE_USERS_SENTINEL) return;
+    if (
+      !selectedTeamId ||
+      selectedTeamId === INACTIVE_USERS_SENTINEL ||
+      selectedTeamId === INACTIVE_TEAMS_SENTINEL
+    )
+      return;
     const stillExists = teamsList.some((team) => team.id === selectedTeamId);
     if (!stillExists) {
       setSelectedTeamId("");
@@ -309,7 +354,11 @@ export function TeamPage({
       if (isAdmin) {
         void loadUsers();
       }
-      if (selectedTeamId) {
+      if (
+        selectedTeamId &&
+        selectedTeamId !== INACTIVE_USERS_SENTINEL &&
+        selectedTeamId !== INACTIVE_TEAMS_SENTINEL
+      ) {
         void loadMembers(selectedTeamId);
       }
     };
@@ -538,11 +587,7 @@ export function TeamPage({
 
   async function handleRemove(member: TeamMember) {
     if (!selectedTeamId || actionLoading) return;
-    const confirmed = window.confirm(
-      `Remove ${member.user.displayName} from ${teamsList.find((team) => team.id === selectedTeamId)?.name ?? "this team"}?`,
-    );
-    if (!confirmed) return;
-
+    setConfirmRemoveMember(null);
     setActionLoading(true);
     setActionError(null);
     try {
@@ -552,6 +597,101 @@ export function TeamPage({
       setActionError("Unable to remove team member.");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  /* ——— Team create / edit / (de)activate (owner only) ——— */
+
+  function openCreateTeam() {
+    setTeamFormError(null);
+    setTeamForm({
+      mode: "create",
+      name: "",
+      description: "",
+      assignmentStrategy: "QUEUE_ONLY",
+    });
+  }
+
+  function openEditTeam(team: TeamRef) {
+    setTeamFormError(null);
+    setTeamForm({
+      mode: "edit",
+      teamId: team.id,
+      name: team.name,
+      description: team.description ?? "",
+      assignmentStrategy: team.assignmentStrategy ?? "QUEUE_ONLY",
+    });
+  }
+
+  async function submitTeamForm() {
+    if (!teamForm) return;
+    const name = teamForm.name.trim();
+    if (!name) {
+      setTeamFormError("Department name is required.");
+      return;
+    }
+    setTeamFormLoading(true);
+    setTeamFormError(null);
+    try {
+      if (teamForm.mode === "create") {
+        const created = await createTeam({
+          name,
+          description: teamForm.description.trim() || undefined,
+          assignmentStrategy: teamForm.assignmentStrategy,
+        });
+        // Wait for the teams list to refresh before selecting, so the
+        // "still exists" guard doesn't deselect the brand-new team.
+        await onTeamsChanged?.();
+        setTeamForm(null);
+        if (created?.id) setSelectedTeamId(created.id);
+      } else if (teamForm.teamId) {
+        await updateTeam(teamForm.teamId, {
+          name,
+          description: teamForm.description.trim(),
+          assignmentStrategy: teamForm.assignmentStrategy,
+        });
+        onTeamsChanged?.();
+        setTeamForm(null);
+      }
+    } catch (err) {
+      setTeamFormError(
+        err instanceof Error ? err.message : "Unable to save department.",
+      );
+    } finally {
+      setTeamFormLoading(false);
+    }
+  }
+
+  async function setTeamActive(team: TeamRef, isActive: boolean) {
+    if (actionLoading) return;
+    setConfirmDeactivateTeam(null);
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await updateTeam(team.id, { isActive });
+      onTeamsChanged?.();
+      if (!isActive && selectedTeamId === team.id) setSelectedTeamId("");
+      if (viewingInactiveTeams) void loadInactiveTeams();
+    } catch {
+      setActionError(
+        isActive
+          ? "Unable to reactivate department."
+          : "Unable to deactivate department.",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function loadInactiveTeams() {
+    setLoadingInactiveTeams(true);
+    try {
+      const res = await fetchAllTeamsAdmin();
+      setInactiveTeams(res.data.filter((t) => t.isActive === false));
+    } catch {
+      setInactiveTeams([]);
+    } finally {
+      setLoadingInactiveTeams(false);
     }
   }
 
@@ -577,8 +717,6 @@ export function TeamPage({
     }
   }, [availableUsers, selectedUserId]);
 
-  const selectedTeam =
-    teamsList.find((team) => team.id === selectedTeamId) ?? null;
   const selectedUser =
     availableUsers.find((user) => user.id === selectedUserId) ?? null;
   const addRoleOptions = useMemo(
@@ -668,9 +806,11 @@ export function TeamPage({
                       <span className="text-foreground">
                         {viewingInactive
                           ? "Inactive users"
-                          : selectedTeam
-                            ? selectedTeam.name
-                            : "Select department"}
+                          : viewingInactiveTeams
+                            ? "Inactive departments"
+                            : selectedTeam
+                              ? selectedTeam.name
+                              : "Select department"}
                       </span>
                     </div>
                     <ChevronDown className="h-5 w-5 text-muted-foreground" />
@@ -715,6 +855,26 @@ export function TeamPage({
                           </span>
                         </button>
                       ) : null}
+                      {isOwner ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTeamId(INACTIVE_TEAMS_SENTINEL);
+                            setMemberError(null);
+                            setShowTeamDropdown(false);
+                          }}
+                          className={`block w-full border-t border-border px-4 py-2 text-left text-sm hover:bg-accent ${
+                            viewingInactiveTeams
+                              ? "bg-blue-50 text-blue-700"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Inactive departments
+                          </span>
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -726,6 +886,38 @@ export function TeamPage({
                   </span>
                 </div>
               )}
+              {isOwner ? (
+                <button
+                  type="button"
+                  onClick={openCreateTeam}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  New Department
+                </button>
+              ) : null}
+              {isOwner &&
+              selectedTeam &&
+              !viewingInactive &&
+              !viewingInactiveTeams ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openEditTeam(selectedTeam)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeactivateTeam(selectedTeam)}
+                    disabled={actionLoading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Deactivate
+                  </button>
+                </>
+              ) : null}
               {memberError ? (
                 <div className="inline-flex items-center gap-1 text-sm text-red-600">
                   <AlertCircle className="h-4 w-4" />
@@ -761,7 +953,7 @@ export function TeamPage({
             </div>
           ) : null}
 
-          {selectedTeamId && !viewingInactive ? (
+          {selectedTeamId && !viewingInactive && !viewingInactiveTeams ? (
             <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
               <div>
                 <div className="mb-4 flex items-center justify-between">
@@ -853,7 +1045,7 @@ export function TeamPage({
                               {isAdmin ? (
                                 <button
                                   type="button"
-                                  onClick={() => void handleRemove(member)}
+                                  onClick={() => setConfirmRemoveMember(member)}
                                   disabled={actionLoading}
                                   className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
@@ -1093,8 +1285,213 @@ export function TeamPage({
               </div>
             </div>
           ) : null}
+
+          {viewingInactiveTeams ? (
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Inactive departments
+                </h3>
+                {loadingInactiveTeams ? (
+                  <span className="text-sm text-muted-foreground">
+                    Loading...
+                  </span>
+                ) : null}
+              </div>
+              <div className="space-y-3">
+                {!loadingInactiveTeams && inactiveTeams.length === 0 ? (
+                  <div className="rounded-xl border-2 border-dashed border-border bg-muted py-8 text-center">
+                    <Users className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      No inactive departments.
+                    </p>
+                  </div>
+                ) : null}
+                {!loadingInactiveTeams
+                  ? inactiveTeams.map((team) => (
+                      <div
+                        key={team.id}
+                        className="rounded-xl border border-border bg-card p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h4 className="text-sm font-semibold text-foreground">
+                              {team.name}
+                            </h4>
+                            {team.description ? (
+                              <p className="text-sm text-muted-foreground">
+                                {team.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void setTeamActive(team, true)}
+                            disabled={actionLoading}
+                            className="inline-flex items-center gap-1 rounded-lg border border-green-500 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                            Reactivate
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {teamForm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <h2 className="text-lg font-semibold text-foreground">
+                {teamForm.mode === "create"
+                  ? "New Department"
+                  : "Edit Department"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setTeamForm(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-accent"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={teamForm.name}
+                  onChange={(e) =>
+                    setTeamForm((f) => (f ? { ...f, name: e.target.value } : f))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void submitTeamForm();
+                  }}
+                  placeholder="e.g. Facilities"
+                  maxLength={80}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Description{" "}
+                  <span className="font-normal">(helps AI routing)</span>
+                </label>
+                <textarea
+                  value={teamForm.description}
+                  onChange={(e) =>
+                    setTeamForm((f) =>
+                      f ? { ...f, description: e.target.value } : f,
+                    )
+                  }
+                  rows={2}
+                  placeholder="What kinds of requests this team handles…"
+                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Assignment strategy
+                </label>
+                <select
+                  value={teamForm.assignmentStrategy}
+                  onChange={(e) =>
+                    setTeamForm((f) =>
+                      f ? { ...f, assignmentStrategy: e.target.value } : f,
+                    )
+                  }
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none"
+                >
+                  {ASSIGNMENT_STRATEGY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {teamFormError ? (
+              <p className="mt-3 text-sm text-red-600">{teamFormError}</p>
+            ) : null}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setTeamForm(null)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitTeamForm()}
+                disabled={teamFormLoading || !teamForm.name.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {teamFormLoading
+                  ? "Saving…"
+                  : teamForm.mode === "create"
+                    ? "Create"
+                    : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmDialog
+        open={!!confirmDeactivateTeam}
+        destructive
+        title="Deactivate department?"
+        confirmLabel="Deactivate"
+        message={
+          <>
+            <span className="font-medium text-foreground">
+              {confirmDeactivateTeam?.name}
+            </span>{" "}
+            will stop receiving new tickets and AI routing, and disappear from
+            active lists. You can reactivate it later.
+          </>
+        }
+        loading={actionLoading}
+        onConfirm={() => {
+          if (confirmDeactivateTeam)
+            void setTeamActive(confirmDeactivateTeam, false);
+        }}
+        onCancel={() => setConfirmDeactivateTeam(null)}
+      />
+
+      <ConfirmDialog
+        open={!!confirmRemoveMember}
+        destructive
+        title="Remove member?"
+        confirmLabel="Remove"
+        message={
+          <>
+            Remove{" "}
+            <span className="font-medium text-foreground">
+              {confirmRemoveMember?.user.displayName}
+            </span>{" "}
+            from {selectedTeam?.name ?? "this team"}?
+          </>
+        }
+        loading={actionLoading}
+        onConfirm={() => {
+          if (confirmRemoveMember) void handleRemove(confirmRemoveMember);
+        }}
+        onCancel={() => setConfirmRemoveMember(null)}
+      />
 
       {deactivateTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

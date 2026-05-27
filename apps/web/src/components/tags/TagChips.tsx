@@ -15,6 +15,7 @@ import {
   type TagAutocompleteEntry,
   type TagRef,
 } from "../../api/client";
+import { getUiZoom } from "../../utils/uiZoom";
 
 type Props = {
   ticketId: string;
@@ -50,10 +51,11 @@ export function TagChips({ ticketId, tags, canEdit, onChange }: Props) {
       const el = inputRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      const z = getUiZoom();
       setDropdownPos({
-        top: rect.bottom + 4,
-        left: rect.left,
-        width: 224, // matches w-56 below
+        top: (rect.bottom + 4) / z, // divide by zoom: fixed renders at top*zoom
+        left: rect.left / z,
+        width: 224, // matches w-56 below (CSS px, scales with zoom)
       });
     };
     update();

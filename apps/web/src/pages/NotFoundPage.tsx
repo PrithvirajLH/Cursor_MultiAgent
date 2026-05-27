@@ -5,7 +5,7 @@ import { EmptyState } from "../components/EmptyState";
 export function NotFoundPage() {
   const navigate = useNavigate();
   return (
-    <section className="flex min-h-[60vh] flex-col items-center justify-center px-6 py-12 animate-fade-in">
+    <section className="flex min-h-[calc(60vh/var(--ui-zoom))] flex-col items-center justify-center px-6 py-12 animate-fade-in">
       <EmptyState
         icon={FileQuestion}
         title="Page not found"

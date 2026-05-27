@@ -11,6 +11,7 @@ import { ChevronDown, Check, UserPlus, UserMinus, Clock } from "lucide-react";
 import { AiSummaryPanel } from "./AiSummaryPanel";
 import { CsatWidget } from "./CsatWidget";
 import type {
+  CategoryRef,
   TicketDetail,
   TicketEvent,
   TicketFollower,
@@ -20,6 +21,7 @@ import type {
 import { CustomFieldsDisplay } from "../CustomFieldRenderer";
 import { RelativeTime } from "../RelativeTime";
 import { formatStatus, formatTicketId, initialsFor } from "../../utils/format";
+import { getUiZoom } from "../../utils/uiZoom";
 import {
   formatPriority,
   getFirstResponseSla,
@@ -59,6 +61,9 @@ export type TicketSidebarProps = {
   transferMembers: TeamMember[];
   teamsList: TeamRef[];
   onTransfer: () => void;
+  categories: CategoryRef[];
+  onPriorityChange: (priority: string) => void;
+  onCategoryChange: (categoryId: string | null) => void;
   expandedSections: ExpandedSections;
   toggleSection: (section: keyof ExpandedSections) => void;
   loadingDetail: boolean;
@@ -95,6 +100,9 @@ export function TicketSidebar(
     setTransferTeamId,
     teamsList,
     onTransfer,
+    categories,
+    onPriorityChange,
+    onCategoryChange,
     followers,
     isFollowing,
     followLoading,
@@ -341,17 +349,64 @@ export function TicketSidebar(
           </PropertyRow>
 
           <PropertyRow label="Priority">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${priorityBadgeClass(ticket.priority)}`}
-            >
-              {formatPriority(ticket.priority)}
-            </span>
+            {canManage ? (
+              <InlineSelect
+                value={ticket.priority}
+                placeholder="Priority"
+                options={(["SEV1", "SEV2", "SEV3", "SEV4"] as const).map(
+                  (p) => ({ value: p, label: formatPriority(p) }),
+                )}
+                onChange={(val) => onPriorityChange(val)}
+                disabled={actionLoading}
+                renderValue={(val) => (
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${priorityBadgeClass(val)}`}
+                  >
+                    {formatPriority(val)}
+                  </span>
+                )}
+              />
+            ) : (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold ${priorityBadgeClass(ticket.priority)}`}
+              >
+                {formatPriority(ticket.priority)}
+              </span>
+            )}
           </PropertyRow>
 
           <PropertyRow label="Category">
-            <span className="text-foreground truncate px-1.5 font-medium">
-              {ticket.category?.name ?? "None"}
-            </span>
+            {canManage ? (
+              <InlineSelect
+                buttonClassName="flex-1 w-full"
+                value={ticket.category?.id ?? ""}
+                placeholder="None"
+                options={[
+                  { value: "", label: "None" },
+                  ...categories.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+                onChange={(val) => onCategoryChange(val || null)}
+                disabled={actionLoading}
+                renderValue={(val) => {
+                  const label =
+                    categories.find((c) => c.id === val)?.name ??
+                    ticket.category?.name;
+                  return label ? (
+                    <span className="text-foreground font-medium truncate">
+                      {label}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground font-medium">
+                      None
+                    </span>
+                  );
+                }}
+              />
+            ) : (
+              <span className="text-foreground truncate px-1.5 font-medium">
+                {ticket.category?.name ?? "None"}
+              </span>
+            )}
           </PropertyRow>
         </div>
       </div>
@@ -643,10 +698,16 @@ function InlineSelect({
     const spaceBelow = window.innerHeight - rect.bottom;
     const dropdownHeight = 240; // max-h-60 = 15rem = 240px
     const openUpward = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
+    // Fixed elements render at value*zoom while rect coords are visual — divide
+    // by the zoom so the dropdown anchors to the trigger. See getUiZoom().
+    const z = getUiZoom();
     setDropdownPos({
-      top: openUpward ? rect.top - Math.min(dropdownHeight, rect.top - 8) : rect.bottom + 4,
-      left: rect.left,
-      width: Math.max(rect.width, 224), // min w-56 = 224px
+      top:
+        (openUpward
+          ? rect.top - Math.min(dropdownHeight, rect.top - 8)
+          : rect.bottom + 4) / z,
+      left: rect.left / z,
+      width: Math.max(rect.width / z, 224), // min w-56 = 224px
     });
   }, [isOpen]);
 

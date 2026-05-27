@@ -549,7 +549,7 @@ function PolicyModal({
         aria-modal="true"
         aria-label={isNew ? "Create SLA policy" : "Edit SLA policy"}
         tabIndex={-1}
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-lg bg-card shadow-xl"
+        className="flex max-h-[calc(92vh/var(--ui-zoom))] w-full max-w-2xl flex-col rounded-lg bg-card shadow-xl"
       >
         <div className="sticky top-0 flex items-center justify-between rounded-t-lg border-b border-border bg-card px-6 py-4">
           <div>

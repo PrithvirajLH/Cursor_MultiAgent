@@ -239,11 +239,11 @@ export function TicketAttachments({
           >
             <X className="h-4 w-4" />
           </button>
-          <div className="max-h-[90vh] max-w-[90vw] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/80 p-3">
+          <div className="max-h-[calc(90vh/var(--ui-zoom))] max-w-[calc(90vw/var(--ui-zoom))] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/80 p-3">
             <img
               src={previewUrl}
               alt={expandedAttachment.fileName}
-              className="h-full w-full max-h-[85vh] max-w-[85vw] object-contain"
+              className="h-full w-full max-h-[calc(85vh/var(--ui-zoom))] max-w-[calc(85vw/var(--ui-zoom))] object-contain"
             />
           </div>
         </div>

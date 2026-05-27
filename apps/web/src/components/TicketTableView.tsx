@@ -1,5 +1,11 @@
 import { useState } from "react";
-import type { TicketRecord } from "../api/client";
+import {
+  assignTicket,
+  bulkPriorityTickets,
+  transitionTicket,
+  type TicketRecord,
+  type TicketStatus,
+} from "../api/client";
 import { RelativeTime } from "./RelativeTime";
 import {
   formatStatus,
@@ -47,6 +53,8 @@ type TicketTableViewProps = {
     isAllSelected: boolean;
   };
   onRowClick: (ticket: TicketRecord, opts?: { newTab?: boolean }) => void;
+  /** Called after a context-menu mutation (assign/status/priority) so the parent can refetch. */
+  onTicketMutated?: () => void;
 };
 
 export function TicketTableView({
@@ -55,6 +63,7 @@ export function TicketTableView({
   focusedTicketId,
   selection,
   onRowClick,
+  onTicketMutated,
 }: TicketTableViewProps) {
   const showCheckbox = role !== "EMPLOYEE";
   const toast = useToast();
@@ -69,21 +78,39 @@ export function TicketTableView({
     setContextMenu({ x: e.clientX, y: e.clientY, ticket });
   };
 
-  const handleContextAction = (
+  const handleContextAction = async (
     action: "open_new_tab" | "assign_me" | "status" | "priority" | "copy",
     ticket: TicketRecord,
+    value?: string,
   ) => {
     if (action === "open_new_tab") {
       onRowClick(ticket, { newTab: true });
       return;
     }
     if (action === "copy") {
-      void navigator.clipboard.writeText(ticket.id);
-      toast.success("Ticket ID copied to clipboard");
-    } else {
-      toast.info(
-        `Action '${action}' selected for ticket ${formatTicketId(ticket)}`,
+      // Copy the human-readable display ID (e.g. WG_20260503_014), not the UUID.
+      void navigator.clipboard.writeText(
+        ticket.displayId ?? formatTicketId(ticket),
       );
+      toast.success("Ticket ID copied to clipboard");
+      return;
+    }
+    try {
+      if (action === "assign_me") {
+        await assignTicket(ticket.id, {}); // empty payload = assign to current user
+        toast.success("Assigned to you.");
+      } else if (action === "status" && value) {
+        await transitionTicket(ticket.id, { status: value as TicketStatus });
+        toast.success(`Status changed to ${formatStatus(value)}.`);
+      } else if (action === "priority" && value) {
+        await bulkPriorityTickets([ticket.id], value);
+        toast.success(`Priority changed to ${value}.`);
+      } else {
+        return;
+      }
+      onTicketMutated?.();
+    } catch {
+      toast.error("Unable to update the ticket.");
     }
   };
 

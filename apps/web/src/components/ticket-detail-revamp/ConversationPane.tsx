@@ -510,20 +510,15 @@ function Composer({ ticket }: { ticket: TicketDetail }) {
               ? 'Internal note (only visible to agents). Type @ to mention. ⌘+Enter to send.'
               : 'Reply to requester. Type @ to mention. ⌘+Enter to send.'
           }
-          onPasteFiles={async (files) => {
-            for (const file of files) {
-              const previewUrl = URL.createObjectURL(file);
+          onPasteFiles={async (items) => {
+            for (const { file, tempId } of items) {
               try {
                 const att = await upload.mutateAsync(file);
-                if (file.type.startsWith('image/')) {
-                  editorRef.current?.insertAttachmentImage?.({
-                    attachmentId: att.id,
-                    previewUrl,
-                    alt: file.name,
-                  });
-                }
+                if (tempId)
+                  editorRef.current?.resolveUploadingImage?.(tempId, att.id);
               } catch {
-                URL.revokeObjectURL(previewUrl);
+                if (tempId)
+                  editorRef.current?.resolveUploadingImage?.(tempId, null);
               }
             }
           }}

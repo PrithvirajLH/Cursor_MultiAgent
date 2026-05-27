@@ -46,6 +46,7 @@ import {
   initialsFor,
 } from "../utils/format";
 import { priorityBadgeClass, statusBadgeClass } from "../utils/statusColors";
+import { getUiZoom } from "../utils/uiZoom";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 
 const TRIAGE_COLUMNS: Array<{
@@ -777,7 +778,10 @@ export function TriageBoardPage({
         const maxTop =
           window.innerHeight - CARD_MENU_APPROX_HEIGHT - CARD_MENU_MARGIN;
         const top = Math.max(CARD_MENU_MARGIN, Math.min(preferredTop, maxTop));
-        setMenuAnchor({ top, left });
+        // Fixed elements render at value*zoom while rect coords are visual —
+        // divide by the zoom so the menu anchors to the button. See getUiZoom().
+        const z = getUiZoom();
+        setMenuAnchor({ top: top / z, left: left / z });
       }
       return next;
     });
@@ -988,27 +992,40 @@ export function TriageBoardPage({
         </div>
 
         {loading && (
-          <div className="flex gap-6 overflow-x-auto pb-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={`col-skel-${i}`} className="w-80 flex-shrink-0">
-                <div className="mb-3 h-5 w-28 skeleton-shimmer rounded" />
-                <div className="space-y-3 rounded-xl border border-border bg-muted p-3">
-                  {Array.from({ length: 3 }).map((_, j) => (
-                    <div
-                      key={`card-skel-${i}-${j}`}
-                      className="rounded-lg border border-border bg-card p-4"
-                    >
-                      <div className="mb-2 h-4 w-3/4 skeleton-shimmer rounded" />
-                      <div className="mb-3 h-3 w-1/2 skeleton-shimmer rounded" />
-                      <div className="flex items-center gap-2">
-                        <div className="h-5 w-14 skeleton-shimmer rounded-full" />
-                        <div className="h-5 w-14 skeleton-shimmer rounded-full" />
-                      </div>
+          <div className="overflow-x-auto pb-4">
+            <div className="flex space-x-4">
+              {TRIAGE_COLUMNS.map((column, i) => (
+                <div key={`col-skel-${column.key}`} className="w-80 flex-shrink-0">
+                  {/* Real column header — only the card data is loading */}
+                  <div className="mb-4 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <h2 className="text-sm font-semibold text-foreground">
+                        {column.label}
+                      </h2>
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent">
+                        <span className="h-3 w-3 skeleton-shimmer rounded-full" />
+                      </span>
                     </div>
-                  ))}
+                  </div>
+                  <div className="h-[calc(100vh/var(--ui-zoom)_-_210px)] min-h-[400px] overflow-hidden rounded-lg border-2 border-border bg-muted p-3">
+                    {/* Stagger card counts so columns don't look identical */}
+                    {Array.from({ length: (i % 3) + 1 }).map((_, j) => (
+                      <div
+                        key={`card-skel-${column.key}-${j}`}
+                        className="mb-2 rounded-lg border border-border bg-card p-3"
+                      >
+                        <div className="mb-2 h-3.5 w-3/4 skeleton-shimmer rounded" />
+                        <div className="mb-3 h-3 w-1/2 skeleton-shimmer rounded" />
+                        <div className="flex items-center gap-2">
+                          <div className="h-5 w-14 skeleton-shimmer rounded-full" />
+                          <div className="h-5 w-14 skeleton-shimmer rounded-full" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
@@ -1038,7 +1055,7 @@ export function TriageBoardPage({
                     </div>
 
                     <div
-                      className={`h-[680px] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-muted p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-muted [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-accent [&::-webkit-scrollbar]:w-1.5 ${
+                      className={`h-[calc(100vh/var(--ui-zoom)_-_210px)] min-h-[400px] overflow-y-auto rounded-lg border-2 bg-muted p-3 transition-colors [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-muted [&::-webkit-scrollbar-track]:rounded-[3px] [&::-webkit-scrollbar-track]:bg-accent [&::-webkit-scrollbar]:w-1.5 ${
                         dragOverColumn === column.key
                           ? "border-primary bg-blue-100/60"
                           : "border-border"
@@ -1262,7 +1279,7 @@ export function TriageBoardPage({
               activeSubmenu.type === "transfer";
             const openSubmenuToLeft =
               menuAnchor.left + CARD_MENU_WIDTH + 260 >
-              window.innerWidth - CARD_MENU_MARGIN;
+              window.innerWidth / getUiZoom() - CARD_MENU_MARGIN;
             const submenuPositionClass = openSubmenuToLeft
               ? "right-full mr-1"
               : "left-full ml-1";

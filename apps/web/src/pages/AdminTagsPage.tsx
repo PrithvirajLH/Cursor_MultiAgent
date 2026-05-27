@@ -9,6 +9,7 @@ import {
   type AdminTagEntry,
 } from "../api/client";
 import { TopBar } from "../components/TopBar";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import type { Role } from "../types";
 
@@ -26,6 +27,9 @@ export function AdminTagsPage({ role }: { role: Role }) {
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmDeleteTag, setConfirmDeleteTag] = useState<AdminTagEntry | null>(
+    null,
+  );
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -119,14 +123,19 @@ export function AdminTagsPage({ role }: { role: Role }) {
     }
   };
 
-  const handleDelete = async (id: string, ticketCount: number) => {
+  const requestDelete = (id: string, ticketCount: number) => {
     if (ticketCount > 0) {
       setActionError(
         `"${tags.find((t) => t.id === id)?.name}" is attached to ${ticketCount} tickets. Remove or merge first.`,
       );
       return;
     }
-    if (!window.confirm("Delete this tag? This cannot be undone.")) return;
+    setActionError(null);
+    setConfirmDeleteTag(tags.find((t) => t.id === id) ?? null);
+  };
+
+  const handleDelete = async (id: string) => {
+    setConfirmDeleteTag(null);
     setActionLoading(true);
     setActionError(null);
     try {
@@ -362,7 +371,7 @@ export function AdminTagsPage({ role }: { role: Role }) {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void handleDelete(tag.id, tag.ticketCount)}
+                            onClick={() => requestDelete(tag.id, tag.ticketCount)}
                             disabled={actionLoading}
                             className="rounded p-1 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                             title={
@@ -383,6 +392,27 @@ export function AdminTagsPage({ role }: { role: Role }) {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDeleteTag}
+        destructive
+        title="Delete tag?"
+        confirmLabel="Delete"
+        message={
+          <>
+            Delete{" "}
+            <span className="font-medium text-foreground">
+              {confirmDeleteTag?.name}
+            </span>
+            ? This can’t be undone.
+          </>
+        }
+        loading={actionLoading}
+        onConfirm={() => {
+          if (confirmDeleteTag) void handleDelete(confirmDeleteTag.id);
+        }}
+        onCancel={() => setConfirmDeleteTag(null)}
+      />
     </section>
   );
 }

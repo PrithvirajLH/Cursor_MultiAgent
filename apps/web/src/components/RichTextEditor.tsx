@@ -20,6 +20,7 @@ import type { UserRef } from "../api/client";
 import { MentionAutocomplete } from "./MentionAutocomplete";
 import { CannedResponsePicker } from "./CannedResponsePicker";
 import { normalizeDivToP } from "../utils/messageBody";
+import { getUiZoom } from "../utils/uiZoom";
 import DOMPurify from "dompurify";
 
 // Note: getValue() reads the current DOM and sanitizes immediately. Use this for "Send" so we never
@@ -27,13 +28,19 @@ import DOMPurify from "dompurify";
 export type RichTextEditorRef = {
   focus: () => void;
   getValue: () => string;
-  /** Insert an attachment image at the saved cursor position (or end if no cursor saved). */
-  insertAttachmentImage: (params: {
-    attachmentId: string;
-    previewUrl: string;
-    alt: string;
-  }) => void;
+  /**
+   * Mark a previously-inserted uploading image as resolved. Pass the attachmentId
+   * on success (sets data-attachment-id, clears the loading state) or null on
+   * failure (shows an error state).
+   */
+  resolveUploadingImage: (tempId: string, attachmentId: string | null) => void;
 };
+
+/** Editor is empty only when it has no text AND no embedded media (images). */
+function editorIsEmpty(el: HTMLElement): boolean {
+  if (el.querySelector("img")) return false;
+  return (el.textContent ?? "").trim() === "";
+}
 
 const ALLOWED_TAGS = [
   "p",
@@ -146,10 +153,11 @@ type RichTextEditorProps = {
   className?: string;
   /**
    * Called when the user pastes one or more files (images/documents) into the editor.
-   * The default browser behavior of inlining the file content is prevented when this
-   * callback is provided.
+   * Image files are inserted inline immediately and carry a `tempId` — the caller
+   * uploads them and must call `resolveUploadingImage(tempId, attachmentId|null)`.
+   * Non-image files have no `tempId` and should just upload to the Attachments tab.
    */
-  onPasteFiles?: (files: File[]) => void;
+  onPasteFiles?: (items: { file: File; tempId?: string }[]) => void;
 };
 
 export const RichTextEditor = forwardRef<
@@ -200,49 +208,87 @@ export const RichTextEditor = forwardRef<
         if (!el) return "";
         const html = el.innerHTML;
         if (html === EMPTY_HTML || html.trim() === "<br>") return "";
-        return sanitizeEditorHtml(html);
+        // Drop any image whose upload hasn't resolved (no attachment id yet) so
+        // we never send a blank <img>. The file is still uploading and remains
+        // available in the Attachments tab.
+        const scratch = document.createElement("div");
+        scratch.innerHTML = html;
+        scratch
+          .querySelectorAll("img:not([data-attachment-id])")
+          .forEach((img) => img.remove());
+        return sanitizeEditorHtml(scratch.innerHTML);
       },
-      insertAttachmentImage({ attachmentId, previewUrl, alt }) {
+      resolveUploadingImage(tempId, attachmentId) {
         const el = editableRef.current;
         if (!el) return;
-        el.focus();
-        // Restore previously-saved range (the paste handler stores one before
-        // calling out for upload). Fall back to end-of-content.
-        const savedRange = savedRangeRef.current;
-        const sel = window.getSelection();
-        if (sel && savedRange) {
-          sel.removeAllRanges();
-          sel.addRange(savedRange);
-        }
-        const img = document.createElement("img");
-        img.setAttribute("data-attachment-id", attachmentId);
-        img.setAttribute("alt", alt);
-        img.setAttribute("src", previewUrl);
-        img.style.maxWidth = "240px";
-        img.style.height = "auto";
-        img.style.borderRadius = "6px";
-        img.style.display = "block";
-        img.style.marginTop = "4px";
-        const current = sel?.rangeCount ? sel.getRangeAt(0) : null;
-        if (current) {
-          current.deleteContents();
-          current.insertNode(img);
-          // Move caret right after the inserted image
-          const after = document.createRange();
-          after.setStartAfter(img);
-          after.collapse(true);
-          sel?.removeAllRanges();
-          sel?.addRange(after);
-          savedRangeRef.current = after.cloneRange();
+        const img = el.querySelector<HTMLImageElement>(
+          `img[data-temp-id="${tempId}"]`,
+        );
+        if (!img) return;
+        img.removeAttribute("data-uploading");
+        img.classList.remove("att-uploading");
+        if (attachmentId) {
+          img.setAttribute("data-attachment-id", attachmentId);
+          img.style.opacity = "1";
+          img.style.filter = "none";
         } else {
-          el.appendChild(img);
+          img.setAttribute("alt", "upload failed");
+          img.style.opacity = "0.5";
+          img.style.filter = "grayscale(1)";
+          img.style.outline = "1px solid var(--c-red, #ef4444)";
         }
-        // Re-emit value so parent state updates with the new <img>.
+        // Re-emit so the parent value carries the resolved attachment id.
         const html = sanitizeEditorHtml(el.innerHTML);
         lastSentHtmlRef.current = html;
         onChange(html);
       },
     }),
+    [onChange],
+  );
+
+  // Insert an image immediately at the cursor with a loading state, before the
+  // upload completes (Teams-style instant preview).
+  const insertUploadingImage = useCallback(
+    (opts: { tempId: string; previewUrl: string; alt: string }) => {
+      const el = editableRef.current;
+      if (!el) return;
+      el.focus();
+      const savedRange = savedRangeRef.current;
+      const sel = window.getSelection();
+      if (sel && savedRange) {
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
+      }
+      const img = document.createElement("img");
+      img.setAttribute("data-temp-id", opts.tempId);
+      img.setAttribute("data-uploading", "1");
+      img.setAttribute("alt", opts.alt);
+      img.setAttribute("src", opts.previewUrl);
+      img.classList.add("att-uploading");
+      img.style.maxWidth = "240px";
+      img.style.height = "auto";
+      img.style.borderRadius = "8px";
+      img.style.display = "block";
+      img.style.marginTop = "4px";
+      img.style.transition = "opacity 150ms ease, filter 150ms ease";
+      const current = sel?.rangeCount ? sel.getRangeAt(0) : null;
+      if (current) {
+        current.deleteContents();
+        current.insertNode(img);
+        const after = document.createRange();
+        after.setStartAfter(img);
+        after.collapse(true);
+        sel?.removeAllRanges();
+        sel?.addRange(after);
+        savedRangeRef.current = after.cloneRange();
+      } else {
+        el.appendChild(img);
+      }
+      setLocalEmpty(false);
+      const html = sanitizeEditorHtml(el.innerHTML);
+      lastSentHtmlRef.current = html;
+      onChange(html);
+    },
     [onChange],
   );
 
@@ -307,9 +353,9 @@ export const RichTextEditor = forwardRef<
     const el = editableRef.current;
     if (!el) return;
 
-    // Immediately update placeholder visibility (no debounce)
-    const text = el.textContent ?? "";
-    setLocalEmpty(text.trim() === "");
+    // Immediately update placeholder visibility (no debounce). Counts images so
+    // the placeholder hides as soon as an image is pasted, not just on text.
+    setLocalEmpty(editorIsEmpty(el));
 
     // Debounce sanitization + parent state updates to reduce main-thread work while typing.
     if (flushTimerRef.current != null) {
@@ -399,19 +445,32 @@ export const RichTextEditor = forwardRef<
           if (file) files.push(file);
         }
       }
-      if (files.length > 0) {
-        e.preventDefault();
-        // Save the current selection so insertAttachmentImage (called after
-        // upload completes async) can drop the <img> exactly where the user
-        // pasted.
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-          savedRangeRef.current = sel.getRangeAt(0).cloneRange();
-        }
-        onPasteFiles(files);
+      if (files.length === 0) return;
+      e.preventDefault();
+      // Save the caret so each inserted image lands where the user pasted.
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        savedRangeRef.current = sel.getRangeAt(0).cloneRange();
       }
+      // Insert image files inline immediately (instant preview + loading state);
+      // non-image files just upload to the Attachments tab.
+      const payload: { file: File; tempId?: string }[] = files.map((file) => {
+        if (file.type.startsWith("image/")) {
+          const tempId =
+            globalThis.crypto?.randomUUID?.() ??
+            `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          insertUploadingImage({
+            tempId,
+            previewUrl: URL.createObjectURL(file),
+            alt: file.name,
+          });
+          return { file, tempId };
+        }
+        return { file };
+      });
+      onPasteFiles(payload);
     },
-    [onPasteFiles],
+    [onPasteFiles, insertUploadingImage],
   );
 
   const handleKeyDown = useCallback(
@@ -528,10 +587,16 @@ export const RichTextEditor = forwardRef<
     const rect = editableRef.current.getBoundingClientRect();
     const dropdownHeight = 192; // matches max-h-48 in MentionAutocomplete
     const spaceBelow = window.innerHeight - rect.bottom;
+    // Fixed elements render at `top * zoom`, but rect coords are already visual,
+    // so divide by the zoom to land in the right place. See getUiZoom().
+    const z = getUiZoom();
     if (spaceBelow < dropdownHeight + 8) {
-      return { top: Math.max(4, rect.top - dropdownHeight - 4), left: rect.left };
+      return {
+        top: Math.max(4, rect.top - dropdownHeight - 4) / z,
+        left: rect.left / z,
+      };
     }
-    return { top: rect.bottom + 4, left: rect.left };
+    return { top: (rect.bottom + 4) / z, left: rect.left / z };
   }, [showMentions]);
 
   const [localEmpty, setLocalEmpty] = useState(

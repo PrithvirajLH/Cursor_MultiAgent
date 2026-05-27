@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Inbox } from "lucide-react";
 import {
   DndContext,
@@ -16,6 +17,7 @@ import {
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { CSS } from "@dnd-kit/utilities";
 import { useTicketTabs, type TicketTab } from "../contexts/TicketTabsContext";
+import { getUiZoom } from "../utils/uiZoom";
 
 type TicketTabBarProps = {
   onSwitchTab: (ticketId: string | null) => void;
@@ -251,8 +253,11 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
         )}
       </div>
 
-      {/* Context menu */}
-      {contextMenu && (
+      {/* Context menu — portal to body so `fixed` is viewport-relative (escapes
+          any transformed/filtered ancestor) and divide cursor coords by the
+          zoom so it lands under the pointer. See getUiZoom(). */}
+      {contextMenu &&
+        createPortal(
         <>
           <div
             className="fixed inset-0 z-[9998]"
@@ -260,7 +265,10 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
           />
           <div
             className="fixed z-[9999] rounded-xl border border-border bg-popover shadow-xl py-1.5 min-w-[180px] backdrop-blur-md"
-            style={{ top: contextMenu.y, left: contextMenu.x }}
+            style={{
+              top: contextMenu.y / getUiZoom(),
+              left: contextMenu.x / getUiZoom(),
+            }}
           >
             <ContextMenuItem
               label="Close tab"
@@ -301,7 +309,8 @@ export function TicketTabBar({ onSwitchTab }: TicketTabBarProps) {
               }}
             />
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </>
   );

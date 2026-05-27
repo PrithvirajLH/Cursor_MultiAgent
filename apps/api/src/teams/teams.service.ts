@@ -25,9 +25,12 @@ export class TeamsService {
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
 
-    const baseWhere: { isActive: boolean; id?: string } = {
-      isActive: true,
-    };
+    // Owners may opt into seeing deactivated teams (e.g. to reactivate them).
+    const includeInactive =
+      query.includeInactive === 'true' && user?.role === UserRole.OWNER;
+    const baseWhere: { isActive?: boolean; id?: string } = includeInactive
+      ? {}
+      : { isActive: true };
     if (user?.role === UserRole.TEAM_ADMIN) {
       if (!user.primaryTeamId) {
         throw new ForbiddenException(

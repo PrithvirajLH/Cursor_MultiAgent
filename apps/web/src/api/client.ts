@@ -158,7 +158,10 @@ export type CurrentUserSession = {
 export type TeamRef = {
   id: string;
   name: string;
+  slug?: string;
+  description?: string | null;
   assignmentStrategy?: string;
+  isActive?: boolean;
 };
 
 export type CategoryRef = {
@@ -1113,8 +1116,34 @@ export function transferTicket(ticketId: string, payload: TransferPayload) {
   });
 }
 
+export function setTicketCategory(
+  ticketId: string,
+  categoryId: string | null,
+) {
+  return apiFetch<TicketRecord>(`/tickets/${ticketId}/category`, {
+    method: "POST",
+    body: JSON.stringify({ categoryId }),
+  });
+}
+
 export function fetchTeams(options?: Pick<RequestInit, "signal">) {
   return apiFetch<{ data: TeamRef[] }>("/teams", options);
+}
+
+/** Owner-only: includes deactivated teams (for management/reactivation). */
+export function fetchAllTeamsAdmin() {
+  return apiFetch<{ data: TeamRef[] }>("/teams?includeInactive=true");
+}
+
+export function createTeam(payload: {
+  name: string;
+  description?: string;
+  assignmentStrategy?: string;
+}) {
+  return apiFetch<TeamRef>("/teams", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 type FetchUsersParams = {

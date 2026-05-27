@@ -616,11 +616,15 @@ function AuthenticatedShell({
     if (!isAdminRoute) sidebar.setAdminSidebarDismissed(false);
   }, [isAdminRoute, sidebar.setAdminSidebarDismissed]);
 
-  useEffect(() => {
-    fetchTeams()
+  const refreshTeams = useCallback(() => {
+    return fetchTeams()
       .then((response) => setTeamsList(response.data))
       .catch(() => setTeamsList([]));
-  }, [currentEmail]);
+  }, []);
+
+  useEffect(() => {
+    refreshTeams();
+  }, [currentEmail, refreshTeams]);
 
   /* ——— Navigation handler (memoized, 6.3) ——— */
 
@@ -995,6 +999,7 @@ function AuthenticatedShell({
                           <TeamPage
                             teamsList={teamsList}
                             role={currentPersona.role}
+                            onTeamsChanged={refreshTeams}
                           />
                         ),
                       )}

@@ -219,6 +219,16 @@ export class TicketsController {
     return this.ticketsService.transition(id, payload, user);
   }
 
+  @Post(':id/category')
+  @ThrottlePolicy('highWrite')
+  async setCategory(
+    @Param('id') id: string,
+    @Body() payload: { categoryId: string | null },
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.setCategory(id, payload?.categoryId ?? null, user);
+  }
+
   @Get(':id/events')
   async listEvents(
     @Param('id') id: string,

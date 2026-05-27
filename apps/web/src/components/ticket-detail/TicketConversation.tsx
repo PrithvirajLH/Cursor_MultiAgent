@@ -3,7 +3,7 @@ import {
   type ChangeEvent,
   type RefObject,
 } from "react";
-import { Paperclip, Send, Shield } from "lucide-react";
+import { Loader2, Paperclip, Send, Shield } from "lucide-react";
 import type { TicketDetail, TicketMessage, UserRef } from "../../api/client";
 import { MessageBody } from "../MessageBody";
 import {
@@ -94,7 +94,7 @@ export type TicketConversationProps = {
   onLoadMore: () => void;
   onRetryLoad: () => void;
   onAttachmentUpload: (event: ChangeEvent<HTMLInputElement>) => void;
-  onPasteFiles?: (files: File[]) => void;
+  onPasteFiles?: (items: { file: File; tempId?: string }[]) => void;
   onAttachmentDownload: (id: string, fileName: string) => void;
   onAttachmentView: (id: string) => void;
   attachmentUploading: boolean;
@@ -318,7 +318,7 @@ export const TicketConversation = memo(function TicketConversation({
                     <div
                       className={
                         isImageOnly
-                          ? "inline-flex max-w-full"
+                          ? `flex max-w-full ${isCurrentUser ? "justify-end" : "justify-start"}`
                           : `inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
                               isCurrentUser
                                 ? "border-primary bg-primary text-primary-foreground"
@@ -455,16 +455,26 @@ export const TicketConversation = memo(function TicketConversation({
                 </>
               ) : null}
 
-              <button
-                type="button"
-                onClick={onReply}
-                disabled={!messageBody.trim()}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                title="Send"
-                aria-label="Send message"
-              >
-                <Send className="h-5 w-5" />
-              </button>
+              {attachmentUploading ? (
+                <span
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium text-muted-foreground"
+                  aria-live="polite"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Uploading…
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onReply}
+                  disabled={!messageBody.trim()}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Send"
+                  aria-label="Send message"
+                >
+                  <Send className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
 

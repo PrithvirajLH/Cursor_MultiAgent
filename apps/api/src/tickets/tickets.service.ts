@@ -1653,6 +1653,60 @@ export class TicketsService {
     return updated;
   }
 
+  async setCategory(
+    ticketId: string,
+    categoryId: string | null,
+    user: AuthUser,
+  ) {
+    if (user.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('Requesters cannot change ticket category');
+    }
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!this.canWriteTicket(user, ticket)) {
+      throw new ForbiddenException('No write access to this ticket');
+    }
+    if (categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: categoryId },
+      });
+      if (!category) {
+        throw new BadRequestException('Category not found');
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.ticket.update({
+        where: { id: ticketId },
+        data: { categoryId },
+        include: { requester: true, assignee: true, assignedTeam: true },
+      });
+      await tx.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'TICKET_CATEGORY_CHANGED',
+          payload: { from: ticket.categoryId, to: categoryId },
+          createdById: user.id,
+        },
+      });
+      return result;
+    });
+
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'category_changed',
+        actorId: user.id,
+      }),
+    );
+
+    return updated;
+  }
+
   async applyTeamTransferInTx(
     tx: Prisma.TransactionClient,
     ticket: TeamTransferTicketSnapshot,
