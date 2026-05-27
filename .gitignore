@@ -81,3 +81,18 @@ docs/
 .github/
 e2e/
 update/
+
+# Loose docs / cruft (kept locally)
+DATABASE.md
+PROJECT_DOCUMENTATION.md
+QUALITY_ASSESSMENT_REPORT.md
+USER_MANUAL.md
+sprint.md
+IT.pdf
+IT.pdf.txt
+ToDo Ticketing.docx
+apps/api/jest-out.txt
+.playwright-cli/
+
+# Operator PowerShell scripts (local only)
+*.ps1
