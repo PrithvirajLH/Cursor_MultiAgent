@@ -144,6 +144,7 @@ model User {
   routingRulesAssigned RoutingRule[] @relation("RoutingRuleAssignee")
   slaPolicyConfigsCreated SlaPolicyConfig[] @relation("SlaPolicyConfigCreatedBy")
   adminAuditEvents AdminAuditEvent[] @relation("AdminAuditEventCreatedBy")
+  kbArticles KbArticle[] @relation("KbArticleAuthor")
 }
 
 model Team {
@@ -187,6 +188,48 @@ model Category {
   customFields CustomField[]
 
   @@index([parentId])
+}
+
+enum KbArticleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model KbCategory {
+  id          String      @id @default(uuid())
+  name        String
+  slug        String      @unique
+  description String?
+  sortOrder   Int         @default(0)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  articles    KbArticle[]
+
+  @@index([slug])
+}
+
+model KbArticle {
+  id          String          @id @default(uuid())
+  title       String          @db.VarChar(255)
+  slug        String          @unique
+  summary     String?         @db.VarChar(500)
+  content     String          @db.Text
+  status      KbArticleStatus @default(DRAFT)
+  isInternal  Boolean         @default(false)
+  viewCount   Int             @default(0)
+  categoryId  String?
+  authorId    String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  category    KbCategory?     @relation(fields: [categoryId], references: [id])
+  author      User?           @relation("KbArticleAuthor", fields: [authorId], references: [id])
+
+  @@index([categoryId])
+  @@index([status])
+  @@index([slug])
 }
 
 model TeamMember {

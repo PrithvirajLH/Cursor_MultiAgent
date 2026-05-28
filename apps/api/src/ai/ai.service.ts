@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { FoundryClientService } from './foundry-client.service';
 import { ToolRegistryService } from './tools/tool-registry.service';
 import { TicketToolsService } from './tools/ticket-tools.service';
+import { KbService } from '../kb/kb.service';
 import type { AuthUser } from '../auth/current-user.decorator';
 import type {
   PipelineInput,
@@ -27,7 +28,31 @@ export class AiService {
     private readonly ticketTools: TicketToolsService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly kb: KbService,
   ) {}
+
+  /** Best-effort KB article suggestions from the classifier's intent + classification. */
+  private async getSuggestedArticles(
+    intent: IntentResult,
+    classification: ClassificationResult,
+    user: AuthUser,
+  ) {
+    try {
+      const e = intent.entities;
+      const parts = [
+        intent.intent,
+        intent.affectedSystem ?? '',
+        ...(e?.systems ?? []),
+        ...(e?.devices ?? []),
+        ...(e?.other ?? []),
+        classification.department?.name ?? '',
+        classification.category?.name ?? '',
+      ].filter(Boolean);
+      return await this.kb.suggest(parts.join(' '), user, 3);
+    } catch {
+      return [];
+    }
+  }
 
   // ─── Validation Helpers ──────────────────────────────────────────────
 
@@ -206,6 +231,13 @@ export class AiService {
 
     const finalClassification = confidence.adjustedClassification ?? classification;
 
+    // KB deflection: suggest relevant articles based on the classifier's output.
+    const suggestedArticles = await this.getSuggestedArticles(
+      intent,
+      finalClassification,
+      user,
+    );
+
     // If confidence is too low, ask for clarification
     if (!confidence.passed) {
       const elapsed = Date.now() - startTime;
@@ -214,6 +246,7 @@ export class AiService {
         status: 'needs_clarification',
         question: confidence.clarifyingQuestion ?? 'Could you provide more details about your request?',
         partialClassification: finalClassification,
+        suggestedArticles,
       };
     }
 
@@ -348,6 +381,7 @@ IMPORTANT: Return ONLY the JSON object. Format:
 
       return {
         status: 'created',
+        suggestedArticles,
         ticket,
         aiMetadata: {
           intentConfidence: finalClassification.department.confidence,

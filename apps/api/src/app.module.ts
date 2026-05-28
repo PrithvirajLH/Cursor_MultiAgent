@@ -13,6 +13,7 @@ import { AutomationModule } from './automation/automation.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
 import { AgentsAdminModule } from './agents-admin/agents-admin.module';
 import { CategoriesModule } from './categories/categories.module';
+import { KbModule } from './kb/kb.module';
 import { CommonModule } from './common/common.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -91,6 +92,7 @@ import { parsePositiveInt } from './common/config.utils';
     AutomationModule,
     CannedResponsesModule,
     CategoriesModule,
+    KbModule,
     CommonModule,
     CsatModule,
     CustomFieldsModule,

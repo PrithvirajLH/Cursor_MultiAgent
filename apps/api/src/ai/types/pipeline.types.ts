@@ -95,8 +95,16 @@ export interface AiAnalysis {
 
 // ─── Pipeline Results ───────────────────────────────────────────────────────
 
+export interface SuggestedArticle {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+}
+
 export interface PipelineSuccess {
   status: 'created';
+  suggestedArticles?: SuggestedArticle[];
   ticket: {
     id: string;
     number: number;
@@ -118,6 +126,7 @@ export interface PipelineClarification {
   status: 'needs_clarification';
   question: string;
   partialClassification: ClassificationResult;
+  suggestedArticles?: SuggestedArticle[];
 }
 
 export interface PipelineError {

@@ -10,6 +10,7 @@ import {
   BarChart3,
   ClipboardList,
   Clock,
+  BookOpen,
   FileText,
   FolderKanban,
   LayoutDashboard,
@@ -127,6 +128,20 @@ const AgentProfilePage = lazy(() =>
     default: m.AgentProfilePage,
   })),
 );
+const KbAdminPage = lazy(() =>
+  import("./pages/KbAdminPage").then((m) => ({ default: m.KbAdminPage })),
+);
+const KbBrowsePage = lazy(() =>
+  import("./pages/KbBrowsePage").then((m) => ({ default: m.KbBrowsePage })),
+);
+const KbArticleEditorPage = lazy(() =>
+  import("./pages/KbArticleEditorPage").then((m) => ({
+    default: m.KbArticleEditorPage,
+  })),
+);
+const KbArticlePage = lazy(() =>
+  import("./pages/KbArticlePage").then((m) => ({ default: m.KbArticlePage })),
+);
 const CustomFieldsAdminPage = lazy(() =>
   import("./pages/CustomFieldsAdminPage").then((m) => ({
     default: m.CustomFieldsAdminPage,
@@ -172,6 +187,7 @@ function PageFallback() {
 type NavKey =
   | "dashboard"
   | "submit"
+  | "help"
   | "tickets"
   | "assigned"
   | "unassigned"
@@ -210,6 +226,12 @@ const navItems: (SidebarItem & { roles: Role[] })[] = [
     key: "created",
     label: "My Tickets",
     icon: FileText,
+    roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
+  },
+  {
+    key: "help",
+    label: "Help Center",
+    icon: BookOpen,
     roles: ["EMPLOYEE", "AGENT", "LEAD", "TEAM_ADMIN", "OWNER"],
   },
   {
@@ -286,6 +308,8 @@ function isShellLayoutPath(pathname: string): boolean {
   if (pathname === "/admin/tags") return true;
   if (pathname === "/admin/agents" || pathname.startsWith("/admin/agents/"))
     return true;
+  if (pathname === "/admin/kb" || pathname.startsWith("/admin/kb/")) return true;
+  if (pathname === "/help" || pathname.startsWith("/help/")) return true;
   return (
     pathname === "/dashboard" ||
     pathname === "/triage" ||
@@ -344,6 +368,10 @@ const viewMeta: Record<NavKey, { title: string; subtitle: string }> = {
   submit: {
     title: "AI Submit",
     subtitle: "Describe your issue and let AI route it.",
+  },
+  help: {
+    title: "Help Center",
+    subtitle: "Find answers before you open a ticket.",
   },
   tickets: {
     title: "All Tickets",
@@ -639,6 +667,9 @@ function AuthenticatedShell({
           return;
         case "submit":
           navigate("/submit");
+          return;
+        case "help":
+          navigate("/help");
           return;
         case "triage":
           navigate("/triage");
@@ -964,6 +995,20 @@ function AuthenticatedShell({
                     <Route
                       path="/dashboard"
                       element={<DashboardPage role={currentPersona.role} />}
+                    />
+                    <Route path="/help" element={<KbBrowsePage />} />
+                    <Route path="/help/:slug" element={<KbArticlePage />} />
+                    <Route
+                      path="/admin/kb"
+                      element={guardRoute(isAdminOrOwner, <KbAdminPage />)}
+                    />
+                    <Route
+                      path="/admin/kb/new"
+                      element={guardRoute(isAdminOrOwner, <KbArticleEditorPage />)}
+                    />
+                    <Route
+                      path="/admin/kb/:slug/edit"
+                      element={guardRoute(isAdminOrOwner, <KbArticleEditorPage />)}
                     />
                     <Route
                       path="/triage"

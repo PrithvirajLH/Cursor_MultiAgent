@@ -1463,6 +1463,143 @@ export function deleteCategory(id: string) {
   });
 }
 
+// ─── Knowledge Base ─────────────────────────────────────────────────────────
+export type KbArticleStatus = "DRAFT" | "PUBLISHED";
+
+export type KbCategoryRef = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  _count?: { articles: number };
+};
+
+export type KbArticleSummary = {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  status: KbArticleStatus;
+  isInternal: boolean;
+  viewCount: number;
+  categoryId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  category?: { id: string; name: string; slug: string } | null;
+  author?: { id: string; displayName: string; email: string } | null;
+};
+
+export type KbArticleDetail = KbArticleSummary & {
+  content: string;
+  related?: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    summary: string | null;
+  }>;
+};
+
+export function fetchKbArticles(params?: {
+  q?: string;
+  categoryId?: string;
+  status?: KbArticleStatus;
+  includeDrafts?: boolean;
+}) {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<{ data: KbArticleSummary[] }>(`/kb/articles${suffix}`);
+}
+
+export function fetchKbArticle(slug: string) {
+  return apiFetch<KbArticleDetail>(`/kb/articles/${encodeURIComponent(slug)}`);
+}
+
+export function createKbArticle(payload: {
+  title: string;
+  content: string;
+  summary?: string;
+  slug?: string;
+  status?: KbArticleStatus;
+  isInternal?: boolean;
+  categoryId?: string;
+}) {
+  return apiFetch<KbArticleSummary>("/kb/articles", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateKbArticle(
+  id: string,
+  payload: {
+    title?: string;
+    content?: string;
+    summary?: string | null;
+    slug?: string;
+    status?: KbArticleStatus;
+    isInternal?: boolean;
+    categoryId?: string | null;
+  },
+) {
+  return apiFetch<KbArticleSummary>(`/kb/articles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteKbArticle(id: string) {
+  return apiFetch<{ id: string }>(`/kb/articles/${id}`, { method: "DELETE" });
+}
+
+export function fetchKbCategories(params?: { includeInactive?: boolean }) {
+  const query = new URLSearchParams();
+  if (params?.includeInactive) query.set("includeInactive", "true");
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return apiFetch<{ data: KbCategoryRef[] }>(`/kb/categories${suffix}`);
+}
+
+export function createKbCategory(payload: {
+  name: string;
+  slug?: string;
+  description?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}) {
+  return apiFetch<KbCategoryRef>("/kb/categories", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateKbCategory(
+  id: string,
+  payload: {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    sortOrder?: number;
+    isActive?: boolean;
+  },
+) {
+  return apiFetch<KbCategoryRef>(`/kb/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteKbCategory(id: string) {
+  return apiFetch<{ id: string }>(`/kb/categories/${id}`, { method: "DELETE" });
+}
+
 export function fetchTeamMembers(teamId: string) {
   return apiFetch<{ data: TeamMember[] }>(`/teams/${teamId}/members`);
 }
@@ -2437,8 +2574,16 @@ export interface AiPipelineStep {
   error?: string;
 }
 
+export interface AiSuggestedArticle {
+  id: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+}
+
 export interface AiClassifyResultCreated {
   status: "created";
+  suggestedArticles?: AiSuggestedArticle[];
   ticket: {
     id: string;
     number: number;
@@ -2478,6 +2623,7 @@ export interface AiClassifyResultClarification {
   status: "needs_clarification";
   question: string;
   partialClassification: Record<string, unknown>;
+  suggestedArticles?: AiSuggestedArticle[];
 }
 
 export interface AiClassifyResultError {

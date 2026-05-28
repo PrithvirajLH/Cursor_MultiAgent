@@ -1,5 +1,12 @@
 import { useState, useCallback } from "react";
-import { Sparkles, AlertCircle, MessageSquare } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  Sparkles,
+  AlertCircle,
+  MessageSquare,
+  BookOpen,
+  ChevronRight,
+} from "lucide-react";
 import { ChatInput } from "../components/chat/ChatInput";
 import { ExamplePrompts } from "../components/chat/ExamplePrompts";
 import { ProcessingSteps } from "../components/chat/ProcessingSteps";
@@ -8,8 +15,46 @@ import {
   classifyTicket,
   type AiClassifyResult,
   type AiClassifyResultCreated,
+  type AiSuggestedArticle,
 } from "../api/client";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
+
+function SuggestedArticles({
+  articles,
+  heading,
+}: {
+  articles: AiSuggestedArticle[];
+  heading: string;
+}) {
+  if (!articles.length) return null;
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-500/30 dark:bg-blue-500/10">
+      <div className="mb-2 flex items-center gap-2">
+        <BookOpen className="h-4 w-4 text-primary" />
+        <p className="text-sm font-semibold text-foreground">{heading}</p>
+      </div>
+      <div className="space-y-1.5">
+        {articles.map((a) => (
+          <Link
+            key={a.id}
+            to={`/help/${a.slug}`}
+            className="flex items-center justify-between gap-3 rounded-lg bg-card px-3 py-2 text-sm hover:bg-muted"
+          >
+            <div className="min-w-0">
+              <span className="font-medium text-foreground">{a.title}</span>
+              {a.summary && (
+                <p className="line-clamp-1 text-xs text-muted-foreground">
+                  {a.summary}
+                </p>
+              )}
+            </div>
+            <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type Phase = "input" | "processing" | "created" | "clarification" | "error";
 
@@ -136,6 +181,10 @@ export function AiSubmitPage() {
   }, []);
 
   const createdResult = result as AiClassifyResultCreated | undefined;
+  const suggestions: AiSuggestedArticle[] =
+    result && result.status !== "error"
+      ? (result.suggestedArticles ?? [])
+      : [];
 
   return (
     <div className="flex flex-col h-full">
@@ -174,6 +223,13 @@ export function AiSubmitPage() {
 
           {/* Created Phase */}
           {phase === "created" && createdResult?.status === "created" && (
+            <>
+            {suggestions.length > 0 && (
+              <SuggestedArticles
+                articles={suggestions}
+                heading="Related help articles"
+              />
+            )}
             <TicketCreated
               ticket={{
                 id: createdResult.ticket.id,
@@ -212,6 +268,7 @@ export function AiSubmitPage() {
               }
               onNewTicket={handleNewTicket}
             />
+            </>
           )}
 
           {/* Clarification Phase */}
@@ -232,6 +289,12 @@ export function AiSubmitPage() {
                   </div>
                 </div>
               </div>
+              {suggestions.length > 0 && (
+                <SuggestedArticles
+                  articles={suggestions}
+                  heading="These articles might already answer your question"
+                />
+              )}
               <ChatInput
                 onSubmit={handleClarificationSubmit}
                 isLoading={false}

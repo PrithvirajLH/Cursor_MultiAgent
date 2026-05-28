@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   BarChart3,
+  BookOpen,
   Bot,
   Bug,
   FileText,
@@ -22,6 +23,7 @@ type AdminRoute =
   | "/categories"
   | "/admin/tags"
   | "/admin/agents"
+  | "/admin/kb"
   | "/reports"
   | "/ai-debug";
 
@@ -35,6 +37,7 @@ type AdminSidebarItem = {
     | "categories"
     | "tags"
     | "agents"
+    | "kb"
     | "reports"
     | "ai-debug";
   label: string;
@@ -110,6 +113,14 @@ const adminItems: AdminSidebarItem[] = [
     description: "Agent performance and analytics",
   },
   {
+    key: "kb",
+    label: "Knowledge Base",
+    route: "/admin/kb",
+    icon: BookOpen,
+    roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Help articles & runbooks",
+  },
+  {
     key: "reports",
     label: "Reports",
     route: "/reports",
@@ -147,6 +158,7 @@ function isItemActive(route: AdminRoute, pathname: string): boolean {
   if (route === "/audit-log") return effectivePathname.startsWith("/audit-log");
   if (route === "/reports") return effectivePathname.startsWith("/reports");
   if (route === "/ai-debug") return effectivePathname.startsWith("/ai-debug");
+  if (route === "/admin/kb") return effectivePathname.startsWith("/kb");
   return effectivePathname.startsWith("/categories");
 }
 

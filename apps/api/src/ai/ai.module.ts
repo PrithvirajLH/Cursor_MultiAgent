@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TicketsModule } from '../tickets/tickets.module';
+import { KbModule } from '../kb/kb.module';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { FoundryClientService } from './foundry-client.service';
@@ -9,7 +10,7 @@ import { ClassificationToolsService } from './tools/classification-tools.service
 import { TicketToolsService } from './tools/ticket-tools.service';
 
 @Module({
-  imports: [forwardRef(() => TicketsModule)],
+  imports: [forwardRef(() => TicketsModule), KbModule],
   controllers: [AiController],
   providers: [
     AiService,
