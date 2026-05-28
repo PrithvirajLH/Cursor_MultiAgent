@@ -79,7 +79,10 @@ function getRoleDropdownOptions(
     return ["AGENT"];
   }
   if (userRole === "TEAM_ADMIN") {
-    return isOwnerViewer ? ["AGENT", "LEAD", "TEAM_ADMIN"] : ["ADMIN"];
+    // Only an OWNER can promote/demote a TEAM_ADMIN. Showing a non-OWNER any
+    // option here is misleading (it implies a privilege change that doesn't
+    // exist) — give them no actionable options instead.
+    return isOwnerViewer ? ["AGENT", "LEAD", "TEAM_ADMIN"] : [];
   }
   return isOwnerViewer ? ["AGENT", "LEAD", "TEAM_ADMIN"] : ["AGENT", "LEAD"];
 }
@@ -133,6 +136,12 @@ function MemberRoleDropdown({
     document.addEventListener("click", closeOnOutsideClick);
     return () => document.removeEventListener("click", closeOnOutsideClick);
   }, [member.id]);
+
+  // No actionable role changes for this viewer (e.g. non-OWNER on a TEAM_ADMIN
+  // row) — render the role as a read-only badge instead of a clickable dropdown.
+  if (roleOptions.length === 0) {
+    return <RoleBadge role={displayRole} />;
+  }
 
   return (
     <div className="relative" data-member-role={member.id}>
