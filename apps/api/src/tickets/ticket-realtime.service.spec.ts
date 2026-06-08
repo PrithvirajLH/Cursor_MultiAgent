@@ -225,16 +225,19 @@ describe('TicketRealtimeService', () => {
       reason: 'message_added',
       message,
     });
+    // agent-2 is a peer AGENT on team-1: under the team peer-read model they
+    // can view the ticket, so they receive the event. owner-1 is not a
+    // candidate (not a follower / not on the team / not granted).
     expect(changedAudience.userIds).toEqual(
       expect.arrayContaining([
         'requester-1',
         'agent-1',
+        'agent-2',
         'lead-1',
         'admin-1',
         'grant-agent-1',
       ]),
     );
-    expect(changedAudience.userIds).not.toContain('agent-2');
     expect(changedAudience.userIds).not.toContain('owner-1');
   });
 
@@ -320,10 +323,16 @@ describe('TicketRealtimeService', () => {
 
     expect(realtime.publishTicketTyping).toHaveBeenCalledTimes(1);
     const typingAudience = realtime.publishTicketTyping.mock.calls[0][1];
+    // Peer agent on team-1 receives typing events too (team peer-read).
     expect(typingAudience.userIds).toEqual(
-      expect.arrayContaining(['requester-1', 'agent-1', 'lead-1', 'admin-1']),
+      expect.arrayContaining([
+        'requester-1',
+        'agent-1',
+        'agent-2',
+        'lead-1',
+        'admin-1',
+      ]),
     );
-    expect(typingAudience.userIds).not.toContain('agent-2');
     expect(typingAudience.userIds).not.toContain('owner-1');
   });
 });

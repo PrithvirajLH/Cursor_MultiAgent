@@ -125,8 +125,10 @@ describe('AuditService', () => {
 
     const exportCall = extractSqlCall(prisma, 1);
     expect(exportCall.sql).toContain('UNION ALL');
+    // Export wraps the combined query as `... AS "wc"` and orders by the
+    // aliased columns (audit.service.ts listCombinedAuditEntries).
     expect(exportCall.sql).toContain(
-      'ORDER BY "createdAt" DESC, "entryId" DESC',
+      'ORDER BY "wc"."createdAt" DESC, "wc"."entryId" DESC',
     );
     expect(exportCall.sql).toContain('ILIKE');
     expect(exportCall.values).toContain('%closed%');
