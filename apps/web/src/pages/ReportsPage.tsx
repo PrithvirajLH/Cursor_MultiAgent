@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { Download, Filter } from "lucide-react";
 import {
@@ -42,6 +41,12 @@ import {
 } from "../api/client";
 import { TopBar } from "../components/TopBar";
 import { EmptyState } from "../components/EmptyState";
+import {
+  CardShell,
+  MiniBars,
+  toPercent,
+} from "../components/reports/report-primitives";
+import { ReportsVolumeTab } from "../components/reports/ReportsVolumeTab";
 import { TagAnalyticsPanel } from "../components/tags/TagAnalyticsPanel";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
@@ -190,10 +195,6 @@ function rangeToDates(range: RangeKey): { from: string; to: string } {
 
 function sumCounts(rows: Array<{ count: number }>): number {
   return rows.reduce((sum, row) => sum + row.count, 0);
-}
-
-function toPercent(value: number): string {
-  return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
 }
 
 function toSafePercent(numerator: number, denominator: number): number {
@@ -395,36 +396,6 @@ function SparkArea({
   );
 }
 
-function MiniBars({
-  points,
-  height = 60,
-}: {
-  points: number[];
-  height?: number;
-}) {
-  const width = 220;
-  const max = Math.max(...points, 1);
-  const barWidth = width / Math.max(points.length, 1);
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="block">
-      {points.map((point, idx) => {
-        const barHeight = (point / max) * (height - 10);
-        return (
-          <rect
-            key={`bar-${idx}`}
-            x={idx * barWidth + 3}
-            y={height - barHeight}
-            width={Math.max(barWidth - 6, 2)}
-            height={barHeight}
-            rx="3"
-            fill="currentColor"
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
 function Donut({
   value,
   label,
@@ -465,31 +436,6 @@ function Donut({
         <p className="text-xl font-bold text-foreground">{toPercent(clamped)}</p>
         <p className="text-xs text-muted-foreground">{sub}</p>
       </div>
-    </div>
-  );
-}
-
-function CardShell({
-  title,
-  sub,
-  right,
-  children,
-}: {
-  title: string;
-  sub?: string;
-  right?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-        <div>
-          <p className="text-sm font-semibold text-foreground">{title}</p>
-          {sub ? <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p> : null}
-        </div>
-        {right}
-      </div>
-      <div className="p-5">{children}</div>
     </div>
   );
 }
@@ -1350,28 +1296,11 @@ export function ReportsPage({ role }: { role: Role }) {
     );
   }, [kpis.resolved, reopenData, sources.reopenRate]);
 
-  const peakDays = useMemo(() => {
-    if (volumeDates.length > 0 && volumeDates.length === inboundSeries.length) {
-      return volumeDates
-        .map((date, idx) => ({
-          d: new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
-            weekday: "short",
-          }),
-          v: inboundSeries[idx],
-        }))
-        .sort((a, b) => b.v - a.v)
-        .slice(0, 5);
-    }
-    return [];
-  }, [inboundSeries, volumeDates]);
-
   const hasInboundSeries = inboundSeries.length > 0;
   const hasSolvedSeries = solvedSeriesSafe.length > 0;
-  const hasBacklogSeries = backlogSeriesSafe.length > 0;
   const hasCategories = topCategories.length > 0;
   const hasAgeBuckets = ageBuckets.length > 0;
   const hasAgentRows = agentRows.length > 0;
-  const hasChannelBreakdown = channelBreakdownData.length > 0;
   const hasCsatTrend = csatTrendData.length > 0;
   const hasCsatDrivers = csatDriversData.length > 0;
   const hasCsatTags = csatTagsData.length > 0;
@@ -2159,136 +2088,13 @@ export function ReportsPage({ role }: { role: Role }) {
             ) : null}
 
             {tab === "volume" ? (
-              <div className="space-y-5">
-                <div className="grid gap-5 lg:grid-cols-12">
-                  <div className="lg:col-span-8">
-                    <CardShell
-                      title="Inbound vs solved vs backlog"
-                      sub="Daily trend"
-                    >
-                      <div className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-xl border border-border bg-muted p-4">
-                          <p className="text-sm font-semibold text-foreground">
-                            Inbound
-                          </p>
-                          <p className="mb-2 text-xs text-muted-foreground">
-                            Tickets/day
-                          </p>
-                          {hasInboundSeries ? (
-                            <div className="text-primary">
-                              <MiniBars points={inboundSeries} />
-                            </div>
-                          ) : (
-                            <div className="mt-4">
-                              <EmptyState title="No inbound data" compact />
-                            </div>
-                          )}
-                        </div>
-                        <div className="rounded-xl border border-border bg-muted p-4">
-                          <p className="text-sm font-semibold text-foreground">
-                            Solved
-                          </p>
-                          <p className="mb-2 text-xs text-muted-foreground">
-                            Tickets/day
-                          </p>
-                          {hasSolvedSeries ? (
-                            <div className="text-emerald-400">
-                              <MiniBars points={solvedSeriesSafe} />
-                            </div>
-                          ) : (
-                            <div className="mt-4">
-                              <EmptyState title="No solved data" compact />
-                            </div>
-                          )}
-                        </div>
-                        <div className="rounded-xl border border-border bg-muted p-4">
-                          <p className="text-sm font-semibold text-foreground">
-                            Backlog
-                          </p>
-                          <p className="mb-2 text-xs text-muted-foreground">
-                            Open tickets
-                          </p>
-                          {hasBacklogSeries ? (
-                            <div className="text-amber-600">
-                              <MiniBars points={backlogSeriesSafe} />
-                            </div>
-                          ) : (
-                            <div className="mt-4">
-                              <EmptyState title="No backlog data" compact />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </CardShell>
-                  </div>
-
-                  <div className="space-y-5 lg:col-span-4">
-                    <CardShell title="By channel" sub="Share of inbound">
-                      {hasChannelBreakdown ? (
-                        <div className="space-y-2">
-                          {channelBreakdownData.map((row) => (
-                            <div
-                              key={row.channel}
-                              className="rounded-lg px-3 py-2 hover:bg-muted"
-                            >
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium text-foreground">
-                                  {row.label}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  {toPercent(row.percent)}
-                                </span>
-                              </div>
-                              <div className="mt-2 h-2 w-full rounded-full bg-accent">
-                                <div
-                                  className="h-2 rounded-full bg-primary"
-                                  style={{ width: `${row.percent}%` }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-4">
-                          <EmptyState
-                            title="No channel tracking"
-                            description="No channels recorded in current scope."
-                            compact
-                          />
-                        </div>
-                      )}
-                    </CardShell>
-
-                    <CardShell title="Peak days" sub="Highest inbound volume">
-                      {peakDays.length > 0 ? (
-                        <div className="space-y-2">
-                          {peakDays.map((row) => (
-                            <div
-                              key={`${row.d}-${row.v}`}
-                              className="flex items-center justify-between rounded-xl border border-border bg-muted px-3 py-2"
-                            >
-                              <span className="text-sm font-medium text-foreground">
-                                {row.d}
-                              </span>
-                              <span className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-foreground">
-                                {row.v}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-4">
-                          <EmptyState
-                            title="No peak days"
-                            description="Not enough volume data to determine peaks."
-                            compact
-                          />
-                        </div>
-                      )}
-                    </CardShell>
-                  </div>
-                </div>
-              </div>
+              <ReportsVolumeTab
+                inboundSeries={inboundSeries}
+                solvedSeries={solvedSeriesSafe}
+                backlogSeries={backlogSeriesSafe}
+                volumeDates={volumeDates}
+                channelBreakdownData={channelBreakdownData}
+              />
             ) : null}
 
             {tab === "agents" ? (
