@@ -149,6 +149,10 @@ model User {
   // TEAM_ADMIN user listings filter users by primaryTeamId
   // (users.service.ts getUserListScope) — index avoids a full User scan.
   @@index([primaryTeamId])
+  // Declares the index already created by migration 20260521_user_is_active.
+  // Without this line schema drifts from the DB and `migrate dev` would try to
+  // drop it. The index already exists in all environments — no new migration.
+  @@index([isActive])
 }
 
 model Team {

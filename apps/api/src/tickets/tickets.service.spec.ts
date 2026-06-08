@@ -11,6 +11,7 @@ import { InboundEmailService } from './inbound-email.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
+import { TagsService } from '../tags/tags.service';
 import { TicketsService } from './tickets.service';
 
 function callIsPauseStatus(service: TicketsService, status: TicketStatus) {
@@ -74,6 +75,7 @@ describe('TicketsService', () => {
       {} as TicketRealtimeService,
       {} as TicketSlaCalculationService,
       {} as InboundEmailService,
+      {} as TagsService,
     );
   });
 
