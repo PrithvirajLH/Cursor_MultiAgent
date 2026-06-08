@@ -16,9 +16,9 @@ type Point = AgentWorkloadResponse["data"][number] & {
 };
 
 const GRID_STROKE        = "rgba(255,255,255,0.07)";
-const TICK_FILL          = "#94a3b8";
+const TICK_FILL          = "hsl(var(--muted-foreground))";
 const ASSIGNED_COLOR     = "rgba(148,163,184,0.35)";
-const IN_PROGRESS_COLOR  = "#14d4f4";
+const IN_PROGRESS_COLOR  = "hsl(var(--status-blue))";
 
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",

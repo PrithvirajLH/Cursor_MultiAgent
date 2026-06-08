@@ -12,7 +12,7 @@ import {
 type Point = { status: string; count: number };
 
 const GRID_STROKE   = "rgba(255,255,255,0.07)";
-const TICK_FILL     = "#94a3b8";
+const TICK_FILL     = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -23,19 +23,19 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  NEW:                    "#a78bfa",
-  TRIAGED:                "#60a5fa",
-  ASSIGNED:               "#2dd4bf",
-  IN_PROGRESS:            "#14d4f4",
-  WAITING_ON_REQUESTER:   "#fbbf24",
-  WAITING_ON_VENDOR:      "#fb923c",
-  RESOLVED:               "#34d399",
-  CLOSED:                 "#94a3b8",
-  REOPENED:               "#f87171",
+  NEW:                    "hsl(var(--status-new))",
+  TRIAGED:                "hsl(var(--status-progress))",
+  ASSIGNED:               "hsl(var(--status-progress))",
+  IN_PROGRESS:            "hsl(var(--status-progress))",
+  WAITING_ON_REQUESTER:   "hsl(var(--status-waiting))",
+  WAITING_ON_VENDOR:      "hsl(var(--status-waiting))",
+  RESOLVED:               "hsl(var(--status-resolved))",
+  CLOSED:                 "hsl(var(--muted-foreground))",
+  REOPENED:               "hsl(var(--status-red))",
 };
 
 function colorForStatus(status: string): string {
-  return STATUS_COLORS[status] ?? "#94a3b8";
+  return STATUS_COLORS[status] ?? "hsl(var(--muted-foreground))";
 }
 
 function statusAxisLabel(status: string): string {

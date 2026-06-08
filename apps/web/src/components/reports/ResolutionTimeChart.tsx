@@ -12,7 +12,7 @@ import {
 type Point = { label: string; avgHours: number; count: number };
 
 const GRID_STROKE   = "rgba(255,255,255,0.07)";
-const TICK_FILL     = "#94a3b8";
+const TICK_FILL     = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -23,9 +23,9 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 const DEPARTMENT_COLORS = [
-  "#14d4f4", "#34d399", "#a78bfa",
-  "#fbbf24", "#60a5fa", "#fb923c",
-  "#f87171", "#94a3b8",
+  "hsl(var(--chart-6))", "hsl(var(--status-green))", "hsl(var(--status-purple))",
+  "hsl(var(--status-amber))", "hsl(var(--status-blue))", "hsl(var(--chart-3))",
+  "hsl(var(--status-red))", "hsl(var(--muted-foreground))",
 ];
 
 export function ResolutionTimeChart({ data }: { data: Point[] }) {

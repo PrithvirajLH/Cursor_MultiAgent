@@ -131,7 +131,7 @@ export function AgentProfilePage() {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none px-6 py-4">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -172,7 +172,7 @@ export function AgentProfilePage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-none space-y-6 p-6">
+      <div className="mx-auto max-w-[1600px] space-y-6 p-6">
         {loading ? (
           <>
             <div className="h-24 skeleton-shimmer rounded-xl" />

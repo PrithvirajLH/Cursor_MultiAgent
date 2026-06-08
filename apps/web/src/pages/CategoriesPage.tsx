@@ -255,7 +255,7 @@ export function CategoriesPage({ role }: { role?: string } = {}) {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none py-4 px-6">
+        <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -287,7 +287,7 @@ export function CategoriesPage({ role }: { role?: string } = {}) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-none p-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         {error && (
           <div className="mb-5 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
             {error}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeftRight, Inbox, RotateCcw } from "lucide-react";
 import {
   fetchReportAgentWorkload,
   fetchReportReopenRate,
@@ -330,25 +331,25 @@ function StatusDonutChart({ data }: { data: TicketStatusPoint[] }) {
   function statusColor(status: string): string {
     switch (status) {
       case "NEW":
-        return "#3b82f6";
+        return "hsl(var(--status-new))";
       case "TRIAGED":
-        return "#8b5cf6";
+        return "hsl(var(--status-progress))";
       case "ASSIGNED":
-        return "#06b6d4";
+        return "hsl(var(--status-progress))";
       case "IN_PROGRESS":
-        return "#fbbf24";
+        return "hsl(var(--status-progress))";
       case "WAITING_ON_REQUESTER":
-        return "#f59e0b";
+        return "hsl(var(--status-waiting))";
       case "WAITING_ON_VENDOR":
-        return "#d97706";
+        return "hsl(var(--status-waiting))";
       case "RESOLVED":
-        return "#22c55e";
+        return "hsl(var(--status-resolved))";
       case "CLOSED":
-        return "#71717a";
+        return "hsl(var(--fg-faint))";
       case "REOPENED":
-        return "#ef4444";
+        return "hsl(var(--status-red))";
       default:
-        return "#94a3b8";
+        return "hsl(var(--fg-subtle))";
     }
   }
 
@@ -412,12 +413,12 @@ function PriorityDonutChart({
       value: item.count,
       color:
         item.priority === "SEV1"
-          ? "#ef4444"
+          ? "hsl(var(--status-red))"
           : item.priority === "SEV2"
-            ? "#fb923c"
+            ? "hsl(var(--status-amber))"
             : item.priority === "SEV3"
-              ? "#3b82f6"
-              : "#9ca3af",
+              ? "hsl(var(--status-blue))"
+              : "hsl(var(--fg-faint))",
     }))
     .filter((item) => item.value > 0);
 
@@ -522,7 +523,7 @@ function LeadAgentWorkloadBarChart({
               fontSize: "12px",
             }}
           />
-          <Bar dataKey="openTickets" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+          <Bar dataKey="openTickets" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -534,13 +535,9 @@ function LeadSlaBarChart({
 }: {
   data: { met: number; atRisk: number; breached: number };
 }) {
-  const points = [
-    { name: "Met", value: data.met, color: "#22c55e" },
-    { name: "At Risk", value: data.atRisk, color: "#f59e0b" },
-    { name: "Breached", value: data.breached, color: "#ef4444" },
-  ];
+  const total = data.met + data.atRisk + data.breached;
 
-  if (points.every((item) => item.value <= 0)) {
+  if (total <= 0) {
     return (
       <div className="flex h-[250px] w-full items-center justify-center">
         <EmptyState
@@ -552,48 +549,61 @@ function LeadSlaBarChart({
     );
   }
 
+  const compliance = Math.round((data.met / total) * 100);
+  const segs = [
+    { name: "Met", value: data.met, color: "hsl(var(--status-green))" },
+    { name: "At Risk", value: data.atRisk, color: "hsl(var(--status-amber))" },
+    { name: "Breached", value: data.breached, color: "hsl(var(--status-red))" },
+  ];
+
+  // A single horizontal stacked bar reads far better than 3 separate columns
+  // (no empty gap when a bucket is 0) and leads with the headline compliance %.
   return (
-    <div className="h-[250px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={points}
-          margin={{ top: 5, right: 5, left: 0, bottom: 10 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(222, 28%, 18%)"
-            vertical={false}
-          />
-          <XAxis
-            dataKey="name"
-            tick={{ fill: "hsl(215, 22%, 48%)", fontSize: 12 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            allowDecimals={false}
-            tick={{ fill: "hsl(215, 22%, 48%)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <Tooltip
-            formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
-            contentStyle={{
-              borderRadius: "12px",
-              backgroundColor: "hsl(222, 40%, 13%)",
-              color: "hsl(215, 100%, 96%)",
-              border: "1px solid hsl(222, 28%, 18%)",
-              boxShadow: "0 4px 15px rgba(0, 0, 0, 0.04)",
-              fontSize: "12px",
-            }}
-          />
-          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-            {points.map((entry) => (
-              <Cell key={entry.name} fill={entry.color} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="flex h-full min-h-[200px] flex-col justify-center gap-5 py-1">
+      <div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-4xl font-semibold tabular-nums tracking-tight text-foreground">
+            {compliance}%
+          </span>
+          <span className="text-sm font-medium text-muted-foreground">met</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {total} ticket{total === 1 ? "" : "s"} tracked this period
+        </p>
+      </div>
+
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+        {segs.map((s) =>
+          s.value > 0 ? (
+            <div
+              key={s.name}
+              className="h-full"
+              style={{
+                width: `${(s.value / total) * 100}%`,
+                background: s.color,
+              }}
+              title={`${s.name}: ${s.value}`}
+            />
+          ) : null,
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {segs.map((s) => (
+          <div key={s.name} className="flex flex-col gap-1.5">
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: s.color }}
+              />
+              {s.name}
+            </span>
+            <span className="pl-3.5 text-lg font-semibold tabular-nums text-foreground">
+              {s.value}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -602,25 +612,25 @@ function LeadStatusPieChart({ data }: { data: TicketStatusPoint[] }) {
   function statusColor(status: string): string {
     switch (status) {
       case "NEW":
-        return "#3b82f6";
+        return "hsl(var(--status-new))";
       case "TRIAGED":
-        return "#8b5cf6";
+        return "hsl(var(--status-progress))";
       case "ASSIGNED":
-        return "#06b6d4";
+        return "hsl(var(--status-progress))";
       case "IN_PROGRESS":
-        return "#fbbf24";
+        return "hsl(var(--status-progress))";
       case "WAITING_ON_REQUESTER":
-        return "#f59e0b";
+        return "hsl(var(--status-waiting))";
       case "WAITING_ON_VENDOR":
-        return "#d97706";
+        return "hsl(var(--status-waiting))";
       case "RESOLVED":
-        return "#22c55e";
+        return "hsl(var(--status-resolved))";
       case "CLOSED":
-        return "#71717a";
+        return "hsl(var(--fg-faint))";
       case "REOPENED":
-        return "#ef4444";
+        return "hsl(var(--status-red))";
       default:
-        return "#94a3b8";
+        return "hsl(var(--fg-subtle))";
     }
   }
 
@@ -760,7 +770,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         onChange={(event) =>
           setRange(event.target.value as "3" | "7" | "30" | "custom")
         }
-        className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
+        className="surface-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
       >
         <option value="3">Last 3 days</option>
         <option value="7">Last 7 days</option>
@@ -774,7 +784,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
             value={customFrom}
             max={customTo}
             onChange={(e) => setCustomFrom(e.target.value)}
-            className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-none hover:border-primary/40 transition"
+            className="surface-card px-3 py-2 text-sm text-foreground outline-none hover:border-primary/40 transition"
             aria-label="From date"
           />
           <span className="text-xs text-muted-foreground">to</span>
@@ -784,7 +794,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
             min={customFrom}
             max={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setCustomTo(e.target.value)}
-            className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground outline-none hover:border-primary/40 transition"
+            className="surface-card px-3 py-2 text-sm text-foreground outline-none hover:border-primary/40 transition"
             aria-label="To date"
           />
         </>
@@ -1494,6 +1504,28 @@ export function DashboardPage({ role }: DashboardPageProps) {
   const reopenRate = safePercent(reopenTotal, stats.resolved);
   const unassignedPercent = safePercent(stats.unassigned, stats.open);
 
+  // Owner "Executive vitals" must track the selected date range like every
+  // chart on this page does. The /tickets/counts snapshot (stats.*) is always
+  // live and ignores the date picker — that's why the vitals stayed at 7/7/14
+  // even for an empty range. Derive open/closed/total from the SAME
+  // date-ranged status breakdown the charts use (summaryRes.ticketsByStatus →
+  // statusBreakdown). Closed = RESOLVED/CLOSED; everything else is open.
+  const rangeStats = useMemo(() => {
+    const closedStatuses = new Set(["RESOLVED", "CLOSED"]);
+    let open = 0;
+    let closed = 0;
+    let total = 0;
+    for (const point of statusBreakdown) {
+      total += point.count;
+      if (closedStatuses.has(String(point.status).toUpperCase())) {
+        closed += point.count;
+      } else {
+        open += point.count;
+      }
+    }
+    return { open, closed, total };
+  }, [statusBreakdown]);
+
   const kpis = useMemo<KpiItem[]>(() => {
     if (isEmployee) {
       return [
@@ -1554,9 +1586,9 @@ export function DashboardPage({ role }: DashboardPageProps) {
     }
 
     return [
-      { label: "Open tickets", value: stats.open, tone: "blue" },
-      { label: "Closed tickets", value: stats.resolved, tone: "green" },
-      { label: "Total requests", value: stats.total, tone: "gray" },
+      { label: "Open tickets", value: rangeStats.open, tone: "blue" },
+      { label: "Closed tickets", value: rangeStats.closed, tone: "green" },
+      { label: "Total requests", value: rangeStats.total, tone: "gray" },
       { label: "Active agents", value: activeAgents, tone: "purple" },
       { label: "Transfers", value: transfers.total, tone: "orange" },
     ];
@@ -1566,6 +1598,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
     isEmployee,
     isLead,
     isTeamAdmin,
+    rangeStats,
     stats,
     transfers.total,
     unassignedPercent,
@@ -1574,7 +1607,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
   return (
     <section className="min-h-screen bg-background">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-none px-6 py-4">
+        <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -1616,7 +1649,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-none px-6 py-8">
+      <div className="mx-auto w-full max-w-[1600px] px-6 py-8">
         <div className="space-y-8">
           {isEmployee ? (
             <div className="grid gap-8 lg:grid-cols-12">
@@ -1636,7 +1669,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       onChange={(event) =>
                         setSort(event.target.value as "recent" | "oldest")
                       }
-                      className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
+                      className="surface-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                     >
                       <option value="recent">Most recent</option>
                       <option value="oldest">Oldest</option>
@@ -1735,7 +1768,7 @@ export function DashboardPage({ role }: DashboardPageProps) {
                       onChange={(event) =>
                         setSort(event.target.value as "recent" | "oldest")
                       }
-                      className="rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
+                      className="surface-card px-4 py-2 text-sm font-medium hover:border-primary/40 transition outline-none text-foreground"
                     >
                       <option value="recent">Most recent updates</option>
                       <option value="oldest">Oldest updates</option>
@@ -2170,87 +2203,131 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   {renderRangeFilter()}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-slate-900 rounded-[24px] p-6 shadow-sm border border-slate-800 relative overflow-hidden">
-                    <h3 className="text-sm font-medium text-slate-400 mb-2">
-                      Total Open
-                    </h3>
-                    <div className="text-4xl font-bold tracking-tight text-white mb-1">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="relative overflow-hidden surface-card p-5">
+                    <span
+                      className="absolute inset-x-0 top-0 h-1 bg-primary"
+                      aria-hidden
+                    />
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Total open
+                      </p>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Inbox className="h-4 w-4" strokeWidth={2} />
+                      </span>
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
                       {stats.open}
                     </div>
-                    <p className="text-[12px] font-semibold text-blue-400">
-                      System wide
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      System-wide
                     </p>
                   </div>
-                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col justify-center items-center">
-                    <div className="text-4xl font-bold tracking-tight text-primary mb-1">
+                  <div className="surface-card p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Total transfers
+                      </p>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                        <ArrowLeftRight className="h-4 w-4" strokeWidth={2} />
+                      </span>
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
                       {transfers.total}
                     </div>
-                    <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
-                      Total Transfers
-                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Reassigned across teams
+                    </p>
                   </div>
-                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col justify-center items-center">
-                    <div className="text-4xl font-bold tracking-tight text-orange-600 mb-1">
+                  <div className="surface-card p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Reopen rate
+                      </p>
+                      <span
+                        className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                          reopenRate > 10
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <RotateCcw className="h-4 w-4" strokeWidth={2} />
+                      </span>
+                    </div>
+                    <div
+                      className={`mt-2 text-3xl font-semibold tracking-tight tabular-nums ${
+                        reopenRate > 10
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-foreground"
+                      }`}
+                    >
                       {reopenRate}%
                     </div>
-                    <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
-                      Reopen Rate
-                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Resolved then reopened
+                    </p>
                   </div>
                 </div>
 
-                <div className="bg-card rounded-[24px] p-6 border border-border min-h-[300px] flex flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-                    Platform Activity
+                <div className="flex min-h-[300px] flex-col overflow-hidden surface-card p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">
+                    Platform activity
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
+                    <div className="flex-1 skeleton-shimmer rounded-lg" />
                   ) : (
-                    <div className="flex-1 -mx-4">
+                    <div className="-mx-2 flex-1">
                       <TicketVolumeChart data={volumeSeries} />
                     </div>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-                      Tickets by Priority
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                  <div className="flex flex-col overflow-hidden surface-card p-6">
+                    <h3 className="mb-4 text-sm font-semibold text-foreground">
+                      Tickets by priority
                     </h3>
                     {loading ? (
-                      <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
+                      <div className="flex-1 skeleton-shimmer rounded-lg" />
                     ) : (
-                      <div className="flex-1 -mx-4">
+                      <div className="-mx-2 flex-1">
                         <PriorityDonutChart data={priorityBreakdown} />
                       </div>
                     )}
                   </div>
-                  <div className="bg-card rounded-[24px] p-6 border border-border flex flex-col">
-                    <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-                      Top Performers
+                  <div className="flex flex-col surface-card p-6">
+                    <h3 className="mb-3 text-sm font-semibold text-foreground">
+                      Top performers
                     </h3>
-                    <div className="flex-1 space-y-4 pt-2">
+                    <div className="flex-1">
                       {loading ? (
-                        <div className="animate-pulse bg-white/[0.04] h-32 rounded-xl" />
+                        <div className="h-32 skeleton-shimmer rounded-lg" />
                       ) : agentPerformance.length === 0 ? (
-                        <span className="text-sm text-muted-foreground">No data</span>
+                        <span className="text-sm text-muted-foreground">
+                          No data
+                        </span>
                       ) : (
-                        agentPerformance.slice(0, 4).map((agent, idx) => (
-                          <div
-                            key={agent.userId}
-                            className="flex justify-between items-center border-b border-slate-50 last:border-0 pb-3"
-                          >
-                            <span className="font-semibold text-foreground text-[15px]">
-                              #{idx + 1} {agent.name}
-                            </span>
-                            <span className="font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded text-sm">
-                              {agent.avgFirstResponseHours == null
-                                ? "—"
-                                : `${agent.avgFirstResponseHours.toFixed(1)}h FRT`}
-                            </span>
-                          </div>
-                        ))
+                        <ul className="divide-y divide-border">
+                          {agentPerformance.slice(0, 4).map((agent, idx) => (
+                            <li
+                              key={agent.userId}
+                              className="flex items-center justify-between gap-3 py-2.5"
+                            >
+                              <span className="flex items-center gap-2.5 text-sm font-medium text-foreground">
+                                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-muted text-[11px] font-semibold text-muted-foreground">
+                                  {idx + 1}
+                                </span>
+                                {agent.name}
+                              </span>
+                              <span className="rounded-md bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-500/15 dark:text-green-400">
+                                {agent.avgFirstResponseHours == null
+                                  ? "—"
+                                  : `${agent.avgFirstResponseHours.toFixed(1)}h FRT`}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
                   </div>
@@ -2258,31 +2335,29 @@ export function DashboardPage({ role }: DashboardPageProps) {
               </div>
 
               <div className="space-y-6 lg:col-span-4">
-                <div className="bg-card rounded-[24px] p-6 border border-border">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-6">
-                    Executive Vitals
+                <div className="surface-card p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">
+                    Executive vitals
                   </h3>
-                  <div className="space-y-5">
+                  <div className="divide-y divide-border">
                     {kpis.map((item, idx) => {
                       const tone = kpiToneClass(item.tone);
                       return (
                         <div
                           key={idx}
-                          className="flex justify-between items-center pb-5 border-b border-slate-50 last:border-0 last:pb-0"
+                          className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
                         >
-                          <div>
-                            <div className="text-[14px] font-medium text-muted-foreground">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-foreground">
                               {item.label}
                             </div>
                             {item.helper && (
-                              <div
-                                className={`mt-0.5 text-[11px] font-bold uppercase tracking-wider ${tone.text}`}
-                              >
+                              <div className={`mt-0.5 text-xs ${tone.text}`}>
                                 {item.helper}
                               </div>
                             )}
                           </div>
-                          <div className="text-3xl font-bold tracking-tight text-foreground">
+                          <div className="text-2xl font-semibold tracking-tight tabular-nums text-foreground">
                             {item.value}
                           </div>
                         </div>
@@ -2291,14 +2366,14 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   </div>
                 </div>
 
-                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-                    SLA Compliance
+                <div className="flex min-h-[280px] flex-col overflow-hidden surface-card p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">
+                    SLA compliance
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
+                    <div className="flex-1 skeleton-shimmer rounded-lg" />
                   ) : (
-                    <div className="flex-1 -mx-4">
+                    <div className="-mx-2 flex-1">
                       <LeadSlaBarChart
                         data={{
                           met: slaCompliance.met,
@@ -2310,42 +2385,47 @@ export function DashboardPage({ role }: DashboardPageProps) {
                   )}
                 </div>
 
-                <div className="bg-card rounded-[24px] p-6 border border-border flex min-h-[300px] flex-col">
-                  <h3 className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-4">
-                    Team Summary
+                <div className="flex flex-col surface-card p-6">
+                  <h3 className="mb-3 text-sm font-semibold text-foreground">
+                    Team summary
                   </h3>
                   {loading ? (
-                    <div className="flex-1 animate-pulse bg-white/[0.04] rounded-xl" />
+                    <div className="h-40 skeleton-shimmer rounded-lg" />
                   ) : (
-                    <div className="flex-1 overflow-x-auto">
+                    <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="border-b border-border">
-                          <tr>
-                            <th className="py-2 text-left font-semibold text-muted-foreground">
-                              Team
-                            </th>
-                            <th className="py-2 text-right font-semibold text-muted-foreground">
-                              Open
-                            </th>
-                            <th className="py-2 text-right font-semibold text-muted-foreground">
-                              SLA
-                            </th>
+                        <thead>
+                          <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                            <th className="py-2 text-left font-medium">Team</th>
+                            <th className="py-2 text-right font-medium">Open</th>
+                            <th className="py-2 text-right font-medium">SLA</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {teamSummary.map((team) => (
-                            <tr key={team.id}>
-                              <td className="py-3 font-medium text-foreground">
-                                {team.name}
-                              </td>
-                              <td className="py-3 text-right font-bold text-foreground/80">
-                                {team.open}
-                              </td>
-                              <td className="py-3 text-right font-bold text-green-600">
-                                {safePercent(team.resolved, team.total)}%
-                              </td>
-                            </tr>
-                          ))}
+                        <tbody className="divide-y divide-border">
+                          {teamSummary.map((team) => {
+                            const pct = safePercent(team.resolved, team.total);
+                            return (
+                              <tr key={team.id}>
+                                <td className="py-2.5 font-medium text-foreground">
+                                  {team.name}
+                                </td>
+                                <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                                  {team.open}
+                                </td>
+                                <td
+                                  className={`py-2.5 text-right font-semibold tabular-nums ${
+                                    pct >= 90
+                                      ? "text-green-600 dark:text-green-400"
+                                      : pct >= 75
+                                        ? "text-amber-600 dark:text-amber-400"
+                                        : "text-red-600 dark:text-red-400"
+                                  }`}
+                                >
+                                  {pct}%
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

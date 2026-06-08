@@ -11,7 +11,7 @@ import {
 type Point = { bucket: string; count: number };
 
 const GRID_STROKE   = "rgba(255,255,255,0.07)";
-const TICK_FILL     = "#94a3b8";
+const TICK_FILL     = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -38,7 +38,7 @@ export function TicketsByAgeChart({ data }: { data: Point[] }) {
           <XAxis dataKey="bucket" tick={{ fill: TICK_FILL, fontSize: 11 }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fill: TICK_FILL, fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={TOOLTIP_STYLE} />
-          <Bar dataKey="count" name="Tickets" radius={[6, 6, 0, 0]} fill="#14d4f4" fillOpacity={0.85} />
+          <Bar dataKey="count" name="Tickets" radius={[6, 6, 0, 0]} fill="hsl(var(--chart-1))" fillOpacity={0.85} />
         </BarChart>
       </ResponsiveContainer>
     </div>

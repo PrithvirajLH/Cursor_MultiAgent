@@ -237,7 +237,7 @@ export function AdminTagsPage({ role }: { role: Role }) {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none px-6 py-4">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -269,7 +269,7 @@ export function AdminTagsPage({ role }: { role: Role }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-none p-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         {/* Summary */}
         <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
           <StatCard

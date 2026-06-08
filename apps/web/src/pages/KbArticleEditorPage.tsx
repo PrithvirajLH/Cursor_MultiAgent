@@ -108,7 +108,7 @@ export function KbArticleEditorPage() {
     <section className="min-h-full bg-background animate-fade-in">
       {/* Sticky action bar */}
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-none items-center justify-between gap-3 px-6 py-3">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-6 py-3">
           <button
             type="button"
             onClick={() => navigate("/admin/kb")}
@@ -138,7 +138,7 @@ export function KbArticleEditorPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-none px-6 py-6">
+      <div className="mx-auto max-w-[1600px] px-6 py-6">
         {loading ? (
           <div className="space-y-4">
             <div className="h-10 w-2/3 skeleton-shimmer rounded" />

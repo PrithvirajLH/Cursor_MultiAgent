@@ -105,7 +105,7 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
   return (
     <section className="min-h-full bg-background">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto w-full max-w-none px-6 py-4">
+        <div className="mx-auto w-full max-w-[1600px] px-6 py-4">
           {headerValue ? (
             <TopBar
               title={headerValue.title}

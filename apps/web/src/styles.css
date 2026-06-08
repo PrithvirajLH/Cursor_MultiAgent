@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -96,10 +96,44 @@
     --kpi-green: 142 76% 95%;
     --kpi-yellow: 38 95% 95%;
 
-    --radius: 4px;
-    --shadow-soft: 0 1px 2px rgba(15, 20, 25, 0.04), 0 2px 8px rgba(15, 20, 25, 0.04);
-    --shadow-card: 0 1px 3px rgba(15, 20, 25, 0.06), 0 6px 24px rgba(15, 20, 25, 0.05);
-    --shadow-elevated: 0 4px 16px rgba(15, 20, 25, 0.08), 0 20px 50px rgba(15, 20, 25, 0.08);
+    --radius: 8px;
+    --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+    --shadow-elevated: 0 8px 24px rgba(15, 23, 42, 0.08), 0 24px 48px rgba(15, 23, 42, 0.10);
+
+    /* ─── Canonical semantic tokens (DESIGN_TOKENS.md) ───
+       Additive vocabulary for the migration off `--c-*` and hardcoded hex. The
+       brand is `--brand` (shadcn `--accent` is already the hover-tint, NOT the
+       brand). Stored as HSL channels — consume via `hsl(var(--x) / <alpha>)`.
+       Aliases (var(--card) …) auto-track the tuned shadcn values; explicit
+       channels fill the gaps. Adding these breaks nothing (no consumers yet). */
+    --surface:          var(--card);
+    --surface-raised:   210 20% 99%;
+    --surface-sunken:   var(--secondary);
+    --border-strong:    var(--input);
+    --divider:          210 17% 94%;
+
+    --fg:           var(--foreground);
+    --fg-secondary: 215 19% 21%;
+    --fg-muted:     var(--muted-foreground);
+    --fg-subtle:    220 9% 46%;
+    --fg-faint:     216 11% 59%;
+
+    --brand:             var(--primary);
+    --brand-hover:       230 53% 50%;
+    --brand-fg:          var(--primary-foreground);
+    --brand-tint:        var(--accent);
+    --brand-tint-strong: 230 60% 91%;
+
+    --status-red:     var(--destructive);     --status-red-tint:     0 78% 96%;
+    --status-amber:   25 87% 37%;             --status-amber-tint:   33 86% 95%;
+    --status-green:   152 56% 30%;            --status-green-tint:   150 45% 93%;
+    --status-blue:    213 79% 37%;            --status-blue-tint:    213 67% 94%;
+    --status-purple:  270 47% 43%;            --status-purple-tint:  270 53% 95%;
+    --status-neutral: var(--muted-foreground);--status-neutral-tint: 210 14% 95%;
+
+    --chart-6:    213 79% 37%;
+    --chart-grid: var(--divider);
   }
 
   /* ═══════════════════════════════════════════════════════════════════════════
@@ -108,46 +142,46 @@
   .dark {
     color-scheme: dark;
 
-    --background: 222 47% 8%;
-    --foreground: 213 45% 91%;
+    --background: 222 30% 7%;
+    --foreground: 213 25% 92%;
 
-    --card: 222 42% 10%;
-    --card-foreground: 213 45% 91%;
+    --card: 220 26% 11%;
+    --card-foreground: 213 25% 92%;
 
-    --popover: 222 40% 13%;
-    --popover-foreground: 213 45% 91%;
+    --popover: 220 24% 13%;
+    --popover-foreground: 213 25% 92%;
 
-    --primary: 193 95% 62%;
-    --primary-foreground: 222 47% 8%;
+    --primary: 232 72% 64%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 222 35% 16%;
-    --secondary-foreground: 213 45% 91%;
+    --secondary: 218 24% 16%;
+    --secondary-foreground: 213 25% 92%;
 
-    --muted: 222 38% 13%;
-    --muted-foreground: 215 22% 48%;
+    --muted: 219 24% 15%;
+    --muted-foreground: 215 16% 62%;
 
-    --accent: 222 32% 18%;
-    --accent-foreground: 213 45% 91%;
+    --accent: 218 24% 17%;
+    --accent-foreground: 213 25% 92%;
 
-    --destructive: 0 80% 60%;
-    --destructive-foreground: 222 47% 8%;
+    --destructive: 0 72% 62%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 222 28% 18%;
-    --input: 222 28% 18%;
-    --ring: 193 95% 62%;
+    --border: 217 22% 20%;
+    --input: 216 19% 26%;
+    --ring: 232 72% 64%;
 
-    --chart-1: 193 95% 62%;
-    --chart-2: 142 71% 50%;
-    --chart-3: 262 83% 68%;
-    --chart-4: 38 92% 60%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 232 72% 64%;
+    --chart-2: 152 58% 48%;
+    --chart-3: 262 70% 70%;
+    --chart-4: 4 80% 66%;
+    --chart-5: 25 90% 62%;
 
     --status-new: 262 83% 68%;
     --status-new-bg: 262 83% 11%;
     --status-open: 142 71% 50%;
     --status-open-bg: 142 71% 8%;
-    --status-progress: 193 95% 62%;
-    --status-progress-bg: 193 95% 9%;
+    --status-progress: 211 85% 62%;
+    --status-progress-bg: 211 80% 11%;
     --status-resolved: 158 64% 52%;
     --status-resolved-bg: 158 64% 8%;
     --status-waiting: 38 92% 60%;
@@ -160,31 +194,96 @@
     --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.3);
     --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
     --shadow-elevated: 0 8px 48px rgba(0, 0, 0, 0.45);
+
+    /* ─── Canonical semantic tokens (dark) — mirrors :root, see there ─── */
+    --surface:          var(--card);
+    --surface-raised:   var(--popover);
+    --surface-sunken:   var(--secondary);
+    --border-strong:    var(--input);
+    --divider:          218 24% 14%;
+
+    --fg:           var(--foreground);
+    --fg-secondary: 214 20% 80%;
+    --fg-muted:     var(--muted-foreground);
+    --fg-subtle:    215 14% 52%;
+    --fg-faint:     215 14% 40%;
+
+    --brand:             var(--primary);
+    --brand-hover:       232 78% 70%;
+    --brand-fg:          var(--primary-foreground);
+    --brand-tint:        var(--accent);
+    --brand-tint-strong: 232 38% 24%;
+
+    --status-red:     var(--destructive);     --status-red-tint:     0 40% 14%;
+    --status-amber:   38 92% 60%;             --status-amber-tint:   33 50% 12%;
+    --status-green:   152 58% 48%;            --status-green-tint:   150 40% 12%;
+    --status-blue:    211 85% 62%;            --status-blue-tint:    211 50% 14%;
+    --status-purple:  262 70% 70%;            --status-purple-tint:  265 40% 16%;
+    --status-neutral: var(--muted-foreground);--status-neutral-tint: 218 24% 16%;
+
+    --chart-6:    211 85% 62%;
+    --chart-grid: var(--divider);
   }
 
-  /* Render the whole app at 80% by default — denser, fits more on screen
-     (mimics the browser's "zoom to 80%"). CSS `zoom` does NOT shrink `vh`
-     units, so any 100vh / h-screen shell would render at 80% height and leave
-     a blank strip / clip the bottom. We compensate full-height layouts by
-     dividing by the zoom (100vh ÷ 0.8 = 125vh) so they fill the screen again. */
+  /* Global density control. Was 0.8 (very dense, ~10px effective text — reads as
+     dated/cramped). Bumped to 0.9 for legibility as an interim step; the goal is
+     to remove `zoom` entirely and tune real type/spacing once dense layouts
+     (tickets table, 3-pane detail) are re-validated. CSS `zoom` does NOT shrink
+     `vh`, so full-height shells divide by the zoom (100vh ÷ 0.9) to fill the
+     screen — getUiZoom() mirrors this for fixed/portal positioning. */
   :root {
-    --ui-zoom: 0.8;
+    --ui-zoom: 0.9;
   }
   html {
     zoom: var(--ui-zoom);
   }
 
   body {
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-feature-settings: 'cv11', 'ss01', 'tnum';
+    font-family: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
     @apply antialiased;
     min-height: calc(100vh / var(--ui-zoom));
     overflow: hidden;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-feature-settings: "cv01", "ss03", "tnum";
+    letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+  /* ─── Card lift ───
+     Cards across the app were flat `bg-card border border-border rounded-xl`
+     boxes with no elevation — reading as a wireframe. This lifts any card-shaped
+     surface off the canvas via two mechanisms:
+       1. `.surface-card` — explicit class (used by the dashboard).
+       2. A GLOBAL match on `bg-card` + a card-sized radius (rounded-xl / 2xl) so
+          every existing flat card on every page gets the same lift without
+          editing 250+ classNames. Inputs/buttons use smaller radii (md/lg) and
+          are excluded.
+     `:where()` keeps the global match at specificity 0, so it only adds a shadow
+     where there is NONE — any element that already sets a `shadow-*` utility
+     (modals, popovers, elevated panels) keeps its own and is untouched. */
+  .surface-card,
+  :where([class~="bg-card"][class~="rounded-xl"]),
+  :where([class~="bg-card"][class~="rounded-2xl"]) {
+    box-shadow:
+      0 1px 2px rgba(15, 20, 25, 0.04),
+      0 4px 16px rgba(15, 20, 25, 0.06);
+    transition: box-shadow 160ms ease, border-color 160ms ease;
+  }
+  .surface-card {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+  }
+  .dark .surface-card,
+  .dark :where([class~="bg-card"][class~="rounded-xl"]),
+  .dark :where([class~="bg-card"][class~="rounded-2xl"]) {
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.25),
+      0 6px 20px rgba(0, 0, 0, 0.28);
   }
 }
 

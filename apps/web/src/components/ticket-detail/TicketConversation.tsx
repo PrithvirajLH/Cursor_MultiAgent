@@ -227,7 +227,15 @@ export const TicketConversation = memo(function TicketConversation({
 
         <AnimatedList className="relative w-full items-stretch gap-1">
           {messages.map((message, index) => {
-            const isCurrentUser = message.author?.email === currentEmail;
+            // Case-insensitive match: the optimistic echo uses the login
+            // email verbatim, but server-sourced messages (e.g. attachment
+            // uploads, which re-fetch rather than echo) may differ only in
+            // letter case. A strict === would mis-flag the user's own image
+            // as someone else's and left-align it. Mirrors ConversationPane.
+            const isCurrentUser =
+              !!message.author?.email &&
+              !!currentEmail &&
+              message.author.email.toLowerCase() === currentEmail.toLowerCase();
             const isInternal = message.type === "INTERNAL";
             const localStatus = message.localStatus;
             const initials = initialsFor(
@@ -318,7 +326,14 @@ export const TicketConversation = memo(function TicketConversation({
                     <div
                       className={
                         isImageOnly
-                          ? `flex max-w-full ${isCurrentUser ? "justify-end" : "justify-start"}`
+                          ? // The attachment <img> is display:block, and its
+                            // max-width:min(320px,100%) breaks shrink-to-fit
+                            // (intrinsic sizing uses the image's natural width,
+                            // so the container balloons to the column cap and
+                            // the block image is stuck at the left → looks
+                            // centered). Keep the container full-width and push
+                            // the image to the correct side with auto margin.
+                            `max-w-full ${isCurrentUser ? "[&_img]:ml-auto" : "[&_img]:mr-auto"}`
                           : `inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
                               isCurrentUser
                                 ? "border-primary bg-primary text-primary-foreground"

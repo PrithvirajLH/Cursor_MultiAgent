@@ -169,12 +169,6 @@ const AiSubmitPage = lazy(() =>
 const AiDebugPage = lazy(() =>
   import("./pages/AiDebugPage").then((m) => ({ default: m.AiDebugPage })),
 );
-const TicketsPageRevamp = lazy(() =>
-  import("./pages/TicketsPageRevamp"),
-);
-const TicketDetailRevamp = lazy(() =>
-  import("./pages/TicketDetailRevamp"),
-);
 
 function PageFallback() {
   return (
@@ -838,19 +832,6 @@ function AuthenticatedShell({
   const isAdminOrOwner =
     currentPersona.role === "TEAM_ADMIN" || currentPersona.role === "OWNER";
 
-  // UI revamp preview: render the new design bare (no legacy chrome).
-  if (location.pathname.startsWith("/tickets-revamp")) {
-    const detailMatch = location.pathname.match(/^\/tickets-revamp\/([^/]+)/);
-    return (
-      <>
-        <ToastContainer />
-        <Suspense fallback={<PageFallback />}>
-          {detailMatch ? <TicketDetailRevamp /> : <TicketsPageRevamp />}
-        </Suspense>
-      </>
-    );
-  }
-
   return (
     <div className="min-h-screen overflow-hidden">
       <ToastContainer />
@@ -1195,10 +1176,6 @@ function AuthenticatedShell({
                           onCreateTicket={() => navigate("/tickets/new")}
                         />
                       }
-                    />
-                    <Route
-                      path="/tickets-revamp"
-                      element={<TicketsPageRevamp />}
                     />
                     <Route
                       path="/tickets/new"

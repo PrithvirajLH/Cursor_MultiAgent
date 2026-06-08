@@ -1558,7 +1558,7 @@ export function SlaSettingsPage({
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none px-6 py-4">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -1604,7 +1604,7 @@ export function SlaSettingsPage({
         </div>
 
         <div className="border-t border-border bg-card">
-          <div className="mx-auto max-w-none px-6 py-4">
+          <div className="mx-auto max-w-[1600px] px-6 py-4">
             <div className="flex items-center justify-between">
               <PageTabs<TabKey>
                 tabs={[
@@ -1630,7 +1630,7 @@ export function SlaSettingsPage({
         </div>
       </div>
 
-      <div className="mx-auto max-w-none p-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         {liveError && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {liveError}

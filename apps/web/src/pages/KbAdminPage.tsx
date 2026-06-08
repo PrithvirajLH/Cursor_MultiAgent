@@ -166,7 +166,7 @@ export function KbAdminPage() {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none px-6 py-4">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -198,7 +198,7 @@ export function KbAdminPage() {
         </div>
 
         <div className="border-t border-border bg-card">
-          <div className="mx-auto max-w-none px-6 py-3">
+          <div className="mx-auto max-w-[1600px] px-6 py-3">
             <div className="flex items-center justify-between">
               <PageTabs<TabKey>
                 tabs={[
@@ -223,7 +223,7 @@ export function KbAdminPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-none p-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         {tab === "articles" ? (
           <>
             <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">

@@ -80,13 +80,13 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "resolution", label: "Resolution Time" },
 ];
 const CHART_COLORS = [
-  "#3b82f6",
-  "#22c55e",
-  "#f59e0b",
-  "#a855f7",
-  "#ef4444",
-  "#06b6d4",
-  "#64748b",
+  "hsl(var(--chart-1))",
+  "hsl(var(--status-green))",
+  "hsl(var(--status-amber))",
+  "hsl(var(--status-purple))",
+  "hsl(var(--status-red))",
+  "hsl(var(--chart-6))",
+  "hsl(var(--muted-foreground))",
 ];
 const RESOLVED_STATUSES = new Set(["RESOLVED", "CLOSED"]);
 const OPEN_STATUSES = new Set([
@@ -771,13 +771,13 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
       );
 
       const slaBars = [
-        { name: "Met", value: slaRes.data.met, color: "#22c55e" },
-        { name: "Breached", value: slaRes.data.breached, color: "#ef4444" },
+        { name: "Met", value: slaRes.data.met, color: "hsl(var(--status-green))" },
+        { name: "Breached", value: slaRes.data.breached, color: "hsl(var(--status-red))" },
       ].filter((item) => item.value > 0);
       setSlaData(
         slaBars.length
           ? slaBars
-          : [{ name: "No Data", value: 1, color: "#cbd5e1" }],
+          : [{ name: "No Data", value: 1, color: "hsl(var(--border-strong))" }],
       );
 
       setReopenData(
@@ -914,7 +914,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none px-6 py-4">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
           {headerCtx ? (
             <TopBar
               title={headerCtx.title}
@@ -945,7 +945,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
       </div>
 
       <div className="border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-none flex-wrap items-center justify-between gap-3 px-6 py-4">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-6 py-4">
           <div className="flex items-center gap-6">
             {[
               ["overview", "Overview"],
@@ -1012,7 +1012,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-none p-6">
+      <div className="mx-auto max-w-[1600px] p-6">
         {loading ? (
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1105,7 +1105,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={trendData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis
                         dataKey="date"
                         tickFormatter={(value) =>
@@ -1126,7 +1126,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <Line
                         type="monotone"
                         dataKey="newTickets"
-                        stroke="#3b82f6"
+                        stroke="hsl(var(--chart-1))"
                         strokeWidth={2.5}
                         dot={false}
                         name="New Tickets"
@@ -1134,7 +1134,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <Line
                         type="monotone"
                         dataKey="resolved"
-                        stroke="#22c55e"
+                        stroke="hsl(var(--status-green))"
                         strokeWidth={2.5}
                         dot={false}
                         name="Resolved"
@@ -1153,7 +1153,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       data={slaData}
                       margin={{ top: 8, right: 12, left: 0, bottom: 8 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis
                         dataKey="name"
                         tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
@@ -1386,7 +1386,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={responseData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis
                         dataKey="name"
                         tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
@@ -1398,7 +1398,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <Tooltip />
                       <Bar
                         dataKey="hours"
-                        fill="#6366f1"
+                        fill="hsl(var(--chart-1))"
                         radius={[6, 6, 0, 0]}
                       />
                     </BarChart>
@@ -1412,7 +1412,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                 <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={reopenData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis
                         dataKey="date"
                         tickFormatter={(value) =>
@@ -1433,7 +1433,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <Line
                         type="monotone"
                         dataKey="count"
-                        stroke="#a855f7"
+                        stroke="hsl(var(--status-purple))"
                         strokeWidth={2.5}
                         dot={false}
                       />
@@ -1455,7 +1455,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={workloadData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis
                         dataKey="name"
                         tick={{ fontSize: 11, fill: "hsl(215, 22%, 48%)" }}
@@ -1467,7 +1467,7 @@ export function ManagerViewsPage({ teamsList }: { teamsList: TeamRef[] }) {
                       <Tooltip />
                       <Bar
                         dataKey="openTickets"
-                        fill="#3b82f6"
+                        fill="hsl(var(--chart-1))"
                         radius={[6, 6, 0, 0]}
                       />
                     </BarChart>

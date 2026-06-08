@@ -10,15 +10,16 @@ import {
 
 type Point = { date: string; count: number };
 
-const GRID_STROKE    = "rgba(255,255,255,0.07)";
+const LINE_COLOR     = "#5468e0"; // indigo — brand accent, reads on light + dark
+const GRID_STROKE    = "rgba(120,130,150,0.18)";
 const TICK_FILL      = "#94a3b8";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "hsl(222,40%,13%)",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.45)",
+  border: "1px solid rgba(120,130,150,0.25)",
+  background: "hsl(var(--popover))",
+  boxShadow: "var(--shadow-elevated)",
   fontSize: "12px",
-  color: "hsl(213,45%,91%)",
+  color: "hsl(var(--popover-foreground))",
 };
 
 export function TicketVolumeChart({ data }: { data: Point[] }) {
@@ -39,10 +40,10 @@ export function TicketVolumeChart({ data }: { data: Point[] }) {
           <Line
             type="monotone"
             dataKey="count"
-            stroke="#14d4f4"
-            strokeWidth={2}
-            dot={{ r: 3, fill: "#14d4f4", strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: "#14d4f4", strokeWidth: 0 }}
+            stroke={LINE_COLOR}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 5, fill: LINE_COLOR, strokeWidth: 0 }}
             name="Tickets"
             animationBegin={0}
             animationDuration={800}

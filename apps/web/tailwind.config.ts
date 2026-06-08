@@ -6,8 +6,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['Geist', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"Geist Mono"', '"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       colors: {
         brand: {
@@ -64,12 +64,13 @@ export default {
         },
       },
       boxShadow: {
-        soft:    '0 2px 12px rgba(0, 0, 0, 0.3)',
-        card:    '0 4px 24px rgba(0, 0, 0, 0.35)',
-        elevated:'0 8px 48px rgba(0, 0, 0, 0.45)',
-        glow:    '0 0 24px rgba(20, 212, 244, 0.18), 0 0 8px rgba(20, 212, 244, 0.08)',
-        'glow-sm': '0 0 12px rgba(20, 212, 244, 0.12)',
-        'soft-lg': '0 20px 60px rgba(0, 0, 0, 0.5)',
+        soft:     'var(--shadow-soft)',
+        card:     'var(--shadow-card)',
+        elevated: 'var(--shadow-elevated)',
+        'soft-lg':'var(--shadow-elevated)',
+        // legacy aliases (cyan glow retired → soft elevation)
+        glow:     'var(--shadow-card)',
+        'glow-sm':'var(--shadow-soft)',
       },
       borderRadius: {
         lg: 'var(--radius)',

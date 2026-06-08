@@ -272,7 +272,7 @@ export function NewRoutingRulePage({
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="mx-auto max-w-none py-4 px-6">
+        <div className="mx-auto max-w-[1600px] py-4 px-6">
           {headerValue ? (
             <TopBar
               title={headerValue.title}

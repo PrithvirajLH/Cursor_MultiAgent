@@ -1077,7 +1077,7 @@ export function TicketsPage({
   }, [listMeta]);
 
   return (
-    <section className={`bg-background animate-fade-in flex flex-col ${isQueueView ? "min-h-full" : "max-h-screen overflow-hidden"}`}>
+    <section className={`bg-background animate-fade-in flex flex-col ${isQueueView ? "h-[calc(100vh/var(--ui-zoom))] overflow-hidden" : "max-h-screen overflow-hidden"}`}>
       {/* Header — hidden, tab bar replaces it
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="px-6 py-4">
@@ -1121,7 +1121,7 @@ export function TicketsPage({
       />
 
       {/* Filter bar — queue view only */}
-      {isQueueView && <div className="border-b border-border bg-card/90 backdrop-blur-sm">
+      {isQueueView && <div className="shrink-0 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="px-6 py-4">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 border-r border-border pr-4">
@@ -1360,7 +1360,7 @@ export function TicketsPage({
 
       {/* Queue view — ticket list */}
       {isQueueView ? (
-      <div className="p-6 min-h-[calc(100vh/var(--ui-zoom)_-_200px)] max-h-[calc(100vh/var(--ui-zoom)_-_200px)] overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto p-6">
         <p className="text-sm text-muted-foreground">{countLabel}</p>
 
         <div

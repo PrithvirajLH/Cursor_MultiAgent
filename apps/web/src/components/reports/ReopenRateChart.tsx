@@ -14,7 +14,7 @@ type Point = { date: string; count: number };
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const GRID_STROKE   = "rgba(255,255,255,0.07)";
-const TICK_FILL     = "#94a3b8";
+const TICK_FILL     = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -77,10 +77,10 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
             <Line
               type="monotone"
               dataKey="count"
-              stroke="#fbbf24"
+              stroke="hsl(var(--status-amber))"
               strokeWidth={2}
-              dot={{ r: 3, fill: "#fbbf24", strokeWidth: 0 }}
-              activeDot={{ r: 5, fill: "#fbbf24", strokeWidth: 0 }}
+              dot={{ r: 3, fill: "hsl(var(--status-amber))", strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: "hsl(var(--status-amber))", strokeWidth: 0 }}
               animationBegin={0}
               animationDuration={800}
               animationEasing="ease-out"

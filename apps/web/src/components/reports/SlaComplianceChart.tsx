@@ -23,7 +23,7 @@ const TOOLTIP_STYLE: React.CSSProperties = {
   color: "hsl(213,45%,91%)",
 };
 
-const COLORS = { met: "#34d399", breached: "#f87171", atRisk: "#fbbf24" };
+const COLORS = { met: "hsl(var(--status-green))", breached: "hsl(var(--status-red))", atRisk: "hsl(var(--status-amber))" };
 
 export function SlaComplianceChart({ data }: { data: SlaData }) {
   const points = [
@@ -66,7 +66,7 @@ export function SlaComplianceChart({ data }: { data: SlaData }) {
             formatter={(value: number | undefined) => [value ?? 0, "Tickets"]}
             contentStyle={TOOLTIP_STYLE}
           />
-          <Legend wrapperStyle={{ fontSize: "12px", color: "#94a3b8" }} />
+          <Legend wrapperStyle={{ fontSize: "12px", color: "hsl(var(--muted-foreground))" }} />
         </PieChart>
       </ResponsiveContainer>
     </div>

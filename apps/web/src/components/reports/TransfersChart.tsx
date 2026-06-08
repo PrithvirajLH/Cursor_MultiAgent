@@ -11,7 +11,7 @@ import {
 type Point = { date: string; count: number };
 
 const GRID_STROKE   = "rgba(255,255,255,0.07)";
-const TICK_FILL     = "#94a3b8";
+const TICK_FILL     = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -52,10 +52,10 @@ export function TransfersChart({ data }: { data: Point[] }) {
           <Line
             type="monotone"
             dataKey="count"
-            stroke="#a78bfa"
+            stroke="hsl(var(--status-purple))"
             strokeWidth={2}
-            dot={{ r: 3, fill: "#a78bfa", strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: "#a78bfa", strokeWidth: 0 }}
+            dot={{ r: 3, fill: "hsl(var(--status-purple))", strokeWidth: 0 }}
+            activeDot={{ r: 5, fill: "hsl(var(--status-purple))", strokeWidth: 0 }}
             animationBegin={0}
             animationDuration={800}
             animationEasing="ease-out"

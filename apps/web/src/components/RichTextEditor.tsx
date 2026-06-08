@@ -235,7 +235,7 @@ export const RichTextEditor = forwardRef<
           img.setAttribute("alt", "upload failed");
           img.style.opacity = "0.5";
           img.style.filter = "grayscale(1)";
-          img.style.outline = "1px solid var(--c-red, #ef4444)";
+          img.style.outline = "1px solid hsl(var(--status-red))";
         }
         // Re-emit so the parent value carries the resolved attachment id.
         const html = sanitizeEditorHtml(el.innerHTML);

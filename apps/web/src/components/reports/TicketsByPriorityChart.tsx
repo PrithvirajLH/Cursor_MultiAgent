@@ -12,7 +12,7 @@ import {
 type Point = { priority: string; count: number };
 
 const GRID_STROKE   = "rgba(255,255,255,0.07)";
-const TICK_FILL     = "#94a3b8";
+const TICK_FILL     = "hsl(var(--muted-foreground))";
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.1)",
@@ -23,14 +23,14 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
-  SEV1: "#f87171",
-  SEV2: "#fb923c",
-  SEV3: "#60a5fa",
-  SEV4: "#94a3b8",
+  SEV1: "hsl(var(--status-red))",
+  SEV2: "hsl(var(--status-amber))",
+  SEV3: "hsl(var(--status-blue))",
+  SEV4: "hsl(var(--muted-foreground))",
 };
 
 function colorForPriority(priority: string): string {
-  return PRIORITY_COLORS[priority] ?? "#94a3b8";
+  return PRIORITY_COLORS[priority] ?? "hsl(var(--muted-foreground))";
 }
 
 export function TicketsByPriorityChart({ data }: { data: Point[] }) {

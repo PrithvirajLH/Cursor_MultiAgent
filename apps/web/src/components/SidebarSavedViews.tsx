@@ -21,10 +21,10 @@ import {
 } from "./shell/use-view-count";
 
 const TONE_COLOR: Record<ToneKey, string> = {
-  red: "var(--c-red)",
-  amber: "var(--c-amber)",
-  green: "var(--c-green)",
-  gray: "var(--c-fg-5, #94a3b8)",
+  red: "hsl(var(--status-red))",
+  amber: "hsl(var(--status-amber))",
+  green: "hsl(var(--status-green))",
+  gray: "hsl(var(--fg-faint))",
 };
 
 const TEAM_COLORS = [
@@ -135,6 +135,14 @@ export function SidebarTicketsSavedViews({
     enabled: authReady,
   });
 
+  // Report-type saved views (filters.viewType === "reports") live on the
+  // Reports page, not in the tickets sidebar — their "filters" are report
+  // params (range/compare/…), not ticket query filters, so they'd navigate
+  // to a meaningless /tickets URL. Exclude them here.
+  const ticketSavedViews = (userSavedViews ?? []).filter(
+    (v) => (v.filters as Record<string, unknown>)?.viewType !== "reports",
+  );
+
   const presetCounts = useViewCounts(
     SAVED_VIEWS.map((v) => querystringToParams(v.buildQuery())),
     { enabled: authReady },
@@ -166,8 +174,8 @@ export function SidebarTicketsSavedViews({
   );
 
   const userViewCounts = useViewCounts(
-    (userSavedViews ?? []).map((v) => viewFiltersToParams(v.filters)),
-    { enabled: authReady && !!userSavedViews?.length },
+    ticketSavedViews.map((v) => viewFiltersToParams(v.filters)),
+    { enabled: authReady && ticketSavedViews.length > 0 },
   );
 
   const presetIsActive = (preset: SidebarPreset) =>
@@ -233,7 +241,7 @@ export function SidebarTicketsSavedViews({
         );
       })}
 
-      {userSavedViews && userSavedViews.length > 0 && (
+      {ticketSavedViews.length > 0 && (
         <>
           <div
             className={`px-2.5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.07em] ${
@@ -242,7 +250,7 @@ export function SidebarTicketsSavedViews({
           >
             Saved views
           </div>
-          {userSavedViews.map((v, i) => (
+          {ticketSavedViews.map((v, i) => (
             <UserSavedViewRow
               key={v.id}
               view={v}
@@ -398,7 +406,7 @@ function UserSavedViewRow({
       >
         <span
           className="h-1.5 w-1.5 rounded-full flex-none"
-          style={{ backgroundColor: "var(--c-fg-5, #94a3b8)" }}
+          style={{ backgroundColor: "hsl(var(--fg-faint))" }}
         />
         <span className="flex-1 min-w-0 truncate">{view.name}</span>
         {count !== undefined && (
