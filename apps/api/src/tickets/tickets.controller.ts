@@ -38,6 +38,16 @@ import { TicketsService } from './tickets.service';
 
 // ATTACHMENTS_MAX_MB configuration is now injected via ConfigService
 
+// Hard memory-safety ceiling for multipart uploads. multer buffers the request
+// body into memory, so it must abort an oversized upload early instead of
+// buffering gigabytes first (DoS). This is a coarse guard set well above any
+// realistic configured limit; the exact per-deployment limit
+// (ATTACHMENTS_MAX_MB, default 10MB) is still enforced in the handler via
+// attachmentsMaxBytes. The decorator evaluates before DI, so ConfigService is
+// unavailable here — hence a fixed ceiling. Raise it if ATTACHMENTS_MAX_MB is
+// ever configured above ~50.
+const ATTACHMENT_UPLOAD_CEILING_BYTES = 50 * 1024 * 1024; // 50 MB
+
 @Controller('tickets')
 export class TicketsController {
   private readonly attachmentsMaxBytes: number;
@@ -175,7 +185,11 @@ export class TicketsController {
 
   @Post(':id/attachments')
   @ThrottlePolicy('highWrite')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: ATTACHMENT_UPLOAD_CEILING_BYTES },
+    }),
+  )
   async addAttachment(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
