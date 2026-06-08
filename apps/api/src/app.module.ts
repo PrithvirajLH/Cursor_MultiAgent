@@ -35,12 +35,14 @@ import { CsatModule } from './csat/csat.module';
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
 
 import { parsePositiveInt } from './common/config.utils';
+import { validateEnv } from './common/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: path.resolve(process.cwd(), envFile),
+      validate: validateEnv,
     }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],

@@ -145,6 +145,10 @@ model User {
   slaPolicyConfigsCreated SlaPolicyConfig[] @relation("SlaPolicyConfigCreatedBy")
   adminAuditEvents AdminAuditEvent[] @relation("AdminAuditEventCreatedBy")
   kbArticles KbArticle[] @relation("KbArticleAuthor")
+
+  // TEAM_ADMIN user listings filter users by primaryTeamId
+  // (users.service.ts getUserListScope) — index avoids a full User scan.
+  @@index([primaryTeamId])
 }
 
 model Team {
