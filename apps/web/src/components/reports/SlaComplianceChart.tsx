@@ -41,7 +41,11 @@ export function SlaComplianceChart({ data }: { data: SlaData }) {
   }
 
   return (
-    <div className="h-[240px] w-full min-h-0 overflow-visible">
+    <div
+      className="h-[240px] w-full min-h-0 overflow-visible"
+      role="img"
+      aria-label="SLA compliance breakdown"
+    >
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie

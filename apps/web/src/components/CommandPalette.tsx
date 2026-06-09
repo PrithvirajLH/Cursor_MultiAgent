@@ -24,6 +24,7 @@ import {
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import type { RecentSearch } from "../hooks/useCommandPalette";
 import { formatTicketId } from "../utils/format";
+import { modKeyLabel } from "../utils/platform";
 import { priorityBadgeClass } from "../utils/statusColors";
 
 type CommandPaletteProps = {
@@ -664,7 +665,7 @@ export function CommandPalette({
           </div>
           <span className="hidden sm:inline">
             <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">
-              ⌘
+              {modKeyLabel}
             </kbd>{" "}
             +{" "}
             <kbd className="px-1.5 py-0.5 rounded border border-border bg-card">

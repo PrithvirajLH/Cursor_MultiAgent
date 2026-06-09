@@ -1,6 +1,6 @@
 import type { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
-import { TicketStatus } from '@prisma/client';
+import { TicketPriority, TicketStatus } from '@prisma/client';
 import { AccessControlService } from '../common/access-control.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
@@ -101,10 +101,7 @@ describe('TicketsService', () => {
     it('formats a standard ID for no team', () => {
       const date = new Date('2024-03-15T12:00:00.000Z');
       const displayId = callBuildDisplayId(service, null, date, 42);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      expect(displayId).toBe(`NA_${yyyy}${mm}${dd}_042`);
+      expect(displayId).toBe(`NA_20240315_042`);
     });
 
     it('formats an ID using the team name to create a department code', () => {
@@ -115,19 +112,28 @@ describe('TicketsService', () => {
         date,
         128,
       );
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      expect(displayId).toBe(`CS_${yyyy}${mm}${dd}_128`);
+      expect(displayId).toBe(`CS_20251105_128`);
     });
 
     it('handles padding correctly for sequence numbers', () => {
       const date = new Date('2024-01-01T00:00:00.000Z');
       const displayId = callBuildDisplayId(service, 'IT Helpdesk', date, 5);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, '0');
-      const dd = String(date.getDate()).padStart(2, '0');
-      expect(displayId).toBe(`IH_${yyyy}${mm}${dd}_005`);
+      expect(displayId).toBe(`IH_20240101_005`);
+    });
+
+    it('uses the UTC date for the prefix, not the server-local date (BUG-13)', () => {
+      // 2024-03-15T23:30:00Z is still 2024-03-15 in UTC but would be 2024-03-16
+      // in any timezone east of UTC (and earlier in some western zones). The
+      // prefix must follow UTC regardless of the server timezone.
+      const date = new Date('2024-03-15T23:30:00.000Z');
+      const displayId = callBuildDisplayId(service, null, date, 7);
+      expect(displayId).toBe(`NA_20240315_007`);
+
+      // A timestamp just past midnight UTC must roll to the next UTC day.
+      const nextDay = new Date('2024-03-16T00:30:00.000Z');
+      expect(callBuildDisplayId(service, null, nextDay, 8)).toBe(
+        `NA_20240316_008`,
+      );
     });
   });
 
@@ -176,6 +182,95 @@ describe('TicketsService', () => {
           TicketStatus.ASSIGNED,
         ),
       ).toBe(false);
+    });
+  });
+
+  describe('applyStatusTransitionInTx (BUG-08: same-status no-op)', () => {
+    function buildSnapshot(
+      status: TicketStatus,
+      assigneeId: string | null = 'agent-1',
+    ) {
+      return {
+        id: 'ticket-1',
+        status,
+        priority: TicketPriority.SEV3,
+        assignedTeamId: 'team-1',
+        assigneeId,
+        dueAt: null,
+        slaPausedAt: null,
+        resolvedAt: null,
+        closedAt: null,
+        completedAt: null,
+      };
+    }
+
+    function buildTxMock() {
+      return {
+        ticket: { update: jest.fn().mockResolvedValue({}) },
+        ticketEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+    }
+
+    function callApply(
+      tx: unknown,
+      snapshot: ReturnType<typeof buildSnapshot>,
+      newStatus: TicketStatus,
+    ) {
+      return (
+        service as unknown as {
+          applyStatusTransitionInTx(
+            txClient: unknown,
+            ticket: ReturnType<typeof buildSnapshot>,
+            status: TicketStatus,
+            actorId: string,
+          ): Promise<void>;
+        }
+      ).applyStatusTransitionInTx(tx, snapshot, newStatus, 'actor-1');
+    }
+
+    it('does not write a TICKET_STATUS_CHANGED event or run SLA sync when status is unchanged', async () => {
+      const syncSpy = jest.fn().mockResolvedValue(undefined);
+      (service as unknown as { slaEngine: { syncFromTicket: jest.Mock } }).slaEngine =
+        { syncFromTicket: syncSpy };
+
+      const tx = buildTxMock();
+      await callApply(
+        tx,
+        buildSnapshot(TicketStatus.IN_PROGRESS),
+        TicketStatus.IN_PROGRESS,
+      );
+
+      expect(tx.ticketEvent.create).not.toHaveBeenCalled();
+      expect(tx.ticket.update).not.toHaveBeenCalled();
+      expect(syncSpy).not.toHaveBeenCalled();
+    });
+
+    it('still writes the event and runs SLA sync for a real transition', async () => {
+      const syncSpy = jest.fn().mockResolvedValue(undefined);
+      (service as unknown as { slaEngine: { syncFromTicket: jest.Mock } }).slaEngine =
+        { syncFromTicket: syncSpy };
+
+      const tx = buildTxMock();
+      await callApply(
+        tx,
+        buildSnapshot(TicketStatus.ASSIGNED),
+        TicketStatus.IN_PROGRESS,
+      );
+
+      expect(tx.ticket.update).toHaveBeenCalledTimes(1);
+      expect(tx.ticketEvent.create).toHaveBeenCalledTimes(1);
+      expect(tx.ticketEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'TICKET_STATUS_CHANGED',
+            payload: {
+              from: TicketStatus.ASSIGNED,
+              to: TicketStatus.IN_PROGRESS,
+            },
+          }),
+        }),
+      );
+      expect(syncSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

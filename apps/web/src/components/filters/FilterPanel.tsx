@@ -241,6 +241,7 @@ export function FilterPanel({
           <div className="mt-2 space-y-2">
             <input
               type="date"
+              aria-label="From"
               value={filters.createdFrom}
               onChange={(event) =>
                 setFilters({ createdFrom: event.target.value })
@@ -249,6 +250,7 @@ export function FilterPanel({
             />
             <input
               type="date"
+              aria-label="To"
               value={filters.createdTo}
               onChange={(event) =>
                 setFilters({ createdTo: event.target.value })
@@ -265,6 +267,7 @@ export function FilterPanel({
           <div className="mt-2 space-y-2">
             <input
               type="date"
+              aria-label="From"
               value={filters.updatedFrom}
               onChange={(event) =>
                 setFilters({ updatedFrom: event.target.value })
@@ -273,6 +276,7 @@ export function FilterPanel({
             />
             <input
               type="date"
+              aria-label="To"
               value={filters.updatedTo}
               onChange={(event) =>
                 setFilters({ updatedTo: event.target.value })
@@ -289,12 +293,14 @@ export function FilterPanel({
           <div className="mt-2 space-y-2">
             <input
               type="date"
+              aria-label="From"
               value={filters.dueFrom}
               onChange={(event) => setFilters({ dueFrom: event.target.value })}
               className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"
             />
             <input
               type="date"
+              aria-label="To"
               value={filters.dueTo}
               onChange={(event) => setFilters({ dueTo: event.target.value })}
               className="h-10 w-full rounded-md border border-border px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30"

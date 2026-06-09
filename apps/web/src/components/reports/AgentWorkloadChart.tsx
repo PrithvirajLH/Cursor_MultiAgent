@@ -95,7 +95,11 @@ export function AgentWorkloadChart({
 
   return (
     <div className="w-full">
-      <div className="h-[240px] w-full min-h-0 overflow-visible">
+      <div
+        className="h-[240px] w-full min-h-0 overflow-visible"
+        role="img"
+        aria-label="Agent workload by open and in-progress tickets"
+      >
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}

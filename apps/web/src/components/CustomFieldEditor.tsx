@@ -143,8 +143,9 @@ export function CustomFieldEditor({
     <form className="space-y-4" onSubmit={onSubmit}>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div>
-        <label className="text-xs text-muted-foreground">Name</label>
+        <label htmlFor="custom-field-name" className="text-xs text-muted-foreground">Name</label>
         <input
+          id="custom-field-name"
           className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.name}
           onChange={(e) => onChange({ name: e.target.value })}
@@ -154,8 +155,9 @@ export function CustomFieldEditor({
         />
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">Field type</label>
+        <label htmlFor="custom-field-type" className="text-xs text-muted-foreground">Field type</label>
         <select
+          id="custom-field-type"
           className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.fieldType}
           onChange={(e) => onChange({ fieldType: e.target.value })}
@@ -185,12 +187,16 @@ export function CustomFieldEditor({
             {form.options.map((opt, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <input
+                  id={`custom-field-option-value-${i}`}
+                  aria-label={`Option ${i + 1} value`}
                   className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground"
                   value={opt.value}
                   onChange={(e) => updateOption(i, "value", e.target.value)}
                   placeholder="Value"
                 />
                 <input
+                  id={`custom-field-option-label-${i}`}
+                  aria-label={`Option ${i + 1} label`}
                   className="flex-1 rounded-lg border border-border bg-card px-2 py-1.5 text-sm text-foreground"
                   value={opt.label}
                   onChange={(e) => updateOption(i, "label", e.target.value)}
@@ -230,8 +236,9 @@ export function CustomFieldEditor({
         </label>
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">Team (scope)</label>
+        <label htmlFor="custom-field-team" className="text-xs text-muted-foreground">Team (scope)</label>
         <select
+          id="custom-field-team"
           className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.teamId}
           onChange={(e) => onChange({ teamId: e.target.value })}
@@ -245,8 +252,9 @@ export function CustomFieldEditor({
         </select>
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">Category (scope)</label>
+        <label htmlFor="custom-field-category" className="text-xs text-muted-foreground">Category (scope)</label>
         <select
+          id="custom-field-category"
           className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.categoryId}
           onChange={(e) => onChange({ categoryId: e.target.value })}
@@ -260,8 +268,9 @@ export function CustomFieldEditor({
         </select>
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">Sort order</label>
+        <label htmlFor="custom-field-sort-order" className="text-xs text-muted-foreground">Sort order</label>
         <input
+          id="custom-field-sort-order"
           type="number"
           className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
           value={form.sortOrder}

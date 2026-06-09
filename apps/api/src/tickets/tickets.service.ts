@@ -2039,6 +2039,11 @@ export class TicketsService {
     if (!this.isValidTransition(ticket.status, newStatus)) {
       throw new ForbiddenException('Invalid status transition');
     }
+    // No-op transition: status is unchanged, so skip writing a phantom
+    // TICKET_STATUS_CHANGED event and re-running SLA sync (BUG-08).
+    if (ticket.status === newStatus) {
+      return;
+    }
     if (this.transitionRequiresAssignee(newStatus) && !ticket.assigneeId) {
       throw new BadRequestException(
         `Cannot set status to ${newStatus} without an assignee`,
@@ -2567,9 +2572,10 @@ export class TicketsService {
     ticketNumber: number,
   ) {
     const departmentCode = this.getDepartmentCode(teamName);
-    const yyyy = createdAt.getFullYear();
-    const mm = String(createdAt.getMonth() + 1).padStart(2, '0');
-    const dd = String(createdAt.getDate()).padStart(2, '0');
+    // Use UTC so the date prefix is stable regardless of server timezone (BUG-13).
+    const yyyy = createdAt.getUTCFullYear();
+    const mm = String(createdAt.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(createdAt.getUTCDate()).padStart(2, '0');
     const sequence = String(ticketNumber).padStart(3, '0');
     return `${departmentCode}_${yyyy}${mm}${dd}_${sequence}`;
   }

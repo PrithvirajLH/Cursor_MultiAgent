@@ -62,7 +62,11 @@ export function ReopenRateChart({ data }: { data: Point[] }) {
 
   return (
     <div className="w-full">
-      <div className="h-[200px] w-full min-h-0 overflow-visible">
+      <div
+        className="h-[200px] w-full min-h-0 overflow-visible"
+        role="img"
+        aria-label="Reopen rate over time"
+      >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />

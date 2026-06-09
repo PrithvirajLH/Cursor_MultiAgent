@@ -28,9 +28,8 @@ export function NewTicketPage({ teamsList }: NewTicketPageProps) {
   const navigate = useNavigate();
 
   const createTicketForm = useCreateTicketForm({
-    onSuccess: () => {
-      toast.success("Ticket created successfully.");
-    },
+    // Success toast is fired once by the hook via toastSuccess; don't duplicate it here.
+    onSuccess: () => {},
     toastSuccess: toast.success,
     toastError: toast.error,
   });

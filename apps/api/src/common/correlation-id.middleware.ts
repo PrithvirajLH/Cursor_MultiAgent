@@ -7,6 +7,13 @@ const REQUEST_ID_HEADER = 'x-request-id';
 const completionLogger = new Logger('Request');
 
 /**
+ * Accept an inbound request id only if it is a short, safe token (SEC-22).
+ * Prevents log injection (newlines/control chars) and unbounded ids from an
+ * attacker-controlled header.
+ */
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
  * Middleware that propagates or generates a request correlation ID (OBS-01).
  * Reads X-Request-Id from the request; if missing, generates a new UUID.
  * Sets the ID on the response header and runs the rest of the chain inside AsyncLocalStorage
@@ -19,10 +26,10 @@ export function correlationIdMiddleware(
   next: NextFunction,
 ): void {
   const raw = req.headers[REQUEST_ID_HEADER];
-  const requestId =
-    typeof raw === 'string' && raw.trim().length > 0
-      ? raw.trim()
-      : randomUUID();
+  const candidate = typeof raw === 'string' ? raw.trim() : '';
+  const requestId = REQUEST_ID_PATTERN.test(candidate)
+    ? candidate
+    : randomUUID();
   (req as Request & { requestId: string }).requestId = requestId;
   res.setHeader(REQUEST_ID_HEADER, requestId);
 

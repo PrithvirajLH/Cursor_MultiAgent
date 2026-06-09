@@ -49,7 +49,6 @@ import {
   type HeaderContextValue,
 } from "./contexts/HeaderContext";
 import { useCommandPalette } from "./hooks/useCommandPalette";
-import { useCreateTicketForm } from "./hooks/useCreateTicketForm";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { useTheme } from "./hooks/useTheme";
 import { shouldEnableNotificationPolling } from "./hooks/notification-fallback";
@@ -508,17 +507,7 @@ function AuthenticatedShell({
     [user.role],
   );
   const sidebar = useSidebarState();
-  const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
-    useTicketDataInvalidation();
-
-  const createTicketForm = useCreateTicketForm({
-    onSuccess: () => {
-      notifyTicketAggregatesChanged();
-      notifyTicketReportsChanged();
-    },
-    toastSuccess: toast.success,
-    toastError: toast.error,
-  });
+  const { notifyTicketAggregatesChanged } = useTicketDataInvalidation();
 
   const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
   const { data: ticketCounts } = useTicketCountsQuery(currentEmail);
@@ -531,9 +520,9 @@ function AuthenticatedShell({
   const [notificationsRealtimeAvailable, setNotificationsRealtimeAvailable] =
     useState(false);
 
-  // Command Palette
+  // Command Palette — create now lives at the /tickets/new page
   const commandPalette = useCommandPalette({
-    onCreateTicket: createTicketForm.openModal,
+    onCreateTicket: () => navigate("/tickets/new"),
   });
 
   // Notifications

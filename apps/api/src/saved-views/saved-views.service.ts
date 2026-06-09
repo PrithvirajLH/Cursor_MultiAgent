@@ -31,20 +31,23 @@ export class SavedViewsService {
       dto.teamId != null && user.teamId != null && dto.teamId === user.teamId
         ? dto.teamId
         : null;
-    if (dto.isDefault) {
-      await this.prisma.savedView.updateMany({
-        where: { userId: user.id },
-        data: { isDefault: false },
+    // Clear-other-defaults + create must be atomic to avoid a default-flag race (BUG-15).
+    const view = await this.prisma.$transaction(async (tx) => {
+      if (dto.isDefault) {
+        await tx.savedView.updateMany({
+          where: { userId: user.id },
+          data: { isDefault: false },
+        });
+      }
+      return tx.savedView.create({
+        data: {
+          name: dto.name,
+          filters: dto.filters as object,
+          isDefault: dto.isDefault ?? false,
+          userId: user.id,
+          teamId,
+        },
       });
-    }
-    const view = await this.prisma.savedView.create({
-      data: {
-        name: dto.name,
-        filters: dto.filters as object,
-        isDefault: dto.isDefault ?? false,
-        userId: user.id,
-        teamId,
-      },
     });
     return view;
   }
@@ -57,19 +60,22 @@ export class SavedViewsService {
     if (existing.userId !== user.id) {
       throw new ForbiddenException('You can only edit your own saved views');
     }
-    if (dto.isDefault === true) {
-      await this.prisma.savedView.updateMany({
-        where: { userId: user.id },
-        data: { isDefault: false },
+    // Clear-other-defaults + update must be atomic to avoid a default-flag race (BUG-15).
+    const view = await this.prisma.$transaction(async (tx) => {
+      if (dto.isDefault === true) {
+        await tx.savedView.updateMany({
+          where: { userId: user.id },
+          data: { isDefault: false },
+        });
+      }
+      return tx.savedView.update({
+        where: { id },
+        data: {
+          ...(dto.name != null && { name: dto.name }),
+          ...(dto.filters != null && { filters: dto.filters as object }),
+          ...(dto.isDefault != null && { isDefault: dto.isDefault }),
+        },
       });
-    }
-    const view = await this.prisma.savedView.update({
-      where: { id },
-      data: {
-        ...(dto.name != null && { name: dto.name }),
-        ...(dto.filters != null && { filters: dto.filters as object }),
-        ...(dto.isDefault != null && { isDefault: dto.isDefault }),
-      },
     });
     return view;
   }

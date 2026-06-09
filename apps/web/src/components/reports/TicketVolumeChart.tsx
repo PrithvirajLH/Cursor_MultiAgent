@@ -23,10 +23,22 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 };
 
 export function TicketVolumeChart({ data }: { data: Point[] }) {
+  if (data.length === 0) {
+    return (
+      <div className="h-[240px] flex items-center justify-center text-sm text-muted-foreground">
+        No data in range
+      </div>
+    );
+  }
+
   const display = data.map((d) => ({ ...d, short: d.date.slice(5) }));
 
   return (
-    <div className="h-[240px] w-full min-h-0 overflow-visible">
+    <div
+      className="h-[240px] w-full min-h-0 overflow-visible"
+      role="img"
+      aria-label="Ticket volume over time"
+    >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={display} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />

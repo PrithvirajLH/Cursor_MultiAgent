@@ -28,9 +28,10 @@ export class TeamsService {
     // Owners may opt into seeing deactivated teams (e.g. to reactivate them).
     const includeInactive =
       query.includeInactive === 'true' && user?.role === UserRole.OWNER;
-    const baseWhere: { isActive?: boolean; id?: string } = includeInactive
-      ? {}
-      : { isActive: true };
+    const baseWhere: {
+      isActive?: boolean;
+      id?: string | { in: string[] };
+    } = includeInactive ? {} : { isActive: true };
     if (user?.role === UserRole.TEAM_ADMIN) {
       if (!user.primaryTeamId) {
         throw new ForbiddenException(
@@ -46,7 +47,19 @@ export class TeamsService {
       }
       baseWhere.id = leadTeamId;
     }
-    // OWNER and non-privileged roles: no team filter (full list or caller restricts elsewhere)
+    // AGENT/EMPLOYEE may only see the teams they belong to (BUG-09).
+    // An empty membership set must resolve to "no teams", not "all teams".
+    if (user?.role === UserRole.AGENT || user?.role === UserRole.EMPLOYEE) {
+      const memberTeamIds = user.memberTeamIds?.filter(Boolean) ?? [];
+      const scopedTeamIds =
+        memberTeamIds.length > 0
+          ? memberTeamIds
+          : user.teamId
+            ? [user.teamId]
+            : [];
+      baseWhere.id = { in: scopedTeamIds };
+    }
+    // OWNER: no team filter (full list)
     const where = {
       ...baseWhere,
       ...(query.q

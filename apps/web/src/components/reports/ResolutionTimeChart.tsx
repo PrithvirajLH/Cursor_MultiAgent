@@ -38,7 +38,11 @@ export function ResolutionTimeChart({ data }: { data: Point[] }) {
   }
 
   return (
-    <div className="h-[240px] w-full min-h-0 overflow-visible">
+    <div
+      className="h-[240px] w-full min-h-0 overflow-visible"
+      role="img"
+      aria-label="Average resolution time by department"
+    >
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />

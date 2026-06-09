@@ -101,7 +101,7 @@ export function KeyboardShortcutsHelp({
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
               Global
             </h3>
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-border">
               {GLOBAL_SHORTCUTS.map((item) => (
                 <ShortcutRow
                   key={item.description}

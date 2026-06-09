@@ -173,6 +173,7 @@ export function TicketSidebar(
             {/* Hide unfollow for requesters — they always follow their own ticket */}
             {isFollowing && isRequester ? null : (
               <button
+                type="button"
                 onClick={onFollowToggle}
                 disabled={followLoading}
                 className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all ${
@@ -181,6 +182,7 @@ export function TicketSidebar(
                     : "border-border bg-card text-muted-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
                 }`}
                 title={isFollowing ? "Unfollow" : "Follow"}
+                aria-label={isFollowing ? "Unfollow ticket" : "Follow ticket"}
               >
                 {isFollowing ? (
                   <UserMinus className="h-3.5 w-3.5" />

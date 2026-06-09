@@ -747,6 +747,9 @@ export const RichTextEditor = forwardRef<
           ref={editableRef}
           contentEditable
           suppressContentEditableWarning
+          role="textbox"
+          aria-multiline="true"
+          aria-label="Message body"
           className="min-h-[80px] max-h-[288px] overflow-y-auto p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-inset"
           style={{
             minHeight: `${minRows * 24}px`,

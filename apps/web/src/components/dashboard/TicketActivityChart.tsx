@@ -72,7 +72,11 @@ export function TicketActivityChart({ data }: { data: ActivityPoint[] }) {
   }
 
   return (
-    <div className="h-48 min-h-0 overflow-visible">
+    <div
+      className="h-48 min-h-0 overflow-visible"
+      role="img"
+      aria-label="Open vs resolved ticket activity over time"
+    >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
           <defs>

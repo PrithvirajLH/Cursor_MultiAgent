@@ -42,6 +42,93 @@ type Props = {
   categories?: { id: string; name: string }[];
 };
 
+type SelectOption = { value: string; label: string };
+
+/**
+ * Renders the value editor for a dropdown-backed field. For single-value
+ * operators it's a plain <select>; for `in`/`notIn` it's a multi-value
+ * picker — an "add" <select> plus removable chips — so several values can be
+ * authored (BUG-23).
+ */
+function DropdownValueEditor({
+  isMulti,
+  options,
+  value,
+  valueArray,
+  placeholder,
+  minWidth,
+  onSetValue,
+}: {
+  isMulti: boolean;
+  options: SelectOption[];
+  value: unknown;
+  valueArray: unknown[];
+  placeholder: string;
+  minWidth?: string;
+  onSetValue: (next: unknown) => void;
+}) {
+  const selectClass = `rounded border border-border bg-card px-2 py-1 text-xs${
+    minWidth ? ` ${minWidth}` : ""
+  }`;
+
+  if (!isMulti) {
+    return (
+      <select
+        className={selectClass}
+        value={value != null ? String(value) : ""}
+        onChange={(e) => onSetValue(e.target.value)}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  const selected = valueArray.map(String);
+  const labelFor = (v: string) =>
+    options.find((o) => o.value === v)?.label ?? v;
+  const available = options.filter((o) => !selected.includes(o.value));
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {selected.map((v) => (
+        <span
+          key={v}
+          className="inline-flex items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-foreground"
+        >
+          {labelFor(v)}
+          <button
+            type="button"
+            aria-label={`Remove ${labelFor(v)}`}
+            onClick={() => onSetValue(selected.filter((s) => s !== v))}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <select
+        className={selectClass}
+        value=""
+        onChange={(e) => {
+          if (e.target.value) onSetValue([...selected, e.target.value]);
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {available.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function ConditionEditor({
   condition,
   onChange,
@@ -93,84 +180,61 @@ export function ConditionEditor({
       {needsValue && (
         <>
           {field === "priority" && (
-            <select
-              className="rounded border border-border bg-card px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
-              onChange={(e) =>
-                setValue(isMulti ? [e.target.value] : e.target.value)
-              }
-            >
-              <option value="">Select</option>
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+            <DropdownValueEditor
+              isMulti={isMulti}
+              options={PRIORITIES.map((p) => ({ value: p, label: p }))}
+              value={value}
+              valueArray={valueArray}
+              placeholder="Select"
+              onSetValue={setValue}
+            />
           )}
           {field === "status" && (
-            <select
-              className="rounded border border-border bg-card px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
-              onChange={(e) =>
-                setValue(isMulti ? [e.target.value] : e.target.value)
-              }
-            >
-              <option value="">Select</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </option>
-              ))}
-            </select>
+            <DropdownValueEditor
+              isMulti={isMulti}
+              options={STATUSES.map((s) => ({
+                value: s,
+                label: s.replace(/_/g, " "),
+              }))}
+              value={value}
+              valueArray={valueArray}
+              placeholder="Select"
+              onSetValue={setValue}
+            />
           )}
           {field === "assignedTeamId" && (
-            <select
-              className="rounded border border-border bg-card px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
-              onChange={(e) =>
-                setValue(isMulti ? [e.target.value] : e.target.value)
-              }
-            >
-              <option value="">Select team</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <DropdownValueEditor
+              isMulti={isMulti}
+              options={teams.map((t) => ({ value: t.id, label: t.name }))}
+              value={value}
+              valueArray={valueArray}
+              placeholder="Select team"
+              onSetValue={setValue}
+            />
           )}
           {field === "assigneeId" && (
-            <select
-              className="rounded border border-border bg-card px-2 py-1 text-xs min-w-[140px]"
-              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
-              onChange={(e) =>
-                setValue(isMulti ? [e.target.value] : e.target.value)
-              }
-            >
-              <option value="">Select user</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.displayName}
-                </option>
-              ))}
-            </select>
+            <DropdownValueEditor
+              isMulti={isMulti}
+              options={users.map((u) => ({
+                value: u.id,
+                label: u.displayName,
+              }))}
+              value={value}
+              valueArray={valueArray}
+              placeholder="Select user"
+              minWidth="min-w-[140px]"
+              onSetValue={setValue}
+            />
           )}
           {field === "categoryId" && (
-            <select
-              className="rounded border border-border bg-card px-2 py-1 text-xs"
-              value={isMulti ? (valueArray[0] ?? "") : (value ?? "")}
-              onChange={(e) =>
-                setValue(isMulti ? [e.target.value] : e.target.value)
-              }
-            >
-              <option value="">Select category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <DropdownValueEditor
+              isMulti={isMulti}
+              options={categories.map((c) => ({ value: c.id, label: c.name }))}
+              value={value}
+              valueArray={valueArray}
+              placeholder="Select category"
+              onSetValue={setValue}
+            />
           )}
           {(field === "subject" || field === "description") && (
             <input

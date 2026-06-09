@@ -134,7 +134,23 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
 
   private fallbackToInline() {
     this.enabled = false;
-    this.queue = null;
+    // Close BullMQ resources before dropping the references (BUG-18) so the
+    // underlying Redis connections/timers don't leak on fallback.
+    const worker = this.worker;
+    const queue = this.queue;
     this.worker = null;
+    this.queue = null;
+    void (async () => {
+      try {
+        await worker?.close();
+      } catch {
+        // best-effort: connection may already be down
+      }
+      try {
+        await queue?.close();
+      } catch {
+        // best-effort
+      }
+    })();
   }
 }

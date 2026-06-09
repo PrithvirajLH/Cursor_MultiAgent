@@ -14,6 +14,7 @@ import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import type { CurrentUserSession, NotificationRecord } from "../api/client";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { initialsFor } from "../utils/format";
+import { modKeyLabel } from "../utils/platform";
 import { getUiZoom } from "../utils/uiZoom";
 import { NotificationCenter } from "./NotificationCenter";
 
@@ -287,12 +288,12 @@ export function TopBar({
             type="button"
             onClick={onOpenSearch}
             className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-border bg-card text-muted-foreground text-[13px] transition-all hover:border-primary/30 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
-            aria-label="Search (⌘K)"
+            aria-label={`Search (${modKeyLabel}K)`}
           >
             <Search className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="hidden sm:inline">Search</span>
             <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              ⌘K
+              {modKeyLabel}K
             </kbd>
           </button>
         )}

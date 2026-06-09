@@ -39,8 +39,8 @@ export function Toast({ id, message, type, onDismiss }: ToastProps) {
   const { container, icon, Icon } = TOAST_STYLES[type];
   return (
     <div
-      role="status"
-      aria-live="polite"
+      role={type === "error" ? "alert" : "status"}
+      aria-live={type === "error" ? "assertive" : "polite"}
       aria-atomic="true"
       className={cn(
         "flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm font-medium shadow-lg",

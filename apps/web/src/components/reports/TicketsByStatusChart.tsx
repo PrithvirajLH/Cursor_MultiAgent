@@ -39,7 +39,7 @@ function colorForStatus(status: string): string {
 }
 
 function statusAxisLabel(status: string): string {
-  if (status === "WAITING_ON_REQUESTER") return "Requestor";
+  if (status === "WAITING_ON_REQUESTER") return "Requester";
   if (status === "WAITING_ON_VENDOR") return "Vendor";
   return status;
 }
@@ -60,7 +60,12 @@ export function TicketsByStatusChart({
   }
 
   return (
-    <div className="w-full min-h-0 overflow-visible" style={{ height }}>
+    <div
+      className="w-full min-h-0 overflow-visible"
+      style={{ height }}
+      role="img"
+      aria-label="Tickets by status"
+    >
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />

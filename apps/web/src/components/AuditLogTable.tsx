@@ -86,11 +86,11 @@ export function AuditLogTable({ data }: { data: AuditLogEntry[] }) {
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/50">
-            <th className="px-4 py-3 font-semibold text-foreground">Date</th>
-            <th className="px-4 py-3 font-semibold text-foreground">User</th>
-            <th className="px-4 py-3 font-semibold text-foreground">Ticket</th>
-            <th className="px-4 py-3 font-semibold text-foreground">Action</th>
-            <th className="px-4 py-3 font-semibold text-foreground">Details</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-foreground">Date</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-foreground">User</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-foreground">Ticket</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-foreground">Action</th>
+            <th scope="col" className="px-4 py-3 font-semibold text-foreground">Details</th>
           </tr>
         </thead>
         <tbody>

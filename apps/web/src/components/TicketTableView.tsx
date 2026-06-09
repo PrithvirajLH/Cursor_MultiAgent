@@ -116,11 +116,11 @@ export function TicketTableView({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1180px]">
+      <table aria-label="Tickets" className="w-full min-w-[1180px]">
         <thead className="border-b border-border bg-card">
           <tr>
             {showCheckbox ? (
-              <th className="w-12 px-6 py-4 text-left">
+              <th scope="col" className="w-12 px-6 py-4 text-left">
                 <input
                   type="checkbox"
                   checked={selection.isAllSelected}
@@ -130,28 +130,28 @@ export function TicketTableView({
                 />
               </th>
             ) : null}
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               ID
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Subject
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Requester
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Priority
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Status
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Assignee
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Created
             </th>
-            <th className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <th scope="col" className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               SLA
             </th>
           </tr>

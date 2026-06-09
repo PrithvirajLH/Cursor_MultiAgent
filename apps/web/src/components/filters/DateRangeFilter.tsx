@@ -18,12 +18,27 @@ export function DateRangeFilter({
 }) {
   const [open, setOpen] = useState(false);
 
+  // BUG-24: guard against an inverted range (from must be <= to).
+  const isInverted = Boolean(from && to && from > to);
+
   const summary = useMemo(() => {
     if (!from && !to) return placeholder;
     if (from && to) return `${from} to ${to}`;
     if (from) return `From ${from}`;
     return `Until ${to}`;
   }, [from, placeholder, to]);
+
+  // Clamp the partner field so the range never inverts: picking a "from" later
+  // than the current "to" pulls "to" up to match, and vice-versa.
+  function handleFromChange(value: string) {
+    onFromChange(value);
+    if (value && to && value > to) onToChange(value);
+  }
+
+  function handleToChange(value: string) {
+    onToChange(value);
+    if (value && from && value < from) onFromChange(value);
+  }
 
   return (
     <div className="space-y-1.5">
@@ -57,7 +72,8 @@ export function DateRangeFilter({
                   <input
                     type="date"
                     value={from || ""}
-                    onChange={(e) => onFromChange(e.target.value)}
+                    max={to || undefined}
+                    onChange={(e) => handleFromChange(e.target.value)}
                     className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-popover transition-colors"
                     aria-label={`${label} from`}
                   />
@@ -69,11 +85,17 @@ export function DateRangeFilter({
                   <input
                     type="date"
                     value={to || ""}
-                    onChange={(e) => onToChange(e.target.value)}
+                    min={from || undefined}
+                    onChange={(e) => handleToChange(e.target.value)}
                     className="h-9 w-full rounded-lg border border-border bg-muted px-2.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-popover transition-colors"
                     aria-label={`${label} to`}
                   />
                 </div>
+                {isInverted && (
+                  <p className="text-[11px] font-medium text-red-500">
+                    “From” must be on or before “To”.
+                  </p>
+                )}
               </div>
               <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
                 <button

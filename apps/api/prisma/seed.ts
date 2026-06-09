@@ -161,16 +161,20 @@ async function seedDevAuxiliaryData(args: {
 }
 
 async function seedMinimal() {
-  await prisma.ticketAccess.deleteMany();
-  await prisma.ticketEvent.deleteMany();
-  await prisma.ticketMessage.deleteMany();
-  await prisma.attachment.deleteMany();
-  await prisma.ticket.deleteMany();
-  await prisma.teamMember.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.routingRule.deleteMany();
-  await prisma.team.deleteMany();
-  await prisma.category.deleteMany();
+  // Reset wipe must be atomic so a crash mid-reset can't leave a half-wiped DB (DATA-04).
+  // FK-safe ordering preserved.
+  await prisma.$transaction([
+    prisma.ticketAccess.deleteMany(),
+    prisma.ticketEvent.deleteMany(),
+    prisma.ticketMessage.deleteMany(),
+    prisma.attachment.deleteMany(),
+    prisma.ticket.deleteMany(),
+    prisma.teamMember.deleteMany(),
+    prisma.user.deleteMany(),
+    prisma.routingRule.deleteMany(),
+    prisma.team.deleteMany(),
+    prisma.category.deleteMany()
+  ]);
 
   const [aiTeam, hrTeam] = await Promise.all([
     prisma.team.create({ data: { name: 'AI', slug: 'ai', description: 'AI support team' } }),
@@ -796,15 +800,19 @@ async function seedTest() {
     owner: 'oooooooo-oooo-4ooo-8ooo-oooooooooooo'
   };
 
-  await prisma.ticketAccess.deleteMany();
-  await prisma.ticketEvent.deleteMany();
-  await prisma.ticketMessage.deleteMany();
-  await prisma.attachment.deleteMany();
-  await prisma.ticket.deleteMany();
-  await prisma.teamMember.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.team.deleteMany();
-  await prisma.category.deleteMany();
+  // Reset wipe must be atomic so a crash mid-reset can't leave a half-wiped DB (DATA-04).
+  // FK-safe ordering preserved.
+  await prisma.$transaction([
+    prisma.ticketAccess.deleteMany(),
+    prisma.ticketEvent.deleteMany(),
+    prisma.ticketMessage.deleteMany(),
+    prisma.attachment.deleteMany(),
+    prisma.ticket.deleteMany(),
+    prisma.teamMember.deleteMany(),
+    prisma.user.deleteMany(),
+    prisma.team.deleteMany(),
+    prisma.category.deleteMany()
+  ]);
 
   await prisma.team.createMany({
     data: [
