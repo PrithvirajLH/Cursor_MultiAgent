@@ -50,7 +50,8 @@ export class EmailProcessorService {
     }
 
     if (!this.email.isConfigured()) {
-      await this.outbox.markFailed(outboxId, 'SMTP not configured');
+      // Terminal config failure — retrying immediately cannot help.
+      await this.outbox.markFailed(outboxId, 'SMTP not configured', false);
       return;
     }
 

@@ -1,4 +1,5 @@
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
   useState,
@@ -50,7 +51,7 @@ export type TicketSidebarProps = {
   nextStatus: string;
   setNextStatus: (status: string) => void;
   availableTransitions: string[];
-  statusSelectRef: RefObject<HTMLSelectElement | null>;
+  statusSelectRef: RefObject<HTMLButtonElement | null>;
   onTransition: () => void;
   onTransitionTo: (status: string) => void;
   quickEscalationTarget: string | null;
@@ -95,6 +96,7 @@ export function TicketSidebar(
     onAssignMember,
     onAssignSelf,
     availableTransitions,
+    statusSelectRef,
     onTransitionTo,
     transferTeamId,
     setTransferTeamId,
@@ -206,6 +208,8 @@ export function TicketSidebar(
           <PropertyRow label="Status">
             {canManage && availableTransitions.length > 0 ? (
               <InlineSelect
+                ariaLabel="Status"
+                triggerRef={statusSelectRef}
                 value={ticket.status}
                 placeholder="Status"
                 options={[
@@ -238,6 +242,7 @@ export function TicketSidebar(
                   return (
                     <>
                       <InlineSelect
+                        ariaLabel="Assignee"
                         buttonClassName="flex-1 w-full"
                         value={effectiveId}
                         placeholder="Unassigned"
@@ -308,6 +313,7 @@ export function TicketSidebar(
             {canManage ? (
               <div className="flex w-full items-center gap-1.5">
                 <InlineSelect
+                  ariaLabel="Department"
                   buttonClassName="flex-1 w-full"
                   value={transferTeamId || (ticket.assignedTeam?.id ?? "")}
                   placeholder="None"
@@ -351,6 +357,7 @@ export function TicketSidebar(
           <PropertyRow label="Priority">
             {canManage ? (
               <InlineSelect
+                ariaLabel="Priority"
                 value={ticket.priority}
                 placeholder="Priority"
                 options={(["SEV1", "SEV2", "SEV3", "SEV4"] as const).map(
@@ -378,6 +385,7 @@ export function TicketSidebar(
           <PropertyRow label="Category">
             {canManage ? (
               <InlineSelect
+                ariaLabel="Category"
                 buttonClassName="flex-1 w-full"
                 value={ticket.category?.id ?? ""}
                 placeholder="None"
@@ -677,6 +685,8 @@ function InlineSelect({
   placeholder,
   renderValue,
   buttonClassName = "",
+  ariaLabel,
+  triggerRef,
 }: {
   value: string;
   onChange: (val: string) => void;
@@ -685,11 +695,15 @@ function InlineSelect({
   placeholder?: string;
   renderValue: (val: string) => ReactNode;
   buttonClassName?: string;
+  ariaLabel?: string;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
+  const optionRefs = useRef<(HTMLLIElement | null)[]>([]);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
   useLayoutEffect(() => {
@@ -726,15 +740,115 @@ function InlineSelect({
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, [isOpen]);
 
+  const selectedIndex = options.findIndex((o) => o.value === value);
+
+  // When opening, start the keyboard cursor on the currently-selected option.
+  useEffect(() => {
+    if (isOpen) {
+      setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    } else {
+      setActiveIndex(-1);
+    }
+    // selectedIndex intentionally excluded: we only want this on open/close.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Keep the active option scrolled into view as the cursor moves.
+  useEffect(() => {
+    if (isOpen && activeIndex >= 0) {
+      optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [isOpen, activeIndex]);
+
+  const selectOption = (index: number) => {
+    const option = options[index];
+    if (!option) return;
+    onChange(option.value);
+    setIsOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  // Escape must close the dropdown and NOT bubble to the page-level keydown
+  // handler (which navigates back). The page handler listens in the capture
+  // phase on window, so a bubble-phase stopPropagation can't reach it — we
+  // intercept Escape with our own capture-phase listener while open.
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleCaptureKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsOpen(false);
+        buttonRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", handleCaptureKeyDown, true);
+    return () =>
+      window.removeEventListener("keydown", handleCaptureKeyDown, true);
+  }, [isOpen]);
+
+  const setRefs = (node: HTMLButtonElement | null) => {
+    buttonRef.current = node;
+    if (triggerRef) triggerRef.current = node;
+  };
+
+  const handleTriggerKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+  ) => {
+    if (disabled) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+      } else {
+        setActiveIndex((prev) => {
+          const next =
+            event.key === "ArrowDown"
+              ? Math.min(prev + 1, options.length - 1)
+              : Math.max(prev - 1, 0);
+          return next;
+        });
+      }
+    } else if (event.key === "Enter" || event.key === " ") {
+      if (isOpen && activeIndex >= 0) {
+        event.preventDefault();
+        selectOption(activeIndex);
+      }
+    }
+  };
+
+  const handleListboxKeyDown = (
+    event: ReactKeyboardEvent<HTMLUListElement>,
+  ) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((prev) => Math.min(prev + 1, options.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((prev) => Math.max(prev - 1, 0));
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      if (activeIndex >= 0) selectOption(activeIndex);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setActiveIndex(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setActiveIndex(options.length - 1);
+    }
+  };
+
   const selectedOption = options.find((o) => o.value === value);
 
   return (
     <div className={`relative ${buttonClassName}`} ref={containerRef}>
       <button
-        ref={buttonRef}
+        ref={setRefs}
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
+        onKeyDown={handleTriggerKeyDown}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         className={`flex w-full items-center justify-between gap-1 rounded-lg px-2.5 py-1.5 transition-all outline-none disabled:opacity-50 text-left min-w-0 text-[12px] cursor-pointer border ${
@@ -763,23 +877,40 @@ function InlineSelect({
 
       {isOpen && createPortal(
         <ul
-          ref={dropdownRef}
+          ref={(node) => {
+            dropdownRef.current = node;
+            // Move keyboard focus into the listbox when it opens so arrow
+            // keys / Enter / Escape are handled here.
+            if (node) node.focus();
+          }}
           role="listbox"
+          tabIndex={-1}
+          aria-label={ariaLabel}
+          aria-activedescendant={
+            activeIndex >= 0 && options[activeIndex]
+              ? `inline-select-option-${options[activeIndex].value}`
+              : undefined
+          }
+          onKeyDown={handleListboxKeyDown}
           className="fixed z-[9999] max-h-60 overflow-y-auto rounded-xl border border-border bg-card py-1.5 shadow-elevated focus:outline-none"
           style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
         >
-          {options.map((option) => (
+          {options.map((option, index) => (
             <li
               key={option.value}
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
+              id={`inline-select-option-${option.value}`}
+              ref={(node) => {
+                optionRefs.current[index] = node;
               }}
+              role="option"
+              aria-selected={value === option.value}
+              onClick={() => selectOption(index)}
+              onMouseEnter={() => setActiveIndex(index)}
               className={`relative cursor-pointer select-none py-2.5 pl-3 pr-9 text-[12px] transition-colors ${
                 value === option.value
                   ? "bg-primary/8 text-primary font-semibold"
-                  : "text-foreground hover:bg-accent/60"
-              }`}
+                  : "text-foreground"
+              } ${index === activeIndex ? "bg-accent/60" : ""}`}
             >
               <div className="flex items-center gap-2 truncate">
                 {option.avatarString && <Avatar name={option.avatarString} />}

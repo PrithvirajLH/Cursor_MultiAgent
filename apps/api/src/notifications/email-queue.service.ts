@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { EmailProcessorService } from './email-processor.service';
+import { MAX_EMAIL_OUTBOX_ATTEMPTS } from './outbox.service';
 
 const QUEUE_NAME = 'notification-email';
 
@@ -101,7 +102,10 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
     await this.queue.add(
       'send',
       { outboxId },
-      { attempts: 5, backoff: { type: 'exponential', delay: 10000 } },
+      {
+        attempts: MAX_EMAIL_OUTBOX_ATTEMPTS,
+        backoff: { type: 'exponential', delay: 10000 },
+      },
     );
   }
 

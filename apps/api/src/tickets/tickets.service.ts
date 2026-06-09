@@ -527,6 +527,22 @@ export class TicketsService {
     return result;
   }
 
+  /**
+   * BUG-11: getCounts caches per-user; mutations must invalidate the affected
+   * users' entries so they see fresh sidebar counts. Best-effort — cache errors
+   * are swallowed and never affect the mutation's transactional outcome.
+   */
+  private async invalidateCountsCache(userIds: (string | null | undefined)[]) {
+    const distinct = [...new Set(userIds.filter((id): id is string => !!id))];
+    await Promise.all(
+      distinct.map((id) =>
+        Promise.resolve(this.cache.del(`tickets:counts:${id}`)).catch(() => {
+          // best-effort: stale counts are bounded by the TTL regardless
+        }),
+      ),
+    );
+  }
+
   private async getCountsUncached(user: AuthUser): Promise<{
     assignedToMe: number;
     triage: number;
@@ -1186,6 +1202,12 @@ export class TicketsService {
       return updated;
     });
 
+    await this.invalidateCountsCache([
+      user.id,
+      requesterId,
+      updatedTicket.assigneeId,
+    ]);
+
     await this.safeNotify(() =>
       this.notifications.ticketCreated(updatedTicket, user),
     );
@@ -1490,6 +1512,12 @@ export class TicketsService {
 
       return updatedTicket;
     });
+    await this.invalidateCountsCache([
+      user.id,
+      updated.requesterId,
+      ticket.assigneeId,
+      updated.assigneeId,
+    ]);
     await this.safeNotify(() =>
       this.notifications.ticketAssigned(updated, user),
     );
@@ -1648,6 +1676,13 @@ export class TicketsService {
       return { updatedTicket, result };
     });
     const updated = transfer.updatedTicket;
+
+    await this.invalidateCountsCache([
+      user.id,
+      updated.requesterId,
+      ticket.assigneeId,
+      updated.assigneeId,
+    ]);
 
     await this.safeNotify(() =>
       this.notifications.ticketTransferred(
@@ -1960,6 +1995,12 @@ export class TicketsService {
       return updatedTicket;
     });
 
+    await this.invalidateCountsCache([
+      user.id,
+      updated.requesterId,
+      updated.assigneeId,
+    ]);
+
     await this.safeNotify(() =>
       this.notifications.ticketStatusChanged(updated, ticket.status, user),
     );
@@ -2231,6 +2272,11 @@ export class TicketsService {
           tx,
         );
       });
+      await this.invalidateCountsCache([
+        user.id,
+        ticket.requesterId,
+        ticket.assigneeId,
+      ]);
       await this.ticketRealtime.safeRealtime(() =>
         this.ticketRealtime.emitTicketRealtimeEvent({
           ticketId,

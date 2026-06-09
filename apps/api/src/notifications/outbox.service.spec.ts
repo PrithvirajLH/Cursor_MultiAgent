@@ -1,6 +1,6 @@
 import { OutboxStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { OutboxService } from './outbox.service';
+import { MAX_EMAIL_OUTBOX_ATTEMPTS, OutboxService } from './outbox.service';
 
 type MockTx = {
   notificationOutbox: {
@@ -14,6 +14,7 @@ type MockPrisma = {
   notificationOutbox: {
     create: jest.Mock;
     update: jest.Mock;
+    findUnique: jest.Mock;
   };
 };
 
@@ -36,6 +37,7 @@ describe('OutboxService', () => {
       notificationOutbox: {
         create: jest.fn(),
         update: jest.fn(),
+        findUnique: jest.fn(),
       },
     };
 
@@ -76,5 +78,48 @@ describe('OutboxService', () => {
 
     expect(result).toBeNull();
     expect(tx.notificationOutbox.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed row PENDING while delivery attempts remain (so the queue can retry)', async () => {
+    prisma.notificationOutbox.findUnique.mockResolvedValue({ attempts: 1 });
+
+    await service.markFailed('outbox-1', 'SMTP timeout');
+
+    expect(prisma.notificationOutbox.update).toHaveBeenCalledWith({
+      where: { id: 'outbox-1' },
+      data: {
+        status: OutboxStatus.PENDING,
+        lastError: 'SMTP timeout',
+      },
+    });
+  });
+
+  it('marks a failed row FAILED once the attempt budget is exhausted', async () => {
+    prisma.notificationOutbox.findUnique.mockResolvedValue({
+      attempts: MAX_EMAIL_OUTBOX_ATTEMPTS,
+    });
+
+    await service.markFailed('outbox-1', 'SMTP timeout');
+
+    expect(prisma.notificationOutbox.update).toHaveBeenCalledWith({
+      where: { id: 'outbox-1' },
+      data: {
+        status: OutboxStatus.FAILED,
+        lastError: 'SMTP timeout',
+      },
+    });
+  });
+
+  it('marks non-retryable failures FAILED immediately without checking attempts', async () => {
+    await service.markFailed('outbox-1', 'SMTP not configured', false);
+
+    expect(prisma.notificationOutbox.findUnique).not.toHaveBeenCalled();
+    expect(prisma.notificationOutbox.update).toHaveBeenCalledWith({
+      where: { id: 'outbox-1' },
+      data: {
+        status: OutboxStatus.FAILED,
+        lastError: 'SMTP not configured',
+      },
+    });
   });
 });

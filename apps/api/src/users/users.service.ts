@@ -128,6 +128,23 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Guard against locking everyone out of owner-level admin: forbid an OWNER
+    // from demoting themselves, and forbid demoting the last active OWNER.
+    // Mirrors the self/last-owner protection in deactivate().
+    const demotingFromOwner =
+      user.role === UserRole.OWNER && payload.role !== UserRole.OWNER;
+    if (demotingFromOwner) {
+      if (actor.id === userId) {
+        throw new BadRequestException('You cannot change your own owner role');
+      }
+      const activeOwnerCount = await this.prisma.user.count({
+        where: { role: UserRole.OWNER, isActive: true },
+      });
+      if (activeOwnerCount <= 1) {
+        throw new ForbiddenException('Cannot demote the last active owner');
+      }
+    }
+
     if (payload.role === UserRole.TEAM_ADMIN) {
       const teamId = payload.primaryTeamId ?? user.primaryTeamId;
       if (!teamId) {

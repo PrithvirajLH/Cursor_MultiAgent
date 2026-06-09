@@ -2,6 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { NotificationChannel, OutboxStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * Maximum delivery attempts for an email outbox row. Must stay in sync with the
+ * BullMQ job `attempts` in EmailQueueService — `claimPending` increments the row's
+ * `attempts` on each try, and `markFailed` keeps the row retryable (PENDING) until
+ * this budget is exhausted.
+ */
+export const MAX_EMAIL_OUTBOX_ATTEMPTS = 5;
+
 export type EmailOutboxMetadata = {
   replyTo?: string | null;
   inReplyTo?: string | null;
@@ -78,11 +86,33 @@ export class OutboxService {
     });
   }
 
-  async markFailed(id: string, error: string) {
+  /**
+   * Record a failed delivery attempt. For retryable failures the row is returned
+   * to PENDING (so the queue's next retry can re-claim it via `claimPending`) until
+   * the attempt budget is exhausted, after which it is marked terminally FAILED.
+   * Non-retryable failures (e.g. SMTP not configured) are marked FAILED immediately.
+   */
+  async markFailed(id: string, error: string, retryable = true) {
+    let nextStatus: OutboxStatus = OutboxStatus.FAILED;
+
+    if (retryable) {
+      const record = await this.prisma.notificationOutbox.findUnique({
+        where: { id },
+        select: { attempts: true },
+      });
+      // `attempts` is incremented by claimPending on every delivery attempt.
+      if (
+        (record?.attempts ?? MAX_EMAIL_OUTBOX_ATTEMPTS) <
+        MAX_EMAIL_OUTBOX_ATTEMPTS
+      ) {
+        nextStatus = OutboxStatus.PENDING;
+      }
+    }
+
     return this.prisma.notificationOutbox.update({
       where: { id },
       data: {
-        status: OutboxStatus.FAILED,
+        status: nextStatus,
         lastError: error,
       },
     });

@@ -66,8 +66,19 @@ function assertSafeTestTarget(databaseUrl, label) {
     !looksLikeTestTarget(target.databaseName) &&
     !looksLikeTestTarget(target.schemaName)
   ) {
+    // Managed Postgres (e.g. Supabase) always names the database "postgres" and
+    // runs tests in the "public" schema, so the test-name heuristic cannot pass.
+    // Allow an explicit, host-pinned acknowledgement as an escape hatch. The host
+    // must match exactly, so this cannot blanket-bypass an unknown production host.
+    const ackHost = process.env.TEST_DB_RESET_ACK_HOST?.trim().toLowerCase();
+    if (ackHost && ackHost === target.host) {
+      console.warn(
+        `WARNING: ${label} target host "${target.host}" (database "${target.databaseName}", schema "${target.schemaName || 'public'}") does not match the test-name heuristic, but TEST_DB_RESET_ACK_HOST acknowledges it. Proceeding.`,
+      );
+      return target;
+    }
     throw new Error(
-      `${label} must target a dedicated test database or schema. Use a database name like "*_test" or schema "test".`,
+      `${label} must target a dedicated test database or schema, or set TEST_DB_RESET_ACK_HOST to the exact target host to acknowledge it. Use a database name like "*_test" or schema "test".`,
     );
   }
   return target;

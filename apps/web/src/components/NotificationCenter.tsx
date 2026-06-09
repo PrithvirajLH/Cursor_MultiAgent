@@ -177,10 +177,10 @@ export function NotificationErrorBanner({ message }: { message: string }) {
       className="mb-3 rounded-xl border border-amber-200 bg-amber-500/10 px-4 py-3 text-left"
       role="alert"
     >
-      <p className="text-sm font-semibold text-amber-950">
+      <p className="text-sm font-semibold text-amber-200">
         Notification update failed
       </p>
-      <p className="mt-1 text-sm text-amber-900">{message}</p>
+      <p className="mt-1 text-sm text-amber-300">{message}</p>
     </div>
   );
 }

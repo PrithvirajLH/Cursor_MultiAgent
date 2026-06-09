@@ -260,7 +260,7 @@ export function TicketDetailPage({
   const messageInputRef = useRef<RichTextEditorRef | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationListRef = useRef<HTMLDivElement | null>(null);
-  const statusSelectRef = useRef<HTMLSelectElement | null>(null);
+  const statusSelectRef = useRef<HTMLButtonElement | null>(null);
   const activeTicketIdRef = useRef<string | null>(null);
   const detailRequestSeqRef = useRef(0);
   const messageRequestSeqRef = useRef(0);

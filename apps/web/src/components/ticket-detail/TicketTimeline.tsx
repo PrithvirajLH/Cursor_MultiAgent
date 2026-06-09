@@ -28,7 +28,7 @@ export const TicketTimeline = memo(function TicketTimeline({
           type="button"
           onClick={onLoadMore}
           disabled={eventsLoading}
-          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+          className="text-sm font-medium text-primary hover:text-primary/80"
         >
           {eventsLoading ? "Loading..." : "↑ Load older events"}
         </button>
@@ -40,14 +40,14 @@ export const TicketTimeline = memo(function TicketTimeline({
             className="rounded-xl border border-amber-200 bg-amber-500/10 p-4 text-left"
             role="alert"
           >
-            <p className="text-sm font-semibold text-amber-950">
+            <p className="text-sm font-semibold text-amber-200">
               Timeline unavailable
             </p>
-            <p className="mt-1 text-sm text-amber-900">{eventsError}</p>
+            <p className="mt-1 text-sm text-amber-300">{eventsError}</p>
             <button
               type="button"
               onClick={onRetryLoad}
-              className="mt-3 inline-flex rounded-lg border border-amber-300 bg-card px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100"
+              className="mt-3 inline-flex rounded-lg border border-amber-500/50 bg-amber-950/30 px-3 py-1.5 text-sm font-medium text-amber-200 hover:bg-amber-900/40"
             >
               Retry loading timeline
             </button>

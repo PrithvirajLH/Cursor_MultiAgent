@@ -113,7 +113,7 @@ export function CustomFieldDisplay({
             {label}
             {isRequired ? " *" : ""}
           </span>
-          <span className="text-sm text-slate-700 whitespace-pre-wrap">
+          <span className="text-sm text-foreground whitespace-pre-wrap">
             {raw}
           </span>
         </div>

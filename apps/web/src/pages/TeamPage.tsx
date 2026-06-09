@@ -54,6 +54,43 @@ type DeactivationPreview = {
   ticketsOpen: number;
   teams: string[];
 };
+
+/**
+ * Shared keyboard handler for the hand-rolled listbox dropdowns below.
+ * ArrowDown/ArrowUp move focus between the rendered `[role="option"]`
+ * elements, Enter activates the focused option (native button click), and
+ * Escape closes the dropdown and returns focus to the trigger.
+ */
+function handleListboxNav(
+  event: React.KeyboardEvent<HTMLElement>,
+  container: HTMLElement | null,
+  close: () => void,
+) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    close();
+    const trigger = container?.querySelector<HTMLElement>(
+      '[aria-haspopup="listbox"]',
+    );
+    trigger?.focus();
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const options = Array.from(
+    container?.querySelectorAll<HTMLElement>('[role="option"]') ?? [],
+  );
+  if (options.length === 0) return;
+  event.preventDefault();
+  const currentIndex = options.indexOf(document.activeElement as HTMLElement);
+  const delta = event.key === "ArrowDown" ? 1 : -1;
+  const nextIndex =
+    currentIndex < 0
+      ? event.key === "ArrowDown"
+        ? 0
+        : options.length - 1
+      : (currentIndex + delta + options.length) % options.length;
+  options[nextIndex]?.focus();
+}
 import { TopBar } from "../components/TopBar";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useHeaderContext } from "../contexts/HeaderContext";
@@ -144,13 +181,22 @@ function MemberRoleDropdown({
   }
 
   return (
-    <div className="relative" data-member-role={member.id}>
+    <div
+      className="relative"
+      data-member-role={member.id}
+      onKeyDown={(e) =>
+        handleListboxNav(e, e.currentTarget, () => setOpen(false))
+      }
+    >
       <button
         type="button"
         disabled={disabled}
         onClick={() => {
           if (!disabled) setOpen((prev) => !prev);
         }}
+        aria-haspopup="listbox"
+        aria-expanded={open && !disabled}
+        aria-label="Member role"
         className={`inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm ${
           disabled
             ? "cursor-not-allowed bg-accent"
@@ -161,11 +207,17 @@ function MemberRoleDropdown({
         {!disabled ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : null}
       </button>
       {open && !disabled ? (
-        <div className="absolute left-0 top-full z-20 mt-1 w-40 rounded-lg border border-border bg-card shadow-lg">
+        <div
+          role="listbox"
+          aria-label="Member role"
+          className="absolute left-0 top-full z-20 mt-1 w-40 rounded-lg border border-border bg-card shadow-lg"
+        >
           {roleOptions.map((roleValue) => (
             <button
               key={`${member.id}-${roleValue}`}
               type="button"
+              role="option"
+              aria-selected={currentValue === roleValue}
               onClick={() => {
                 setOpen(false);
                 onChange(member, roleValue);
@@ -804,10 +856,18 @@ export function TeamPage({
                 <div
                   className="relative w-full max-w-md flex-1"
                   data-team-dropdown
+                  onKeyDown={(e) =>
+                    handleListboxNav(e, e.currentTarget, () =>
+                      setShowTeamDropdown(false),
+                    )
+                  }
                 >
                   <button
                     type="button"
                     onClick={() => setShowTeamDropdown((prev) => !prev)}
+                    aria-haspopup="listbox"
+                    aria-expanded={showTeamDropdown}
+                    aria-label="Department"
                     className="flex w-full items-center justify-between rounded-lg border border-border px-4 py-2.5 text-sm hover:bg-muted"
                   >
                     <div className="flex items-center gap-2">
@@ -825,11 +885,17 @@ export function TeamPage({
                     <ChevronDown className="h-5 w-5 text-muted-foreground" />
                   </button>
                   {showTeamDropdown ? (
-                    <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
+                    <div
+                      role="listbox"
+                      aria-label="Department"
+                      className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg"
+                    >
                       {teamsList.map((team) => (
                         <button
                           key={team.id}
                           type="button"
+                          role="option"
+                          aria-selected={selectedTeamId === team.id}
                           onClick={() => {
                             setSelectedTeamId(team.id);
                             setMemberError(null);
@@ -847,6 +913,8 @@ export function TeamPage({
                       {isOwner ? (
                         <button
                           type="button"
+                          role="option"
+                          aria-selected={viewingInactive}
                           onClick={() => {
                             setSelectedTeamId(INACTIVE_USERS_SENTINEL);
                             setMemberError(null);
@@ -867,6 +935,8 @@ export function TeamPage({
                       {isOwner ? (
                         <button
                           type="button"
+                          role="option"
+                          aria-selected={viewingInactiveTeams}
                           onClick={() => {
                             setSelectedTeamId(INACTIVE_TEAMS_SENTINEL);
                             setMemberError(null);
@@ -1120,11 +1190,22 @@ export function TeamPage({
                         <label className="mb-1 block text-xs font-medium text-foreground">
                           User
                         </label>
-                        <div className="relative" data-user-dropdown>
+                        <div
+                          className="relative"
+                          data-user-dropdown
+                          onKeyDown={(e) =>
+                            handleListboxNav(e, e.currentTarget, () =>
+                              setShowUserDropdown(false),
+                            )
+                          }
+                        >
                           <button
                             type="button"
                             disabled={actionLoading || loadingUsers}
                             onClick={() => setShowUserDropdown((prev) => !prev)}
+                            aria-haspopup="listbox"
+                            aria-expanded={showUserDropdown}
+                            aria-label="User"
                             className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:bg-accent"
                           >
                             <span className="text-foreground">
@@ -1134,11 +1215,17 @@ export function TeamPage({
                           </button>
 
                           {showUserDropdown && availableUsers.length > 0 ? (
-                            <div className="absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                            <div
+                              role="listbox"
+                              aria-label="User"
+                              className="absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
+                            >
                               {availableUsers.map((user) => (
                                 <button
                                   key={user.id}
                                   type="button"
+                                  role="option"
+                                  aria-selected={selectedUserId === user.id}
                                   onClick={() => {
                                     setSelectedUserId(user.id);
                                     setShowUserDropdown(false);
@@ -1162,22 +1249,39 @@ export function TeamPage({
                         <label className="mb-1 block text-xs font-medium text-foreground">
                           Role
                         </label>
-                        <div className="relative" data-add-role-dropdown>
+                        <div
+                          className="relative"
+                          data-add-role-dropdown
+                          onKeyDown={(e) =>
+                            handleListboxNav(e, e.currentTarget, () =>
+                              setShowRoleDropdown(false),
+                            )
+                          }
+                        >
                           <button
                             type="button"
                             disabled={actionLoading}
                             onClick={() => setShowRoleDropdown((prev) => !prev)}
+                            aria-haspopup="listbox"
+                            aria-expanded={showRoleDropdown}
+                            aria-label="Role"
                             className="flex w-full items-center justify-between rounded-lg border border-border px-3 py-2 text-sm hover:bg-accent disabled:cursor-not-allowed disabled:bg-accent"
                           >
                             <RoleBadge role={selectedRole} />
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           </button>
                           {showRoleDropdown ? (
-                            <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
+                            <div
+                              role="listbox"
+                              aria-label="Role"
+                              className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg"
+                            >
                               {addRoleOptions.map((roleValue) => (
                                 <button
                                   key={`new-member-${roleValue}`}
                                   type="button"
+                                  role="option"
+                                  aria-selected={selectedRole === roleValue}
                                   onClick={() => {
                                     setSelectedRole(roleValue);
                                     setShowRoleDropdown(false);

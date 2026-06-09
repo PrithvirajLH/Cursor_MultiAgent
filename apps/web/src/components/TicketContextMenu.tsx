@@ -89,6 +89,36 @@ export function TicketContextMenu({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  // Focus the first menu item on open so keyboard users land inside the menu.
+  useEffect(() => {
+    const first = menuRef.current?.querySelector<HTMLElement>(
+      '[role="menuitem"]',
+    );
+    first?.focus();
+  }, []);
+
+  // ArrowUp/ArrowDown move focus between the currently-visible menu items
+  // (roving focus). Submenu options become focusable once expanded.
+  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
+    );
+    if (items.length === 0) return;
+    event.preventDefault();
+    const currentIndex = items.indexOf(
+      document.activeElement as HTMLElement,
+    );
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex =
+      currentIndex < 0
+        ? event.key === "ArrowDown"
+          ? 0
+          : items.length - 1
+        : (currentIndex + delta + items.length) % items.length;
+    items[nextIndex]?.focus();
+  }
+
   // x/y are visual cursor coords; a fixed element renders at value*zoom, so
   // divide by the zoom to place the menu under the cursor. See getUiZoom().
   const z = getUiZoom();
@@ -102,6 +132,9 @@ export function TicketContextMenu({
   return createPortal(
     <div
       ref={menuRef}
+      role="menu"
+      aria-label="Ticket actions"
+      onKeyDown={handleMenuKeyDown}
       style={style}
       className="flex max-h-[calc(80vh/var(--ui-zoom))] w-56 flex-col gap-0.5 overflow-y-auto rounded-xl border border-border bg-popover/95 p-1.5 shadow-xl backdrop-blur-md animate-fade-in origin-top-left"
     >
@@ -111,6 +144,7 @@ export function TicketContextMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={(e) => {
           e.stopPropagation();
           onAction("open_new_tab", ticket);
@@ -126,6 +160,7 @@ export function TicketContextMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={(e) => {
           e.stopPropagation();
           onAction("assign_me", ticket);
@@ -140,6 +175,8 @@ export function TicketContextMenu({
       {/* Change Status (expandable) */}
       <button
         type="button"
+        role="menuitem"
+        aria-haspopup="menu"
         aria-expanded={openSub === "status"}
         onClick={(e) => {
           e.stopPropagation();
@@ -159,6 +196,7 @@ export function TicketContextMenu({
             <button
               key={s}
               type="button"
+              role="menuitem"
               onClick={(e) => {
                 e.stopPropagation();
                 onAction("status", ticket, s);
@@ -178,6 +216,8 @@ export function TicketContextMenu({
       {/* Change Priority (expandable) */}
       <button
         type="button"
+        role="menuitem"
+        aria-haspopup="menu"
         aria-expanded={openSub === "priority"}
         onClick={(e) => {
           e.stopPropagation();
@@ -197,6 +237,7 @@ export function TicketContextMenu({
             <button
               key={p.value}
               type="button"
+              role="menuitem"
               onClick={(e) => {
                 e.stopPropagation();
                 onAction("priority", ticket, p.value);
@@ -217,6 +258,7 @@ export function TicketContextMenu({
 
       <button
         type="button"
+        role="menuitem"
         onClick={(e) => {
           e.stopPropagation();
           onAction("copy", ticket);
