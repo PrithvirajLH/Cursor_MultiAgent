@@ -165,7 +165,12 @@ export class AuthGuard implements CanActivate {
   }
 
   private shouldAllowInsecureHeaders() {
-    const configured = this.config.get<string>('AUTH_ALLOW_INSECURE_HEADERS');
+    // Read this security-sensitive flag live from process.env (falling back to
+    // ConfigService) so a permissive value is never cached at boot and the guard
+    // always reflects the current environment — consistent with the NODE_ENV read below.
+    const configured =
+      process.env.AUTH_ALLOW_INSECURE_HEADERS ??
+      this.config.get<string>('AUTH_ALLOW_INSECURE_HEADERS');
     if (configured !== 'true') {
       return false;
     }

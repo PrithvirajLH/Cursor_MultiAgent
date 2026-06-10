@@ -101,6 +101,18 @@ describe('SLA instances and breaches', () => {
   it('updates SLA instance when first response is added', async () => {
     const ticket = await createTicket(server);
 
+    // The IT team is QUEUE_ONLY, so the ticket is created unassigned. An agent
+    // who is not the assignee is a "peer agent" whose messages are forced to
+    // INTERNAL (AccessControlService.isPeerAgent), which would not record a
+    // first response and would leave nextDueAt pointing at the first-response
+    // deadline. Self-assign first so the public reply records the first response
+    // and the SLA instance advances to the resolution deadline.
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({})
+      .expect(201);
+
     await request(server)
       .post(`/api/tickets/${ticket.id}/messages`)
       .set(authHeader(fixtureEmails.agent))

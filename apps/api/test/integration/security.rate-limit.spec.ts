@@ -75,15 +75,12 @@ describe('Route-specific throttling (RL-01)', () => {
       process.env.RATE_LIMIT_HIGH_WRITE_LIMIT;
     savedEnv.RATE_LIMIT_HIGH_WRITE_TTL_MS =
       process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS;
-    savedEnv.INBOUND_EMAIL_WEBHOOK_SECRET =
-      process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
     process.env.RATE_LIMIT_LIMIT = '1000';
     process.env.RATE_LIMIT_TTL_MS = '60000';
     process.env.RATE_LIMIT_WEBHOOK_LIMIT = '2';
     process.env.RATE_LIMIT_WEBHOOK_TTL_MS = '60000';
     process.env.RATE_LIMIT_HIGH_WRITE_LIMIT = '2';
     process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS = '60000';
-    process.env.INBOUND_EMAIL_WEBHOOK_SECRET = 'test-webhook-secret';
 
     resetTestDb();
     app = await createTestApp();
@@ -109,15 +106,15 @@ describe('Route-specific throttling (RL-01)', () => {
       process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS =
         savedEnv.RATE_LIMIT_HIGH_WRITE_TTL_MS;
     else delete process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS;
-    if (savedEnv.INBOUND_EMAIL_WEBHOOK_SECRET != null)
-      process.env.INBOUND_EMAIL_WEBHOOK_SECRET =
-        savedEnv.INBOUND_EMAIL_WEBHOOK_SECRET;
-    else delete process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
     if (app) await app.close();
   });
 
   function webhookSecretHeader() {
-    return { 'x-inbound-email-secret': 'test-webhook-secret' };
+    // Use the inbound-email webhook secret the app actually runs with (pinned in
+    // test/setup-tests.ts). The previous value was a per-suite override that
+    // ConfigService never picked up — the secret is snapshotted at app boot — so
+    // it always 403'd before the throttle limit was reached.
+    return { 'x-inbound-email-secret': 'test-inbound-secret' };
   }
 
   it('applies webhook limit to POST /tickets/inbound-email and returns 429 when exceeded', async () => {

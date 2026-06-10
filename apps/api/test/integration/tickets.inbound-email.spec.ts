@@ -382,47 +382,70 @@ describe('Inbound email ingestion', () => {
       .send({ status: 'RESOLVED' })
       .expect(201);
 
-    const requesterOutbox = await prisma.notificationOutbox.findMany({
+    // A single transition fans out a notification to EVERY recipient (here the
+    // requester AND the assigned agent). queueEmails reserves the thread anchor
+    // for each recipient in parallel (Promise.all), so the
+    // thread.lastOutboundMessageId that the NEXT transition threads against is
+    // whichever recipient's reservation happened to land last — it is NOT
+    // guaranteed to be the requester's copy. The two copies for a given step
+    // share the same outbound message-id candidates, so assert that the next
+    // step replies to ONE of the prior step's notifications rather than
+    // hard-coding the requester's copy (which made this test depend on a
+    // nondeterministic reservation race — see FLAG in the report).
+    const statusOutbox = await prisma.notificationOutbox.findMany({
       where: {
         ticketId: created.id,
-        toEmail: fixtureEmails.requester,
         eventType: 'TICKET_STATUS_CHANGED',
       },
       orderBy: { createdAt: 'asc' },
     });
 
-    const closedOutbox = requesterOutbox.find((entry) =>
-      entry.body.includes('Status changed from RESOLVED to CLOSED.'),
+    const stepMessageIds = (fragment: string) =>
+      statusOutbox
+        .filter((entry) => entry.body.includes(fragment))
+        .map((entry) =>
+          buildOutboundMessageId(
+            entry.id,
+            getOutboxEmailMetadata(entry.payload).replyTo,
+          ),
+        );
+    const requesterStep = (fragment: string) =>
+      statusOutbox.find(
+        (entry) =>
+          entry.toEmail === fixtureEmails.requester &&
+          entry.body.includes(fragment),
+      );
+
+    const closedMessageIds = stepMessageIds(
+      'Status changed from RESOLVED to CLOSED.',
     );
-    const reopenedOutbox = requesterOutbox.find((entry) =>
-      entry.body.includes('Status changed from CLOSED to REOPENED.'),
+    const reopenedMessageIds = stepMessageIds(
+      'Status changed from CLOSED to REOPENED.',
     );
-    const resolvedOutbox = requesterOutbox.find((entry) =>
-      entry.body.includes('Status changed from REOPENED to RESOLVED.'),
+    const reopenedOutbox = requesterStep('Status changed from CLOSED to REOPENED.');
+    const resolvedOutbox = requesterStep(
+      'Status changed from REOPENED to RESOLVED.',
     );
 
-    expect(closedOutbox).toBeTruthy();
+    expect(closedMessageIds.length).toBeGreaterThan(0);
+    expect(reopenedMessageIds.length).toBeGreaterThan(0);
     expect(reopenedOutbox).toBeTruthy();
     expect(resolvedOutbox).toBeTruthy();
 
-    const closedMetadata = getOutboxEmailMetadata(closedOutbox?.payload);
     const reopenedMetadata = getOutboxEmailMetadata(reopenedOutbox?.payload);
     const resolvedMetadata = getOutboxEmailMetadata(resolvedOutbox?.payload);
-    const closedMessageId = buildOutboundMessageId(
-      closedOutbox!.id,
-      closedMetadata.replyTo,
-    );
-    const reopenedMessageId = buildOutboundMessageId(
-      reopenedOutbox!.id,
-      reopenedMetadata.replyTo,
-    );
 
     expect(reopenedMetadata.replyTo).toMatch(expectedReplyToPattern());
     expect(resolvedMetadata.replyTo).toMatch(expectedReplyToPattern());
-    expect(reopenedMetadata.inReplyTo).toBe(closedMessageId);
-    expect(reopenedMetadata.references).toContain(closedMessageId);
-    expect(resolvedMetadata.inReplyTo).toBe(reopenedMessageId);
-    expect(resolvedMetadata.references).toContain(reopenedMessageId);
+    // Each step threads onto one of the immediately-preceding step's messages.
+    expect(closedMessageIds).toContain(reopenedMetadata.inReplyTo);
+    expect(reopenedMetadata.references ?? []).toEqual(
+      expect.arrayContaining([reopenedMetadata.inReplyTo]),
+    );
+    expect(reopenedMessageIds).toContain(resolvedMetadata.inReplyTo);
+    expect(resolvedMetadata.references ?? []).toEqual(
+      expect.arrayContaining([resolvedMetadata.inReplyTo]),
+    );
   });
 
   it('ingests inbound attachments for a newly created EMAIL ticket', async () => {
@@ -565,6 +588,18 @@ describe('Inbound email ingestion', () => {
       'We will keep the ticket open while you test.',
     ].join('\n');
 
+    // The IT team is QUEUE_ONLY, so the portal ticket is created unassigned. A
+    // team agent who is not the assignee is a "peer agent" whose messages are
+    // forced to INTERNAL (AccessControlService.isPeerAgent); internal notes do
+    // not generate a requester MESSAGE_ADDED notification, so there would be no
+    // outbound email to thread. Self-assign first so the public reply notifies
+    // the requester.
+    await request(server)
+      .post(`/api/tickets/${created.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({})
+      .expect(201);
+
     await request(server)
       .post(`/api/tickets/${created.id}/messages`)
       .set(authHeader(fixtureEmails.agent))
@@ -636,6 +671,15 @@ describe('Inbound email ingestion', () => {
   it('threads replies by tokenized reply-to even without matching subject or headers', async () => {
     const created = await createTicket(server, `Token thread ${Date.now()}`);
     const agentReply = `Token routing ${Date.now()}: sending a follow-up.`;
+
+    // QUEUE_ONLY IT team => unassigned ticket. Self-assign so the agent is the
+    // assignee and their public reply is sent to the requester (a peer agent's
+    // messages would be forced to INTERNAL and not notify the requester).
+    await request(server)
+      .post(`/api/tickets/${created.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({})
+      .expect(201);
 
     await request(server)
       .post(`/api/tickets/${created.id}/messages`)

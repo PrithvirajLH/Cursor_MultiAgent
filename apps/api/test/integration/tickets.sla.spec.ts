@@ -55,6 +55,18 @@ describe('Ticket SLA behavior', () => {
   it('marks first response when agent replies publicly', async () => {
     const ticket = await createTicket(server);
 
+    // The ticket is created against the IT team but, because that team uses the
+    // QUEUE_ONLY assignment strategy, it lands unassigned. A team agent who is
+    // not the assignee is a "peer agent" whose messages are forced to INTERNAL
+    // (deliberate, unit-tested behavior in AccessControlService.isPeerAgent), so
+    // a public first response only counts when the agent actually owns the
+    // ticket. Self-assign first so this exercises the real first-response path.
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({})
+      .expect(201);
+
     await request(server)
       .post(`/api/tickets/${ticket.id}/messages`)
       .set(authHeader(fixtureEmails.agent))

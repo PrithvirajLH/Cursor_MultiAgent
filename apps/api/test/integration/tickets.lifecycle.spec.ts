@@ -171,6 +171,18 @@ describe('Ticket lifecycle and rules', () => {
   it('enforces internal notes visibility and permissions', async () => {
     const ticket = await createTicket(server, `Notes ${Date.now()}`);
 
+    // The IT team uses the QUEUE_ONLY strategy, so this ticket is created
+    // unassigned. A team agent who is not the assignee is a "peer agent" whose
+    // messages are forced to INTERNAL (AccessControlService.isPeerAgent), which
+    // would silently downgrade the "public reply" below. Self-assign the agent
+    // first so their PUBLIC reply genuinely stays public and reaches the
+    // requester, which is what this test asserts.
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/assign`)
+      .set(authHeader(fixtureEmails.agent))
+      .send({})
+      .expect(201);
+
     await request(server)
       .post(`/api/tickets/${ticket.id}/messages`)
       .set(authHeader(fixtureEmails.requester))
