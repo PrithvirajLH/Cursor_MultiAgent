@@ -75,4 +75,22 @@ describe('Security validation hardening', () => {
       })
       .expect(400);
   });
+
+  it('does not crash when a ticket search query contains an out-of-range number', async () => {
+    // Ticket.number is a 32-bit Int; a search term whose number exceeds that range
+    // must NOT be pushed into the numeric `number` filter (it would overflow and the
+    // DB would 500). Regression for the ticket-search overflow bug.
+    await request(server)
+      .get('/api/tickets')
+      .query({ q: '99999999999999' })
+      .set(authHeader(fixtureEmails.admin))
+      .expect(200);
+
+    // Timestamp-like numbers (as appear in generated ticket subjects) must be safe too.
+    await request(server)
+      .get('/api/tickets')
+      .query({ q: `Subject ${Date.now()}` })
+      .set(authHeader(fixtureEmails.admin))
+      .expect(200);
+  });
 });

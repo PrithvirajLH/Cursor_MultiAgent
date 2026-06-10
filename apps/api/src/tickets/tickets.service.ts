@@ -415,7 +415,16 @@ export class TicketsService {
       const numberMatch = term.match(/\d+/);
       if (numberMatch) {
         const parsed = Number(numberMatch[0]);
-        if (Number.isSafeInteger(parsed)) {
+        // `Ticket.number` is a 32-bit Postgres Int. A term containing a larger
+        // number (e.g. a Date.now() timestamp embedded in a subject) would
+        // overflow the column comparison and crash the query with a DB error
+        // ("integer out of range"). Only add the numeric filter when the value
+        // fits the signed 32-bit range the column actually supports.
+        if (
+          Number.isSafeInteger(parsed) &&
+          parsed >= -2_147_483_648 &&
+          parsed <= 2_147_483_647
+        ) {
           searchFilters.push({ number: parsed });
         }
       }

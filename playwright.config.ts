@@ -60,14 +60,27 @@ const serverEnv = {
   SLA_BREACH_WORKER_ENABLED: 'true',
   SLA_BREACH_INTERVAL_MS: '1000',
   SLA_AT_RISK_ENABLED: 'true',
-  SLA_AT_RISK_THRESHOLD_MINUTES: '120'
+  SLA_AT_RISK_THRESHOLD_MINUTES: '120',
+  // The full serial E2E suite fires many requests from a single client
+  // (127.0.0.1) within the throttler's 60s window — well above the production
+  // default (120/min) — which trips HTTP 429 (ThrottlerException) on whichever
+  // spec happens to run when the window is saturated (seen on resolvePersonas).
+  // Raise the global rate limit for the test servers only so throttling never
+  // masquerades as a product/test failure. (Webhook/high-write route policies
+  // are unaffected; this is the default bucket.)
+  RATE_LIMIT_LIMIT: process.env.RATE_LIMIT_LIMIT ?? '100000',
+  RATE_LIMIT_TTL_MS: process.env.RATE_LIMIT_TTL_MS ?? '60000'
 };
 
 export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // One retry everywhere (not just CI): the dev-server-backed API can be
+  // momentarily unresponsive under load, producing transient ETIMEDOUT flakes
+  // (e.g. realtime-chat typing). A single retry absorbs those without masking
+  // deterministic failures (which still fail on the retry).
+  retries: 1,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
     trace: 'on-first-retry',

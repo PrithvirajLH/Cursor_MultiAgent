@@ -762,7 +762,12 @@ export class AuditService {
     if (params.search?.trim()) {
       const q = params.search.trim();
       const num = parseInt(q, 10);
-      if (!Number.isNaN(num)) {
+      // `Ticket.number` is a signed 32-bit Postgres Int; comparing against a
+      // larger value overflows the column and crashes the query with a DB error.
+      // Only treat the query as a number match when it fits the 32-bit range.
+      const isMatchableTicketNumber =
+        !Number.isNaN(num) && num >= -2_147_483_648 && num <= 2_147_483_647;
+      if (isMatchableTicketNumber) {
         // Numeric query: match ticket number only (and displayId e.g. IT-1234)
         conditions.push({
           OR: [
