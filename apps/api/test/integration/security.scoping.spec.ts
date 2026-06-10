@@ -116,7 +116,10 @@ describe('Security scoping', () => {
     expect(found?.isActive).toBe(false);
   });
 
-  it('scopes team listing for agents to their member teams (BUG-09)', async () => {
+  // The full team list is intentionally visible to all roles: agents need it for
+  // ticket transfer/routing, and requesters need it for the new-ticket department
+  // picker. (Sensitive data — members, admin detail — is restricted elsewhere.)
+  it('lets agents list all active teams (routing/transfer)', async () => {
     const response = await request(server)
       .get('/api/teams')
       .set(authHeader(fixtureEmails.agent))
@@ -124,19 +127,18 @@ describe('Security scoping', () => {
 
     const ids = teamIds(response.body);
     expect(ids).toContain(fixtureTeamIds.it);
-    expect(ids).not.toContain(fixtureTeamIds.hr);
+    expect(ids).toContain(fixtureTeamIds.hr);
   });
 
-  it('does not disclose the team directory to employees (BUG-09)', async () => {
+  it('lets requesters list teams for the new-ticket department picker', async () => {
     const response = await request(server)
       .get('/api/teams')
       .set(authHeader(fixtureEmails.requester))
       .expect(200);
 
-    // The requester has no team membership, so must not see the org's teams.
     const ids = teamIds(response.body);
-    expect(ids).not.toContain(fixtureTeamIds.it);
-    expect(ids).not.toContain(fixtureTeamIds.hr);
+    expect(ids).toContain(fixtureTeamIds.it);
+    expect(ids).toContain(fixtureTeamIds.hr);
   });
 
   it('allows owners to list all teams', async () => {

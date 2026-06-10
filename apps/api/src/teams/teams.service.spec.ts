@@ -23,7 +23,7 @@ function user(overrides: Partial<AuthUser>): AuthUser {
   } satisfies AuthUser;
 }
 
-describe('TeamsService.list scoping (BUG-09)', () => {
+describe('TeamsService.list scoping', () => {
   let service: TeamsService;
   let prisma: MockPrisma;
   let realtime: Pick<RealtimeService, 'publishAdminChanged'>;
@@ -49,52 +49,24 @@ describe('TeamsService.list scoping (BUG-09)', () => {
     return calls[0]?.[0]?.where;
   }
 
-  it('scopes AGENT to their member team ids', async () => {
+  // AGENT, EMPLOYEE, and OWNER get the full active list (no id filter) — required
+  // for the new-ticket department picker and ticket routing/transfer. Only
+  // TEAM_ADMIN and LEAD are scoped to their own team.
+  it('does not filter teams by id for AGENT (full list for routing)', async () => {
     await service.list(
       {} as ListTeamsDto,
       user({ role: UserRole.AGENT, memberTeamIds: ['T1', 'T2'] }),
     );
-    expect(whereArg()?.id).toEqual({ in: ['T1', 'T2'] });
+    expect(whereArg()?.id).toBeUndefined();
+    expect(whereArg()?.isActive).toBe(true);
   });
 
-  it('drops falsy member team ids for AGENT', async () => {
-    await service.list(
-      {} as ListTeamsDto,
-      user({ role: UserRole.AGENT, memberTeamIds: ['T1', '', 'T2'] }),
-    );
-    expect(whereArg()?.id).toEqual({ in: ['T1', 'T2'] });
-  });
-
-  it('falls back to session teamId for AGENT without memberTeamIds', async () => {
-    await service.list(
-      {} as ListTeamsDto,
-      user({ role: UserRole.AGENT, memberTeamIds: [], teamId: 'T9' }),
-    );
-    expect(whereArg()?.id).toEqual({ in: ['T9'] });
-  });
-
-  it('scopes AGENT with no teams to an empty id set (sees nothing)', async () => {
-    await service.list(
-      {} as ListTeamsDto,
-      user({ role: UserRole.AGENT, memberTeamIds: [], teamId: null }),
-    );
-    expect(whereArg()?.id).toEqual({ in: [] });
-  });
-
-  it('scopes EMPLOYEE to their member team ids', async () => {
-    await service.list(
-      {} as ListTeamsDto,
-      user({ role: UserRole.EMPLOYEE, memberTeamIds: ['T3'] }),
-    );
-    expect(whereArg()?.id).toEqual({ in: ['T3'] });
-  });
-
-  it('scopes EMPLOYEE with no teams to an empty id set', async () => {
+  it('does not filter teams by id for EMPLOYEE (department picker)', async () => {
     await service.list(
       {} as ListTeamsDto,
       user({ role: UserRole.EMPLOYEE, memberTeamIds: [] }),
     );
-    expect(whereArg()?.id).toEqual({ in: [] });
+    expect(whereArg()?.id).toBeUndefined();
   });
 
   it('does not filter teams by id for OWNER', async () => {
@@ -103,6 +75,14 @@ describe('TeamsService.list scoping (BUG-09)', () => {
       user({ id: 'owner-1', role: UserRole.OWNER }),
     );
     expect(whereArg()?.id).toBeUndefined();
+  });
+
+  it('scopes TEAM_ADMIN to their primary team', async () => {
+    await service.list(
+      {} as ListTeamsDto,
+      user({ role: UserRole.TEAM_ADMIN, primaryTeamId: 'T7' }),
+    );
+    expect(whereArg()?.id).toBe('T7');
   });
 
   it('scopes LEAD to a single team id', async () => {

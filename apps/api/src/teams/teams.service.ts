@@ -47,19 +47,12 @@ export class TeamsService {
       }
       baseWhere.id = leadTeamId;
     }
-    // AGENT/EMPLOYEE may only see the teams they belong to (BUG-09).
-    // An empty membership set must resolve to "no teams", not "all teams".
-    if (user?.role === UserRole.AGENT || user?.role === UserRole.EMPLOYEE) {
-      const memberTeamIds = user.memberTeamIds?.filter(Boolean) ?? [];
-      const scopedTeamIds =
-        memberTeamIds.length > 0
-          ? memberTeamIds
-          : user.teamId
-            ? [user.teamId]
-            : [];
-      baseWhere.id = { in: scopedTeamIds };
-    }
-    // OWNER: no team filter (full list)
+    // AGENT, EMPLOYEE, and OWNER see the full team list. This is required for the
+    // new-ticket department picker and for ticket routing/transfer; team names are
+    // not sensitive (team membership and admin detail are restricted separately).
+    // NOTE: a prior change scoped AGENT/EMPLOYEE to their member teams ("BUG-09"),
+    // but that broke requester ticket creation (empty department dropdown), so the
+    // full-list behavior is intentional. (TEAM_ADMIN/LEAD remain scoped above.)
     const where = {
       ...baseWhere,
       ...(query.q
