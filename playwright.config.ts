@@ -38,6 +38,14 @@ process.env.E2E_AUTH_JWT_SECRET = e2eAuthJwtSecret;
 const serverEnv = {
   ...process.env,
   ...testEnv,
+  // The API server reads DATABASE_URL/DIRECT_URL; point them at the test DB so the
+  // E2E app hits the same database the reset/seed step prepared (otherwise it would
+  // fall back to apps/api/.env, which need not be the test DB).
+  DATABASE_URL: testEnv.TEST_DATABASE_URL ?? process.env.TEST_DATABASE_URL,
+  DIRECT_URL:
+    testEnv.TEST_DIRECT_URL ??
+    testEnv.TEST_DATABASE_URL ??
+    process.env.TEST_DIRECT_URL,
   NODE_ENV: 'test',
   SEED_MODE: 'test',
   TEST_DB_RESET_STRATEGY: 'migrate',
