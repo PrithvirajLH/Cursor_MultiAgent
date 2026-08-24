@@ -96,3 +96,18 @@ apps/api/jest-out.txt
 
 # Operator PowerShell scripts (local only)
 *.ps1
+
+# Superpowers skill cache (local only)
+.superpowers/
+
+# Audit / triage output (kept locally)
+BUgs.txt
+BUGS_VERIFIED.md
+
+# Generated docs & deliverables (kept locally)
+CSH_User_Manual.html
+SQL_Migration_Guide.html
+SQL_Migration_Guide.pdf
+
+# Destructive local DB wipe helper — never commit
+apps/api/cleanup-db.cjs
