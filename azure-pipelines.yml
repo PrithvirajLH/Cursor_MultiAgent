@@ -1,0 +1,225 @@
+# Azure Pipeline — Phase 1: CI only. This pipeline does not deploy anything and
+# holds no credentials. Migrations (phase 2) and deployment (phase 3) are
+# deliberately absent until this has been seen both green on a real push and red
+# on a real break.
+#
+# Ported from .github/workflows/ci.yml, which had never executed because
+# .github/ was gitignored. Two defects in that spec are fixed here (and there):
+#
+#   1. It wrote DATABASE_URL / DIRECT_URL into apps/api/.env.test, but both
+#      test/setup-tests.ts (line 35) and scripts/reset-test-db.cjs (line 88) read
+#      TEST_DATABASE_URL / TEST_DIRECT_URL and have no fallback. Every integration
+#      run would have died in setup with "TEST_DATABASE_URL not found".
+#   2. It pointed at database "postgres", schema "public". reset-test-db.cjs
+#      refuses any target whose database or schema does not match
+#      /(^|[-_])(test|tests|testing|ci|spec)([-_]|$)/. The service container below
+#      therefore creates POSTGRES_DB=ticketing_test and the URLs point at it, so
+#      the safety guard passes on its own merits. TEST_DB_RESET_ACK_HOST is
+#      deliberately NOT set — that escape hatch is for managed databases that
+#      cannot be renamed, not for silencing a guard we can satisfy honestly.
+#
+# Two differences from GitHub Actions worth knowing when editing this file:
+#
+#   - Service containers are declared under `resources.containers` and attached
+#     per-job via `services:`. GitHub's job-level `services:` block does not exist
+#     here.
+#   - Azure Pipelines does NOT wait for container health checks before running
+#     steps. GitHub does. The explicit readiness wait below is required, not
+#     defensive padding — without it the first database step races the container.
+#
+# No secrets are referenced by this pipeline. The values written into .env.test
+# are obviously fake CI placeholders. When phase 2 adds migrations, its
+# connection string must come from a secret variable or variable group, never
+# from this file.
+
+trigger:
+  branches:
+    include:
+      - main
+      - ui-redesign-and-api-hardening
+
+# PR validation is configured through branch policies in Azure DevOps rather than
+# here, so this avoids a duplicate run on every push to a PR branch.
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  NODE_VERSION: "22.x"
+  # Matches the App Service runtime (NODE|22-lts) and the ported spec.
+
+resources:
+  containers:
+    - container: postgres
+      image: postgres:16
+      env:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        # Not "postgres" — see defect 2 in the header.
+        POSTGRES_DB: ticketing_test
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd="pg_isready -U postgres -d ticketing_test"
+        --health-interval=10s
+        --health-timeout=5s
+        --health-retries=10
+
+    - container: redis
+      image: redis:7
+      ports:
+        - 6379:6379
+      options: >-
+        --health-cmd="redis-cli ping"
+        --health-interval=10s
+        --health-timeout=5s
+        --health-retries=10
+
+stages:
+  - stage: verify
+    displayName: "Verify — lint, unit tests, build"
+    jobs:
+      - job: verify
+        displayName: "Lint, unit tests, build"
+        timeoutInMinutes: 25
+        steps:
+          - task: NodeTool@0
+            displayName: "Use Node $(NODE_VERSION)"
+            inputs:
+              versionSpec: $(NODE_VERSION)
+
+          - script: npm ci
+            displayName: "Install dependencies (npm ci)"
+
+          # There is no postinstall hook in this repo, so npm ci does not reliably
+          # generate the Prisma client in a hoisted workspace. The unit tests
+          # import enums from @prisma/client at runtime, so this must precede
+          # them. `npm run build` also generates, but runs after the tests.
+          - script: npm run -w apps/api db:generate
+            displayName: "Generate Prisma client"
+
+          - script: npm run lint
+            displayName: "Lint"
+
+          # `npm run lint` runs eslint with --fix, so it repairs auto-fixable
+          # problems and exits 0 rather than failing. That makes it a formatter,
+          # not a gate. This step reports what lint had to rewrite so the drift is
+          # at least visible.
+          #
+          # It is non-blocking on purpose: there are currently ~269 auto-fixable
+          # violations predating this pipeline, so failing here would make every
+          # run red for old debt and teach people to ignore it. Clear that
+          # backlog, then delete continueOnError to make this a real gate.
+          - script: |
+              set -euo pipefail
+              if ! git diff --quiet; then
+                echo "##vso[task.logissue type=warning]Lint auto-fixed files. These changes are not committed:"
+                git --no-pager diff --stat
+                exit 1
+              fi
+              echo "Lint made no changes."
+            displayName: "Check lint made no changes (non-blocking)"
+            continueOnError: true
+
+          - script: npm run -w apps/api test -- --runInBand
+            displayName: "API unit tests (expect 186)"
+
+          - script: npm run -w apps/web test
+            displayName: "Web unit tests"
+
+          - script: npm run build
+            displayName: "Build API and web"
+
+  - stage: integration
+    displayName: "Integration — API suite against real Postgres"
+    # A red verify stage stops here, so a broken build never reaches the
+    # integration suite (and, in later phases, never produces an artifact).
+    dependsOn: verify
+    condition: succeeded()
+    jobs:
+      - job: integration
+        displayName: "API integration tests"
+        timeoutInMinutes: 40
+        services:
+          postgres: postgres
+          redis: redis
+        steps:
+          - task: NodeTool@0
+            displayName: "Use Node $(NODE_VERSION)"
+            inputs:
+              versionSpec: $(NODE_VERSION)
+
+          - script: npm ci
+            displayName: "Install dependencies (npm ci)"
+
+          - script: npm run -w apps/api db:generate
+            displayName: "Generate Prisma client"
+
+          # Every value here is a deliberately fake CI placeholder. Nothing in
+          # this file is, or should become, a real credential.
+          - script: |
+              set -euo pipefail
+              cat > apps/api/.env.test <<'EOF'
+              PORT=3000
+              TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ticketing_test?schema=public
+              TEST_DIRECT_URL=postgresql://postgres:postgres@localhost:5432/ticketing_test?schema=public
+              CORS_ORIGIN=http://localhost:5173
+              WEB_APP_URL=http://localhost:5173
+              REDIS_HOST=localhost
+              REDIS_PORT=6379
+              ATTACHMENTS_DIR=tmp/test-uploads
+              ATTACHMENTS_MAX_MB=5
+              ATTACHMENT_SCAN_WEBHOOK_SECRET=ci-scan-secret-not-real
+              INBOUND_EMAIL_WEBHOOK_SECRET=ci-inbound-secret-not-real
+              AUTH_ALLOW_INSECURE_HEADERS=true
+              AUTH_JWT_SECRET=ci-hs256-secret-not-real
+              NODE_ENV=test
+              TEST_DB_RESET_STRATEGY=migrate
+              NOTIFICATIONS_QUEUE_ENABLED=false
+              SLA_BREACH_WORKER_ENABLED=false
+              EOF
+              echo "Wrote apps/api/.env.test:"
+              sed 's/:[^:@]*@/:***@/' apps/api/.env.test
+            displayName: "Write apps/api/.env.test (fake CI values)"
+
+          # Azure Pipelines starts service containers but does not wait for them
+          # to become healthy, so poll before touching the database. pg_isready
+          # is present on ubuntu-latest; the TCP probe is the fallback if that
+          # ever stops being true.
+          - script: |
+              set -euo pipefail
+              echo "Waiting for Postgres on localhost:5432..."
+              for i in $(seq 1 60); do
+                if command -v pg_isready >/dev/null 2>&1; then
+                  if pg_isready -h localhost -p 5432 -U postgres -d ticketing_test >/dev/null 2>&1; then
+                    echo "Postgres ready after ${i} attempt(s)."; break
+                  fi
+                elif (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1; then
+                  echo "Postgres port open after ${i} attempt(s)."; break
+                fi
+                if [ "$i" -eq 60 ]; then echo "Postgres did not become ready in time." >&2; exit 1; fi
+                sleep 2
+              done
+              echo "Waiting for Redis on localhost:6379..."
+              for i in $(seq 1 30); do
+                if (echo > /dev/tcp/localhost/6379) >/dev/null 2>&1; then
+                  echo "Redis ready after ${i} attempt(s)."; break
+                fi
+                if [ "$i" -eq 30 ]; then echo "Redis did not become ready in time." >&2; exit 1; fi
+                sleep 2
+              done
+            displayName: "Wait for Postgres and Redis"
+
+          # Each integration suite resets the database in its own beforeAll, via
+          # scripts/reset-test-db.cjs. Its safety guard passes because the target
+          # database is named ticketing_test.
+          #
+          # Prisma refuses destructive commands when it believes an AI agent is
+          # driving, and asks for PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION. A
+          # hosted agent should not trip that detection. If a run fails asking for
+          # consent, set the variable here with a value naming CI as the actor —
+          # do not set it pre-emptively, because that would suppress a signal that
+          # is genuinely useful on a developer machine.
+          - script: npm run -w apps/api test:integration
+            displayName: "API integration tests (expect 360 passing, 1 skipped)"
