@@ -22,6 +22,7 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import http from 'http';
+import { timingSafeEqual } from 'crypto';
 
 import { AppModule } from '../app.module';
 import { ToolRegistryService } from '../ai/tools/tool-registry.service';
@@ -140,6 +141,22 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
   return server;
 }
 
+/**
+ * Constant-time comparison of a presented bearer token against the expected
+ * one. Avoids leaking the token through response-timing differences.
+ */
+function isAuthorized(header: string | undefined, expected: string): boolean {
+  if (!header?.startsWith('Bearer ')) {
+    return false;
+  }
+  const presented = Buffer.from(header.slice('Bearer '.length));
+  const secret = Buffer.from(expected);
+  if (presented.length !== secret.length) {
+    return false;
+  }
+  return timingSafeEqual(presented, secret);
+}
+
 async function main() {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
@@ -151,9 +168,23 @@ async function main() {
 
   if (transport === 'sse') {
     const port = parseInt(process.env.MCP_SERVER_PORT ?? '3001', 10);
+    // Bind to loopback by default. These tools accept userId/requesterId as
+    // parameters, so anyone who can reach the port can act as any user.
+    const host = process.env.MCP_SERVER_HOST ?? '127.0.0.1';
+    const token = process.env.MCP_SERVER_TOKEN?.trim();
+    if (!token) {
+      throw new Error(
+        'MCP_SERVER_TOKEN is required when MCP_SERVER_TRANSPORT=sse. The SSE transport exposes tools that act on behalf of any user id, so it must not run unauthenticated.',
+      );
+    }
 
     // Simple SSE HTTP server
     const httpServer = http.createServer(async (req, res) => {
+      if (!isAuthorized(req.headers.authorization, token)) {
+        res.writeHead(401, { 'WWW-Authenticate': 'Bearer' });
+        res.end();
+        return;
+      }
       if (req.method === 'GET' && req.url === '/sse') {
         const sseTransport = new SSEServerTransport('/messages', res);
         await mcpServer.connect(sseTransport);
@@ -163,8 +194,8 @@ async function main() {
       }
     });
 
-    httpServer.listen(port, () => {
-      console.log(`MCP SSE Server running on port ${port}`);
+    httpServer.listen(port, host, () => {
+      console.log(`MCP SSE Server running on ${host}:${port} (bearer auth required)`);
     });
   } else {
     // Stdio transport

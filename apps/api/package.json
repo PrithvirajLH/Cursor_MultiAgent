@@ -22,6 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "mcp-server": "ts-node -r tsconfig-paths/register src/mcp-server/server.ts",
     "test:db:reset": "node scripts/reset-test-db.cjs",
+    "ai:benchmark": "ts-node -r tsconfig-paths/register scripts/run-accuracy-benchmark.ts",
     "prisma": "prisma",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
@@ -104,6 +105,14 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "global": {
+        "statements": 14,
+        "branches": 13,
+        "functions": 14,
+        "lines": 14
+      }
+    }
   }
 }
