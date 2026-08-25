@@ -1,0 +1,51 @@
+{
+  "$comment": "SYNTHETIC starter corpus. Written by an AI, not by department champions. It is a regression gate — it tells you if a prompt or model change broke routing. It is NOT evidence that routing accuracy is good on real employee requests. Replace or extend with champion-authored cases and corrections harvested from CorrectionLog. expectedDepartment uses Team.slug so it stays stable across environments.",
+  "version": 1,
+  "cases": [
+    { "id": "it-001", "inputText": "My laptop won't turn on. I've tried holding the power button and it does nothing, no lights at all.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "it-002", "inputText": "I can't connect to the VPN from home. It says authentication failed but my password works for email.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "it-003", "inputText": "Need access to the shared drive for the finance folder. My manager approved it last week.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "it-004", "inputText": "The printer on the second floor is jamming every time I try to print more than five pages.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV4", "source": "synthetic" },
+    { "id": "it-005", "inputText": "I forgot my password and I'm locked out of my account. I have a meeting in ten minutes.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "it-006", "inputText": "Outlook keeps crashing when I open attachments. Started this morning after the update.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "it-007", "inputText": "New hire starts Monday and needs a laptop, a monitor and access to the scheduling system.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "it-008", "inputText": "The wifi in the east wing keeps dropping. Several of us have noticed it since yesterday.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "it-009", "inputText": "Please install Adobe Acrobat on my workstation, I need to edit PDFs for compliance paperwork.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV4", "source": "synthetic" },
+    { "id": "it-010", "inputText": "My monitor flickers and goes black for a second every few minutes. Swapping the cable didn't help.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "it-011", "inputText": "The scheduling application is down for the entire floor, nobody can log in. This is blocking shift handover.", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV1", "source": "synthetic" },
+    { "id": "it-012", "inputText": "I got an email that looks like phishing asking for my credentials. What should I do with it?", "expectedDepartment": "it-service-desk", "expectedPriority": "SEV2", "source": "synthetic" },
+
+    { "id": "hrops-001", "inputText": "My paycheck is missing overtime from last week. I worked two extra shifts on Tuesday and Thursday.", "expectedDepartment": "hr", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "hrops-002", "inputText": "I need to submit PTO for the last week of next month but the request form is rejecting my dates.", "expectedDepartment": "hr", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "hrops-003", "inputText": "How do I add my new baby to my health insurance? What's the deadline for that?", "expectedDepartment": "hr", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "hrops-004", "inputText": "My direct deposit went to my old bank account. How do I get that corrected?", "expectedDepartment": "hr", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "hrops-005", "inputText": "I'm onboarding a new employee next week and need to know what paperwork they have to complete on day one.", "expectedDepartment": "hr", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "hrops-006", "inputText": "Can someone send me a copy of my W-2 from last year? I can't find it in the portal.", "expectedDepartment": "hr", "expectedPriority": "SEV4", "source": "synthetic" },
+    { "id": "hrops-007", "inputText": "My timesheet shows the wrong department code and my hours are being charged to the wrong unit.", "expectedDepartment": "hr", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "hrops-008", "inputText": "I'm changing my last name after getting married. What do I need to update in the system?", "expectedDepartment": "hr", "expectedPriority": "SEV4", "source": "synthetic" },
+
+    { "id": "hr-001", "inputText": "I'd like to raise a concern about how a colleague has been speaking to staff in meetings.", "expectedDepartment": "hr", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "hr-002", "inputText": "Where can I find the current policy on remote work for administrative staff?", "expectedDepartment": "hr", "expectedPriority": "SEV4", "source": "synthetic" },
+    { "id": "hr-003", "inputText": "I want to understand the process for requesting a transfer to a different unit.", "expectedDepartment": "hr", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "hr-004", "inputText": "What is the organisation's policy on tuition reimbursement for continuing education?", "expectedDepartment": "hr", "expectedPriority": "SEV4", "source": "synthetic" },
+
+    { "id": "ai-001", "inputText": "I'd like access to the AI assistant tool for my team. We want to try it for shift summaries.", "expectedDepartment": "ai", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "ai-002", "inputText": "The AI summariser is producing summaries that cut off halfway through. Can someone look at it?", "expectedDepartment": "ai", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "ai-003", "inputText": "Can we automate the weekly staffing report? It takes two hours to assemble by hand every Monday.", "expectedDepartment": "ai", "expectedPriority": "SEV4", "source": "synthetic" },
+    { "id": "ai-004", "inputText": "What are the governance rules for using AI tools with internal documents? Is there an approval process?", "expectedDepartment": "ai", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "ai-005", "inputText": "The model behind our chat tool seems to be giving outdated answers about our policies.", "expectedDepartment": "ai", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "ai-006", "inputText": "I need help writing a prompt that extracts action items from meeting notes consistently.", "expectedDepartment": "ai", "expectedPriority": "SEV4", "source": "synthetic" },
+
+    { "id": "wg-001", "inputText": "The CEO needs travel arranged for the board meeting in Chicago next month, including hotel and car.", "expectedDepartment": "white-gloves", "expectedPriority": "SEV2", "source": "synthetic" },
+    { "id": "wg-002", "inputText": "We need the executive boardroom set up for a donor lunch on Friday, catering for twelve.", "expectedDepartment": "white-gloves", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "wg-003", "inputText": "Our VP's calendar needs rearranging for the site visit, several meetings will have to move.", "expectedDepartment": "white-gloves", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "wg-004", "inputText": "Please arrange a welcome package and office setup for the incoming chief nursing officer.", "expectedDepartment": "white-gloves", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "wg-005", "inputText": "The executive team needs a car service booked for the airport on Sunday evening.", "expectedDepartment": "white-gloves", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "wg-006", "inputText": "Can we get the annual leadership retreat venue booked and the agenda packets printed?", "expectedDepartment": "white-gloves", "expectedPriority": "SEV4", "source": "synthetic" },
+
+    { "id": "mp-001", "inputText": "What is the current status of the pending applications submitted in the last batch?", "expectedDepartment": "medicaid-pending", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "mp-002", "inputText": "I need clarification on which supporting documents are required for a renewal submission.", "expectedDepartment": "medicaid-pending", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "mp-003", "inputText": "The eligibility workflow has a step that seems to loop back on itself. Can someone confirm the correct order?", "expectedDepartment": "medicaid-pending", "expectedPriority": "SEV3", "source": "synthetic" },
+    { "id": "mp-004", "inputText": "We have a follow-up task queue that hasn't been assigned to anyone this week.", "expectedDepartment": "medicaid-pending", "expectedPriority": "SEV3", "source": "synthetic" }
+  ]
+}

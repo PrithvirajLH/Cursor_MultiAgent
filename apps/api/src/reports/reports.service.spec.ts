@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { ReportsService } from './reports.service';
+import { AiAccuracyService } from './ai-accuracy.service';
 
 type MockPrisma = {
   $queryRaw: jest.Mock;
@@ -55,11 +56,68 @@ describe('ReportsService', () => {
       prisma as unknown as PrismaService,
       {} as Cache,
       {} as ConfigService,
+      {} as AiAccuracyService,
     );
   });
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  // `ReportsController` gates on `LeadOrAdminGuard`, but the service must not
+  // rely on that guard staying in place. Before this, an unhandled role fell
+  // through to an unscoped query, so a single decorator change would have
+  // exposed every team's ticket data across all 21 report endpoints.
+  describe('role scoping fails closed', () => {
+    let scopedService: ReportsService;
+
+    beforeEach(() => {
+      // getSummary reads cache TTL config before scoping, so this suite needs a
+      // ConfigService that responds to `get`. Returning undefined makes
+      // parsePositiveInt fall back to its default.
+      scopedService = new ReportsService(
+        prisma as unknown as PrismaService,
+        { get: jest.fn(), set: jest.fn() } as unknown as Cache,
+        { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService,
+        { getReport: jest.fn() } as unknown as AiAccuracyService,
+      );
+    });
+
+    function userWithRole(role: UserRole): AuthUser {
+      return {
+        id: 'probe-1',
+        email: 'probe@example.com',
+        displayName: 'Probe',
+        role,
+        primaryTeamId: null,
+        teamId: null,
+        memberTeamIds: [],
+      };
+    }
+
+    it.each([UserRole.AGENT, UserRole.EMPLOYEE])(
+      'denies %s instead of returning an unscoped report',
+      async (role) => {
+        await expect(
+          scopedService.getSummary({}, userWithRole(role)),
+        ).rejects.toThrow(/restricted to owners, team administrators, and leads/);
+        expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      },
+    );
+
+    it('denies a TEAM_ADMIN that has no primary team', async () => {
+      await expect(
+        scopedService.getSummary({}, userWithRole(UserRole.TEAM_ADMIN)),
+      ).rejects.toThrow(/must have a primary team/);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('denies a LEAD that belongs to no team', async () => {
+      await expect(
+        scopedService.getSummary({}, userWithRole(UserRole.LEAD)),
+      ).rejects.toThrow(/must belong to a team/);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
   });
 
   it('evaluates historical SLA compliance against the report end instead of wall clock now', async () => {

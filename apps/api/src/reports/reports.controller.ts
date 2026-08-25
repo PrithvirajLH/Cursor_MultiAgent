@@ -14,6 +14,11 @@ export class ReportsController {
     return this.reportsService.getSummary(query, user);
   }
 
+  @Get('ai-accuracy')
+  getAiAccuracy(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
+    return this.reportsService.getAiAccuracy(query, user);
+  }
+
   @Get('tag-analytics')
   getTagAnalytics(
     @Query('days') daysRaw: string | undefined,

@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { AiAccuracyService } from './ai-accuracy.service';
 import { ReportQueryDto, ResolutionTimeQueryDto } from './dto/report-query.dto';
 
 const CACHE_SUMMARY_TTL_MS_DEFAULT = 45_000;
@@ -34,7 +35,25 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
     private readonly config: ConfigService,
+    private readonly aiAccuracy: AiAccuracyService,
   ) {}
+
+  /**
+   * AI routing accuracy for the window, scoped by role.
+   *
+   * Scoping stays here so this endpoint reuses the same fail-closed rules as
+   * every other report: a LEAD sees only their own team's figures, an OWNER
+   * sees platform-wide, and any other role is denied by scopeReportQuery.
+   */
+  async getAiAccuracy(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    return this.aiAccuracy.getReport(
+      fromDate,
+      toEndExclusive,
+      scoped.teamId ?? null,
+    );
+  }
 
   private readonly priorities: TicketPriority[] = [
     TicketPriority.SEV1,
@@ -56,6 +75,13 @@ export class ReportsService {
    * - LEAD: scope to the lead's team (user.teamId from membership).
    * - TEAM_ADMIN: scope to the admin's primary team (user.primaryTeamId).
    * - OWNER: platform-wide; ignore any teamId so SLA/reports are across all teams.
+   *
+   * Fails closed: any role not handled above is denied rather than returning an
+   * unscoped query. `ReportsController` already gates on `LeadOrAdminGuard`, but
+   * this method must not depend on that guard staying in place — an unscoped
+   * report would expose every team's ticket data.
+   *
+   * @throws ForbiddenException when the role has no defined report scope.
    */
   private scopeReportQuery(
     query: ReportQueryDto,
@@ -80,7 +106,9 @@ export class ReportsService {
       delete rest.teamId;
       return rest;
     }
-    return query;
+    throw new ForbiddenException(
+      'Reports are restricted to owners, team administrators, and leads',
+    );
   }
 
   /** For date-only "to" values (YYYY-MM-DD), return next day 00:00 UTC so lt includes the whole selected day. */
