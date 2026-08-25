@@ -63,6 +63,21 @@ npm run e2e
 
 Test DB config lives in `apps\api\.env.test`. Update it to your Supabase test database connection string (use a dedicated test project).
 
+## Deployment
+
+**Read [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) before deploying.** It is the
+runbook for shipping to the `TicketTicket` App Service: exact commands, why
+migrations run before the app, how to verify the right bytes actually landed,
+and the gotchas that have each cost real time — a 502 from the PowerShell deploy
+script, `EPERM` build failures caused by orphaned node processes, and 401
+responses that are Easy Auth rather than a broken deploy.
+
+Do not run `deploy-to-azure.ps1`; it cannot deploy a package this size. The
+runbook says what to use instead.
+
+`docs/azure-app-service-setup.md` covers one-time infrastructure creation, which
+is a different job.
+
 ## Auth modes
 Protected API routes accept:
 - `Authorization: Bearer <token>` (preferred; Azure AD/Entra or HS256 depending on env)
