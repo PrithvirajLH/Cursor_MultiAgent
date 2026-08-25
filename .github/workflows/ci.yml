@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - ui-redesign-and-api-hardening
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
