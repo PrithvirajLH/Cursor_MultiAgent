@@ -1,0 +1,293 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-build:
+    name: Lint and Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: API unit tests
+        run: npm run -w apps/api test -- --runInBand
+
+      - name: Web unit tests
+        run: npm run -w apps/web test
+
+      - name: Build
+        run: npm run build
+
+  integration-tests:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint-build
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create apps/api/.env.test for CI
+        shell: bash
+        run: |
+          cat > apps/api/.env.test <<'EOF'
+          PORT=3000
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          DIRECT_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          CORS_ORIGIN=http://localhost:5173
+          WEB_APP_URL=http://localhost:5173
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          ATTACHMENTS_DIR=tmp/test-uploads
+          ATTACHMENTS_MAX_MB=5
+          ATTACHMENT_SCAN_WEBHOOK_SECRET=ci-scan-secret
+          INBOUND_EMAIL_WEBHOOK_SECRET=ci-inbound-secret
+          AUTH_ALLOW_INSECURE_HEADERS=true
+          AUTH_JWT_SECRET=ci-hs256-secret
+          NODE_ENV=test
+          TEST_DB_RESET_STRATEGY=migrate
+          NOTIFICATIONS_QUEUE_ENABLED=false
+          SLA_BREACH_WORKER_ENABLED=false
+          EOF
+
+      - name: Run API integration tests
+        run: npm run -w apps/api test:integration
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: true
+      E2E_AUTH_JWT_SECRET: ci-e2e-jwt-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create apps/api/.env.test for CI
+        shell: bash
+        run: |
+          cat > apps/api/.env.test <<'EOF'
+          PORT=3000
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          DIRECT_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          CORS_ORIGIN=http://localhost:5173
+          WEB_APP_URL=http://localhost:5173
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          ATTACHMENTS_DIR=tmp/test-uploads
+          ATTACHMENTS_MAX_MB=5
+          ATTACHMENT_SCAN_WEBHOOK_SECRET=ci-scan-secret
+          INBOUND_EMAIL_WEBHOOK_SECRET=ci-inbound-secret
+          AUTH_ALLOW_INSECURE_HEADERS=true
+          AUTH_JWT_SECRET=ci-hs256-secret
+          NODE_ENV=test
+          TEST_DB_RESET_STRATEGY=migrate
+          NOTIFICATIONS_QUEUE_ENABLED=false
+          SLA_BREACH_WORKER_ENABLED=false
+          EOF
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # The accessibility spec is excluded here on purpose. It asserts the WCAG
+      # target state, which the app does not meet yet (see
+      # docs/accessibility-audit-2026-08.md), so it would turn this blocking job
+      # red for a known, tracked backlog. It runs in the non-blocking `security`
+      # job instead. Remove --grep-invert once the a11y backlog is cleared.
+      - name: Run Playwright tests
+        run: npx playwright test --grep-invert "WCAG 2.1 AA"
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  security:
+    name: Security and Accessibility (non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Non-blocking on purpose. There is an existing advisory backlog and a known
+    # set of WCAG violations; failing the build on day one against a backlog
+    # this size gets the job disabled within a week rather than fixed. It
+    # reports now, and becomes blocking once the runtime advisory count and the
+    # critical/serious a11y count are both at zero. See
+    # docs/security-audit-2026-08.md and docs/accessibility-audit-2026-08.md.
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: true
+      E2E_AUTH_JWT_SECRET: ci-e2e-jwt-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # NOTE: this reports the raw advisory count across the whole hoisted
+      # workspace, which mixes production and build tooling and cannot be
+      # separated with --omit=dev (the flag has no effect here). Treat the
+      # number as a change detector only. The production-only count is derived
+      # by the lockfile traversal documented in docs/security-audit-2026-08.md.
+      - name: npm audit (high and above)
+        run: npm audit --audit-level=high
+
+      - name: Create apps/api/.env.test for CI
+        shell: bash
+        run: |
+          cat > apps/api/.env.test <<'EOF'
+          PORT=3000
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          DIRECT_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
+          CORS_ORIGIN=http://localhost:5173
+          WEB_APP_URL=http://localhost:5173
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          ATTACHMENTS_DIR=tmp/test-uploads
+          ATTACHMENTS_MAX_MB=5
+          ATTACHMENT_SCAN_WEBHOOK_SECRET=ci-scan-secret
+          INBOUND_EMAIL_WEBHOOK_SECRET=ci-inbound-secret
+          AUTH_ALLOW_INSECURE_HEADERS=true
+          AUTH_JWT_SECRET=ci-hs256-secret
+          NODE_ENV=test
+          TEST_DB_RESET_STRATEGY=migrate
+          NOTIFICATIONS_QUEUE_ENABLED=false
+          SLA_BREACH_WORKER_ENABLED=false
+          EOF
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run accessibility baseline
+        run: npx playwright test e2e/accessibility.spec.ts --reporter=list
+
+      - name: Upload accessibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore

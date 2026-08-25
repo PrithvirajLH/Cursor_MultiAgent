@@ -76,11 +76,12 @@ screenshots/
 # One-off rollback script — contains DB credentials, never commit
 rollback.ps1
 
-# Removed from GitHub (kept locally)
-docs/
-.github/
-e2e/
-update/
+# Previously excluded from the published repo (commit 7f221d2, May 2026).
+# Re-included August 2026: the remote is now a private Azure DevOps repo, so the
+# reason for hiding internal material no longer applies — and excluding these
+# paths meant CI could not exist, E2E specs were not shared, and audit reports
+# lived on one machine. Verified before re-including: no live credentials, only
+# placeholder connection strings and fake CI test values.
 
 # Loose docs / cruft (kept locally)
 DATABASE.md
