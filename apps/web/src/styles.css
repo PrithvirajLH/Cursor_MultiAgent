@@ -225,14 +225,17 @@
     --chart-grid: var(--divider);
   }
 
-  /* Global density control. Was 0.8 (very dense, ~10px effective text — reads as
-     dated/cramped). Bumped to 0.9 for legibility as an interim step; the goal is
-     to remove `zoom` entirely and tune real type/spacing once dense layouts
-     (tickets table, 3-pane detail) are re-validated. CSS `zoom` does NOT shrink
-     `vh`, so full-height shells divide by the zoom (100vh ÷ 0.9) to fill the
-     screen — getUiZoom() mirrors this for fixed/portal positioning. */
+  /* Global density control. History: 0.8 (very dense, ~10px effective text —
+     read as dated/cramped) → 0.9 (interim, still small) → 1 (no scaling).
+     The type scale was originally tuned at 0.9, so at 1 some dense layouts
+     (tickets table, 3-pane detail) may read loose until type/spacing are
+     re-tuned. The variable is deliberately KEPT at 1 rather than deleted: the
+     48 `calc(… / var(--ui-zoom))` and getUiZoom() compensation sites across the
+     app become ÷1 no-ops, so nothing breaks. Strip them in a follow-up pass,
+     then this block can go. CSS `zoom` does not shrink `vh` — that is what the
+     compensation was for. */
   :root {
-    --ui-zoom: 0.9;
+    --ui-zoom: 1;
   }
   html {
     zoom: var(--ui-zoom);
