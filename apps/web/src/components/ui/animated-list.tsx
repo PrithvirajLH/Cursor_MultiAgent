@@ -1,5 +1,5 @@
 import React, { type ComponentPropsWithoutRef, useMemo } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,25 +12,41 @@ export function AnimatedListItem({
   staggerIndex?: number;
   staggerDelayMs?: number;
 }) {
-  const animations: React.ComponentProps<typeof motion.div> = {
-    initial: { scale: 0, opacity: 0 },
-    animate: {
-      scale: 1,
-      opacity: 1,
-      originY: 0,
-      transition: {
-        type: "spring",
-        stiffness: 350,
-        damping: 40,
-        delay: (staggerIndex * staggerDelayMs) / 1000,
-      },
-    },
-    exit: { scale: 0, opacity: 0 },
-    transition: { type: "spring", stiffness: 350, damping: 40 },
-  };
+  // CSS cannot reach Framer's JS-driven springs, so the setting has to be
+  // honoured here as well as in the global media query in styles.css.
+  const shouldReduceMotion = useReducedMotion();
+
+  const animations: React.ComponentProps<typeof motion.div> = shouldReduceMotion
+    ? {
+        // Appear in place: no scale, no spring, no stagger.
+        initial: { scale: 1, opacity: 0 },
+        animate: { scale: 1, opacity: 1, transition: { duration: 0 } },
+        exit: { scale: 1, opacity: 0, transition: { duration: 0 } },
+        transition: { duration: 0 },
+      }
+    : {
+        initial: { scale: 0, opacity: 0 },
+        animate: {
+          scale: 1,
+          opacity: 1,
+          originY: 0,
+          transition: {
+            type: "spring",
+            stiffness: 350,
+            damping: 40,
+            delay: (staggerIndex * staggerDelayMs) / 1000,
+          },
+        },
+        exit: { scale: 0, opacity: 0 },
+        transition: { type: "spring", stiffness: 350, damping: 40 },
+      };
 
   return (
-    <motion.div {...animations} layout className="mx-auto w-full">
+    <motion.div
+      {...animations}
+      layout={!shouldReduceMotion}
+      className="mx-auto w-full"
+    >
       {children}
     </motion.div>
   );

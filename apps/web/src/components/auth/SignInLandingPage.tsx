@@ -259,7 +259,7 @@ export function SignInLandingPage({ onSignIn, error }: SignInLandingPageProps) {
                 className="mt-8 pt-6 border-t text-center"
                 style={{ borderColor: "hsl(var(--border))" }}
               >
-                <p className="flex items-center justify-center gap-2 text-[12px] font-medium text-muted-foreground/60">
+                <p className="flex items-center justify-center gap-2 text-[12px] font-medium text-muted-foreground">
                   <LockKeyhole className="w-3.5 h-3.5" />
                   Single Sign-On · Enterprise Grade
                 </p>

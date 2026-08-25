@@ -120,7 +120,7 @@ export const Sidebar = memo(function Sidebar({
                       ? "bg-white/[0.09] text-white"
                       : "bg-primary/[0.08] text-primary font-semibold"
                     : dk
-                      ? "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                      ? "text-white/55 hover:bg-white/[0.06] hover:text-white/80"
                       : "text-foreground/80 hover:bg-accent hover:text-foreground"
                 }`}
               >
@@ -195,7 +195,7 @@ export const Sidebar = memo(function Sidebar({
                               ? "text-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)]"
                               : "text-primary bg-primary/[0.08]"
                             : dk
-                              ? "text-white/35 hover:text-white/62 hover:bg-white/[0.05]"
+                              ? "text-white/52 hover:text-white/75 hover:bg-white/[0.05]"
                               : "text-foreground/75 hover:text-foreground hover:bg-accent"
                         }`}
                       >
@@ -274,8 +274,8 @@ export const Sidebar = memo(function Sidebar({
               collapsed ? "justify-center" : ""
             } ${
               dk
-                ? "text-white/28 hover:text-white/55 hover:bg-white/[0.06]"
-                : "text-foreground/55 hover:text-foreground/80 hover:bg-accent"
+                ? "text-white/55 hover:text-white/80 hover:bg-white/[0.06]"
+                : "text-foreground/65 hover:text-foreground/85 hover:bg-accent"
             }`}
             aria-label={dk ? "Switch to light mode" : "Switch to dark mode"}
             title={
@@ -306,8 +306,8 @@ export const Sidebar = memo(function Sidebar({
               collapsed ? "justify-center" : ""
             } ${
               dk
-                ? "text-white/28 hover:text-white/55 hover:bg-white/[0.06]"
-                : "text-foreground/55 hover:text-foreground/80 hover:bg-accent"
+                ? "text-white/55 hover:text-white/80 hover:bg-white/[0.06]"
+                : "text-foreground/65 hover:text-foreground/85 hover:bg-accent"
             }`}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >

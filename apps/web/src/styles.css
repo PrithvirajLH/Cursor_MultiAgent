@@ -660,3 +660,24 @@ button:not(:disabled):active,
     outline: none;
   }
 }
+
+/* ─── Reduced motion ───
+   Users who ask their OS to reduce motion get near-instant transitions rather
+   than none at all: a 0.01ms duration still fires transitionend/animationend,
+   so components that wait on those events keep working.
+
+   This reaches CSS transitions and keyframe animations only. Framer Motion
+   drives its springs in JavaScript and is unaffected, so AnimatedListItem
+   honours useReducedMotion() separately. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -466,6 +466,7 @@ export const TicketConversation = memo(function TicketConversation({
                     className="sr-only"
                     onChange={onAttachmentUpload}
                     disabled={attachmentUploading}
+                    aria-label="Attach files to this ticket"
                   />
                 </>
               ) : null}

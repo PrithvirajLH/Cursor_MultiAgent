@@ -314,6 +314,7 @@ export function BulkActionsToolbar({
                 placeholder={
                   transferMembersLoading ? "Loading..." : "Assignee (optional)"
                 }
+                ariaLabel="Assignee for transfer (optional)"
                 options={transferMembers.map((m) => ({
                   value: m.user.id,
                   label: m.user.displayName,
@@ -369,6 +370,7 @@ function StyledSelect({
   onChange,
   disabled,
   placeholder,
+  ariaLabel,
   icon: Icon,
   options,
 }: {
@@ -376,6 +378,12 @@ function StyledSelect({
   onChange: (val: string) => void;
   disabled?: boolean;
   placeholder: string;
+  /**
+   * Accessible name, when the placeholder is not a stable description of the
+   * control (e.g. it shows "Loading..."). Defaults to the placeholder, which
+   * is the text a sighted user sees and a voice-control user would speak.
+   */
+  ariaLabel?: string;
   icon?: typeof CircleDot;
   options: { value: string; label: string }[];
 }) {
@@ -388,6 +396,7 @@ function StyledSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
+        aria-label={ariaLabel ?? placeholder}
         className={`h-9 appearance-none rounded-xl border border-border bg-card shadow-sm pr-8 text-sm transition-all cursor-pointer
           focus:outline-none focus:ring-2 focus:ring-ring/30
           hover:border-foreground/20 disabled:opacity-50 disabled:cursor-not-allowed

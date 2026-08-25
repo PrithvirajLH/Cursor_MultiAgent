@@ -56,6 +56,7 @@ export function ChatInput({
           className="h-9 w-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           disabled={isLoading}
           title="Attach file (coming soon)"
+          aria-label="Attach file (coming soon)"
         >
           <Paperclip className="h-4 w-4" />
         </button>
@@ -64,6 +65,7 @@ export function ChatInput({
           className="h-9 w-9 flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleSubmit}
           disabled={!text.trim() || isLoading}
+          aria-label={isLoading ? "Sending message" : "Send message"}
         >
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

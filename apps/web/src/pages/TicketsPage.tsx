@@ -1474,6 +1474,7 @@ export function TicketsPage({
               <label className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground">
                 Rows
                 <select
+                  aria-label="Rows per page"
                   value={filters.pageSize}
                   onChange={(event) =>
                     setFilters({

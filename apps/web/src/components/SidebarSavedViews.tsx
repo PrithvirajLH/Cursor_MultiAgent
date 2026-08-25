@@ -74,14 +74,14 @@ function rowClass(theme: "light" | "dark", active: boolean): string {
       : "text-primary bg-primary/[0.08] font-semibold";
   }
   return dk
-    ? "text-white/35 hover:text-white/62 hover:bg-white/[0.05]"
+    ? "text-white/52 hover:text-white/75 hover:bg-white/[0.05]"
     : "text-foreground/75 hover:text-foreground hover:bg-accent";
 }
 
 function countTextClass(theme: "light" | "dark", active: boolean): string {
   const dk = theme === "dark";
   if (active) return "text-primary";
-  return dk ? "text-white/30" : "text-foreground/55";
+  return dk ? "text-white/55" : "text-foreground/55";
 }
 
 /**
@@ -245,7 +245,7 @@ export function SidebarTicketsSavedViews({
         <>
           <div
             className={`px-2.5 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.07em] ${
-              dk ? "text-white/30" : "text-foreground/45"
+              dk ? "text-white/55" : "text-foreground/45"
             }`}
           >
             Saved views
@@ -303,7 +303,7 @@ export function SidebarTeams({ collapsed, theme }: SidebarTeamsProps) {
     <>
       <div
         className={`px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-[0.07em] ${
-          dk ? "text-white/35" : "text-foreground/45"
+          dk ? "text-white/55" : "text-foreground/45"
         }`}
       >
         Teams
@@ -325,7 +325,7 @@ export function SidebarTeams({ collapsed, theme }: SidebarTeamsProps) {
                   ? "bg-white/[0.09] text-white"
                   : "bg-primary/[0.08] text-primary font-semibold"
                 : dk
-                  ? "text-white/45 hover:bg-white/[0.06] hover:text-white/75"
+                  ? "text-white/55 hover:bg-white/[0.06] hover:text-white/80"
                   : "text-foreground/75 hover:bg-accent hover:text-foreground"
             }`}
           >
