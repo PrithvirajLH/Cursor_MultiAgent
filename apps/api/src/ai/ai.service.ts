@@ -1,10 +1,17 @@
+import { randomUUID } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
+import { AiRoutingMethod } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { FoundryClientService } from './foundry-client.service';
 import { ToolRegistryService } from './tools/tool-registry.service';
 import { TicketToolsService } from './tools/ticket-tools.service';
 import { KbService } from '../kb/kb.service';
+import { ConfidenceGateService } from './confidence-gate.service';
+import {
+  AiObservabilityService,
+  type PipelineStepRecord,
+} from '../common/ai-observability.service';
 import type { AuthUser } from '../auth/current-user.decorator';
 import type {
   PipelineInput,
@@ -29,6 +36,8 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly kb: KbService,
+    private readonly confidenceGate: ConfidenceGateService,
+    private readonly observability: AiObservabilityService,
   ) {}
 
   /** Best-effort KB article suggestions from the classifier's intent + classification. */
@@ -114,18 +123,53 @@ export class AiService {
     );
   }
 
-  private async checkConfidence(
+  /**
+   * Ask the model to phrase one clarifying question for a classification the
+   * gate has already rejected. Phrasing is a language task and stays with the
+   * LLM; the pass/fail decision does not (see ConfidenceGateService).
+   *
+   * Best effort: if the model is unavailable we still return a usable question
+   * rather than failing the whole intake, because the ticket is going to human
+   * triage either way.
+   */
+  private async generateClarifyingQuestion(
     intent: IntentResult,
     classification: ClassificationResult,
-  ): Promise<ConfidenceResult> {
-    const userMessage = `Evaluate the confidence of this classification:\n\nIntent:\n${JSON.stringify(intent, null, 2)}\n\nClassification:\n${JSON.stringify(classification, null, 2)}`;
+  ): Promise<string> {
+    const fallback =
+      'Could you tell me a bit more about your request, so it reaches the right team?';
+    const userMessage = `Write ONE short clarifying question for this request. Ask about the department boundary, offer 2-3 concrete options, and never ask something the user already answered.\n\nIntent:\n${JSON.stringify(intent, null, 2)}\n\nClassification:\n${JSON.stringify(classification, null, 2)}`;
+    try {
+      const result = await this.foundryClient.runAgent('confidenceGate', userMessage);
+      this.logger.debug(`[Agent 3] Clarifying question — ${result.latencyMs}ms`);
+      const parsed = this.foundryClient.parseAgentResponse(result.content, (data) =>
+        this.validateConfidenceResult(data),
+      );
+      return parsed.clarifyingQuestion?.trim() || result.content.trim() || fallback;
+    } catch (error) {
+      this.logger.warn(
+        `Clarifying question generation failed, using fallback: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return fallback;
+    }
+  }
 
-    const result = await this.foundryClient.runAgent('confidenceGate', userMessage);
-    this.logger.debug(`[Agent 3] Confidence Gate — ${result.latencyMs}ms`);
-
-    return this.foundryClient.parseAgentResponse(result.content, (data) =>
-      this.validateConfidenceResult(data),
-    );
+  /**
+   * True when the receiving department handles PHI or other regulated data, in
+   * which case free-text model input/output must not be persisted to the
+   * observability tables (AGENTS.md §12). Fails safe: if the team cannot be
+   * resolved we redact.
+   */
+  private async isSensitiveDepartment(teamId: string): Promise<boolean> {
+    try {
+      const team = await this.prisma.team.findUnique({
+        where: { id: teamId },
+        select: { isSensitive: true },
+      });
+      return team?.isSensitive ?? true;
+    } catch {
+      return true;
+    }
   }
 
   // ─── Main Pipeline ───────────────────────────────────────────────────
@@ -142,6 +186,9 @@ export class AiService {
 
     // Track each agent's raw response for storage
     const pipelineSteps: Record<string, unknown>[] = [];
+    // Ties every row this run writes across AiInferenceLog and RoutingDecisionLog.
+    const correlationId = randomUUID();
+    let gateThresholdUsed = 0;
 
     // Step 1: Extract intent
     let intent: IntentResult;
@@ -201,24 +248,47 @@ export class AiService {
       };
     }
 
-    // Step 3: Confidence check
+    // Step 3: Confidence gate — deterministic, in code.
+    //
+    // This step used to be an LLM call that was asked, in prose, to compute a
+    // weighted average and compare it to a hardcoded threshold. Model
+    // self-assessment is uncalibrated and the thresholds could not be tuned
+    // without redeploying a Foundry agent. Scoring and the pass/fail decision
+    // now live in ConfidenceGateService, where they are unit tested and driven
+    // by configuration (env defaults + a per-department override column).
+    //
+    // Behaviour change: the gate no longer accepts an `adjustedClassification`.
+    // A second model silently rewriting the classifier's output was not
+    // auditable, and the routing decision log needs one authoritative
+    // classification to score accuracy against.
     let confidence: ConfidenceResult;
-    let step3Raw: { content: string; toolCallsMade: string[]; latencyMs: number } | null = null;
+    const step3Started = Date.now();
     try {
-      const step3Input = `Evaluate the confidence of this classification:\n\nIntent:\n${JSON.stringify(intent, null, 2)}\n\nClassification:\n${JSON.stringify(classification, null, 2)}`;
-      const result = await this.foundryClient.runAgent('confidenceGate', step3Input);
-      step3Raw = result;
-      confidence = this.foundryClient.parseAgentResponse(result.content, (data) => this.validateConfidenceResult(data));
+      const decision = await this.confidenceGate.evaluate(classification);
+      gateThresholdUsed = decision.thresholdUsed;
+      // The LLM is still the right tool for phrasing the question, so it is
+      // called only when the gate has already decided to ask one.
+      const clarifyingQuestion = decision.passed
+        ? null
+        : await this.generateClarifyingQuestion(intent, classification);
+      confidence = {
+        passed: decision.passed,
+        overallConfidence: decision.overallConfidence,
+        clarifyingQuestion,
+        adjustedClassification: null,
+      };
       pipelineSteps.push({
         step: 3, agent: 'confidenceGate', status: 'success',
-        latencyMs: result.latencyMs, toolsCalled: result.toolCallsMade,
-        input: step3Input, rawOutput: result.content, parsed: confidence,
+        latencyMs: Date.now() - step3Started, toolsCalled: [],
+        input: JSON.stringify({ classification }),
+        rawOutput: JSON.stringify(decision),
+        parsed: confidence,
       });
-      this.logger.debug(`→ Confidence: ${(confidence.overallConfidence * 100).toFixed(0)}% — ${confidence.passed ? 'PASSED' : 'NEEDS CLARIFICATION'}`);
+      this.logger.debug(`→ Confidence: ${(decision.overallConfidence * 100).toFixed(0)}% vs threshold ${(decision.thresholdUsed * 100).toFixed(0)}% — ${decision.passed ? 'PASSED' : `NEEDS CLARIFICATION (${decision.reason})`}`);
     } catch (error) {
       pipelineSteps.push({
         step: 3, agent: 'confidenceGate', status: 'error',
-        latencyMs: step3Raw?.latencyMs ?? Date.now() - startTime,
+        latencyMs: Date.now() - step3Started,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
       this.logger.error('Confidence check failed', error);
@@ -229,7 +299,7 @@ export class AiService {
       };
     }
 
-    const finalClassification = confidence.adjustedClassification ?? classification;
+    const finalClassification = classification;
 
     // KB deflection: suggest relevant articles based on the classifier's output.
     const suggestedArticles = await this.getSuggestedArticles(
@@ -242,6 +312,27 @@ export class AiService {
     if (!confidence.passed) {
       const elapsed = Date.now() - startTime;
       this.logger.log(`Pipeline returning clarification question (${elapsed}ms total)`);
+      // A triage route is a routing decision too — accuracy scoring needs the
+      // rejections, not just the accepted routes.
+      const redactTriageLogs = await this.isSensitiveDepartment(
+        finalClassification.department.id,
+      );
+      this.observability.recordSteps(
+        correlationId,
+        null,
+        pipelineSteps as unknown as PipelineStepRecord[],
+        redactTriageLogs,
+      );
+      this.observability.recordRouting({
+        correlationId,
+        ticketId: null,
+        predictedTeamId: finalClassification.department.id,
+        confidence: confidence.overallConfidence,
+        thresholdUsed: gateThresholdUsed,
+        method: AiRoutingMethod.AI,
+        alternatives: finalClassification.alternativeDepartments,
+        accepted: false,
+      });
       return {
         status: 'needs_clarification',
         question: confidence.clarifyingQuestion ?? 'Could you provide more details about your request?',
@@ -353,6 +444,30 @@ IMPORTANT: Return ONLY the JSON object. Format:
         },
       });
 
+      // Durable, queryable observability alongside the TicketEvent trace. The
+      // TicketEvent payload stays for backwards compatibility with
+      // getAiAnalysis; these tables are what accuracy scoring reads. Both calls
+      // are fire-and-forget and never block or fail the intake.
+      const redactLogs = await this.isSensitiveDepartment(
+        finalClassification.department.id,
+      );
+      this.observability.recordSteps(
+        correlationId,
+        ticketResult.data.id,
+        pipelineSteps as unknown as PipelineStepRecord[],
+        redactLogs,
+      );
+      this.observability.recordRouting({
+        correlationId,
+        ticketId: ticketResult.data.id,
+        predictedTeamId: finalClassification.department.id,
+        confidence: confidence.overallConfidence,
+        thresholdUsed: gateThresholdUsed,
+        method: AiRoutingMethod.AI,
+        alternatives: finalClassification.alternativeDepartments,
+        accepted: true,
+      });
+
       // Fetch the full ticket for the response
       const ticket = await this.prisma.ticket.findUnique({
         where: { id: ticketResult.data.id },
@@ -459,30 +574,40 @@ IMPORTANT: Return ONLY the JSON object. Format:
       return { steps, finalStatus: 'error', totalLatencyMs: Date.now() - startTime, errorMessage: `Step 2 failed: ${steps[1].error}` };
     }
 
-    // Step 3: Confidence Gate
-    const step3Input = `Evaluate the confidence of this classification:\n\nIntent:\n${JSON.stringify(intent, null, 2)}\n\nClassification:\n${JSON.stringify(classification, null, 2)}`;
+    // Step 3: Confidence Gate — deterministic, mirrors classifyAndCreateTicket
+    // so the debug view shows what production actually does.
+    const step3Input = JSON.stringify({ classification }, null, 2);
+    const step3Started = Date.now();
     let confidence: ConfidenceResult;
     try {
-      const result = await this.foundryClient.runAgent('confidenceGate', step3Input);
-      confidence = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateConfidenceResult(d));
+      const decision = await this.confidenceGate.evaluate(classification);
+      const clarifyingQuestion = decision.passed
+        ? null
+        : await this.generateClarifyingQuestion(intent, classification);
+      confidence = {
+        passed: decision.passed,
+        overallConfidence: decision.overallConfidence,
+        clarifyingQuestion,
+        adjustedClassification: null,
+      };
       steps.push({
-        step: 3, name: 'Confidence Gate',
-        agentName: this.config.get<string>('CONFIDENCE_GATE_AGENT_ID') ?? 'confidence-gate',
-        input: step3Input, rawOutput: result.content, parsed: confidence,
-        toolsCalled: result.toolCallsMade, latencyMs: result.latencyMs, status: 'success',
+        step: 3, name: 'Confidence Gate (deterministic)',
+        agentName: 'confidence-gate-service',
+        input: step3Input, rawOutput: JSON.stringify(decision, null, 2), parsed: confidence,
+        toolsCalled: [], latencyMs: Date.now() - step3Started, status: 'success',
       });
     } catch (error) {
       steps.push({
-        step: 3, name: 'Confidence Gate',
-        agentName: this.config.get<string>('CONFIDENCE_GATE_AGENT_ID') ?? 'confidence-gate',
+        step: 3, name: 'Confidence Gate (deterministic)',
+        agentName: 'confidence-gate-service',
         input: step3Input, rawOutput: '', parsed: null, toolsCalled: [],
-        latencyMs: Date.now() - startTime - steps.reduce((s, r) => s + r.latencyMs, 0),
+        latencyMs: Date.now() - step3Started,
         status: 'error', error: error instanceof Error ? error.message : 'Unknown error',
       });
       return { steps, finalStatus: 'error', totalLatencyMs: Date.now() - startTime, errorMessage: `Step 3 failed: ${steps[2].error}` };
     }
 
-    const finalClassification = confidence.adjustedClassification ?? classification;
+    const finalClassification = classification;
 
     if (!confidence.passed) {
       return {

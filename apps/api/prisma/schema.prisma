@@ -163,6 +163,14 @@ model Team {
   assignmentStrategy TeamAssignmentStrategy @default(QUEUE_ONLY)
   lastAssignedUserId String?
   isActive    Boolean      @default(true)
+  /// Departments handling PHI or otherwise sensitive traffic. Drives the higher
+  /// AI confidence bar before a ticket is auto-routed here instead of going to
+  /// human triage. Configuration, not code — see AGENTS.md §10.
+  isSensitive Boolean      @default(false)
+  /// Per-department override of the AI auto-routing confidence threshold (0-1).
+  /// Null falls back to AI_SENSITIVE_DEPT_THRESHOLD when isSensitive, else
+  /// AI_CONFIDENCE_THRESHOLD.
+  confidenceThreshold Float?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -747,4 +755,82 @@ model AutomationExecution {
   @@index([ticketId])
   @@index([ruleId, ticketId, trigger])
   @@index([executedAt])
+}
+
+// ─── AI Observability ────────────────────────────────────────────────────────
+// ADR-001 justifies the 6-step pipeline on observability, testability and
+// tunability. Storing traces in a TicketEvent JSON payload satisfies none of
+// those at scale — routing accuracy, precision/recall and a confusion matrix
+// cannot be computed from JSON blobs. These tables make the Phase-1 >=85%
+// routing-accuracy gate measurable. All writes are fire-and-forget and must
+// never block or fail the request path.
+
+enum AiStepStatus {
+  SUCCESS
+  ERROR
+}
+
+enum AiRoutingMethod {
+  AI
+  RULE
+  MANUAL
+}
+
+/// One row per pipeline step per run.
+model AiInferenceLog {
+  id            String       @id @default(uuid())
+  correlationId String
+  ticketId      String?
+  step          Int
+  agentName     String
+  model         String?
+  latencyMs     Int
+  status        AiStepStatus
+  /// Redacted before write for sensitive departments — never store raw PHI.
+  rawOutput     String?      @db.Text
+  parsed        Json?
+  error         String?      @db.Text
+  redacted      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([correlationId])
+  @@index([ticketId])
+}
+
+/// One row per routing decision, for accuracy scoring against ground truth.
+model RoutingDecisionLog {
+  id              String          @id @default(uuid())
+  correlationId   String
+  ticketId        String?
+  predictedTeamId String?
+  confidence      Float
+  thresholdUsed   Float
+  method          AiRoutingMethod
+  matchedRuleId   String?
+  /// Runner-up departments with their confidences, for confusion-matrix work.
+  alternatives    Json?
+  /// False when the gate sent it to human triage instead of auto-routing.
+  accepted        Boolean
+  createdAt       DateTime        @default(now())
+
+  @@index([createdAt])
+  @@index([predictedTeamId, createdAt])
+  @@index([ticketId])
+}
+
+/// Agent overrides of an AI decision — the training signal for the reviewed
+/// promotion lifecycle. Append-only.
+model CorrectionLog {
+  id              String   @id @default(uuid())
+  ticketId        String
+  field           String
+  fromValue       String?
+  toValue         String?
+  correctedById   String
+  reason          String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([field, createdAt])
 }

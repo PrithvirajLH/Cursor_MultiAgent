@@ -11,6 +11,7 @@ import { InboundEmailService } from './inbound-email.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
+import { AiObservabilityService } from '../common/ai-observability.service';
 import { TagsService } from '../tags/tags.service';
 import { TicketsService } from './tickets.service';
 
@@ -74,6 +75,7 @@ describe('TicketsService', () => {
       {} as TicketAttachmentService,
       {} as TicketRealtimeService,
       {} as TicketSlaCalculationService,
+      { recordCorrection: jest.fn() } as unknown as AiObservabilityService,
       {} as InboundEmailService,
       {} as TagsService,
     );

@@ -8,6 +8,8 @@ interface DepartmentInfo {
   slug: string;
   description: string | null;
   assignmentStrategy: string;
+  /** PHI-handling or otherwise regulated. Held to a higher auto-routing bar. */
+  isSensitive: boolean;
 }
 
 interface CategoryNode {
@@ -43,6 +45,7 @@ export class ClassificationToolsService {
           slug: true,
           description: true,
           assignmentStrategy: true,
+          isSensitive: true,
         },
         orderBy: { name: 'asc' },
       });

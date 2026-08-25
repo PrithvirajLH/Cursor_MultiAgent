@@ -8,6 +8,7 @@ import { ToolRegistryService } from './tools/tool-registry.service';
 import { UserToolsService } from './tools/user-tools.service';
 import { ClassificationToolsService } from './tools/classification-tools.service';
 import { TicketToolsService } from './tools/ticket-tools.service';
+import { ConfidenceGateService } from './confidence-gate.service';
 
 @Module({
   imports: [forwardRef(() => TicketsModule), KbModule],
@@ -19,6 +20,7 @@ import { TicketToolsService } from './tools/ticket-tools.service';
     UserToolsService,
     ClassificationToolsService,
     TicketToolsService,
+    ConfidenceGateService,
   ],
   exports: [AiService],
 })

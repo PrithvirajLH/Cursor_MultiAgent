@@ -24,6 +24,7 @@ import {
 import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
+import { AiObservabilityService } from '../common/ai-observability.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -98,6 +99,7 @@ export class TicketsService {
     private readonly attachmentService: TicketAttachmentService,
     private readonly ticketRealtime: TicketRealtimeService,
     private readonly slaCalc: TicketSlaCalculationService,
+    private readonly aiObservability: AiObservabilityService,
     @Inject(forwardRef(() => InboundEmailService))
     private readonly inboundEmailService: InboundEmailService,
     private readonly tagsService: TagsService,
@@ -1760,6 +1762,15 @@ export class TicketsService {
       return result;
     });
 
+    // Ground truth for AI classification accuracy. No-ops unless AI-routed.
+    this.aiObservability.recordCorrection(
+      ticketId,
+      'category',
+      ticket.categoryId ?? null,
+      categoryId,
+      user.id,
+    );
+
     await this.ticketRealtime.safeRealtime(() =>
       this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId,
@@ -1937,6 +1948,16 @@ export class TicketsService {
       ticket.id,
       { policyConfigId: newSla.policyConfigId ?? null },
       tx,
+    );
+
+    // Ground truth for AI routing accuracy: a human moved this ticket off the
+    // team the AI chose. No-ops unless the ticket was AI-routed.
+    this.aiObservability.recordCorrection(
+      ticket.id,
+      'department',
+      priorTeamId ?? null,
+      payload.newTeamId,
+      actorId,
     );
 
     return {
@@ -2286,6 +2307,15 @@ export class TicketsService {
           tx,
         );
       });
+      // Ground truth for AI priority accuracy. No-ops unless AI-routed.
+      this.aiObservability.recordCorrection(
+        ticketId,
+        'priority',
+        ticket.priority,
+        payload.priority,
+        user.id,
+      );
+
       await this.invalidateCountsCache([
         user.id,
         ticket.requesterId,

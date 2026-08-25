@@ -248,20 +248,23 @@ async function seedMinimal() {
 }
 
 async function seedDev() {
+  // `description` is the department scope guide the AI classifier reads via the
+  // get_departments tool — it is data, not prompt text, so onboarding a
+  // department needs no code change. `isSensitive` raises the auto-routing
+  // confidence bar for PHI-handling departments.
   const teams = [
-    { name: 'IT Service Desk', slug: 'it-service-desk', description: 'Devices, access, core systems' },
-    { name: 'HR', slug: 'hr', description: 'Human resources' },
-    { name: 'HR Operations', slug: 'hr-operations', description: 'People ops, onboarding, payroll' },
-    { name: 'AI', slug: 'ai', description: 'AI tooling, models, data requests' },
-    { name: 'Medicaid Pending', slug: 'medicaid-pending', description: 'Eligibility, claims, approvals' },
-    { name: 'White Gloves', slug: 'white-gloves', description: 'Executive and VIP support' }
+    { name: 'IT Service Desk', slug: 'it-service-desk', description: 'Technical issues: hardware, software, access, VPN, network, printers, provisioning, password resets, application support', isSensitive: false },
+    { name: 'HR', slug: 'hr', description: 'Employee matters: benefits, PTO and leave, onboarding, payroll, employee relations, policy questions, org changes', isSensitive: false },
+    { name: 'AI', slug: 'ai', description: 'AI and automation: tool access requests, prompt support, automation requests, model issues, governance questions', isSensitive: false },
+    { name: 'Medicaid Pending', slug: 'medicaid-pending', description: 'Case management: document status, eligibility support, follow-up tasks, workflow clarifications', isSensitive: true },
+    { name: 'White Gloves', slug: 'white-gloves', description: 'Executive and VIP support: high-touch requests, travel arrangements, event prep, concierge-style service', isSensitive: false }
   ];
 
   const teamRecords = [] as { id: string; slug: string; name: string }[];
   for (const team of teams) {
     const record = await prisma.team.upsert({
       where: { slug: team.slug },
-      update: { name: team.name, description: team.description },
+      update: { name: team.name, description: team.description, isSensitive: team.isSensitive },
       create: team
     });
     teamRecords.push({ id: record.id, slug: record.slug, name: record.name });
@@ -356,7 +359,7 @@ async function seedDev() {
   }
 
   const itTeam = teamRecords.find((team) => team.slug === 'it-service-desk');
-  const hrTeam = teamRecords.find((team) => team.slug === 'hr-operations');
+  const hrTeam = teamRecords.find((team) => team.slug === 'hr');
   const aiTeam = teamRecords.find((team) => team.slug === 'ai');
   const medicaidTeam = teamRecords.find((team) => team.slug === 'medicaid-pending');
   const vipTeam = teamRecords.find((team) => team.slug === 'white-gloves');
@@ -817,12 +820,12 @@ async function seedTest() {
   await prisma.team.createMany({
     data: [
       { id: ids.teamIt, name: 'IT Service Desk', slug: 'it-service-desk', description: 'IT ops' },
-      { id: ids.teamHr, name: 'HR Operations', slug: 'hr-operations', description: 'HR ops' }
+      { id: ids.teamHr, name: 'HR', slug: 'hr', description: 'HR ops' }
     ]
   });
   const teamNameById = new Map<string, string>([
     [ids.teamIt, 'IT Service Desk'],
-    [ids.teamHr, 'HR Operations']
+    [ids.teamHr, 'HR']
   ]);
 
   await prisma.category.createMany({
