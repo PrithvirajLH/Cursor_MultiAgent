@@ -1115,6 +1115,7 @@ export class TicketsService {
             ticket.createdAt,
             sla.firstResponseHours,
             sla.businessHoursOnly,
+            ticket.assignedTeamId,
             tx,
           )
         : null;
@@ -1123,6 +1124,7 @@ export class TicketsService {
             ticket.createdAt,
             sla.resolutionHours,
             sla.businessHoursOnly,
+            ticket.assignedTeamId,
             tx,
           )
         : null;
@@ -1841,11 +1843,14 @@ export class TicketsService {
       tx,
     );
 
+    // Unwind on the source team's calendar, re-date on the destination's.
+    // Using one calendar for both silently mis-dates every cross-team transfer.
     const firstStart = ticket.firstResponseDueAt
       ? await this.slaCalc.subtractSlaHours(
           ticket.firstResponseDueAt,
           oldSla.firstResponseHours,
           oldSla.businessHoursOnly,
+          priorTeamId,
           tx,
         )
       : ticket.createdAt;
@@ -1854,6 +1859,7 @@ export class TicketsService {
           ticket.dueAt,
           oldSla.resolutionHours,
           oldSla.businessHoursOnly,
+          priorTeamId,
           tx,
         )
       : ticket.createdAt;
@@ -1862,12 +1868,14 @@ export class TicketsService {
       firstStart,
       newSla.firstResponseHours,
       newSla.businessHoursOnly,
+      payload.newTeamId,
       tx,
     );
     const dueAt = await this.slaCalc.addSlaHours(
       resolutionStart,
       newSla.resolutionHours,
       newSla.businessHoursOnly,
+      payload.newTeamId,
       tx,
     );
     const assigneeId = payload.assigneeId ?? null;
@@ -2135,6 +2143,7 @@ export class TicketsService {
         now,
         sla.resolutionHours,
         sla.businessHoursOnly,
+        ticket.assignedTeamId,
         tx,
       );
     }
@@ -2263,6 +2272,7 @@ export class TicketsService {
             ticket.firstResponseDueAt,
             oldSla.firstResponseHours,
             oldSla.businessHoursOnly,
+            ticket.assignedTeamId,
           )
         : ticket.createdAt;
       const resolutionStart = ticket.dueAt
@@ -2270,6 +2280,7 @@ export class TicketsService {
             ticket.dueAt,
             oldSla.resolutionHours,
             oldSla.businessHoursOnly,
+            ticket.assignedTeamId,
           )
         : ticket.createdAt;
 
@@ -2277,11 +2288,13 @@ export class TicketsService {
         firstStart,
         newSla.firstResponseHours,
         newSla.businessHoursOnly,
+        ticket.assignedTeamId,
       );
       const dueAt = await this.slaCalc.addSlaHours(
         resolutionStart,
         newSla.resolutionHours,
         newSla.businessHoursOnly,
+        ticket.assignedTeamId,
       );
 
       await this.prisma.$transaction(async (tx) => {

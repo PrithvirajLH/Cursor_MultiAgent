@@ -12,6 +12,7 @@ import {
   RealtimeService,
   type AdminChangedAudience,
 } from '../realtime/realtime.service';
+import { BusinessHoursCacheService } from './business-hours-cache.service';
 import { ListSlasDto } from './dto/list-slas.dto';
 import {
   CreateSlaPolicyConfigDto,
@@ -93,6 +94,7 @@ type PolicyGraph = PolicyRow & {
 
 type BusinessSettingsRow = {
   id: string;
+  teamId: string | null;
   timezone: string;
   schedule: Prisma.JsonValue;
   holidays: Prisma.JsonValue;
@@ -107,6 +109,7 @@ export class SlasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly businessHoursCache: BusinessHoursCacheService,
   ) {}
 
   private readonly defaultSchedule: BusinessDay[] = [
@@ -640,46 +643,65 @@ export class SlasService {
     return { id: policyId };
   }
 
-  async getBusinessHoursSettings(user: AuthUser) {
-    this.ensureSlaPageAccess(user);
-    const settings = await this.ensureBusinessHoursSettingsRecord(this.prisma);
-    return { data: this.serializeBusinessHours(settings) };
+  /**
+   * Business-hours calendar in force for a scope. A named team returns that
+   * team's own calendar, or the default it currently inherits. An omitted team
+   * resolves per role — see resolveBusinessHoursReadScope.
+   */
+  async getBusinessHoursSettings(user: AuthUser, teamId: string | null = null) {
+    const scope = this.resolveBusinessHoursReadScope(user, teamId);
+    if (scope) {
+      await this.ensureTeam(scope);
+    }
+    const current = await this.resolveBusinessHoursRecord(this.prisma, scope);
+    return {
+      data: this.serializeBusinessHours(
+        current.row,
+        scope,
+        current.isInherited,
+      ),
+    };
   }
 
+  /**
+   * Write a business-hours calendar, creating a team's own row on first write,
+   * seeded from whatever it inherits today so a partial update cannot reset it.
+   * An omitted team resolves per role — see resolveBusinessHoursWriteScope.
+   */
   async updateBusinessHoursSettings(
     payload: UpdateSlaBusinessHoursDto,
     user: AuthUser,
+    teamId: string | null = null,
   ) {
-    this.ensureSlaPageWriteAccess(user);
-    const current = await this.ensureBusinessHoursSettingsRecord(this.prisma);
-
+    const scope = this.resolveBusinessHoursWriteScope(user, teamId);
+    if (scope) {
+      await this.ensureTeam(scope);
+    }
+    const current = await this.resolveBusinessHoursRecord(this.prisma, scope);
     const schedule = this.normalizeSchedule(
-      payload.schedule ?? this.parseSchedule(current.schedule),
+      payload.schedule ?? this.parseSchedule(current.row.schedule),
     );
     const holidays = this.normalizeHolidays(
-      payload.holidays ?? this.parseHolidays(current.holidays),
+      payload.holidays ?? this.parseHolidays(current.row.holidays),
     );
-    const timezone = payload.timezone?.trim() || current.timezone;
-
-    await this.prisma.$executeRaw`
-      UPDATE "SlaBusinessHoursSetting"
-      SET
-        "timezone" = ${timezone},
-        "schedule" = ${JSON.stringify(schedule)}::jsonb,
-        "holidays" = ${JSON.stringify(holidays)}::jsonb,
-        "updatedAt" = NOW()
-      WHERE "id" = 'global'
-    `;
-
-    const updated = await this.ensureBusinessHoursSettingsRecord(this.prisma);
+    const timezone = payload.timezone?.trim() || current.row.timezone;
+    await this.writeBusinessHoursRow(scope, timezone, schedule, holidays);
+    this.invalidateBusinessHoursCache(scope);
+    const updated = await this.resolveBusinessHoursRecord(this.prisma, scope);
     await this.safePublishAdminChanged({
       scope: 'sla_business_hours',
       action: 'updated',
-      entityId: 'global',
-      teamId: null,
+      entityId: scope ?? 'global',
+      teamId: scope,
       actorId: user.id,
     });
-    return { data: this.serializeBusinessHours(updated) };
+    return {
+      data: this.serializeBusinessHours(
+        updated.row,
+        scope,
+        updated.isInherited,
+      ),
+    };
   }
 
   private async loadPolicyGraph(policyRows: PolicyRow[], tx: PrismaTx) {
@@ -782,8 +804,14 @@ export class SlasService {
     };
   }
 
-  private serializeBusinessHours(settings: BusinessSettingsRow) {
+  private serializeBusinessHours(
+    settings: BusinessSettingsRow,
+    teamId: string | null,
+    isInherited: boolean,
+  ) {
     return {
+      teamId,
+      inherited: isInherited,
       timezone: settings.timezone,
       schedule: this.normalizeSchedule(this.parseSchedule(settings.schedule)),
       holidays: this.normalizeHolidays(this.parseHolidays(settings.holidays)),
@@ -1162,10 +1190,129 @@ export class SlasService {
     });
   }
 
-  private async ensureBusinessHoursSettingsRecord(tx: PrismaTx) {
+  /**
+   * Calendar in force for a scope, and whether it was inherited rather than
+   * owned. Mirrors the resolution order the SLA engine uses.
+   */
+  private async resolveBusinessHoursRecord(
+    tx: PrismaTx,
+    teamId: string | null,
+  ) {
+    if (teamId) {
+      const teamRows = await tx.$queryRaw<BusinessSettingsRow[]>`
+        SELECT
+          s."id",
+          s."teamId",
+          s."timezone",
+          s."schedule",
+          s."holidays",
+          s."createdAt",
+          s."updatedAt"
+        FROM "SlaBusinessHoursSetting" s
+        WHERE s."teamId" = ${teamId}
+        LIMIT 1
+      `;
+      if (teamRows[0]) {
+        return { row: teamRows[0], isInherited: false };
+      }
+    }
+    const globalRow = await this.ensureGlobalBusinessHoursRecord(tx);
+    return { row: globalRow, isInherited: teamId != null };
+  }
+
+  private async writeBusinessHoursRow(
+    teamId: string | null,
+    timezone: string,
+    schedule: BusinessDay[],
+    holidays: Holiday[],
+  ): Promise<void> {
+    if (!teamId) {
+      await this.prisma.$executeRaw`
+        UPDATE "SlaBusinessHoursSetting"
+        SET
+          "timezone" = ${timezone},
+          "schedule" = ${JSON.stringify(schedule)}::jsonb,
+          "holidays" = ${JSON.stringify(holidays)}::jsonb,
+          "updatedAt" = NOW()
+        WHERE "id" = 'global'
+      `;
+      return;
+    }
+    await this.prisma.$executeRaw`
+      INSERT INTO "SlaBusinessHoursSetting"
+        ("id", "teamId", "timezone", "schedule", "holidays", "createdAt", "updatedAt")
+      VALUES
+        (${randomUUID()}, ${teamId}, ${timezone}, ${JSON.stringify(schedule)}::jsonb, ${JSON.stringify(holidays)}::jsonb, NOW(), NOW())
+      ON CONFLICT ("teamId") DO UPDATE SET
+        "timezone" = EXCLUDED."timezone",
+        "schedule" = EXCLUDED."schedule",
+        "holidays" = EXCLUDED."holidays",
+        "updatedAt" = NOW()
+    `;
+  }
+
+  /**
+   * Drop the SLA engine's cached calendars. Editing the organisation default
+   * clears every slot, because any team without its own calendar has that
+   * default cached under its own key.
+   */
+  private invalidateBusinessHoursCache(teamId: string | null): void {
+    if (teamId) {
+      this.businessHoursCache.invalidateTeam(teamId);
+      return;
+    }
+    this.businessHoursCache.invalidateAll();
+  }
+
+  /**
+   * Which calendar a read addresses, rejecting one the caller may not see.
+   *
+   * A named team must be inside the caller's SLA policy read scope. An omitted
+   * team resolves to the caller's own team for a team admin or lead, and to the
+   * organisation default only for an owner, who has no single team. That way a
+   * team admin editing "business hours" changes their own department, and
+   * touching the inherited default is a deliberate act available to the role
+   * that owns it. Enforced here rather than in a guard, so the endpoint does
+   * not depend on a decorator staying attached.
+   */
+  private resolveBusinessHoursReadScope(
+    user: AuthUser,
+    teamId: string | null,
+  ): string | null {
+    const scope = this.policyReadScope(user);
+    if (!teamId) {
+      return scope.length === 0 ? null : scope[0];
+    }
+    if (scope.length > 0 && !scope.includes(teamId)) {
+      throw new ForbiddenException(
+        'Cannot read business hours for another team',
+      );
+    }
+    return teamId;
+  }
+
+  /** Write counterpart of resolveBusinessHoursReadScope. */
+  private resolveBusinessHoursWriteScope(
+    user: AuthUser,
+    teamId: string | null,
+  ): string | null {
+    const scope = this.policyWriteScope(user);
+    if (!teamId) {
+      return scope.length === 0 ? null : scope[0];
+    }
+    if (scope.length > 0 && !scope.includes(teamId)) {
+      throw new ForbiddenException(
+        'Cannot update business hours for another team',
+      );
+    }
+    return teamId;
+  }
+
+  private async ensureGlobalBusinessHoursRecord(tx: PrismaTx) {
     const rows = await tx.$queryRaw<BusinessSettingsRow[]>`
       SELECT
         s."id",
+        s."teamId",
         s."timezone",
         s."schedule",
         s."holidays",
@@ -1190,6 +1337,7 @@ export class SlasService {
     const after = await tx.$queryRaw<BusinessSettingsRow[]>`
       SELECT
         s."id",
+        s."teamId",
         s."timezone",
         s."schedule",
         s."holidays",

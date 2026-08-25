@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, TicketPriority } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../prisma/prisma.service';
-import { parsePositiveInt, DEFAULT_SLA_CONFIG } from '../common/config.utils';
+import { BusinessHoursCacheService } from '../slas/business-hours-cache.service';
+import { DEFAULT_SLA_CONFIG } from '../common/config.utils';
 
 export type BusinessWeekDay =
   | 'Monday'
@@ -34,6 +35,14 @@ export type SlaConfigResult = {
   businessHoursOnly: boolean;
 };
 
+type BusinessHoursRow = {
+  timezone: string;
+  schedule: Prisma.JsonValue;
+  holidays: Prisma.JsonValue;
+};
+
+type BusinessHoursClient = Prisma.TransactionClient | PrismaService;
+
 @Injectable()
 export class TicketSlaCalculationService {
   private readonly logger = new Logger(TicketSlaCalculationService.name);
@@ -41,6 +50,7 @@ export class TicketSlaCalculationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly businessHoursCache: BusinessHoursCacheService,
   ) {}
 
   private readonly businessDaysOrder: BusinessWeekDay[] = [
@@ -62,16 +72,6 @@ export class TicketSlaCalculationService {
     { day: 'Saturday', enabled: false, start: '10:00', end: '14:00' },
     { day: 'Sunday', enabled: false, start: '10:00', end: '14:00' },
   ];
-
-  private readonly schemaCheckCacheTtlMs = parsePositiveInt(
-    process.env.SCHEMA_CHECK_CACHE_TTL_MS,
-    300_000,
-  );
-
-  private businessHoursSettingsCache: {
-    value: BusinessHoursSettings;
-    checkedAtMs: number;
-  } | null = null;
 
   async getSlaConfig(
     priority: TicketPriority,
@@ -142,48 +142,57 @@ export class TicketSlaCalculationService {
     };
   }
 
+  /**
+   * Add SLA hours to a start date using the calendar of the team that owns the
+   * clock. On a cross-team transfer that is the destination team.
+   */
   async addSlaHours(
     startAt: Date,
     hours: number,
     businessHoursOnly: boolean,
+    teamId: string | null,
     tx?: Prisma.TransactionClient,
-  ) {
+  ): Promise<Date> {
     if (!businessHoursOnly) {
       return this.addHours(startAt, hours);
     }
-    const settings = await this.getBusinessHoursSettings(tx);
+    const settings = await this.getBusinessHoursSettings(teamId, tx);
     return this.addBusinessHours(startAt, hours, settings);
   }
 
+  /**
+   * Unwind SLA hours back to the start of the cycle using the calendar the
+   * deadline was originally computed on. On a cross-team transfer that is the
+   * source team, not the destination.
+   */
   async subtractSlaHours(
     endAt: Date,
     hours: number,
     businessHoursOnly: boolean,
+    teamId: string | null,
     tx?: Prisma.TransactionClient,
-  ) {
+  ): Promise<Date> {
     if (!businessHoursOnly) {
       return this.addHours(endAt, -hours);
     }
-    const settings = await this.getBusinessHoursSettings(tx);
+    const settings = await this.getBusinessHoursSettings(teamId, tx);
     return this.subtractBusinessHours(endAt, hours, settings);
   }
 
-  async getBusinessHoursSettings(tx?: Prisma.TransactionClient) {
-    const now = Date.now();
-    if (
-      !tx &&
-      this.businessHoursSettingsCache &&
-      now - this.businessHoursSettingsCache.checkedAtMs <=
-        this.schemaCheckCacheTtlMs
-    ) {
-      return this.businessHoursSettingsCache.value;
+  /**
+   * Resolve a team's business-hours calendar: the team's own row, else the
+   * organisation default, else a hardcoded UTC week. The third level exists so
+   * a missing default row can never break SLA maths.
+   */
+  async getBusinessHoursSettings(
+    teamId: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BusinessHoursSettings> {
+    const cached = tx ? null : this.businessHoursCache.read(teamId);
+    if (cached) {
+      return cached;
     }
-
-    const client = tx ?? this.prisma;
-    const row = await client.slaBusinessHoursSetting.findUnique({
-      where: { id: 'global' },
-      select: { timezone: true, schedule: true, holidays: true },
-    });
+    const row = await this.findBusinessHoursRow(tx ?? this.prisma, teamId);
     const value = row
       ? this.normalizeBusinessHoursSettings(
           row.timezone,
@@ -195,15 +204,29 @@ export class TicketSlaCalculationService {
           schedule: [...this.defaultBusinessSchedule],
           holidays: [],
         };
-
     if (!tx) {
-      this.businessHoursSettingsCache = {
-        value,
-        checkedAtMs: now,
-      };
+      this.businessHoursCache.write(teamId, value);
     }
-
     return value;
+  }
+
+  private async findBusinessHoursRow(
+    client: BusinessHoursClient,
+    teamId: string | null,
+  ): Promise<BusinessHoursRow | null> {
+    if (teamId) {
+      const teamRow = await client.slaBusinessHoursSetting.findUnique({
+        where: { teamId },
+        select: { timezone: true, schedule: true, holidays: true },
+      });
+      if (teamRow) {
+        return teamRow;
+      }
+    }
+    return client.slaBusinessHoursSetting.findUnique({
+      where: { id: 'global' },
+      select: { timezone: true, schedule: true, holidays: true },
+    });
   }
 
   normalizeBusinessHoursSettings(

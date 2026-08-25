@@ -7,6 +7,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   ValidateNested,
 } from 'class-validator';
@@ -48,6 +49,16 @@ export class SlaHolidayDto {
   @IsString()
   @Matches(YYYY_MM_DD)
   date!: string;
+}
+
+/**
+ * Which calendar a business-hours request addresses. An omitted teamId is the
+ * organisation default, which is what the existing admin screen sends.
+ */
+export class SlaBusinessHoursScopeDto {
+  @IsOptional()
+  @IsUUID()
+  teamId?: string;
 }
 
 export class UpdateSlaBusinessHoursDto {

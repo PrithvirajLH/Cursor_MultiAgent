@@ -15,7 +15,10 @@ import {
   CreateSlaPolicyConfigDto,
   UpdateSlaPolicyConfigDto,
 } from './dto/policy-config.dto';
-import { UpdateSlaBusinessHoursDto } from './dto/sla-business-hours.dto';
+import {
+  SlaBusinessHoursScopeDto,
+  UpdateSlaBusinessHoursDto,
+} from './dto/sla-business-hours.dto';
 import { UpdateSlaPolicyDto } from './dto/update-sla.dto';
 import { SlasService } from './slas.service';
 
@@ -73,15 +76,26 @@ export class SlasController {
   }
 
   @Get('settings')
-  async getBusinessHoursSettings(@CurrentUser() user: AuthUser) {
-    return this.slasService.getBusinessHoursSettings(user);
+  async getBusinessHoursSettings(
+    @Query() query: SlaBusinessHoursScopeDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.slasService.getBusinessHoursSettings(
+      user,
+      query.teamId ?? null,
+    );
   }
 
   @Patch('settings')
   async updateBusinessHoursSettings(
+    @Query() query: SlaBusinessHoursScopeDto,
     @Body() payload: UpdateSlaBusinessHoursDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.slasService.updateBusinessHoursSettings(payload, user);
+    return this.slasService.updateBusinessHoursSettings(
+      payload,
+      user,
+      query.teamId ?? null,
+    );
   }
 }

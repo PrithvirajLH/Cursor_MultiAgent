@@ -180,6 +180,7 @@ model Team {
   ticketAccess TicketAccess[]
   routingRules RoutingRule[]
   slaPolicyAssignments SlaPolicyAssignment[]
+  businessHoursSetting SlaBusinessHoursSetting?
   lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
   savedViews   SavedView[]
   cannedResponses CannedResponse[]
@@ -527,11 +528,16 @@ model SlaPolicyAssignment {
 
 model SlaBusinessHoursSetting {
   id        String   @id @default("global")
+  /// Null is the organisation default calendar (the legacy "global" row). A team
+  /// row overrides it for that team only — configuration, not code.
+  teamId    String?  @unique
   timezone  String   @default("UTC")
   schedule  Json
   holidays  Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
 
 model SlaInstance {
