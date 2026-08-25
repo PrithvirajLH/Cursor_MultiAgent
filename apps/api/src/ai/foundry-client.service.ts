@@ -2,6 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AzureOpenAI } from 'openai';
 import { ToolRegistryService } from './tools/tool-registry.service';
+import {
+  systemPrompt as intentExtractorPrompt,
+  toolDefinitions as intentExtractorTools,
+} from './prompts/intent-extractor';
+import {
+  systemPrompt as departmentClassifierPrompt,
+  toolDefinitions as departmentClassifierTools,
+} from './prompts/department-classifier';
+import { systemPrompt as confidenceGatePrompt } from './prompts/confidence-gate';
+import { systemPrompt as ticketGeneratorPrompt } from './prompts/ticket-generator';
 import type { AgentStep, AgentRunResult } from './types/pipeline.types';
 
 // ─── Response Types ─────────────────────────────────────────────────────────
@@ -32,6 +42,57 @@ export class FoundryClientService {
     confidenceGate: 'CONFIDENCE_GATE_AGENT_ID',
     ticketGenerator: 'TICKET_GENERATOR_AGENT_ID',
   };
+
+  /**
+   * Read-only grounding tools offered to each step.
+   *
+   * Without these the model cannot look anything up, so it invents department
+   * and category ids and reports them at high confidence — the exact failure
+   * ADR-002 ("the AI reasons; tools act") exists to prevent.
+   *
+   * Deliberately empty for two steps:
+   * - confidenceGate now only phrases a question and needs no data;
+   * - ticketGenerator must NOT be handed create_ticket. Persistence is
+   *   orchestrated by the pipeline, not delegated to the model — otherwise a
+   *   dry run could write real tickets.
+   */
+  private readonly agentPromptMap: Record<AgentStep, string> = {
+    intentExtractor: intentExtractorPrompt,
+    departmentClassifier: departmentClassifierPrompt,
+    confidenceGate: confidenceGatePrompt,
+    ticketGenerator: ticketGeneratorPrompt,
+  };
+
+  private readonly agentToolMap: Record<AgentStep, readonly unknown[]> = {
+    intentExtractor: intentExtractorTools,
+    departmentClassifier: departmentClassifierTools,
+    confidenceGate: [],
+    ticketGenerator: [],
+  };
+
+  /**
+   * The prompt files declare tools in Chat Completions shape
+   * ({ type, function: { name, ... } }); the Responses API expects the fields
+   * flattened onto the tool itself.
+   */
+  private toResponsesTools(definitions: readonly unknown[]) {
+    return definitions.map((definition) => {
+      const tool = definition as {
+        type?: string;
+        function?: {
+          name?: string;
+          description?: string;
+          parameters?: unknown;
+        };
+      };
+      return {
+        type: 'function',
+        name: tool.function?.name,
+        description: tool.function?.description,
+        parameters: tool.function?.parameters,
+      };
+    });
+  }
 
   constructor(
     private readonly config: ConfigService,
@@ -77,21 +138,59 @@ export class FoundryClientService {
    */
   async runAgent(step: AgentStep, userMessage: string): Promise<AgentRunResult> {
     const openai = this.getClient();
-    const agentName = this.getAgentName(step);
     const model = this.config.get<string>('AZURE_AI_FOUNDRY_MODEL') ?? 'gpt-4o';
     const startTime = Date.now();
     const toolCallsMade: string[] = [];
 
+    const tools = this.toResponsesTools(this.agentToolMap[step]);
+
+    // Two ways to reach the model, and they are mutually exclusive: Azure
+    // rejects a request carrying both `agent_reference` and `tools` with
+    // "400 Not allowed when agent is specified".
+    //
+    //  - agent mode (default): the prompt AND the tools live in the Azure
+    //    Foundry agent definition. Nothing here can influence them, so if the
+    //    agent has no tools registered the model cannot look anything up and
+    //    will invent department ids at high confidence.
+    //  - inline mode (AI_INLINE_PROMPTS=true): the prompt and tools are sent
+    //    from this repo, so both are version controlled and the grounding
+    //    tools are guaranteed to be offered. The *_AGENT_ID vars go unused.
+    // Defaults to inline. The prompts and tool definitions in this repo are the
+    // source of truth: they are reviewable, versioned, and — critically — they
+    // are what the accuracy benchmark scores, so the measured number describes
+    // what actually ships.
+    //
+    // Set AI_INLINE_PROMPTS=false to fall back to the Azure-hosted agents. That
+    // path only works if the grounding tools are registered on each agent in
+    // Foundry; without them the model cannot look anything up and will invent
+    // department ids at high confidence.
+    const inline =
+      (this.config.get<string>('AI_INLINE_PROMPTS') ?? 'true').toLowerCase() !==
+      'false';
+
+    // Resolved only in agent mode: the *_AGENT_ID vars are unused inline, and
+    // getAgentName throws when they are absent.
+    const agentName = inline ? '' : this.getAgentName(step);
+
+    const body = inline
+      ? {
+          model,
+          instructions: this.agentPromptMap[step],
+          input: [{ role: 'user', content: userMessage }],
+          ...(tools.length > 0 ? { tools } : {}),
+        }
+      : {
+          model,
+          input: [{ role: 'user', content: userMessage }],
+          agent_reference: {
+            name: agentName,
+            type: 'agent_reference',
+          },
+        };
+
     // Initial call
     let response = (await openai.post('/responses', {
-      body: {
-        model,
-        input: [{ role: 'user', content: userMessage }],
-        agent_reference: {
-          name: agentName,
-          type: 'agent_reference',
-        },
-      },
+      body,
     })) as FoundryResponse;
 
     // Handle tool call loop (max 5 rounds)
@@ -117,17 +216,31 @@ export class FoundryClientService {
         });
       }
 
-      // Continue conversation with tool results
+      // Continue conversation with tool results.
+      //
+      // This MUST mirror the mode of the initial call. Sending agent_reference
+      // here while the first call was inline hands the conversation back to the
+      // Azure agent, whose own prompt then answers instead of the one that
+      // asked for the tools — the model ends up ignoring the tool results it
+      // just requested.
       response = (await openai.post('/responses', {
-        body: {
-          model,
-          input: toolResults,
-          previous_response_id: response.id,
-          agent_reference: {
-            name: agentName,
-            type: 'agent_reference',
-          },
-        },
+        body: inline
+          ? {
+              model,
+              instructions: this.agentPromptMap[step],
+              input: toolResults,
+              previous_response_id: response.id,
+              ...(tools.length > 0 ? { tools } : {}),
+            }
+          : {
+              model,
+              input: toolResults,
+              previous_response_id: response.id,
+              agent_reference: {
+                name: agentName,
+                type: 'agent_reference',
+              },
+            },
       })) as FoundryResponse;
     }
 
