@@ -30,6 +30,7 @@ Verbatim response from `GET /api/health/ready`:
 | AI pipeline | `configured` | Foundry endpoint + key present; AI intake works. | — |
 | SLA worker | `enabled`, last run OK | Breach/at-risk detection is running every minute. | — |
 | Readiness token | not set | `/api/health/ready` is open, but behind Easy Auth. | Set `HEALTH_READY_TOKEN` when card 0.4 excludes the path for a monitor. |
+| Container logging | **on** since 2026-08-26 17:35 UTC (filesystem, 3 days / 100 MB) | App stdout (pino JSON) and the platform log are readable via Kudu `/api/vfs/LogFiles/`; the platform log names the running deployment id. | Card 0.4 Part B1 is therefore already done. |
 
 ## Usage snapshot (read-only query, 2026-08-26 17:20 UTC)
 

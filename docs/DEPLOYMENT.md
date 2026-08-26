@@ -191,16 +191,38 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$U:$P" "$SCM/dist/src/health/health
 - Kudu's command API (`POST …/api/command` with `curl http://localhost:8080/…`)
   **cannot reach the app** on Linux App Service — Kudu runs in its own container
   and only shares the filesystem. You get `ExitCode: 7` (connection refused).
-- **Container logging is off** in production (`az webapp log show` →
-  `applicationLogs.fileSystem.level: Off`, no `*_default_docker.log` under
-  `/LogFiles`), so there is no startup log to read either. Turning it on is a
-  config change (`az webapp log config -g csnhc-ai -n TicketTicket
-  --docker-container-logging filesystem`) — worth doing once so future deploys
-  can be verified from the log instead of a browser.
+- Container logging **was** off until 2026-08-26 17:35 UTC. It is now on
+  (`--docker-container-logging filesystem`, 3-day / 100 MB retention), which
+  enables the check below.
 
-Until then the only functional check is a **signed-in browser**: open
-`/api/health` and `/api/health/ready` (the readiness inventory added 2026-08-26)
-and read the JSON.
+### Verifying from the container log (preferred since 2026-08-26)
+
+Both logs sit on the shared filesystem, readable through Kudu VFS with the same
+`$U:$P` as above:
+
+```bash
+LOGS="$SCM/../../LogFiles"   # i.e. https://…scm…/api/vfs/LogFiles/
+# 1. the platform log names the deployment that is actually running
+curl -s -u "$U:$P" "$SCM_ROOT/api/vfs/LogFiles/$(date -u +%Y_%m_%d)_ln0xsdlwk000A9D_docker.log" \
+  | grep -E "Site is running with deployment version|Site started"
+#    → "Site is running with deployment version: <id from az webapp log deployment list>"
+# 2. the app container's stdout (pino JSON) proves the new code booted
+curl -s -u "$U:$P" "$SCM_ROOT/api/vfs/LogFiles/$(date -u +%Y_%m_%d)_ln0xsdlwk000A9D_default_docker.log" \
+  | grep -E 'Mapped \{/api/health/ready|Application is running|Nest application successfully started'
+```
+
+(`SCM_ROOT` = `https://ticketticket-gmgwf9efe4h6bmfb.scm.southcentralus-01.azurewebsites.net`;
+the `ln0xsdlwk000A9D` instance id may change if the plan is rescaled — list
+`/api/vfs/LogFiles/` and take the newest `*_default_docker.log`.) Live
+alternative: `az webapp log tail -g csnhc-ai -n TicketTicket`.
+
+Grep for a route or log line that is **new in the release** — on 2026-08-26 that
+was `Mapped {/api/health/ready, GET}`. The container restarts in ~25 s
+(`Site startup probe succeeded after 22 seconds` in the platform log).
+
+A **signed-in browser** on `/api/health` and `/api/health/ready` remains the
+final functional check; the Playwright MCP browser carries the developer's
+Microsoft session, so the planning session can do it without a manual login.
 
 Also confirm: `az webapp show -g csnhc-ai -n TicketTicket --query state` → `Running`.
 
