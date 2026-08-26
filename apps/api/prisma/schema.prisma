@@ -236,6 +236,7 @@ model KbArticle {
   status      KbArticleStatus @default(DRAFT)
   isInternal  Boolean         @default(false)
   viewCount   Int             @default(0)
+  deletedAt   DateTime?
   categoryId  String?
   authorId    String?
   createdAt   DateTime        @default(now())
@@ -247,6 +248,7 @@ model KbArticle {
   @@index([categoryId])
   @@index([status])
   @@index([slug])
+  @@index([deletedAt])
 }
 
 model TeamMember {
@@ -283,13 +285,15 @@ model Ticket {
   resolvedAt     DateTime?
   closedAt       DateTime?
   completedAt    DateTime?
+  deletedAt      DateTime?
+  deletedById    String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
   requester      User           @relation("TicketRequester", fields: [requesterId], references: [id])
-  assignedTeam   Team?          @relation(fields: [assignedTeamId], references: [id])
+  assignedTeam   Team?          @relation(fields: [assignedTeamId], references: [id], onDelete: Restrict)
   assignee       User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  category       Category?      @relation(fields: [categoryId], references: [id])
+  category       Category?      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   messages       TicketMessage[]
   events         TicketEvent[]
   accessGrants   TicketAccess[]
@@ -310,6 +314,7 @@ model Ticket {
   @@index([requesterId, createdAt])
   @@index([dueAt])
   @@index([completedAt])
+  @@index([deletedAt])
   @@index([categoryId])
   @@index([priority])
   @@index([createdAt])
