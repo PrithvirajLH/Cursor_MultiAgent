@@ -64,7 +64,7 @@ Notable **absences** (the names tell the story as much as the presence):
 - No `HEALTH_READY_TOKEN`, no `RATE_LIMIT_*`, no `CACHE_SUMMARY_TTL_MS` → all defaults.
 - `AI_PIPELINE_ENABLED` is present but **not read by the code** (see `.env.example`); AI is on because the Foundry endpoint and key are set.
 - `VITE_*` values are build-time inputs for the web app; setting them on the API App Service has no runtime effect (harmless).
-- `DEPLOYED_COMMIT_SHA` still reads `458543a` at capture time — the planning session was blocked from changing app settings; update it to `c2ff777` (it is a label, not a switch).
+- `DEPLOYED_COMMIT_SHA` = `c2ff777` (set by the owner 2026-08-26 after the deploy; the planning session is blocked from changing app settings). Note: `az webapp config appsettings set` prints every value as `null` in recent CLI versions — that is output redaction, not a wipe; confirm with `appsettings list`.
 
 ## How this was captured
 
