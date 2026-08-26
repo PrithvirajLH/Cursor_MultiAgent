@@ -10,9 +10,10 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Clock3, Copy } from "lucide-react";
+import { ArrowLeft, Check, Clock3, Copy, Trash2 } from "lucide-react";
 import {
   addTicketMessage,
+  deleteTicket,
   ApiError,
   assignTicket,
   bulkPriorityTickets,
@@ -39,7 +40,9 @@ import {
   type TicketStatus,
 } from "../api/client";
 import { useTicketTabs } from "../contexts/TicketTabsContext";
+import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
 import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
@@ -157,6 +160,7 @@ export function TicketDetailPage({
   const navigate = useNavigate();
   const ticketTabs = useTicketTabs();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   /* ——— State ——— */
 
@@ -229,6 +233,8 @@ export function TicketDetailPage({
     message: string;
     type: "success" | "error";
   } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
     edit: true,
     followers: false,
@@ -335,6 +341,17 @@ export function TicketDetailPage({
     const isAssignee = ticket.assignee?.email === currentEmail;
     return isCurrentUserOnAssignedTeam && (isAssignee || !ticket.assignee);
   }, [currentEmail, isCurrentUserOnAssignedTeam, role, ticket]);
+
+  // Mirrors TicketsService.softDelete: OWNER any ticket; TEAM_ADMIN only the
+  // tickets assigned to their primary team. Never on an already-deleted ticket.
+  const isDeleted = Boolean(ticket?.deletedAt);
+  const canDelete = useMemo(() => {
+    if (!ticket || isDeleted) return false;
+    if (role === "OWNER") return true;
+    if (role !== "TEAM_ADMIN") return false;
+    const primaryTeamId = headerCtx?.currentUser?.primaryTeamId ?? null;
+    return Boolean(primaryTeamId) && ticket.assignedTeam?.id === primaryTeamId;
+  }, [headerCtx?.currentUser?.primaryTeamId, isDeleted, role, ticket]);
 
   // Peer agent: same team, not the assignee. Can read + post INTERNAL notes only.
   const isPeerAgent = useMemo(() => {
@@ -824,6 +841,14 @@ export function TicketDetailPage({
         return;
       }
 
+      if (payload.reason === "deleted" || payload.reason === "restored") {
+        // Re-fetch instead of patching: for everyone but OWNER the ticket is
+        // now hidden (404 -> the existing not-found state); OWNER sees the
+        // deleted / restored state and the composer hides or returns.
+        void loadTicketDetail(ticketId);
+        return;
+      }
+
       const shouldPatchInPlace =
         payload.reason === "attachment_added" ||
         payload.reason === "attachment_scan_status_changed" ||
@@ -1269,6 +1294,31 @@ export function TicketDetailPage({
       type: copied ? "success" : "error",
     });
   }, [ticketId]);
+
+  const handleDeleteTicket = useCallback(async () => {
+    if (!ticket) return;
+    setDeleting(true);
+    try {
+      await deleteTicket(ticket.id);
+      setDeleteDialogOpen(false);
+      ticketTabs.closeTab(ticket.id);
+      notifyTicketAggregatesChanged();
+      notifyTicketReportsChanged();
+      toast.success("Ticket deleted");
+      navigate("/tickets");
+    } catch (error) {
+      setCopyToast({ message: handleApiError(error), type: "error" });
+    } finally {
+      setDeleting(false);
+    }
+  }, [
+    navigate,
+    notifyTicketAggregatesChanged,
+    notifyTicketReportsChanged,
+    ticket,
+    ticketTabs,
+    toast,
+  ]);
 
   const handleMessageBodyChange = useCallback(
     (nextBody: string) => {
@@ -1759,6 +1809,17 @@ export function TicketDetailPage({
       className={`flex flex-col bg-card animate-fade-in ${ticketIdProp ? "h-full overflow-hidden" : "h-screen"}`}
       title={headerTitle}
     >
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Delete this ticket?"
+        message={`${ticket?.displayId ?? (ticket ? `#${ticket.number}` : "This ticket")} disappears from every queue and report. An owner can restore it.`}
+        confirmLabel="Delete ticket"
+        destructive
+        loading={deleting}
+        onConfirm={() => void handleDeleteTicket()}
+        onCancel={() => setDeleteDialogOpen(false)}
+      />
+
       {/* Toast notification */}
       {copyToast && (
         <div className="fixed right-4 top-4 z-50">
@@ -1896,6 +1957,16 @@ export function TicketDetailPage({
               {/* Integrated Subject Header */}
               {ticket && (
                 <div className="px-6 pt-3 pb-0">
+                  {ticket.deletedAt && (
+                    <div
+                      role="status"
+                      className="mb-2 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Deleted on {new Date(ticket.deletedAt).toLocaleString()}.
+                      Hidden from every queue and report; an owner can restore it.
+                    </div>
+                  )}
                   <div className="relative overflow-hidden rounded-xl border border-border bg-card px-5 py-3 shadow-sm sm:px-6 sm:py-3.5">
                     <div className="pointer-events-none absolute inset-y-0 right-[-80px] hidden w-64 rounded-full bg-gradient-to-l from-cyan-500/10 to-transparent blur-3xl sm:block" />
                     <div className="flex items-start justify-between gap-6">
@@ -1931,6 +2002,17 @@ export function TicketDetailPage({
                         >
                           <Copy className="h-4 w-4 text-muted-foreground" />
                         </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteDialogOpen(true)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card/90 text-foreground shadow-sm transition hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive focus:outline-none focus:ring-2 focus:ring-ring/30"
+                            title="Delete ticket"
+                            aria-label="Delete ticket"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2108,8 +2190,8 @@ export function TicketDetailPage({
                         messageBody={messageBody}
                         onMessageBodyChange={handleMessageBodyChange}
                         onMessageInputBlur={handleMessageInputBlur}
-                        canManage={canManage}
-                        isPeerAgent={isPeerAgent}
+                        canManage={canManage && !isDeleted}
+                        isPeerAgent={isPeerAgent && !isDeleted}
                         canUpload={canUpload}
                         onReply={() => void handleReply()}
                         onLoadMore={() =>

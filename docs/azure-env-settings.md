@@ -89,6 +89,23 @@ Leave unset or `false` if you don’t run these workers.
 
 ---
 
+## Optional – Retention (purge job)
+
+**Two switches, both required before anything is destroyed:** `RETENTION_ENABLED=true` starts the job, and only `RETENTION_DRY_RUN=false` lets it delete. With the defaults nothing runs; with `ENABLED=true` and the default dry run, every tick writes one `RETENTION_RUN` admin-audit event listing what *would* be purged. The closed-ticket and admin-audit windows are **unset on purpose** until the owner decides the retention years — those classes are skipped while unset.
+
+| Name | Default | Notes |
+|------|---------|-------|
+| **RETENTION_ENABLED** | `false` | Start the periodic job. |
+| **RETENTION_DRY_RUN** | `true` | Count only. Only the literal `false` turns deletion on. |
+| **RETENTION_INTERVAL_MS** | `21600000` | Tick interval (6 h). |
+| **RETENTION_BATCH_SIZE** | `100` | Max tickets purged per class per tick. |
+| **RETENTION_SOFT_DELETED_DAYS** | `30` | Soft-deleted tickets and help articles are purged this long after deletion. |
+| **RETENTION_CLOSED_TICKET_DAYS** | unset | Closed tickets older than this are purged. Owner decision pending. |
+| **RETENTION_ADMIN_AUDIT_DAYS** | unset | Admin audit rows older than this are purged (`RETENTION_RUN` rows never are). Owner decision pending. |
+| **RETENTION_OUTBOX_SENT_DAYS** | `180` | Sent notification-outbox rows older than this are purged. |
+
+---
+
 ## Optional – Readiness
 
 Operators and monitors can read the live state of every optional integration (database, Redis queues, SMTP, Web PubSub, Blob storage, attachment scanner, AI, SLA worker) from `GET /api/health/ready` — states only, never configuration values.

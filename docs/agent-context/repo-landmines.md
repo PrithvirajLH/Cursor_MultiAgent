@@ -98,9 +98,18 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   npm run test:db:reset   # restores fixtures
   ```
 
-- **`Ticket.assignedTeam` is an optional relation with no explicit `onDelete`,**
-  so Prisma defaults to `SetNull`: deleting a Team silently unassigns every ticket
-  that referenced it, with no error. This schema has no soft delete anywhere.
+- **`Ticket.assignedTeam` and `Ticket.category` are `onDelete: Restrict`** (since
+  `20260826180000_soft_delete_and_fk_restrict`): deleting a Team or Category
+  that still has tickets is refused by the database, and `DELETE
+  /api/categories/:id` answers 400 "Deactivate it instead". Before that
+  migration both relations defaulted to `SetNull` and silently un-assigned /
+  un-classified tickets. **Soft delete exists for two models only:**
+  `Ticket.deletedAt`/`deletedById` and `KbArticle.deletedAt`. The ticket filter
+  lives in `AccessControlService` (`buildTicketAccessFilter` /
+  `accessConditionSql` add `deletedAt IS NULL` unless an OWNER passes
+  `includeDeleted`); any new ticket query that bypasses the chokepoint must add
+  `deletedAt: null` itself. Purging is the `RetentionService` job, off and
+  dry-run by default.
 
 - **`prisma generate` fails with `EPERM`** whenever a node process holds
   `query_engine-windows.dll.node` — a dev server, or an orphaned jest run. See

@@ -245,6 +245,8 @@ export type TicketRecord = {
   firstResponseDueAt?: string | null;
   firstResponseAt?: string | null;
   slaPausedAt?: string | null;
+  /** Set when the ticket is soft-deleted; only OWNER ever receives such a record. */
+  deletedAt?: string | null;
   allowedTransitions?: string[];
 };
 
@@ -1138,6 +1140,22 @@ export function transferTicket(ticketId: string, payload: TransferPayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/** Soft-delete a ticket (OWNER, or TEAM_ADMIN of the assigned team). */
+export function deleteTicket(ticketId: string, reason?: string) {
+  return apiFetch<{ id: string; deletedAt: string }>(`/tickets/${ticketId}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** Restore a soft-deleted ticket (OWNER only). */
+export function restoreTicket(ticketId: string) {
+  return apiFetch<{ id: string; deletedAt: null }>(
+    `/tickets/${ticketId}/restore`,
+    { method: "POST" },
+  );
 }
 
 export function setTicketCategory(
