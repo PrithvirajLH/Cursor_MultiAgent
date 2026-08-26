@@ -196,3 +196,27 @@ If the GitHub remote is used (see 0.2), push the branch to a **private** fork or
 3. Exit codes from the two probes (bad migration → 1, allow-drop → 0).
 4. `git diff --stat HEAD~1`.
 5. Anything that did not match — in particular if one of the three existing branch migrations trips the check.
+
+---
+
+## 12. Correction issued mid-build (planning session, 2026-08-26)
+
+**`scripts/` is gitignored.** `.gitignore` line 49 (`**/scripts/`, with only `apps/api/scripts/` re-included) swallows the new `scripts/check-migrations.sh`, so Task 4's `git add` will refuse it — the same trap card 0.11 hit with `PROJECT_DOCUMENTATION.md`. Fix, as part of this card:
+
+- In `.gitignore`, directly under the `!apps/api/scripts/**` line, add:
+  ```
+  # Root scripts/ is repo tooling (migration guard, perf scripts) — tracked.
+  !/scripts/
+  !/scripts/**
+  ```
+- This also un-ignores `scripts/perf/{measure,load,ui-perf}.mjs`, which card 0.9 needs and which were verified credential-free on 2026-08-26. **Include them in the commit** (`git add scripts/`) — three extra files, intentional.
+- §6 file list therefore gains `.gitignore` and the three `scripts/perf/*.mjs` files; report the final count.
+- Verify with `git check-ignore -v scripts/check-migrations.sh` → no output (not ignored) before committing.
+
+Also note: after the owner's 2026-08-26 decision there is **no CI gate** — the two workflow edits still ship (harmless, ready if CI is ever enabled), but the script's real home is the planner's verification and the deploy pre-flight. Add this line to the code block in `docs/DEPLOYMENT.md` § "1. Pre-flight", after the test commands:
+
+```bash
+bash scripts/check-migrations.sh origin/main      # every new migration must print "ok" or "ALLOWED"
+```
+
+(`docs/DEPLOYMENT.md` joins the §6 list.)
