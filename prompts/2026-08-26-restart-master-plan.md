@@ -18,17 +18,28 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 |---|---|---|---|
 | 0.1 Fix the failing front-end tests | **GREEN** (verified 2026-08-26) | `prompts/2026-08-26-0-1-web-unit-tests-green.md` | Commit `d6cc683`. Planner re-ran: vitest 36/36 (13 files), tsc web+api clean, jest 186/186, diff = exactly the 5 files, no lockfile change. Merge OK; nothing to deploy. New web baseline recorded in CLAUDE.md. |
 | 0.5 Readiness endpoint | **DONE — deployed & verified** `c2ff777` → production 2026-08-26 17:09 UTC (deployment `9e66be3c`, status 4, asset hash matched, new health files on server, `/api/health/ready` answered from a signed-in browser). Part B written: `docs/azure-env-inventory.md`. **Production findings:** SMTP missing (no email leaves prod), attachment scanner `blocked` (uploads stuck PENDING), Redis off, Blob + PubSub + AI on. Outstanding: owner sets `DEPLOYED_COMMIT_SHA=c2ff777` (planner blocked from app-settings changes). | `prompts/2026-08-26-0-5-readiness-endpoint.md` §12–13 | Commit `7ce9516`. Planner re-ran: unit 196/196, full integration 362 + 1 skipped (269 s, 0 failures), tsc api+web clean, vitest 36/36, diff = §6 list + `test/setup-tests.ts`, no lockfile/schema. Bonus fix: integration harness is now hermetic (attachment/realtime specs no longer hit real Azure from dev machines). **Deploy required** (first of this cycle); then Part B (`docs/azure-env-inventory.md`). New baselines: 196 / 362+1 / 36. |
-| 0.2 Deploy gate | Queued — **decision needed** | — | Pick hosted grant / self-hosted agent / private GitHub. |
+| 0.2 Deploy gate | **DECIDED 2026-08-26 — no automated gate.** | — | Owner: deploys go through the deploy-agent session only. The gate is human: planning session must say GREEN (after re-running the checks itself) before anyone merges or deploys; the deploy-agent kickoff states the card and expected SHA. `scripts/check-migrations.sh` (0.3) runs locally in the planner's verification and in the deploy pre-flight, not in CI. GitHub/Azure CI stays as-is but is not relied on. |
 | 0.3 Migration DROP guard | **Handoff written** (2026-08-26) | `prompts/2026-08-26-0-3-migration-drop-guard.md` | Script + 2 CI files. Independent of 0.2 (runs once a CI exists). Merge on GREEN; no deploy. **Do before 0.8** (defines `-- allow-drop:`). |
 | 0.4 Monitoring + alerts | Queued | — | After 0.5. |
-| 0.6 Staging | Queued | — | After 0.2. |
-| 0.7 Virus scanning | Queued — **decision needed** | — | Defender for Storage / ClamAV / accept risk. |
+| 0.6 Staging | **DECIDED 2026-08-26 — not doing.** | — | Owner: no staging environment. Consequences: migrations go straight to production (additive-only, migrate before app — unchanged); 0.9 measures performance locally; the planner's full local test run is the pre-production check. |
+| 0.7 Virus scanning | **Deferred — decision pending** | — | Owner (2026-08-26): no decision yet. Production has 0 attachments today, so nothing is stuck. **Must be decided before the first real team uploads a file.** Options on the card; Blob storage is already in place. |
 | 0.8 Soft delete + retention | **Handoff written** (2026-08-26) | `prompts/2026-08-26-0-8-soft-delete-and-retention.md` | Buildable now: job ships OFF + dry-run; retention years are config, decided later. Start **after 0.5 and 0.3 are merged**. Migration (additive + FK Restrict). Merge on GREEN; **deploy** (migration first, per runbook). |
-| 0.9 Perf re-measure | Queued | — | After 0.6. |
+| 0.9 Perf re-measure | Queued — **re-scoped** | — | No staging (0.6), so measure against local WSL Postgres with a 20k-ticket perf seed; record relative numbers vs the Feb baseline; regression check runs locally in the planner's verification, not CI. |
 | 0.10 Seed cleanup + HR merge | Queued | — | After 0.8. |
 | 0.11 Retire stale docs | **GREEN** (verified 2026-08-26) | `prompts/2026-08-26-0-11-retire-stale-docs.md` | Commit `b985644`: 8 banners + README + README-SUPERSEDED (10 files). **Prompt error, not implementer error:** `PROJECT_DOCUMENTATION.md` and `sprint.md` are gitignored, so those two edits could not be committed. Planner then moved the bannered docs into `docs/archive/` during the repo clean-up (same day). Merge OK; no deploy. |
 | 0.12 Backup drill | Queued | — | Any time. |
 | Phase 1–3 | Queued | — | See cards below. |
+
+### Decisions log
+
+| Date | Decision | By | Effect |
+|---|---|---|---|
+| 2026-08-26 | No automated deploy gate; deploys only via the deploy-agent session after the planner's GREEN | owner | 0.2 closed; 0.3 script used locally, not in CI |
+| 2026-08-26 | No staging environment | owner | 0.6 closed; 0.9 re-scoped to local measurement; migrations remain additive-only straight to production |
+| 2026-08-26 | Virus scanner: no decision yet | owner | 0.7 deferred; hard deadline = before first real team uploads |
+| 2026-08-26 | Monitoring via Application Insights (planner recommendation, not objected) | planner | 0.4 handoff written on that basis; resource creation is an Azure change for the owner/deploy agent |
+| open | Email: configure Office 365 SMTP vs stay in-app-only | owner | blocks 1.14, 1.16 and every "email the requester" feature |
+| open | Retention periods (years) for closed tickets / attachments / audit | owner | 0.8 ships with the job OFF; values are config |
 
 ### Follow-ups discovered during implementation (not yet cards)
 
