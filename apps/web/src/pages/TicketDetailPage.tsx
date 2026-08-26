@@ -2192,6 +2192,7 @@ export function TicketDetailPage({
                         onMessageInputBlur={handleMessageInputBlur}
                         canManage={canManage && !isDeleted}
                         isPeerAgent={isPeerAgent && !isDeleted}
+                        readOnly={isDeleted}
                         canUpload={canUpload}
                         onReply={() => void handleReply()}
                         onLoadMore={() =>

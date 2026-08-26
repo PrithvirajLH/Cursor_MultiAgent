@@ -135,6 +135,9 @@ export class ReportsService {
       {
         [dateField]: { gte: fromDate, lt: toEndExclusive },
       } as Prisma.TicketWhereInput,
+      // Soft-deleted tickets never count in reports (the raw-SQL reports get
+      // this from accessConditionSql; the groupBy reports come through here).
+      { deletedAt: null },
     ];
 
     if (query.teamId) conditions.push({ assignedTeamId: query.teamId });

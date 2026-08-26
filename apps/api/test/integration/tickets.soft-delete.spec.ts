@@ -153,6 +153,25 @@ describe('Ticket soft delete / restore', () => {
       .expect(403);
   });
 
+  it('lets OWNER read the history of a deleted ticket; non-owners get 404', async () => {
+    await request(server)
+      .get(`/api/tickets/${ticketId}/messages`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    await request(server)
+      .get(`/api/tickets/${ticketId}/events`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    await request(server)
+      .get(`/api/tickets/${ticketId}/messages`)
+      .set(authHeader(fixtureEmails.requester))
+      .expect(404);
+    await request(server)
+      .get(`/api/tickets/${ticketId}/events`)
+      .set(authHeader(fixtureEmails.agent))
+      .expect(404);
+  });
+
   it('lets only OWNER restore, after which the AGENT can read it again', async () => {
     await request(server)
       .post(`/api/tickets/${ticketId}/restore`)

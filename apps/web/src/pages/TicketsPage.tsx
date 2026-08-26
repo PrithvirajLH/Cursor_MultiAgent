@@ -729,6 +729,17 @@ export function TicketsPage({
       if (!ticketId) {
         return;
       }
+      // Soft delete / restore are not in-place patches: a deleted ticket must
+      // leave every queue immediately (the API hides it from all non-owner
+      // reads), and a restored one comes back through the normal hydrate path.
+      if (payload.reason === "deleted") {
+        setTickets((prev) => prev.filter((ticket) => ticket.id !== ticketId));
+        return;
+      }
+      if (payload.reason === "restored") {
+        void maybeHydrateRealtimeTicket(ticketId);
+        return;
+      }
       const presentBeforePatch = ticketsRef.current.some(
         (ticket) => ticket.id === ticketId,
       );

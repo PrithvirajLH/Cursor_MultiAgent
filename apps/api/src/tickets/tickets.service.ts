@@ -899,11 +899,16 @@ export class TicketsService {
     take = 50,
     cursor?: string,
   ) {
-    // Single query: verify ticket exists AND user has access
+    // Single query: verify ticket exists AND user has access. OWNER may read
+    // the messages of a soft-deleted ticket (includeDeleted is ignored for
+    // every other role); non-owners get 404, never 403, so the ticket's
+    // existence is not revealed.
     const accessibleTicket = await this.prisma.ticket.findFirst({
       where: {
         id: ticketId,
-        ...this.accessControl.buildTicketAccessFilter(user),
+        ...this.accessControl.buildTicketAccessFilter(user, {
+          includeDeleted: true,
+        }),
       },
       select: { id: true },
     });
@@ -911,7 +916,7 @@ export class TicketsService {
     if (!accessibleTicket) {
       // Distinguish "not found" from "forbidden"
       const exists = await this.prisma.ticket.count({
-        where: { id: ticketId },
+        where: { id: ticketId, deletedAt: null },
       });
       if (!exists) throw new NotFoundException('Ticket not found');
       throw new ForbiddenException('No access to this ticket');

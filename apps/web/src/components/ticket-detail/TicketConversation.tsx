@@ -89,6 +89,8 @@ export type TicketConversationProps = {
   onMessageInputBlur: () => void;
   canManage: boolean;
   isPeerAgent?: boolean;
+  /** Hide the composer entirely (e.g. a soft-deleted ticket viewed by an owner). */
+  readOnly?: boolean;
   canUpload: boolean;
   onReply: () => void;
   onLoadMore: () => void;
@@ -131,6 +133,7 @@ export const TicketConversation = memo(function TicketConversation({
   onMessageInputBlur,
   canManage,
   isPeerAgent = false,
+  readOnly = false,
   canUpload,
   onReply,
   onLoadMore,
@@ -392,6 +395,7 @@ export const TicketConversation = memo(function TicketConversation({
         </div>
       ) : null}
 
+      {readOnly ? null : (
       <div className="shrink-0 border-t border-border bg-background px-4 py-2 sm:px-6 sm:py-2.5">
         <div className="mx-auto w-full max-w-4xl">
           <div
@@ -499,6 +503,7 @@ export const TicketConversation = memo(function TicketConversation({
           ) : null}
         </div>
       </div>
+      )}
     </div>
   );
 });
