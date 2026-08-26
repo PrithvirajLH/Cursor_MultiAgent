@@ -72,6 +72,33 @@ delete process.env.RATE_LIMIT_WEBHOOK_TTL_MS;
 delete process.env.RATE_LIMIT_HIGH_WRITE_LIMIT;
 delete process.env.RATE_LIMIT_HIGH_WRITE_TTL_MS;
 
+// Optional integrations must be OFF in the test environment regardless of what
+// the dev `.env` contains, so the suite behaves identically here and in CI
+// (CI has no `.env` at all). Without this, attachment specs write to the real
+// Blob container and realtime specs publish to the real Web PubSub hub.
+//
+// Assign '' rather than delete: `new PrismaClient()` (PrismaService, inside Nest
+// DI — i.e. AFTER this file) re-reads the dev `.env` and re-fills every key that
+// is undefined at that moment; a key that is present-but-empty is left alone.
+// Every consumer treats '' as "not configured" (`?.trim() || ''`, `Boolean(...)`).
+for (const key of [
+  'AZURE_WEB_PUBSUB_CONNECTION_STRING',
+  'AZURE_WEB_PUBSUB_HUB',
+  'AZURE_WEB_PUBSUB_TOKEN_LIFETIME_MINUTES',
+  'AZURE_STORAGE_CONNECTION_STRING',
+  'AZURE_STORAGE_CONTAINER',
+  'AZURE_AI_FOUNDRY_ENDPOINT',
+  'AZURE_AI_FOUNDRY_API_KEY',
+  'AZURE_AI_FOUNDRY_MODEL',
+  'SMTP_HOST',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'HEALTH_READY_TOKEN',
+]) {
+  process.env[key] = '';
+}
+process.env.AUTOMATION_QUEUE_ENABLED = 'false';
+
 // Attachment AV gating MUST be on so PENDING/INFECTED downloads are blocked
 // (the dev `.env` sets ATTACHMENT_SCAN_ENABLED=false for local convenience).
 process.env.ATTACHMENT_SCAN_ENABLED = 'true';

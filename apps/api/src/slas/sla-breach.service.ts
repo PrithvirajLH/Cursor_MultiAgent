@@ -17,6 +17,7 @@ import { InAppNotificationsService } from '../notifications/in-app-notifications
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from './sla-engine.service';
+import type { SlaWorkerState } from './sla-worker-state.type';
 
 type BreachType = 'FIRST_RESPONSE' | 'RESOLUTION';
 
@@ -43,6 +44,8 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private enabled = true;
+  private lastRunAt: Date | null = null;
+  private lastRunOk: boolean | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -80,6 +83,15 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       clearInterval(this.timer);
       this.timer = null;
     }
+  }
+
+  /** Worker state for the readiness probe; `lastRunAt` is null until the first tick completes. */
+  getWorkerState(): SlaWorkerState {
+    return {
+      enabled: this.enabled,
+      lastRunAt: this.lastRunAt ? this.lastRunAt.toISOString() : null,
+      lastRunOk: this.lastRunOk,
+    };
   }
 
   private async checkBreaches() {
@@ -159,7 +171,12 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
             ),
           );
       }
+      this.lastRunOk = true;
+    } catch (error) {
+      this.lastRunOk = false;
+      throw error;
     } finally {
+      this.lastRunAt = new Date();
       this.running = false;
     }
   }

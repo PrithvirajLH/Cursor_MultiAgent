@@ -26,6 +26,8 @@ import { TicketEmailThreadService } from './ticket-email-thread.service';
     NotificationsService,
     InAppNotificationsService,
     TicketEmailThreadService,
+    EmailService,
+    EmailQueueService,
   ],
 })
 export class NotificationsModule {}

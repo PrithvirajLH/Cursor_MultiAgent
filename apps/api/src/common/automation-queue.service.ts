@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { RuleEngineService } from '../automation/rule-engine.service';
+import type { QueueStatus } from './queue-status.type';
 
 type AutomationJobData = { ticketId: string; trigger: string };
 
@@ -30,6 +31,7 @@ export class AutomationQueueService implements OnModuleInit, OnModuleDestroy {
   private worker: Worker<AutomationJobData> | null = null;
   private connection: IORedis | null = null;
   private enabled = true;
+  private fellBack = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -122,6 +124,21 @@ export class AutomationQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Live state of the BullMQ/Redis connection for the readiness probe.
+   * `inline-fallback` means Redis was configured but unreachable and the
+   * service is now running automation rules synchronously.
+   */
+  getStatus(): QueueStatus {
+    if (!this.enabled) {
+      return this.fellBack ? 'inline-fallback' : 'disabled';
+    }
+    if (this.connection?.status === 'ready') {
+      return 'connected';
+    }
+    return 'connecting';
+  }
+
+  /**
    * Enqueue an automation trigger for background processing with retry.
    * Falls back to inline execution if the queue is not available.
    */
@@ -179,6 +196,7 @@ export class AutomationQueueService implements OnModuleInit, OnModuleDestroy {
 
   private fallbackToInline() {
     this.enabled = false;
+    this.fellBack = true;
     // Close BullMQ resources before dropping the references (BUG-18) so the
     // underlying Redis connections/timers don't leak on fallback.
     const worker = this.worker;

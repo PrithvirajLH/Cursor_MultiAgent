@@ -89,6 +89,16 @@ Leave unset or `false` if you don’t run these workers.
 
 ---
 
+## Optional – Readiness
+
+Operators and monitors can read the live state of every optional integration (database, Redis queues, SMTP, Web PubSub, Blob storage, attachment scanner, AI, SLA worker) from `GET /api/health/ready` — states only, never configuration values.
+
+| Name | Example value | Notes |
+|------|----------------|-------|
+| **HEALTH_READY_TOKEN** | (any long random string) | Optional. When set, `GET /api/health/ready` requires the header `x-health-token` with the same value and answers 403 otherwise. Leave unset to keep the route open (production sits behind Easy Auth anyway). |
+
+---
+
 ## Optional – Azure AD / M365
 
 Only if you use Azure AD (Entra) SSO or Microsoft 365 integration:

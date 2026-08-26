@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
+import type { QueueStatus } from '../common/queue-status.type';
 import { EmailProcessorService } from './email-processor.service';
 import { MAX_EMAIL_OUTBOX_ATTEMPTS } from './outbox.service';
 
@@ -19,6 +20,7 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
   private worker: Worker<{ outboxId: string }> | null = null;
   private connection: IORedis | null = null;
   private enabled = true;
+  private fellBack = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -93,6 +95,21 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Live state of the BullMQ/Redis connection for the readiness probe.
+   * `inline-fallback` means Redis was configured but unreachable and the
+   * service is now sending emails synchronously.
+   */
+  getStatus(): QueueStatus {
+    if (!this.enabled) {
+      return this.fellBack ? 'inline-fallback' : 'disabled';
+    }
+    if (this.connection?.status === 'ready') {
+      return 'connected';
+    }
+    return 'connecting';
+  }
+
   async enqueue(outboxId: string) {
     if (!this.enabled || !this.queue) {
       await this.processor.process(outboxId);
@@ -134,6 +151,7 @@ export class EmailQueueService implements OnModuleInit, OnModuleDestroy {
 
   private fallbackToInline() {
     this.enabled = false;
+    this.fellBack = true;
     // Close BullMQ resources before dropping the references (BUG-18) so the
     // underlying Redis connections/timers don't leak on fallback.
     const worker = this.worker;

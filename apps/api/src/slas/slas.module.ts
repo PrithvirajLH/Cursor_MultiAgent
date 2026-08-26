@@ -17,6 +17,6 @@ import { SlasService } from './slas.service';
     SlaBreachService,
     BusinessHoursCacheService,
   ],
-  exports: [SlaEngineService, BusinessHoursCacheService],
+  exports: [SlaEngineService, BusinessHoursCacheService, SlaBreachService],
 })
 export class SlasModule {}

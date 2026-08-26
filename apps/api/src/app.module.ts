@@ -16,6 +16,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { KbModule } from './kb/kb.module';
 import { CommonModule } from './common/common.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
+import { HealthModule } from './health/health.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -98,6 +99,7 @@ import { validateEnv } from './common/env.validation';
     CommonModule,
     CsatModule,
     CustomFieldsModule,
+    HealthModule,
     NotificationsModule,
     PrismaModule,
     RealtimeModule,

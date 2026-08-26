@@ -23,9 +23,9 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-26: 186 unit, 360 integration + 1 skipped, 36 web unit
-  (13 vitest files)**, both typechecks clean. Anything below that is a regression.
-  State these numbers in any plan so regressions are obvious.
+- **Baseline as of 2026-08-26: 196 unit (25 suites), 362 integration + 1 skipped,
+  36 web unit (13 vitest files)**, both typechecks clean. Anything below that is a
+  regression. State these numbers in any plan so regressions are obvious.
 
 - **The consent variable is required for integration runs.** Every integration
   suite re-runs a database reset in its own `beforeAll`, so export it for the
@@ -125,11 +125,14 @@ real run burns CPU, an orphan is flat.
 
 ## Tests and AI configuration
 
-- **`.env.test` deliberately has no Azure Foundry config.** The AI pipeline throws
-  on the first agent call and returns an error envelope rather than a 5xx;
-  existing AI tests assert only the HTTP contract. Tests needing a live model load
-  credentials from `.env` and are gated behind `AI_LIVE_TEST_ENABLED` /
-  `AI_BENCHMARK_ENABLED`, neither of which runs in CI.
+- **`test/setup-tests.ts` deletes every `AZURE_*`, `SMTP_*` and `HEALTH_READY_TOKEN`
+  key after forcing the dev `.env` load, so integration runs are hermetic on every
+  machine; only `ai-intake-live.spec` (opt-in via `AI_LIVE_TEST_ENABLED`) reloads
+  real credentials.** The AI pipeline throws on the first agent call and returns
+  an error envelope rather than a 5xx; existing AI tests assert only the HTTP
+  contract. Tests needing a live model load credentials from `.env` and are gated
+  behind `AI_LIVE_TEST_ENABLED` / `AI_BENCHMARK_ENABLED`, neither of which runs
+  in CI.
 
 - **`AI_INLINE_PROMPTS` defaults to true:** prompts and tool definitions come from
   `src/ai/prompts/*.ts` in-repo, not from Azure Foundry agents. Those files were
