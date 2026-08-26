@@ -54,6 +54,9 @@ test-results/
 **/scripts/
 !apps/api/scripts/
 !apps/api/scripts/**
+# Root scripts/ is repo tooling (migration guard, perf scripts) — tracked.
+!/scripts/
+!/scripts/**
 
 # Prisma
 prisma/migrations/*.sql.bak

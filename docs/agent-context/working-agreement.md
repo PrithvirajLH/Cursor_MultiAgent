@@ -62,3 +62,25 @@ None of this is a criticism of the plans — it is why the implementer is expect
 to verify against the live system rather than transcribe. **Trust a live run over
 anything written down, including these documents.** When a plan turns out to be
 wrong, say so in the report.
+
+## One working tree, several sessions — commit discipline (added 2026-08-26)
+
+The planning, implementer and deploy sessions all operate in the **same checkout**.
+On 2026-08-26 the planning session committed docs while an implementer had
+uncommitted edits in the tree; nothing was swept in, but only because the
+implementer checked its staged set before committing. Rules, so it stays luck-free:
+
+- **Always stage by explicit path.** Never `git add -A`, `git add .`, or `git commit -a`.
+- **Before committing, run `git status --short` and read it.** If files you did
+  not touch are modified, another session is mid-task: stage only your paths and
+  confirm the staged list (`git diff --cached --name-only`) equals them.
+- **Planning session commits only docs/prompts/config, and preferably when no
+  implementer is mid-build** (its reports mark the boundaries).
+- **Never use `git reset --hard` or `git checkout -- <file>` in the shared tree** —
+  it destroys another session's uncommitted work. Undo your own commits with
+  `git reset <sha>` (mixed) and remove only your own files.
+- Gitignored files are invisible to `git status`: check `git check-ignore -v <path>`
+  before assuming a new file will be committed (bit 0.11 and 0.3).
+- If a card is large or long-running, consider a `git worktree` on a per-card
+  branch for the implementer and let the planner merge — the only way to make
+  two sessions truly independent.

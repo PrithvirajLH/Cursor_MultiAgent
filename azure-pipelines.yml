@@ -129,7 +129,7 @@ stages:
             continueOnError: true
 
           - script: npm run -w apps/api test -- --runInBand
-            displayName: "API unit tests (expect 186)"
+            displayName: "API unit tests (expect 196)"
 
           - script: npm run -w apps/web test
             displayName: "Web unit tests"
@@ -228,4 +228,4 @@ stages:
           # do not set it pre-emptively, because that would suppress a signal that
           # is genuinely useful on a developer machine.
           - script: npm run -w apps/api test:integration
-            displayName: "API integration tests (expect 360 passing, 1 skipped)"
+            displayName: "API integration tests (expect 362 passing, 1 skipped)"

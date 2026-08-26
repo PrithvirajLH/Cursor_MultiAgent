@@ -87,7 +87,10 @@ a proper expand/contract plan — that is a design task, not a deploy step.
   cd apps/api && npx jest                                    # expect 186
   export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
   npm run test:integration                                   # expect 360 + 1 skipped
+  bash scripts/check-migrations.sh origin/main               # every new migration "ok" or "ALLOWED"
   ```
+  (Baseline numbers move — `CLAUDE.md` holds the current ones; as of 2026-08-26
+  they are 196 unit / 362 integration + 1 skipped.)
 
 ### 2. Migrations
 
