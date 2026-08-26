@@ -63,6 +63,8 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   ```bash
   grep -cE '^(DROP|ALTER TABLE .* DROP)' <migration>.sql   # must be 0
   ```
+  CI runs this as `scripts/check-migrations.sh` on every new migration; an
+  intentional drop needs a first-line `-- allow-drop: <reason>`.
 
 - **`prisma migrate dev` cannot run non-interactively at all** — it aborts with
   "Prisma Migrate has detected that the environment is non-interactive", even with

@@ -19,6 +19,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Migrations are additive (no DROP in new migration files)
+        run: bash scripts/check-migrations.sh "origin/${{ github.base_ref || 'main' }}"
 
       - name: Setup Node
         uses: actions/setup-node@v4

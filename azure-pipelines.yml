@@ -84,6 +84,12 @@ stages:
         displayName: "Lint, unit tests, build"
         timeoutInMinutes: 25
         steps:
+          - checkout: self
+            fetchDepth: 0
+            displayName: "Checkout (full history for migration diff)"
+          - bash: bash scripts/check-migrations.sh origin/main
+            displayName: "Migrations are additive (no DROP in new migration files)"
+
           - task: NodeTool@0
             displayName: "Use Node $(NODE_VERSION)"
             inputs:
