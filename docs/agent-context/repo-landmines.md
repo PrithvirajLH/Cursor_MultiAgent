@@ -125,10 +125,15 @@ real run burns CPU, an orphan is flat.
 
 ## Tests and AI configuration
 
-- **`test/setup-tests.ts` deletes every `AZURE_*`, `SMTP_*` and `HEALTH_READY_TOKEN`
-  key after forcing the dev `.env` load, so integration runs are hermetic on every
-  machine; only `ai-intake-live.spec` (opt-in via `AI_LIVE_TEST_ENABLED`) reloads
-  real credentials.** The AI pipeline throws on the first agent call and returns
+- **`test/setup-tests.ts` blanks (sets to `''`, not `delete`) every `AZURE_*`,
+  `SMTP_*` and `HEALTH_READY_TOKEN` key after forcing the dev `.env` load, so
+  integration runs are hermetic on every machine; only `ai-intake-live.spec`
+  (opt-in via `AI_LIVE_TEST_ENABLED`) reloads real credentials.** Blank, not
+  delete, because `new PrismaClient()` — which runs inside Nest DI, *after* the
+  setup file — re-reads the dev `.env` and re-fills any key that is `undefined`
+  at that moment, but leaves a present-but-empty key alone. Before this
+  (2026-08-26) attachment and realtime specs on a developer machine silently hit
+  the real Blob container and Web PubSub hub. The AI pipeline throws on the first agent call and returns
   an error envelope rather than a 5xx; existing AI tests assert only the HTTP
   contract. Tests needing a live model load credentials from `.env` and are gated
   behind `AI_LIVE_TEST_ENABLED` / `AI_BENCHMARK_ENABLED`, neither of which runs

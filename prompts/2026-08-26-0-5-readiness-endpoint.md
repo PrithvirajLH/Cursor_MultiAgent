@@ -651,3 +651,16 @@ Accepted from item 6C. Add `private fellBack = false;`, set it in `fallbackToInl
 ### 12.6 Commit and report
 
 Run §9 in full (the whole integration suite again — 12.1 changes the environment for every spec, so all 39 files must be re-run, not just health). Then the Task 5 commit with these extra paths added: `apps/api/test/setup-tests.ts`, `apps/api/src/health/readiness-report.type.ts` (already listed), and the two queue services. Report items 1–6 of §11 again, plus: (a) confirmation that `tickets.attachments.spec.ts` and the realtime-related specs still pass with the Azure keys scrubbed, (b) how `ai-intake-live.spec.ts` obtains its credentials.
+
+---
+
+## 13. Post-implementation record (planning session, 2026-08-26)
+
+**Verdict: GREEN.** Commit `7ce9516`. Planner independently re-ran: `jest` 196/196 (25 suites); full `test:integration` 362 passed + 1 skipped, 0 failures, 269 s, no orphan; `tsc --noEmit` clean in api and web; vitest 13 files / 36 tests; `git diff --stat HEAD~1` = the §6 list plus `test/setup-tests.ts` (authorised in §12.1); no `package*.json`, schema or migration change. Source read: constant-time token compare, DB race timer cleared, `lastRunAt`/`lastRunOk` set in `try`/`catch`/`finally`, `fellBack` flag correct in both queue services. Approved to **merge and deploy** (migration status must show nothing pending — this card has no migration).
+
+**Corrections accepted from the implementer:**
+- §12.1 said `delete process.env[key]`; that does not work because `new PrismaClient()` re-reads the dev `.env` inside Nest DI and re-fills undefined keys. Blank (`''`) is correct. Landmines doc wording fixed by the planner.
+- §12.5 predicted 193 unit tests; the real number is 196 (three extra tests requested in §12.3/12.4). Real numbers recorded.
+- §12.1's rationale about dotenv "not overriding existing keys" was not the mechanism that keeps `ai-intake-live.spec` working — that spec parses `.env` itself and assigns unconditionally. Conclusion unchanged.
+
+**Next:** deploy `main` per `docs/DEPLOYMENT.md` (deploy agent), then Task 6 / Part B — capture production's `/api/health/ready` JSON and the app-setting *names* into `docs/azure-env-inventory.md`.
