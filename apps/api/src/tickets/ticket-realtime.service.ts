@@ -19,7 +19,9 @@ export type TicketRealtimeReason =
   | 'followers_changed'
   | 'attachment_added'
   | 'attachment_scan_status_changed'
-  | 'automation_rule_executed';
+  | 'automation_rule_executed'
+  | 'deleted'
+  | 'restored';
 
 type TicketRealtimeAudienceTicket = {
   id: string;

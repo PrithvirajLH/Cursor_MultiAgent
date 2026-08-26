@@ -68,9 +68,19 @@ export class KbService {
    * - everyone else (EMPLOYEE): published AND non-internal only
    */
   private visibilityWhere(user: AuthUser): Prisma.KbArticleWhereInput {
-    if (this.canAuthor(user)) return {};
-    if (this.isAgent(user)) return { status: KbArticleStatus.PUBLISHED };
-    return { status: KbArticleStatus.PUBLISHED, isInternal: false };
+    // Soft-deleted articles are invisible to everyone, authors included; only
+    // uniqueArticleSlug() still sees them (the slug stays reserved).
+    const notDeleted: Prisma.KbArticleWhereInput = { deletedAt: null };
+    if (this.canAuthor(user)) return { AND: [notDeleted, {}] };
+    if (this.isAgent(user)) {
+      return { AND: [notDeleted, { status: KbArticleStatus.PUBLISHED }] };
+    }
+    return {
+      AND: [
+        notDeleted,
+        { status: KbArticleStatus.PUBLISHED, isInternal: false },
+      ],
+    };
   }
 
   // ─── Articles ──────────────────────────────────────────────────────────────
@@ -256,13 +266,17 @@ export class KbService {
     return updated;
   }
 
+  /** Soft-delete: the row stays (slug reserved, purged later by retention) but is hidden from every read. */
   async removeArticle(id: string, user: AuthUser) {
     this.ensureAuthor(user);
     const existing = await this.prisma.kbArticle.findUnique({ where: { id } });
-    if (!existing) {
+    if (!existing || existing.deletedAt) {
       throw new NotFoundException('Article not found');
     }
-    await this.prisma.kbArticle.delete({ where: { id } });
+    await this.prisma.kbArticle.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     await this.safePublishAdminChanged('deleted', id, user.id);
     return { id };
   }

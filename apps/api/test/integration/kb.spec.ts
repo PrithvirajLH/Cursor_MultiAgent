@@ -396,6 +396,62 @@ describe('KB', () => {
     expect(ids).not.toContain(draftArticleId);
   });
 
+  it('soft-deletes an article: hidden from everyone by slug, slug stays reserved', async () => {
+    const slug = `soft-deleted-${stamp}`;
+    const created = await request(server)
+      .post('/api/kb/articles')
+      .set(authHeader(fixtureEmails.owner))
+      .send({
+        title: 'Soft deleted article',
+        slug,
+        content: 'This article will be soft-deleted.',
+        status: 'PUBLISHED',
+        isInternal: false,
+        categoryId,
+      })
+      .expect(201);
+    const articleId = (created.body as KbArticle).id;
+
+    await request(server)
+      .delete(`/api/kb/articles/${articleId}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+
+    // 404 by slug for every role, the author included.
+    for (const email of [
+      fixtureEmails.owner,
+      fixtureEmails.admin,
+      fixtureEmails.agent,
+      fixtureEmails.requester,
+    ]) {
+      await request(server)
+        .get(`/api/kb/articles/${slug}`)
+        .set(authHeader(email))
+        .expect(404);
+    }
+
+    // Deleting twice is a 404 (already gone).
+    await request(server)
+      .delete(`/api/kb/articles/${articleId}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(404);
+
+    // The slug is still taken: a new article asking for it gets a suffix.
+    const reused = await request(server)
+      .post('/api/kb/articles')
+      .set(authHeader(fixtureEmails.owner))
+      .send({
+        title: 'Soft deleted article',
+        slug,
+        content: 'Second article with the same requested slug.',
+        status: 'PUBLISHED',
+        isInternal: false,
+        categoryId,
+      })
+      .expect(201);
+    expect((reused.body as KbArticle).slug).toBe(`${slug}-2`);
+  });
+
   it('returns 404 when deleting a non-existent article', async () => {
     await request(server)
       .delete('/api/kb/articles/00000000-0000-4000-8000-000000000000')

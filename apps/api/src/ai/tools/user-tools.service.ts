@@ -58,7 +58,7 @@ export class UserToolsService {
   async getUserHistory(userId: string): Promise<ToolResult<UserTicketSummary[]>> {
     try {
       const tickets = await this.prisma.ticket.findMany({
-        where: { requesterId: userId },
+        where: { requesterId: userId, deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 10,
         select: {

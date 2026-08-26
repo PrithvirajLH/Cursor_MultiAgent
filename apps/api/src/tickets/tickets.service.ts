@@ -43,6 +43,7 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { DeleteTicketDto } from './dto/delete-ticket.dto';
 import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
@@ -242,6 +243,9 @@ export class TicketsService {
   }
 
   async list(query: ListTicketsDto, user: AuthUser) {
+    if (query.includeDeleted && user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can list deleted tickets');
+    }
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const skip = (page - 1) * pageSize;
@@ -433,7 +437,11 @@ export class TicketsService {
       filters.push({ OR: searchFilters });
     }
 
-    filters.push(this.buildAccessFilter(user));
+    filters.push(
+      this.accessControl.buildTicketAccessFilter(user, {
+        includeDeleted: query.includeDeleted,
+      }),
+    );
 
     const where = filters.length > 1 ? { AND: filters } : (filters[0] ?? {});
 
@@ -471,6 +479,7 @@ export class TicketsService {
           firstResponseDueAt: true,
           firstResponseAt: true,
           slaPausedAt: true,
+          deletedAt: true,
           requester: {
             select: { id: true, email: true, displayName: true },
           },
@@ -834,6 +843,11 @@ export class TicketsService {
       throw new NotFoundException('Ticket not found');
     }
 
+    // A soft-deleted ticket must not reveal its existence to anyone but OWNER.
+    if (ticket.deletedAt && user.role !== UserRole.OWNER) {
+      throw new NotFoundException('Ticket not found');
+    }
+
     if (!this.canViewTicket(user, ticket)) {
       throw new ForbiddenException('No access to this ticket');
     }
@@ -869,10 +883,9 @@ export class TicketsService {
       followers,
       attachments,
       customFieldValues,
-      allowedTransitions: this.getAvailableTransitionsForTicket(
-        rest.status,
-        rest.assigneeId,
-      ),
+      allowedTransitions: rest.deletedAt
+        ? []
+        : this.getAvailableTransitionsForTicket(rest.status, rest.assigneeId),
     };
   }
 
@@ -939,17 +952,22 @@ export class TicketsService {
     cursor?: string,
   ) {
     // Single query: verify ticket exists AND user has access
+    // OWNER may read the history of a soft-deleted ticket (includeDeleted is
+    // ignored for every other role); non-owners get 404, never 403, so the
+    // ticket's existence is not revealed.
     const accessibleTicket = await this.prisma.ticket.findFirst({
       where: {
         id: ticketId,
-        ...this.accessControl.buildTicketAccessFilter(user),
+        ...this.accessControl.buildTicketAccessFilter(user, {
+          includeDeleted: true,
+        }),
       },
       select: { id: true },
     });
 
     if (!accessibleTicket) {
       const exists = await this.prisma.ticket.count({
-        where: { id: ticketId },
+        where: { id: ticketId, deletedAt: null },
       });
       if (!exists) throw new NotFoundException('Ticket not found');
       throw new ForbiddenException('No access to this ticket');
@@ -1268,6 +1286,11 @@ export class TicketsService {
     });
 
     if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    // Hidden from non-owners; OWNER falls through to canPostMessage -> 403.
+    if (ticket.deletedAt && user.role !== UserRole.OWNER) {
       throw new NotFoundException('Ticket not found');
     }
 
@@ -2442,6 +2465,124 @@ export class TicketsService {
     );
 
     return { id: targetUserId };
+  }
+
+  /**
+   * Soft-delete a ticket. OWNER may delete any ticket; TEAM_ADMIN only tickets
+   * assigned to their primary team. The row stays (restorable by OWNER) but
+   * disappears from every list, count, report and lookup. Writes a
+   * TICKET_DELETED ticket event and an admin audit event, then tells open
+   * clients to refresh.
+   */
+  async softDelete(id: string, payload: DeleteTicketDto, user: AuthUser) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      include: { assignedTeam: { select: { id: true, name: true } } },
+    });
+    if (!ticket || ticket.deletedAt) {
+      throw new NotFoundException('Ticket not found');
+    }
+    const isTeamAdminOfTicket =
+      user.role === UserRole.TEAM_ADMIN &&
+      !!user.primaryTeamId &&
+      ticket.assignedTeamId === user.primaryTeamId;
+    if (user.role !== UserRole.OWNER && !isTeamAdminOfTicket) {
+      throw new ForbiddenException(
+        'Only owners or the team admin of the assigned team can delete a ticket',
+      );
+    }
+    const reason = payload?.reason?.trim() || null;
+    const deletedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id },
+        data: { deletedAt, deletedById: user.id },
+      });
+      await tx.ticketEvent.create({
+        data: {
+          ticketId: id,
+          type: 'TICKET_DELETED',
+          payload: { reason },
+          createdById: user.id,
+        },
+      });
+      await tx.adminAuditEvent.create({
+        data: {
+          type: 'TICKET_DELETED',
+          payload: { ticketId: id, displayId: ticket.displayId, reason },
+          createdById: user.id,
+          teamId: ticket.assignedTeamId,
+          actorEmail: user.email,
+          actorName: user.displayName,
+          teamName: ticket.assignedTeam?.name ?? null,
+        },
+      });
+    });
+    await this.invalidateCountsCache([
+      user.id,
+      ticket.requesterId,
+      ticket.assigneeId,
+    ]);
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId: id,
+        reason: 'deleted',
+        actorId: user.id,
+      }),
+    );
+    return { id, deletedAt };
+  }
+
+  /** Restore a soft-deleted ticket. OWNER only. */
+  async restore(id: string, user: AuthUser) {
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can restore a ticket');
+    }
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      include: { assignedTeam: { select: { id: true, name: true } } },
+    });
+    if (!ticket || !ticket.deletedAt) {
+      throw new NotFoundException('Deleted ticket not found');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id },
+        data: { deletedAt: null, deletedById: null },
+      });
+      await tx.ticketEvent.create({
+        data: {
+          ticketId: id,
+          type: 'TICKET_RESTORED',
+          payload: {},
+          createdById: user.id,
+        },
+      });
+      await tx.adminAuditEvent.create({
+        data: {
+          type: 'TICKET_RESTORED',
+          payload: { ticketId: id, displayId: ticket.displayId },
+          createdById: user.id,
+          teamId: ticket.assignedTeamId,
+          actorEmail: user.email,
+          actorName: user.displayName,
+          teamName: ticket.assignedTeam?.name ?? null,
+        },
+      });
+    });
+    await this.invalidateCountsCache([
+      user.id,
+      ticket.requesterId,
+      ticket.assigneeId,
+    ]);
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId: id,
+        reason: 'restored',
+        actorId: user.id,
+      }),
+    );
+    return { id, deletedAt: null };
   }
 
   /** Delegates to shared AccessControlService */

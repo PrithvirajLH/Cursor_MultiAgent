@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -134,6 +135,18 @@ export class CategoriesService {
     });
     if (children > 0) {
       throw new ForbiddenException('Category has subcategories');
+    }
+
+    // Refuse while anything references the category (deleted tickets count too:
+    // they can be restored). The DB backstop is ON DELETE RESTRICT.
+    const [tickets, fields] = await Promise.all([
+      this.prisma.ticket.count({ where: { categoryId: id } }),
+      this.prisma.customField.count({ where: { categoryId: id } }),
+    ]);
+    if (tickets > 0 || fields > 0) {
+      throw new BadRequestException(
+        `Category is used by ${tickets} ticket(s) and ${fields} custom field(s). Deactivate it instead.`,
+      );
     }
 
     await this.prisma.category.delete({ where: { id } });

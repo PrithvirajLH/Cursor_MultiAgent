@@ -203,7 +203,11 @@ export class UsersService {
       ];
 
       const unassign = await tx.ticket.updateMany({
-        where: { assigneeId: userId, status: { in: openTicketStatuses } },
+        where: {
+          assigneeId: userId,
+          status: { in: openTicketStatuses },
+          deletedAt: null,
+        },
         data: { assigneeId: null, status: TicketStatus.NEW },
       });
 
@@ -315,7 +319,11 @@ export class UsersService {
     ];
     const [ticketsOpen, memberships, user] = await Promise.all([
       this.prisma.ticket.count({
-        where: { assigneeId: userId, status: { in: openTicketStatuses } },
+        where: {
+          assigneeId: userId,
+          status: { in: openTicketStatuses },
+          deletedAt: null,
+        },
       }),
       this.prisma.teamMember.findMany({
         where: { userId },

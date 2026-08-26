@@ -206,6 +206,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         const ticketsWithoutInstance = await tx.ticket.findMany({
           where: {
             completedAt: null,
+            deletedAt: null,
             slaInstance: null,
           },
           select: { id: true },

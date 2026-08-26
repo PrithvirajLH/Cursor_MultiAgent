@@ -160,4 +160,10 @@ export class ListTicketsDto extends PaginationDto {
   @Transform(({ value }) => parseBoolean(value))
   @IsBoolean()
   includeTotal?: boolean;
+
+  /** OWNER only: include soft-deleted tickets. Any other role gets 403. */
+  @IsOptional()
+  @Transform(({ value }) => parseBoolean(value))
+  @IsBoolean()
+  includeDeleted?: boolean;
 }

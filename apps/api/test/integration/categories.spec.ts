@@ -83,7 +83,7 @@ describe('Categories', () => {
       .expect(404);
   });
 
-  it("deleting a referenced category nulls the ticket's category (SetNull)", async () => {
+  it('refuses to delete a referenced category (400 "Deactivate it instead")', async () => {
     const stamp = Date.now();
     const category = (
       await request(server)
@@ -109,16 +109,19 @@ describe('Categories', () => {
     ).body as TicketResponse;
     expect(ticket.category?.id).toBe(category.id);
 
-    // Ticket.category is an OPTIONAL relation with no explicit onDelete, so
-    // Prisma defaults to SetNull (categoryId is nullable). Deleting a
-    // referenced category SUCCEEDS (200) and nulls the referencing ticket's
-    // categoryId rather than raising an FK violation.
-    await request(server)
+    // Since the soft-delete card, a category that any ticket (or custom field)
+    // references cannot be deleted: the service answers 400 and points at
+    // deactivation, and Ticket.category is ON DELETE RESTRICT at the database
+    // as a backstop. Nothing is silently un-classified any more.
+    const refused = await request(server)
       .delete(`/api/categories/${category.id}`)
       .set(authHeader(fixtureEmails.owner))
-      .expect(200);
+      .expect(400);
+    expect((refused.body as { message: string }).message).toContain(
+      'Deactivate it instead',
+    );
 
-    // The ticket survives; its category reference is now cleared to null.
+    // The ticket keeps its category.
     const fetched = (
       await request(server)
         .get(`/api/tickets/${ticket.id}`)
@@ -126,8 +129,7 @@ describe('Categories', () => {
         .expect(200)
     ).body as TicketResponse;
     expect(fetched.id).toBe(ticket.id);
-    expect(fetched.categoryId).toBeNull();
-    expect(fetched.category).toBeNull();
+    expect(fetched.category?.id).toBe(category.id);
   });
 
   it('deletes an unreferenced category', async () => {

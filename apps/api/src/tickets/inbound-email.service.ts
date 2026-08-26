@@ -114,8 +114,10 @@ export class InboundEmailService {
       );
 
       if (threadTarget) {
+        // A reply that threads to a soft-deleted ticket is treated as "no
+        // thread": `existing` stays null and a new ticket is created instead.
         const existing = await this.prisma.ticket.findFirst({
-          where: { id: threadTarget.ticketId },
+          where: { id: threadTarget.ticketId, deletedAt: null },
           select: {
             id: true,
             status: true,
@@ -676,7 +678,10 @@ export class InboundEmailService {
     }
 
     const ticket = await this.prisma.ticket.findFirst({
-      where: { displayId: { equals: displayId, mode: 'insensitive' } },
+      where: {
+        displayId: { equals: displayId, mode: 'insensitive' },
+        deletedAt: null,
+      },
       select: { id: true },
     });
     if (!ticket) {
@@ -817,7 +822,7 @@ export class InboundEmailService {
         customFieldValues: { include: { customField: true } },
       },
     });
-    if (!result) {
+    if (!result || result.deletedAt) {
       throw new BadRequestException('Ticket not found');
     }
     return result;

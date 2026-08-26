@@ -21,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { ReportsModule } from './reports/reports.module';
+import { RetentionModule } from './retention/retention.module';
 import { RoutingRulesModule } from './routing/routing.module';
 import { SavedViewsModule } from './saved-views/saved-views.module';
 import { SlasModule } from './slas/slas.module';
@@ -104,6 +105,7 @@ import { validateEnv } from './common/env.validation';
     PrismaModule,
     RealtimeModule,
     ReportsModule,
+    RetentionModule,
     RoutingRulesModule,
     SavedViewsModule,
     SlasModule,

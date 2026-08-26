@@ -14,6 +14,8 @@ type MockPrisma = {
     count: jest.Mock;
     delete: jest.Mock;
   };
+  ticket: { count: jest.Mock };
+  customField: { count: jest.Mock };
 };
 
 function ownerUser() {
@@ -41,6 +43,8 @@ describe('CategoriesService', () => {
         count: jest.fn(),
         delete: jest.fn(),
       },
+      ticket: { count: jest.fn().mockResolvedValue(0) },
+      customField: { count: jest.fn().mockResolvedValue(0) },
     };
     realtime = {
       publishAdminChanged: jest.fn(),
@@ -162,7 +166,7 @@ describe('CategoriesService', () => {
     expect(prisma.category.delete).not.toHaveBeenCalled();
   });
 
-  it('deletes category when it has no children', async () => {
+  it('deletes category when it has no children and nothing references it', async () => {
     prisma.category.findUnique.mockResolvedValueOnce({ id: 'cat-1' });
     prisma.category.count.mockResolvedValueOnce(0);
     prisma.category.delete.mockResolvedValueOnce({ id: 'cat-1' });
@@ -172,6 +176,17 @@ describe('CategoriesService', () => {
       where: { id: 'cat-1' },
     });
     expect(result).toEqual({ id: 'cat-1' });
+  });
+
+  it('refuses to delete a category that tickets or custom fields still use', async () => {
+    prisma.category.findUnique.mockResolvedValueOnce({ id: 'cat-1' });
+    prisma.category.count.mockResolvedValueOnce(0);
+    prisma.ticket.count.mockResolvedValueOnce(3);
+
+    await expect(service.remove('cat-1', ownerUser())).rejects.toThrow(
+      /used by 3 ticket\(s\).*Deactivate it instead/,
+    );
+    expect(prisma.category.delete).not.toHaveBeenCalled();
   });
 
   it('throws not found when updating unknown category', async () => {

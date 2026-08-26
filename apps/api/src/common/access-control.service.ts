@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
+import type { AccessOptions } from './access-options.type';
 
 /**
  * Shared access control logic for ticket visibility and write permissions.
@@ -21,9 +22,22 @@ export class AccessControlService {
 
   /**
    * Returns a Prisma TicketWhereInput filter that restricts ticket visibility
-   * based on the authenticated user's role and team membership.
+   * based on the authenticated user's role and team membership. Soft-deleted
+   * tickets are always excluded unless an OWNER passes `includeDeleted`.
    */
-  buildTicketAccessFilter(user: AuthUser): Prisma.TicketWhereInput {
+  buildTicketAccessFilter(
+    user: AuthUser,
+    options?: AccessOptions,
+  ): Prisma.TicketWhereInput {
+    const roleFilter = this.roleFilter(user);
+    if (options?.includeDeleted && user.role === UserRole.OWNER) {
+      return roleFilter;
+    }
+    return { AND: [{ deletedAt: null }, roleFilter] };
+  }
+
+  /** Role/team visibility filter without the soft-delete clause. */
+  private roleFilter(user: AuthUser): Prisma.TicketWhereInput {
     if (user.role === UserRole.OWNER) {
       return {};
     }
@@ -67,13 +81,28 @@ export class AccessControlService {
 
   /**
    * Raw SQL condition restricting ticket visibility by role and team membership.
-   * Suitable for use in $queryRaw with a table alias (e.g. 't').
+   * Suitable for use in $queryRaw with a table alias (e.g. 't'). Soft-deleted
+   * tickets are always excluded unless an OWNER passes `includeDeleted`.
    */
-  accessConditionSql(user: AuthUser, alias = 't'): Prisma.Sql {
+  accessConditionSql(
+    user: AuthUser,
+    alias = 't',
+    options?: AccessOptions,
+  ): Prisma.Sql {
     // 4.2 fix: validate alias is a safe SQL identifier (letters/underscore only)
     if (!/^[a-zA-Z_]+$/.test(alias)) {
       throw new Error(`Invalid SQL alias: "${alias}"`);
     }
+    const roleSql = this.roleConditionSql(user, alias);
+    if (options?.includeDeleted && user.role === UserRole.OWNER) {
+      return roleSql;
+    }
+    const deletedAt = Prisma.raw(`${alias}."deletedAt"`);
+    return Prisma.sql`(${deletedAt} IS NULL AND (${roleSql}))`;
+  }
+
+  /** Role/team visibility SQL fragment without the soft-delete clause; alias already validated. */
+  private roleConditionSql(user: AuthUser, alias: string): Prisma.Sql {
     const col = (name: string) => Prisma.raw(`${alias}."${name}"`);
     const accessGrant = (teamId: string) =>
       Prisma.sql`EXISTS (SELECT 1 FROM "TicketAccess" ta WHERE ta."ticketId" = ${col('id')} AND ta."teamId" = ${teamId})`;
@@ -115,6 +144,7 @@ export class AccessControlService {
 
   /**
    * Check if a user can view a specific ticket based on role and team membership.
+   * A soft-deleted ticket is visible to OWNER only.
    */
   canViewTicket(
     user: AuthUser,
@@ -123,8 +153,12 @@ export class AccessControlService {
       assignedTeamId: string | null;
       assigneeId: string | null;
       accessGrants?: { teamId: string }[];
+      deletedAt?: Date | null;
     },
   ): boolean {
+    if (ticket.deletedAt && user.role !== UserRole.OWNER) {
+      return false;
+    }
     if (user.role === UserRole.OWNER) {
       return true;
     }
@@ -197,14 +231,17 @@ export class AccessControlService {
       requesterId: string;
       assignedTeamId: string | null;
       assigneeId: string | null;
+      deletedAt?: Date | null;
     },
   ): boolean {
+    if (ticket.deletedAt) return false;
     if (this.canWriteTicket(user, ticket)) return true;
     return this.isPeerAgent(user, ticket);
   }
 
   /**
-   * Check if a user can write/modify a specific ticket.
+   * Check if a user can write/modify a specific ticket. Nobody can write to a
+   * soft-deleted ticket — restoring it is its own endpoint.
    */
   canWriteTicket(
     user: AuthUser,
@@ -212,8 +249,10 @@ export class AccessControlService {
       requesterId: string;
       assignedTeamId: string | null;
       assigneeId: string | null;
+      deletedAt?: Date | null;
     },
   ): boolean {
+    if (ticket.deletedAt) return false;
     if (user.role === UserRole.OWNER) {
       return true;
     }

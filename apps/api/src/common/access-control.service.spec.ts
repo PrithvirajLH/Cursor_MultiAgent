@@ -267,39 +267,55 @@ describe('AccessControlService', () => {
   });
 
   describe('buildTicketAccessFilter', () => {
-    it('OWNER -> unrestricted (empty filter)', () => {
-      expect(svc.buildTicketAccessFilter(owner())).toEqual({});
+    // Every filter is wrapped as { AND: [{ deletedAt: null }, <role filter>] }
+    // so soft-deleted tickets never leak through a list or count.
+    const notDeleted = { deletedAt: null };
+
+    it('OWNER -> unrestricted apart from the soft-delete filter', () => {
+      expect(svc.buildTicketAccessFilter(owner())).toEqual({
+        AND: [notDeleted, {}],
+      });
     });
 
     it('EMPLOYEE -> requester-scoped', () => {
       expect(svc.buildTicketAccessFilter(employee('e1'))).toEqual({
-        requesterId: 'e1',
+        AND: [notDeleted, { requesterId: 'e1' }],
       });
     });
 
     it('TEAM_ADMIN -> team OR access-grant', () => {
       expect(svc.buildTicketAccessFilter(teamAdmin('T1'))).toEqual({
-        OR: [
-          { assignedTeamId: 'T1' },
-          { accessGrants: { some: { teamId: 'T1' } } },
+        AND: [
+          notDeleted,
+          {
+            OR: [
+              { assignedTeamId: 'T1' },
+              { accessGrants: { some: { teamId: 'T1' } } },
+            ],
+          },
         ],
       });
     });
 
     it('LEAD -> one OR pair per team', () => {
       expect(svc.buildTicketAccessFilter(lead(['T1', 'T2']))).toEqual({
-        OR: [
-          { assignedTeamId: 'T1' },
-          { accessGrants: { some: { teamId: 'T1' } } },
-          { assignedTeamId: 'T2' },
-          { accessGrants: { some: { teamId: 'T2' } } },
+        AND: [
+          notDeleted,
+          {
+            OR: [
+              { assignedTeamId: 'T1' },
+              { accessGrants: { some: { teamId: 'T1' } } },
+              { assignedTeamId: 'T2' },
+              { accessGrants: { some: { teamId: 'T2' } } },
+            ],
+          },
         ],
       });
     });
 
     it('AGENT/LEAD with no scope -> requester-scoped', () => {
       expect(svc.buildTicketAccessFilter(agent([], 'a1'))).toEqual({
-        requesterId: 'a1',
+        AND: [notDeleted, { requesterId: 'a1' }],
       });
     });
   });
@@ -335,6 +351,55 @@ describe('AccessControlService', () => {
     it('binds the user id as a parameter (not string-interpolated)', () => {
       const sql = svc.accessConditionSql(employee('e1'), 't');
       expect(sql.values).toContain('e1');
+    });
+  });
+
+  describe('soft-delete rules', () => {
+    const live = {
+      requesterId: 'r',
+      assignedTeamId: 't1',
+      assigneeId: 'a',
+      deletedAt: null,
+    };
+    const gone = { ...live, deletedAt: new Date() };
+
+    it('excludes deleted tickets from the list filter for every role', () => {
+      expect(JSON.stringify(svc.buildTicketAccessFilter(owner()))).toContain(
+        '"deletedAt":null',
+      );
+      expect(
+        JSON.stringify(svc.buildTicketAccessFilter(agent(['t1']))),
+      ).toContain('"deletedAt":null');
+    });
+
+    it('lets only the owner opt in to deleted tickets', () => {
+      expect(
+        JSON.stringify(
+          svc.buildTicketAccessFilter(owner(), { includeDeleted: true }),
+        ),
+      ).not.toContain('deletedAt');
+      expect(
+        JSON.stringify(
+          svc.buildTicketAccessFilter(agent(['t1']), { includeDeleted: true }),
+        ),
+      ).toContain('"deletedAt":null');
+    });
+
+    it('puts the deleted filter into the raw SQL condition', () => {
+      expect(svc.accessConditionSql(owner()).sql).toContain(
+        '"deletedAt" IS NULL',
+      );
+      expect(
+        svc.accessConditionSql(owner(), 't', { includeDeleted: true }).sql,
+      ).not.toContain('deletedAt');
+    });
+
+    it('hides deleted tickets from non-owners and blocks all writes on them', () => {
+      expect(svc.canViewTicket(agent(['t1'], 'a'), gone)).toBe(false);
+      expect(svc.canViewTicket(owner(), gone)).toBe(true);
+      expect(svc.canWriteTicket(owner(), gone)).toBe(false);
+      expect(svc.canPostMessage(agent(['t1'], 'a'), gone)).toBe(false);
+      expect(svc.canWriteTicket(agent(['t1'], 'a'), live)).toBe(true);
     });
   });
 });

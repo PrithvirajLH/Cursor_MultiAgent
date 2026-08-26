@@ -81,6 +81,7 @@ export class AgentsAdminService {
           MAX(t."updatedAt") AS last_activity
         FROM "Ticket" t
         WHERE t."assigneeId" = u.id
+          AND t."deletedAt" IS NULL
           ${ticketTeamFilter}
       ) stats ON true
       WHERE (u.role)::text IN (${Prisma.join(supportRoles)})
@@ -207,6 +208,7 @@ export class AgentsAdminService {
         MAX(t."updatedAt") AS last_activity
       FROM "Ticket" t
       WHERE t."assigneeId" = ${userId}
+        AND t."deletedAt" IS NULL
         ${ticketTeamFilter}
     `;
 
@@ -219,6 +221,7 @@ export class AgentsAdminService {
         COUNT(*)::bigint AS count
       FROM "Ticket" t
       WHERE t."assigneeId" = ${userId}
+        AND t."deletedAt" IS NULL
         AND t."resolvedAt" IS NOT NULL
         AND t."resolvedAt" >= NOW() - INTERVAL '30 days'
         ${ticketTeamFilter}

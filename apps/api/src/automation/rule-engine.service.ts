@@ -85,7 +85,7 @@ export class RuleEngineService {
       where: { id: ticketId },
       include: { assignedTeam: true },
     });
-    if (!ticket) {
+    if (!ticket || ticket.deletedAt) {
       return {
         matched: false,
         actionsThatWouldRun: [],
@@ -147,7 +147,8 @@ export class RuleEngineService {
       },
     });
 
-    if (!ticket) {
+    if (!ticket || ticket.deletedAt) {
+      // Soft-deleted tickets never run automation rules.
       return { executed: 0, errors: ['Ticket not found'] };
     }
 
@@ -586,7 +587,7 @@ export class RuleEngineService {
       where: { id: ticketId },
       include: { assignedTeam: { include: { members: true } } },
     });
-    if (!t) throw new Error('Ticket not found');
+    if (!t || t.deletedAt) throw new Error('Ticket not found');
     return t;
   }
 

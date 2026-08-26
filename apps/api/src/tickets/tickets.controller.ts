@@ -24,6 +24,7 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { DeleteTicketDto } from './dto/delete-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
 import { ListTicketEventsDto } from './dto/list-ticket-events.dto';
@@ -231,6 +232,22 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.transition(id, payload, user);
+  }
+
+  @Delete(':id')
+  @ThrottlePolicy('highWrite')
+  async remove(
+    @Param('id') id: string,
+    @Body() payload: DeleteTicketDto | undefined,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.softDelete(id, payload ?? {}, user);
+  }
+
+  @Post(':id/restore')
+  @ThrottlePolicy('highWrite')
+  async restore(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.ticketsService.restore(id, user);
   }
 
   @Post(':id/category')
