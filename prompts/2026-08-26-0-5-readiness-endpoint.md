@@ -572,3 +572,82 @@ cd ../.. && git status --short && git diff --stat HEAD~1
 5. Output of manual steps 1–3 (the JSON, and the two HTTP codes).
 6. Anything that did not match this prompt — especially: the real behaviour of `fallbackToInline()` vs the `getStatus()` branch logic in Task 1 step 2; the shape of `checkBreaches()` if the `finally` did not fit cleanly; the true test counts.
 7. Part B is **not** part of this report — it happens after GREEN and deploy.
+
+---
+
+## 12. Decision after the stop-and-report (planning session, 2026-08-26)
+
+The implementer stopped at Task 4 because §3's integration expectations were wrong. Verified by the planning session against `test/setup-tests.ts` and the dev `.env` key names: the harness pins `NOTIFICATIONS_QUEUE_ENABLED=false`, `SLA_BREACH_WORKER_ENABLED=false`, `ATTACHMENT_SCAN_ENABLED=true`, `ATTACHMENT_SCAN_BYPASS=false`, `ATTACHMENT_SCAN_WEBHOOK_SECRET=test-scan-secret`; it does **not** pin `AUTOMATION_QUEUE_ENABLED`; and its deliberate `require('@prisma/client')` loads the dev `.env`, whose `AZURE_WEB_PUBSUB_*`, `AZURE_STORAGE_*`, `AZURE_AI_FOUNDRY_*` and `SMTP_*` keys then leak into every integration run on this machine (so today's attachment and realtime specs hit the real Blob container and Web PubSub here, and behave differently in CI). §3 rows 7 and 9 were wrong; so was the landmines sentence they leaned on.
+
+**Decision: option 2 — make the harness hermetic, then assert exact values.** Plus three small additions found in the report.
+
+### 12.1 `test/setup-tests.ts` (now in scope)
+
+After the existing `require('@prisma/client');` block and its `delete process.env.RATE_LIMIT_*` lines, add:
+
+```ts
+// Optional integrations must be OFF in the test environment regardless of what
+// the dev `.env` contains, so the suite behaves identically here and in CI
+// (CI has no `.env` at all). Without this, attachment specs write to the real
+// Blob container and realtime specs publish to the real Web PubSub hub.
+for (const key of [
+  'AZURE_WEB_PUBSUB_CONNECTION_STRING',
+  'AZURE_WEB_PUBSUB_HUB',
+  'AZURE_WEB_PUBSUB_TOKEN_LIFETIME_MINUTES',
+  'AZURE_STORAGE_CONNECTION_STRING',
+  'AZURE_STORAGE_CONTAINER',
+  'AZURE_AI_FOUNDRY_ENDPOINT',
+  'AZURE_AI_FOUNDRY_API_KEY',
+  'AZURE_AI_FOUNDRY_MODEL',
+  'SMTP_HOST',
+  'SMTP_USER',
+  'SMTP_PASS',
+  'HEALTH_READY_TOKEN',
+]) {
+  delete process.env[key];
+}
+process.env.AUTOMATION_QUEUE_ENABLED = 'false';
+```
+
+`ai-intake-live.spec.ts` (the 1 skipped) loads credentials from `.env` itself when `AI_LIVE_TEST_ENABLED=true`; dotenv does not override existing keys, so deleting them here lets that opt-in path still work — confirm by reading how that spec loads them, and report if it does anything else.
+
+### 12.2 Integration spec — exact expectations
+
+Replace the first test's assertions with exact values (keep the shape type):
+
+```ts
+    expect(body.status).toBe('ok');
+    expect(body.db).toBe('ok');
+    expect(body.redis.emailQueue).toBe('disabled');
+    expect(body.redis.automationQueue).toBe('disabled');
+    expect(body.smtp).toBe('missing');
+    expect(body.webPubSub).toBe('disabled');
+    expect(body.blobStorage).toBe('local-disk');
+    expect(body.attachmentScanner).toBe('configured');
+    expect(body.aiPipeline).toBe('disabled');
+    expect(body.slaWorker).toEqual({ enabled: false, lastRunAt: null, lastRunOk: null });
+```
+
+Drop the `QUEUE_STATES` membership check — nothing is timing-dependent any more.
+
+### 12.3 Scanner state gains a fourth value (production code, `health.service.ts` + type + unit spec)
+
+`ATTACHMENT_SCAN_ENABLED=false` (read at `ticket-attachment.service.ts:541`) switches the download gate **off** — files are served regardless of scan status. That is a different, worse state than `bypass` (which marks new uploads `CLEAN`). Report it:
+
+- `ReadinessReport['attachmentScanner']` → `'configured' | 'bypass' | 'gate-off' | 'blocked'`.
+- `scannerState()`: first `if ((config.get('ATTACHMENT_SCAN_ENABLED') ?? 'true') !== 'true') return 'gate-off';` then the existing bypass / configured / blocked chain.
+- Unit test: `ATTACHMENT_SCAN_ENABLED: 'false'` with a secret present → `'gate-off'`. Add `ATTACHMENT_SCAN_ENABLED` to the keys the spec's `beforeEach` snapshots and deletes.
+
+### 12.4 `fellBack` flag (both queue services)
+
+Accepted from item 6C. Add `private fellBack = false;`, set it in `fallbackToInline()`, and make `getStatus()` return `'inline-fallback'` when `!this.enabled && this.fellBack`, `'disabled'` when `!this.enabled` otherwise. The existing unit tests still pass; add one that calls `fallbackToInline()` via the constructor-throw path only if it can be done without a real Redis — otherwise leave it to the JSDoc.
+
+### 12.5 Docs and baselines
+
+- `docs/agent-context/repo-landmines.md` line ~128: replace *"`.env.test` deliberately has no Azure Foundry config."* with: *"`test/setup-tests.ts` deletes every `AZURE_*`, `SMTP_*` and `HEALTH_READY_TOKEN` key after forcing the dev `.env` load, so integration runs are hermetic on every machine; only `ai-intake-live.spec` (opt-in via `AI_LIVE_TEST_ENABLED`) reloads real credentials."* Keep the rest of that bullet.
+- Baselines: **193 unit (25 suites), 362 integration + 1 skipped, 36 web (13 files)** — in `CLAUDE.md` and the landmines baseline bullet (date 2026-08-26). If the full run says otherwise after 12.1, the real number wins and is a report-back item.
+- The 0.11 note about `PROJECT_DOCUMENTATION.md`/`sprint.md` being gitignored is acknowledged; no action here.
+
+### 12.6 Commit and report
+
+Run §9 in full (the whole integration suite again — 12.1 changes the environment for every spec, so all 39 files must be re-run, not just health). Then the Task 5 commit with these extra paths added: `apps/api/test/setup-tests.ts`, `apps/api/src/health/readiness-report.type.ts` (already listed), and the two queue services. Report items 1–6 of §11 again, plus: (a) confirmation that `tickets.attachments.spec.ts` and the realtime-related specs still pass with the Azure keys scrubbed, (b) how `ai-intake-live.spec.ts` obtains its credentials.

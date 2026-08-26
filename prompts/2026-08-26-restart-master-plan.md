@@ -17,7 +17,7 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | Card | State | Handoff prompt | Notes |
 |---|---|---|---|
 | 0.1 Fix the failing front-end tests | **GREEN** (verified 2026-08-26) | `prompts/2026-08-26-0-1-web-unit-tests-green.md` | Commit `d6cc683`. Planner re-ran: vitest 36/36 (13 files), tsc web+api clean, jest 186/186, diff = exactly the 5 files, no lockfile change. Merge OK; nothing to deploy. New web baseline recorded in CLAUDE.md. |
-| 0.5 Readiness endpoint | **Handoff written** (2026-08-26) | `prompts/2026-08-26-0-5-readiness-endpoint.md` | Unblocks 0.4 and 0.7. API-only, additive, no migration. |
+| 0.5 Readiness endpoint | **Building — round 2** (2026-08-26) | `prompts/2026-08-26-0-5-readiness-endpoint.md` §12 | Round 1 stopped correctly: prompt's test expectations were wrong because the integration harness leaks the dev `.env` (Azure/SMTP keys) — meaning attachment/realtime specs hit real Azure on this machine. Decision: make `test/setup-tests.ts` hermetic, exact assertions, add `gate-off` scanner state (`ATTACHMENT_SCAN_ENABLED`), `fellBack` flag. Unit 193 already green. Unblocks 0.4 and 0.7. |
 | 0.2 Deploy gate | Queued — **decision needed** | — | Pick hosted grant / self-hosted agent / private GitHub. |
 | 0.3 Migration DROP guard | **Handoff written** (2026-08-26) | `prompts/2026-08-26-0-3-migration-drop-guard.md` | Script + 2 CI files. Independent of 0.2 (runs once a CI exists). Merge on GREEN; no deploy. **Do before 0.8** (defines `-- allow-drop:`). |
 | 0.4 Monitoring + alerts | Queued | — | After 0.5. |
