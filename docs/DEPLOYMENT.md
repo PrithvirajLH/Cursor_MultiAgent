@@ -28,7 +28,7 @@ az webapp config appsettings set -g csnhc-ai -n TicketTicket --settings \
   DEPLOYED_COMMIT_SHA=$(git rev-parse HEAD)
 
 # 4. build (~2 min) and deploy (~5 min)
-powershell -ExecutionPolicy Bypass -File ./create-deploy-zip.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./create-deploy-zip.ps1   # pwsh 7, NOT powershell 5.1 — see Gotcha 9
 az webapp deploy -g csnhc-ai -n TicketTicket --type zip --async true \
   --src-path Codex_Ticketing_System_deploy.zip
 
@@ -123,7 +123,7 @@ This restarts the app. Do it before the package lands, not after.
 ### 4. Build
 
 ```bash
-powershell -ExecutionPolicy Bypass -File ./create-deploy-zip.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./create-deploy-zip.ps1   # pwsh 7, NOT powershell 5.1 — see Gotcha 9
 ```
 
 Produces `Codex_Ticketing_System_deploy.zip` (~169 MB: it bundles production
@@ -139,7 +139,10 @@ az webapp deploy -g csnhc-ai -n TicketTicket --type zip --async true \
   --src-path Codex_Ticketing_System_deploy.zip
 ```
 
-Then poll until `complete=true`:
+As of 2026-08-26 the CLI **polls the deployment itself** and prints
+`Building the app… → Build successful → Starting the site… → Site started
+successfully → Deployment has completed successfully` (about 95 s for the 162 MB
+package). If it returns before that, poll until `complete=true`:
 
 ```bash
 az webapp log deployment list -g csnhc-ai -n TicketTicket \
@@ -175,6 +178,29 @@ curl -s -o /dev/null -w '%{http_code}\n' -u "$U:$P" "$SCM/dist/src/main.js"
 
 Matching asset hashes is the proof. "The deployment said success" is not —
 a package can deploy successfully and still be the wrong package.
+
+Also check that a file **new in this release** exists on the server, e.g.
+(2026-08-26) `dist/src/health/health.controller.js`:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -u "$U:$P" "$SCM/dist/src/health/health.controller.js"   # 200
+```
+
+**Two dead ends, so nobody repeats them (2026-08-26):**
+
+- Kudu's command API (`POST …/api/command` with `curl http://localhost:8080/…`)
+  **cannot reach the app** on Linux App Service — Kudu runs in its own container
+  and only shares the filesystem. You get `ExitCode: 7` (connection refused).
+- **Container logging is off** in production (`az webapp log show` →
+  `applicationLogs.fileSystem.level: Off`, no `*_default_docker.log` under
+  `/LogFiles`), so there is no startup log to read either. Turning it on is a
+  config change (`az webapp log config -g csnhc-ai -n TicketTicket
+  --docker-container-logging filesystem`) — worth doing once so future deploys
+  can be verified from the log instead of a browser.
+
+Until then the only functional check is a **signed-in browser**: open
+`/api/health` and `/api/health/ready` (the readiness inventory added 2026-08-26)
+and read the JSON.
 
 Also confirm: `az webapp show -g csnhc-ai -n TicketTicket --query state` → `Running`.
 
@@ -272,6 +298,17 @@ hosted parallelism grant, which needs a purchase or a support request. Until
 that is resolved, the test commands in step 1 are the only gate, and they are
 manual. The fixed `.github/workflows/ci.yml` can run on the public GitHub
 remotes if you want automated checks sooner.
+
+### 9. `create-deploy-zip.ps1` fails under Windows PowerShell 5.1
+
+The script sets `$ErrorActionPreference = "Stop"` and runs `npm … 2>&1`. Under
+`powershell.exe` (5.1) any line npm writes to stderr — including the harmless
+`npm warn config production Use --omit=dev instead` that this repo's `.npmrc`
+provokes on every command — becomes a terminating `NativeCommandError`, and the
+build dies at "Building API…" with exit 1 and no zip. Under `pwsh` (7.x) stderr
+is not promoted to an error and the script completes. Always invoke it with
+`pwsh`. (Root cause of the warning: `.npmrc` sets the deprecated key
+`production = false`; deleting that line silences it.)
 
 ---
 
