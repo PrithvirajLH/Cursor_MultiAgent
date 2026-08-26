@@ -31,6 +31,16 @@ Verbatim response from `GET /api/health/ready`:
 | SLA worker | `enabled`, last run OK | Breach/at-risk detection is running every minute. | — |
 | Readiness token | not set | `/api/health/ready` is open, but behind Easy Auth. | Set `HEALTH_READY_TOKEN` when card 0.4 excludes the path for a monitor. |
 
+## Usage snapshot (read-only query, 2026-08-26 17:20 UTC)
+
+| Table | Count |
+|---|---|
+| `Attachment` | **0** — nothing is stuck; the `blocked` scanner state has not affected anyone yet |
+| `Ticket` | 3 (none with the `[Seed]` prefix) |
+| `User` | 5, all active |
+
+Production is effectively unused so far. That lowers the *urgency* of the SMTP and scanner gaps — not their importance: both must be resolved before the first real team is onboarded (master plan cards 0.7 and the SMTP decision).
+
 ## Application setting names (36)
 
 ```
