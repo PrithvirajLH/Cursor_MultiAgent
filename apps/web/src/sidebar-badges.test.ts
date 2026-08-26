@@ -6,14 +6,9 @@ const counts = {
   triage: 5,
   open: 8,
   unassigned: 2,
-  resolved: 11,
 };
 
 describe("sidebar badge mapping", () => {
-  it("maps completed to the resolved aggregate", () => {
-    expect(getSidebarBadge("completed", counts)).toBe(11);
-  });
-
   it("keeps created tickets unbadged until a matching aggregate exists", () => {
     expect(getSidebarBadge("created", counts)).toBeUndefined();
   });

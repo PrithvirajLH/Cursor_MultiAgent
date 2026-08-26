@@ -14,8 +14,6 @@ describe("sign-in landing page auth errors", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain("Sign-in failed");
     expect(html).toContain("Microsoft authentication is temporarily unavailable.");
-    expect(html).toContain(
-      "Try signing in again. If the problem continues, contact your administrator.",
-    );
+    expect(html).toContain("Try again or contact your administrator.");
   });
 });

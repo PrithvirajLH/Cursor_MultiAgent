@@ -7,12 +7,16 @@ const MENTION_REGEX = /@\[([^\]]+)\]\(user:([a-f0-9-]{36})\)/gi;
 const MENTION_SPAN_REGEX =
   /<span\s[^>]*data-user-id="([a-f0-9-]{36})"[^>]*>@([^<]*)<\/span>/gi;
 
-// Prevent tabnabbing: force rel="noopener noreferrer" on links with target="_blank"
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  if (node.tagName === "A" && node.getAttribute("target") === "_blank") {
-    node.setAttribute("rel", "noopener noreferrer");
-  }
-});
+// Prevent tabnabbing: force rel="noopener noreferrer" on links with target="_blank".
+// DOMPurify only attaches its methods when a DOM exists; in Node (vitest,
+// any future server-side import) `isSupported` is false and addHook is absent.
+if (DOMPurify.isSupported) {
+  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.tagName === "A" && node.getAttribute("target") === "_blank") {
+      node.setAttribute("rel", "noopener noreferrer");
+    }
+  });
+}
 
 const ALLOWED_TAGS = [
   "p",

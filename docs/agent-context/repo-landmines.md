@@ -23,9 +23,9 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-25: 186 unit, 360 integration + 1 skipped**, both
-  typechecks clean. Anything below that is a regression. State these numbers in
-  any plan so regressions are obvious.
+- **Baseline as of 2026-08-26: 186 unit, 360 integration + 1 skipped, 36 web unit
+  (13 vitest files)**, both typechecks clean. Anything below that is a regression.
+  State these numbers in any plan so regressions are obvious.
 
 - **The consent variable is required for integration runs.** Every integration
   suite re-runs a database reset in its own `beforeAll`, so export it for the
