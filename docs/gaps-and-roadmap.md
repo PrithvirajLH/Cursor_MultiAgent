@@ -1,3 +1,6 @@
+> **SUPERSEDED — 2026-08-26.** This document describes an earlier state and contradicts the code in places.
+> Do not plan from it. Current entry points: `CLAUDE.md` → `docs/agent-context/` → `prompts/2026-08-26-restart-master-plan.md`.
+
 # Ticketing System — Gaps & Roadmap (Needs Attention)
 
 Items to build or improve so the system aligns with the full modern ticketing design (MVP → scalable). Use this for backlog prioritization and architecture docs.

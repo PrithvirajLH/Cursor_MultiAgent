@@ -103,8 +103,9 @@ Seeded users (from `apps/api/prisma/seed.ts`) include:
   - Header: `x-inbound-email-secret: <INBOUND_EMAIL_WEBHOOK_SECRET>`
   - Payload must include a unique `messageId` for replay-safe deduplication.
 
-## Next steps
-- Wire Azure AD (Entra ID) SSO
-- Add provider-specific inbound adapters (Microsoft Graph/Gmail) on top of the webhook contract
-- Implement SLA engine + routing rules UI
-- Add audit log viewer + compliance retention policies
+## Where the plan lives
+
+The item-by-item plan for taking this system to production is
+`prompts/2026-08-26-restart-master-plan.md` (status board at the top). Start from
+`CLAUDE.md` for the rules and baselines. Several older planning documents carry a
+**SUPERSEDED** banner — they are history, not guidance.

@@ -1,3 +1,6 @@
+> **SUPERSEDED — 2026-08-26.** This document describes an earlier state and contradicts the code in places.
+> Do not plan from it. Current entry points: `CLAUDE.md` → `docs/agent-context/` → `prompts/2026-08-26-restart-master-plan.md`.
+
 # Zendesk Gap Implementation Plan (Monorepo)
 
 Last updated: 2026-01-27

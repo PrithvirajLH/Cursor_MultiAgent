@@ -1,3 +1,6 @@
+> **SUPERSEDED — 2026-08-26.** This document describes an earlier state and contradicts the code in places.
+> Do not plan from it. Current entry points: `CLAUDE.md` → `docs/agent-context/` → `prompts/2026-08-26-restart-master-plan.md`.
+
 # Sprint Status
 
 Status derived from IT.pdf (Sprint Plan) and current codebase. Updated: 2026-02-09.
