@@ -31,6 +31,11 @@ build/
 # Logs
 logs/
 *.log
+*.err
+# Integration-run output files that implementation prompts redirect to the repo root
+/health-int.txt
+/int-full.txt
+/it-*.txt
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
