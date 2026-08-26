@@ -201,7 +201,7 @@ Both logs sit on the shared filesystem, readable through Kudu VFS with the same
 `$U:$P` as above:
 
 ```bash
-LOGS="$SCM/../../LogFiles"   # i.e. https://…scm…/api/vfs/LogFiles/
+SCM_ROOT="https://ticketticket-gmgwf9efe4h6bmfb.scm.southcentralus-01.azurewebsites.net"
 # 1. the platform log names the deployment that is actually running
 curl -s -u "$U:$P" "$SCM_ROOT/api/vfs/LogFiles/$(date -u +%Y_%m_%d)_ln0xsdlwk000A9D_docker.log" \
   | grep -E "Site is running with deployment version|Site started"
@@ -211,8 +211,7 @@ curl -s -u "$U:$P" "$SCM_ROOT/api/vfs/LogFiles/$(date -u +%Y_%m_%d)_ln0xsdlwk000
   | grep -E 'Mapped \{/api/health/ready|Application is running|Nest application successfully started'
 ```
 
-(`SCM_ROOT` = `https://ticketticket-gmgwf9efe4h6bmfb.scm.southcentralus-01.azurewebsites.net`;
-the `ln0xsdlwk000A9D` instance id may change if the plan is rescaled — list
+(The `ln0xsdlwk000A9D` instance id may change if the plan is rescaled — list
 `/api/vfs/LogFiles/` and take the newest `*_default_docker.log`.) Live
 alternative: `az webapp log tail -g csnhc-ai -n TicketTicket`.
 
