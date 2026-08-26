@@ -358,3 +358,43 @@ cd ../.. && git status --short && git diff --stat main...HEAD -- . ':!prompts'
 4. `git diff --stat main...HEAD -- . ':!prompts'` (or against the pre-card commit).
 5. Manual steps 1–5 results.
 6. Anything that did not match — especially: any site outside §3 that needed a `deletedAt` filter (say where and why), any place that passes a narrowed ticket shape to `canViewTicket` and therefore bypassed the deleted check, whether `reports.service.ts` needed edits, and the real `SLA_BREACH_LOCK_KEY` value and the constant you chose.
+
+---
+
+## 12. Decision after the round-1 report (planning session, 2026-08-26)
+
+Planner reviewed commits `c95ee50`, `1b5336c`, `22b05e3`: migration SQL is exactly the six intended statements under the allow-drop header (trigram indexes intact, 49 migrations on the test DB); the access-control chokepoint change is correct; items 6B–6F are accepted as reported. Stopping on 6A was correct — §3/§6 assumed every report used `accessConditionSql`; three use `prisma.ticket.groupBy` through `reportWhere()`.
+
+### 12.1 Apply the `reportWhere()` fix — **yes**
+
+`apps/api/src/reports/reports.service.ts` `reportWhere()` (~:126): push `{ deletedAt: null }` into `conditions`. One line. `reports.service.ts` joins the §6 list. Re-run the four card specs and the **full** integration suite; expect **373 passed, 1 skipped, 0 failed**.
+
+### 12.2 Accepted deviations (no action)
+
+- 6B: `TicketRealtimeReason` union gains `'deleted' | 'restored'`; `categories.service.spec.ts` mock extended. Both join the §6 list.
+- 6C: three `agents-admin` raw queries filtered, not one. §3 was wrong about the count; the fix is right.
+- 6D: `listMessages`/`listEvents` pass `{ includeDeleted: true }` (OWNER-only effect) and probe existence with `deletedAt: null` so non-owners get 404. Good — this closes an existence leak §7 asked about.
+- 6E: retention advisory lock key 847293 (SLA uses 847291/847292). Record in the JSDoc if not already.
+- 6F: statics on `RetentionService`, spec adjustments, global toast — all fine.
+
+### 12.3 Baselines
+
+`CLAUDE.md` and `docs/agent-context/repo-landmines.md`: **206 unit (26 suites), 373 integration + 1 skipped, 36 web (13 files)** — after the full run confirms them. Also note in the landmines Prisma bullet that migration count is now 49.
+
+### 12.4 Bring the dev database up to date, then do the manual steps
+
+The owner's standing rule is **dev (Supabase) before production** for every migration. From `apps/api`, with the normal `.env` (Prisma uses `directUrl`, port 5432, for migrations — the pooler URL on 6543 is only the runtime `url`):
+
+```bash
+npx prisma migrate status      # confirm the Datasource line shows the host on :5432, NOT :6543; expect exactly 1 pending
+npx prisma migrate deploy      # applies 20260826180000_soft_delete_and_fk_restrict
+npx prisma migrate status      # "Database schema is up to date!", 49 migrations
+```
+
+If the status line shows port 6543, stop — `.env`'s `DIRECT_URL` is wrong and must be fixed by the owner, not worked around.
+
+Then run §10 manual steps 1–5 with **real dev accounts**: list them with `GET /api/users` as an OWNER (or `SELECT email, role FROM "User" ORDER BY role` against the dev DB) and substitute one OWNER and one LEAD for the seed names the prompt assumed. Report which accounts you used and the outcome of each step, including the realtime disappearance in step 2 if Web PubSub is configured in dev (the readiness endpoint tells you).
+
+### 12.5 Commit and report
+
+One commit for 12.1 + 12.3 (explicit paths: `reports.service.ts`, `CLAUDE.md`, `repo-landmines.md`). Stage by explicit path; read `git status --short` first — the planning session's prompt/plan commits may be interleaved on the branch. Report: commit SHA; the four spec `Tests:` lines and the full-suite summary; both `tsc`; vitest; `git diff --stat ca31593 HEAD -- . ':!prompts' ':!docs/DR.md'`; dev-DB `migrate status` before/after; manual steps 1–5 with the accounts used; anything else that did not match.
