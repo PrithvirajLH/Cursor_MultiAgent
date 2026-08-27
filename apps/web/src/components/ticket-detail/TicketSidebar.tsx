@@ -19,6 +19,7 @@ import type {
   TeamMember,
   TeamRef,
 } from "../../api/client";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { CustomFieldsDisplay } from "../CustomFieldRenderer";
 import { RelativeTime } from "../RelativeTime";
 import { formatStatus, formatTicketId, initialsFor } from "../../utils/format";
@@ -29,6 +30,98 @@ import {
   getResolutionSla,
   priorityBadgeClass,
 } from "./utils";
+
+/** Requester-side actions (card 1.2); `confirm`/`reopen` can be pre-opened from an email link. */
+export type RequesterAction = "confirm" | "reopen" | "cancel";
+
+type RequesterActionSpec = {
+  action: RequesterAction;
+  label: string;
+  status: string;
+  toast: string;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  destructive: boolean;
+  primary: boolean;
+};
+
+function closeReasonText(reason: string | null | undefined): string | null {
+  switch (reason) {
+    case "REQUESTER_CONFIRMED":
+      return "you confirmed it was fixed";
+    case "REQUESTER_CANCELLED":
+      return "cancelled by you";
+    case "AGENT_CLOSED":
+      return "closed by the support team";
+    case "AUTO_CLOSED":
+      return "closed automatically";
+    default:
+      return null;
+  }
+}
+
+function requesterActionsFor(ticket: TicketDetail): RequesterActionSpec[] {
+  const ref = ticket.displayId ?? `#${ticket.number}`;
+  switch (ticket.status) {
+    case "RESOLVED":
+      return [
+        {
+          action: "confirm",
+          label: "Yes, it's fixed — close ticket",
+          status: "CLOSED",
+          toast: "Ticket closed",
+          title: "Close this ticket?",
+          message: `Marks ${ref} as done. You can reopen it later if the problem comes back.`,
+          confirmLabel: "Close ticket",
+          destructive: false,
+          primary: true,
+        },
+        {
+          action: "reopen",
+          label: "Not fixed — reopen",
+          status: "REOPENED",
+          toast: "Ticket reopened",
+          title: "Reopen this ticket?",
+          message: `Tells the team ${ref} is not fixed yet and puts it back in their queue.`,
+          confirmLabel: "Reopen ticket",
+          destructive: false,
+          primary: false,
+        },
+      ];
+    case "CLOSED":
+      return [
+        {
+          action: "reopen",
+          label: "Reopen ticket",
+          status: "REOPENED",
+          toast: "Ticket reopened",
+          title: "Reopen this ticket?",
+          message: `Puts ${ref} back in the team's queue.`,
+          confirmLabel: "Reopen ticket",
+          destructive: false,
+          primary: true,
+        },
+      ];
+    case "NEW":
+    case "TRIAGED":
+      return [
+        {
+          action: "cancel",
+          label: "I no longer need this — cancel",
+          status: "CLOSED",
+          toast: "Ticket cancelled",
+          title: "Cancel this ticket?",
+          message: `${ref} will be closed and the team will not work on it. You can reopen it later if you change your mind.`,
+          confirmLabel: "Cancel ticket",
+          destructive: true,
+          primary: false,
+        },
+      ];
+    default:
+      return [];
+  }
+}
 
 export type ExpandedSections = {
   edit: boolean;
@@ -79,6 +172,11 @@ export type TicketSidebarProps = {
   csatTicketId?: string;
   csatTicketStatus?: string;
   csatIsRequester?: boolean;
+  /** Requester confirm/reopen/cancel: run the transition and show `toastLabel` on success. */
+  onRequesterTransition?: (status: string, toastLabel: string) => void;
+  /** From `?action=confirm|reopen` in the URL: pre-open that dialog once. */
+  requesterAction?: RequesterAction | null;
+  onRequesterActionConsumed?: () => void;
 };
 
 export function TicketSidebar(
@@ -118,10 +216,28 @@ export function TicketSidebar(
     csatTicketId,
     csatTicketStatus,
     csatIsRequester,
+    onRequesterTransition,
+    requesterAction = null,
+    onRequesterActionConsumed,
   } = props;
 
   const isRequester =
     !!currentEmail && ticket.requester?.email === currentEmail;
+
+  // Requester-only controls (card 1.2). Agents keep the status dropdown.
+  const showRequesterActions = isRequester && !canManage;
+  const requesterActions = showRequesterActions ? requesterActionsFor(ticket) : [];
+  const [pendingAction, setPendingAction] = useState<RequesterActionSpec | null>(null);
+  useEffect(() => {
+    if (!requesterAction) return;
+    const match = requesterActions.find((a) => a.action === requesterAction);
+    if (match) setPendingAction(match);
+    onRequesterActionConsumed?.();
+    // Only react to the URL parameter itself, not to every re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requesterAction]);
+  const closedReason =
+    ticket.status === "CLOSED" ? closeReasonText(ticket.closeReason) : null;
 
   const firstResponseSla = getFirstResponseSla(ticket, RelativeTime);
   const resolutionSla = getResolutionSla(ticket, RelativeTime);
@@ -227,9 +343,60 @@ export function TicketSidebar(
             ) : (
               <div className="px-1.5">
                 <StatusBadge status={ticket.status} />
+                {closedReason && (
+                  <p className="mt-1 text-[12px] text-muted-foreground">
+                    Closed — {closedReason}
+                  </p>
+                )}
               </div>
             )}
           </PropertyRow>
+
+          {requesterActions.length > 0 && (
+            <div className="px-3 py-3" data-testid="requester-actions">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Your ticket
+              </p>
+              <div className="flex flex-col gap-2">
+                {requesterActions.map((spec) => (
+                  <button
+                    key={spec.action}
+                    type="button"
+                    onClick={() => setPendingAction(spec)}
+                    disabled={actionLoading}
+                    className={
+                      spec.primary
+                        ? "w-full rounded-md bg-primary px-3 py-2 text-[13px] font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
+                        : spec.destructive
+                          ? "w-full rounded-md border border-destructive/40 px-3 py-2 text-[13px] font-medium text-destructive hover:bg-destructive/10 disabled:opacity-60"
+                          : "w-full rounded-md border border-border px-3 py-2 text-[13px] font-medium text-foreground hover:bg-muted disabled:opacity-60"
+                    }
+                  >
+                    {spec.label}
+                  </button>
+                ))}
+              </div>
+              <ConfirmDialog
+                open={pendingAction !== null}
+                title={pendingAction?.title ?? ""}
+                message={pendingAction?.message ?? ""}
+                confirmLabel={pendingAction?.confirmLabel}
+                destructive={pendingAction?.destructive ?? false}
+                loading={actionLoading}
+                onConfirm={() => {
+                  if (!pendingAction) return;
+                  const { status, toast } = pendingAction;
+                  setPendingAction(null);
+                  if (onRequesterTransition) {
+                    onRequesterTransition(status, toast);
+                  } else {
+                    onTransitionTo(status);
+                  }
+                }}
+                onCancel={() => setPendingAction(null)}
+              />
+            </div>
+          )}
 
           <PropertyRow label="Assignee">
             {canManage ? (

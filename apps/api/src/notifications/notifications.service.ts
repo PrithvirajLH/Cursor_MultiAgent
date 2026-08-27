@@ -293,11 +293,22 @@ export class NotificationsService {
     });
 
     const emailContext = await this.buildTicketEmailContext(fullTicket);
+    // On RESOLVED the requester can confirm or reopen from the email; the
+    // links only pre-open a dialog in the portal, the API still authorises.
+    const requesterActionLines =
+      fullTicket.status === TicketStatus.RESOLVED
+        ? [
+            `Is it fixed? Close it: ${this.ticketLink(fullTicket.id)}?action=confirm`,
+            `Not fixed? Reopen it: ${this.ticketLink(fullTicket.id)}?action=reopen`,
+            '',
+          ]
+        : [];
     const body = [
       `Status changed from ${previousStatus} to ${fullTicket.status}.`,
       '',
       'If you need anything else, reply to this email and the ticket will update automatically.',
       '',
+      ...requesterActionLines,
       `View: ${this.ticketLink(fullTicket.id)}`,
     ].join('\n');
     // Queue email notifications

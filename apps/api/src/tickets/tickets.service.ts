@@ -17,6 +17,7 @@ import {
   Prisma,
   TagSource,
   TeamAssignmentStrategy,
+  TicketCloseReason,
   TicketPriority,
   TicketStatus,
   UserRole,
@@ -137,12 +138,32 @@ export class TicketsService {
     TicketStatus.WAITING_ON_VENDOR,
   ];
   private readonly STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]>;
+  /**
+   * The only moves a ticket's own requester may make (card 1.2): confirm a
+   * resolution (RESOLVED -> CLOSED), reopen (RESOLVED|CLOSED -> REOPENED) and
+   * cancel an untouched ticket (NEW|TRIAGED -> CLOSED).
+   */
+  private readonly REQUESTER_TRANSITIONS: ReadonlyArray<
+    [TicketStatus, TicketStatus]
+  > = [
+    [TicketStatus.RESOLVED, TicketStatus.CLOSED],
+    [TicketStatus.RESOLVED, TicketStatus.REOPENED],
+    [TicketStatus.CLOSED, TicketStatus.REOPENED],
+    [TicketStatus.NEW, TicketStatus.CLOSED],
+    [TicketStatus.TRIAGED, TicketStatus.CLOSED],
+  ];
+  // NEW/TRIAGED -> CLOSED lets a requester cancel and an agent close an
+  // untouched ticket directly ("duplicate, closing") — card 1.2.
   private readonly DEFAULT_STATUS_TRANSITIONS: Record<
     TicketStatus,
     TicketStatus[]
   > = {
-    [TicketStatus.NEW]: [TicketStatus.TRIAGED, TicketStatus.ASSIGNED],
-    [TicketStatus.TRIAGED]: [TicketStatus.ASSIGNED],
+    [TicketStatus.NEW]: [
+      TicketStatus.TRIAGED,
+      TicketStatus.ASSIGNED,
+      TicketStatus.CLOSED,
+    ],
+    [TicketStatus.TRIAGED]: [TicketStatus.ASSIGNED, TicketStatus.CLOSED],
     [TicketStatus.ASSIGNED]: [
       TicketStatus.IN_PROGRESS,
       TicketStatus.WAITING_ON_REQUESTER,
@@ -482,6 +503,7 @@ export class TicketsService {
           updatedAt: true,
           resolvedAt: true,
           closedAt: true,
+          closeReason: true,
           completedAt: true,
           dueAt: true,
           firstResponseDueAt: true,
@@ -2097,12 +2119,27 @@ export class TicketsService {
     }
 
     if (user.role === UserRole.EMPLOYEE) {
-      throw new ForbiddenException('Requesters cannot transition tickets');
+      const allowed =
+        ticket.requesterId === user.id &&
+        this.REQUESTER_TRANSITIONS.some(
+          ([from, to]) => from === ticket.status && to === payload.status,
+        );
+      if (!allowed) {
+        throw new ForbiddenException(
+          'Requesters can confirm, reopen or cancel their own ticket only',
+        );
+      }
     }
 
     if (!this.canWriteTicket(user, ticket)) {
       throw new ForbiddenException('No write access to transition this ticket');
     }
+
+    const closeReason = this.resolveCloseReason(
+      user,
+      ticket.status,
+      payload.status,
+    );
 
     const transitionTicket: StatusTransitionTicketSnapshot = {
       id: ticket.id,
@@ -2123,6 +2160,7 @@ export class TicketsService {
         transitionTicket,
         payload.status,
         user.id,
+        closeReason,
       );
 
       const updatedTicket = await tx.ticket.findUnique({
@@ -2175,11 +2213,30 @@ export class TicketsService {
     };
   }
 
+  /** Why a ticket is closing; null unless the target status is CLOSED. */
+  private resolveCloseReason(
+    user: AuthUser,
+    from: TicketStatus,
+    to: TicketStatus,
+  ): TicketCloseReason | null {
+    if (to !== TicketStatus.CLOSED) return null;
+    if (user.role !== UserRole.EMPLOYEE) return TicketCloseReason.AGENT_CLOSED;
+    return from === TicketStatus.RESOLVED
+      ? TicketCloseReason.REQUESTER_CONFIRMED
+      : TicketCloseReason.REQUESTER_CANCELLED;
+  }
+
+  /**
+   * Apply a status change inside a transaction. `closeReason` is recorded when
+   * the ticket enters CLOSED (callers that pass nothing — automation, inbound
+   * email — get AGENT_CLOSED) and cleared on REOPENED.
+   */
   async applyStatusTransitionInTx(
     tx: Prisma.TransactionClient,
     ticket: StatusTransitionTicketSnapshot,
     newStatus: TicketStatus,
     actorId: string,
+    closeReason?: TicketCloseReason | null,
   ) {
     if (!this.isValidTransition(ticket.status, newStatus)) {
       throw new ForbiddenException('Invalid status transition');
@@ -2220,11 +2277,21 @@ export class TicketsService {
           ? null
           : ticket.completedAt;
 
+    const effectiveCloseReason: TicketCloseReason | null | undefined =
+      newStatus === TicketStatus.CLOSED
+        ? (closeReason ?? TicketCloseReason.AGENT_CLOSED)
+        : newStatus === TicketStatus.REOPENED
+          ? null
+          : undefined;
+
     const updateData: Prisma.TicketUpdateInput = {
       status: newStatus,
       resolvedAt,
       closedAt,
       completedAt,
+      ...(effectiveCloseReason !== undefined
+        ? { closeReason: effectiveCloseReason }
+        : {}),
     };
 
     if (enteringPause) {
@@ -2266,6 +2333,9 @@ export class TicketsService {
         payload: {
           from: ticket.status,
           to: newStatus,
+          ...(effectiveCloseReason !== undefined
+            ? { closeReason: effectiveCloseReason }
+            : {}),
         },
         createdById: actorId,
       },

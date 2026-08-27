@@ -23,7 +23,7 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-27: 206 unit (26 suites), 380 integration + 1 skipped,
+- **Baseline as of 2026-08-27: 206 unit (26 suites), 388 integration + 1 skipped,
   36 web unit (13 vitest files)**, both typechecks clean. Anything below that is a
   regression. State these numbers in any plan so regressions are obvious.
 
@@ -89,8 +89,9 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   CI runs this as `scripts/check-migrations.sh` on every new migration; an
   intentional drop needs a first-line `-- allow-drop: <reason>` (first use:
   `20260826180000_soft_delete_and_fk_restrict`, an FK action change). The
-  migration count is **49** as of 2026-08-26; `prisma migrate status` against
-  any environment should report exactly that.
+  migration count is **50** as of 2026-08-27 (`20260827120000_ticket_close_reason`
+  added `Ticket.closeReason`); `prisma migrate status` against any environment
+  should report exactly that.
 
 - **`prisma migrate dev` cannot run non-interactively at all** — it aborts with
   "Prisma Migrate has detected that the environment is non-interactive", even with

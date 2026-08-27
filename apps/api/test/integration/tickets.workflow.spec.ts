@@ -101,7 +101,7 @@ describe('Ticket workflows', () => {
       .expect(400);
   });
 
-  it('rejects direct NEW -> RESOLVED/CLOSED transitions', async () => {
+  it('rejects direct NEW -> RESOLVED/IN_PROGRESS transitions', async () => {
     const ticket = await getTicketBySubject(server, 'Laptop provisioning');
 
     await request(server)
@@ -110,10 +110,13 @@ describe('Ticket workflows', () => {
       .send({ status: 'RESOLVED' })
       .expect(403);
 
+    // NEW -> CLOSED is allowed since card 1.2 (requester cancel / agent
+    // "duplicate, closing") and is covered by tickets.requester-actions.spec;
+    // it is not used here because this ticket is shared by the later tests.
     await request(server)
       .post(`/api/tickets/${ticket.id}/transition`)
       .set(authHeader(fixtureEmails.agent))
-      .send({ status: 'CLOSED' })
+      .send({ status: 'IN_PROGRESS' })
       .expect(403);
   });
 

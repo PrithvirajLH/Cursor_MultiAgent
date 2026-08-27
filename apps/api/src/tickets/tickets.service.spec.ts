@@ -171,11 +171,23 @@ describe('TicketsService', () => {
           TicketStatus.CLOSED,
         ),
       ).toBe(true);
+      // Card 1.2: an untouched ticket can be closed directly (requester cancel,
+      // agent "duplicate, closing").
+      expect(
+        callIsValidTransition(service, TicketStatus.NEW, TicketStatus.CLOSED),
+      ).toBe(true);
+      expect(
+        callIsValidTransition(service, TicketStatus.TRIAGED, TicketStatus.CLOSED),
+      ).toBe(true);
     });
 
     it('rejects invalid transitions', () => {
       expect(
-        callIsValidTransition(service, TicketStatus.NEW, TicketStatus.CLOSED),
+        callIsValidTransition(
+          service,
+          TicketStatus.NEW,
+          TicketStatus.IN_PROGRESS,
+        ),
       ).toBe(false);
       expect(
         callIsValidTransition(

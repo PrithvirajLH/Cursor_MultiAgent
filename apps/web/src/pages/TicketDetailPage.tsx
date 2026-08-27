@@ -1535,7 +1535,7 @@ export function TicketDetailPage({
   ]);
 
   const transitionTo = useCallback(
-    async (targetStatus: string) => {
+    async (targetStatus: string, toastMessage?: string) => {
       if (!ticket || !targetStatus || targetStatus === ticket.status) return;
       const previousStatus = ticket.status;
       setActionError(null);
@@ -1548,7 +1548,8 @@ export function TicketDetailPage({
           : prev,
       );
       setCopyToast({
-        message: `Status updated to ${formatStatus(targetStatus)}.`,
+        message:
+          toastMessage ?? `Status updated to ${formatStatus(targetStatus)}.`,
         type: "success",
       });
 
@@ -1579,6 +1580,19 @@ export function TicketDetailPage({
       notifyTicketReportsChanged,
     ],
   );
+
+  // `?action=confirm|reopen` (from the RESOLVED email) pre-opens the matching
+  // requester dialog once; the sidebar tells us when it has consumed it and
+  // we strip the parameter so a reload does not re-open it.
+  const requesterActionParam = useMemo(() => {
+    const action = new URLSearchParams(location.search).get("action");
+    return action === "confirm" || action === "reopen" ? action : null;
+  }, [location.search]);
+  const consumeRequesterAction = useCallback(() => {
+    if (requesterActionParam) {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.pathname, navigate, requesterActionParam]);
 
   const handleTransition = useCallback(
     () => transitionTo(nextStatus),
@@ -2481,6 +2495,11 @@ export function TicketDetailPage({
                 statusSelectRef={statusSelectRef}
                 onTransition={() => void handleTransition()}
                 onTransitionTo={(s) => void transitionTo(s)}
+                onRequesterTransition={(s, label) => void transitionTo(s, label)}
+                requesterAction={
+                  ticket.status === "RESOLVED" ? requesterActionParam : null
+                }
+                onRequesterActionConsumed={consumeRequesterAction}
                 quickEscalationTarget={quickEscalationTarget}
                 transferTeamId={transferTeamId}
                 setTransferTeamId={setTransferTeamId}

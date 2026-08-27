@@ -223,6 +223,13 @@ export type TicketStatus =
 export type TicketPriority = "SEV1" | "SEV2" | "SEV3" | "SEV4";
 export type TicketChannel = "PORTAL" | "EMAIL" | "API" | "AGENT_PORTAL";
 
+/** Why a closed ticket closed (mirrors the API's TicketCloseReason enum). */
+export type TicketCloseReason =
+  | "REQUESTER_CONFIRMED"
+  | "REQUESTER_CANCELLED"
+  | "AGENT_CLOSED"
+  | "AUTO_CLOSED";
+
 export type TicketRecord = {
   id: string;
   number: number;
@@ -236,6 +243,7 @@ export type TicketRecord = {
   updatedAt: string;
   resolvedAt?: string | null;
   closedAt?: string | null;
+  closeReason?: TicketCloseReason | null;
   completedAt?: string | null;
   requester?: UserRef | null;
   assignee?: UserRef | null;
