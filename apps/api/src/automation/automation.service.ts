@@ -24,6 +24,9 @@ import { TIME_TRIGGERS } from './time-triggers.const';
 
 const TIME_RULE_THRESHOLD_ERROR =
   'Time-based rules need an hours threshold (and a status for TIME_IN_STATUS)';
+const EMAIL_RECIPIENTS = ['requester', 'assignee', 'team_leads', 'address'];
+const FOLLOWER_TARGETS = ['requester', 'assignee'];
+const MAX_EMAIL_BODY_LENGTH = 4000;
 
 type ThresholdNode = {
   field?: string;
@@ -152,7 +155,7 @@ export class AutomationService {
     if (!hasTimeRuleThreshold(payload.trigger, payload.conditions)) {
       throw new BadRequestException(TIME_RULE_THRESHOLD_ERROR);
     }
-    this.validateActionParams(payload.actions);
+    await this.validateActionParams(payload.actions);
 
     const created = await this.prisma.automationRule.create({
       data: {
@@ -229,7 +232,7 @@ export class AutomationService {
       if (!Array.isArray(payload.actions) || payload.actions.length === 0) {
         throw new BadRequestException('actions must be a non-empty array');
       }
-      this.validateActionParams(payload.actions);
+      await this.validateActionParams(payload.actions);
     }
     if (payload.trigger !== undefined || payload.conditions !== undefined) {
       const nextTrigger = payload.trigger ?? rule.trigger;
@@ -333,7 +336,13 @@ export class AutomationService {
   }
 
   /** Require action-type-specific params so rules are not no-ops. */
-  private validateActionParams(
+  /**
+   * Cross-field checks the DTO cannot express. Reads the database for
+   * set_category (category must exist and be active) and add_follower with an
+   * explicit user (must exist and be active), so a rule never saves pointing
+   * at something that cannot run.
+   */
+  private async validateActionParams(
     actions: Array<{
       type?: string;
       teamId?: string;
@@ -341,8 +350,14 @@ export class AutomationService {
       priority?: string;
       status?: string;
       body?: string;
+      tags?: string[];
+      categoryId?: string;
+      target?: string;
+      to?: string;
+      address?: string;
+      subject?: string;
     }>,
-  ) {
+  ): Promise<void> {
     for (let i = 0; i < actions.length; i++) {
       const a = actions[i];
       const type = a?.type;
@@ -387,6 +402,87 @@ export class AutomationService {
           break;
         case 'notify_team_lead':
         case 'notify_requester':
+          break;
+        case 'add_tag':
+        case 'remove_tag':
+          if (
+            !Array.isArray(a.tags) ||
+            a.tags.filter((tag) => tag?.trim()).length === 0
+          ) {
+            throw new BadRequestException(
+              `Action ${i + 1} (${type}): at least one tag is required.`,
+            );
+          }
+          break;
+        case 'set_category': {
+          if (!a.categoryId?.trim()) {
+            throw new BadRequestException(
+              `Action ${i + 1} (set_category): categoryId is required.`,
+            );
+          }
+          const category = await this.prisma.category.findUnique({
+            where: { id: a.categoryId },
+            select: { isActive: true },
+          });
+          if (!category || !category.isActive) {
+            throw new BadRequestException(
+              `Action ${i + 1} (set_category): category not found or inactive.`,
+            );
+          }
+          break;
+        }
+        case 'add_follower': {
+          const hasUser = Boolean(a.userId?.trim());
+          const hasTarget = FOLLOWER_TARGETS.includes(a.target ?? '');
+          if (hasUser === hasTarget) {
+            throw new BadRequestException(
+              `Action ${i + 1} (add_follower): provide exactly one of userId or target (requester | assignee).`,
+            );
+          }
+          if (hasUser) {
+            const follower = await this.prisma.user.findUnique({
+              where: { id: a.userId },
+              select: { isActive: true },
+            });
+            if (!follower || !follower.isActive) {
+              throw new BadRequestException(
+                `Action ${i + 1} (add_follower): user not found or inactive.`,
+              );
+            }
+          }
+          break;
+        }
+        case 'send_email':
+          if (!a.to || !EMAIL_RECIPIENTS.includes(a.to)) {
+            throw new BadRequestException(
+              `Action ${i + 1} (send_email): to must be requester, assignee, team_leads or address.`,
+            );
+          }
+          if (!a.subject?.trim()) {
+            throw new BadRequestException(
+              `Action ${i + 1} (send_email): subject is required.`,
+            );
+          }
+          if (!a.body?.trim()) {
+            throw new BadRequestException(
+              `Action ${i + 1} (send_email): body is required.`,
+            );
+          }
+          if (a.body.length > MAX_EMAIL_BODY_LENGTH) {
+            throw new BadRequestException(
+              `Action ${i + 1} (send_email): body must be at most ${MAX_EMAIL_BODY_LENGTH} characters.`,
+            );
+          }
+          if (a.to === 'address' && !a.address?.trim()) {
+            throw new BadRequestException(
+              `Action ${i + 1} (send_email): address is required when to is "address".`,
+            );
+          }
+          if (a.to !== 'address' && a.address) {
+            throw new BadRequestException(
+              `Action ${i + 1} (send_email): address is only allowed when to is "address".`,
+            );
+          }
           break;
         default:
           throw new BadRequestException(

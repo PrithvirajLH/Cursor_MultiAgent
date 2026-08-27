@@ -23,9 +23,16 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-27 (card 1.3): 222 unit (28 suites), 395 integration + 1
+- **Baseline as of 2026-08-27 (card 1.4): 227 unit (28 suites), 401 integration + 1
   skipped, 36 web unit (13 vitest files)**, both typechecks clean. Anything below
   that is a regression. State these numbers in any plan so regressions are obvious.
+
+- **Automation rules use first-match semantics, and `subject contains` is a
+  substring test.** In integration specs, give every rule a token no other
+  rule's token is a prefix of (`ACT4` swallowed `ACT4B` on 2026-08-27 and the
+  second rule never ran). Ticket creation enqueues `TICKET_CREATED`
+  fire-and-forget after the POST returns, so specs must poll for the
+  `AutomationExecution` row rather than assert straight after the request.
 
 - **A background integration run that hits the harness's 10-minute wrapper limit
   is reported "killed" but jest keeps running.** The kill takes the in-flight

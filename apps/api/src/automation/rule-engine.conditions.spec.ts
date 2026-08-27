@@ -14,6 +14,8 @@ function engine(): RuleEngineService {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
   );
 }
 
@@ -68,7 +70,9 @@ describe('RuleEngineService — condition evaluation', () => {
   describe('operators (case-insensitive)', () => {
     it('contains', () => {
       expect(evalSingle(e, 'subject', 'contains', 'printer', ctx())).toBe(true);
-      expect(evalSingle(e, 'subject', 'contains', 'scanner', ctx())).toBe(false);
+      expect(evalSingle(e, 'subject', 'contains', 'scanner', ctx())).toBe(
+        false,
+      );
     });
 
     it('equals / notEquals', () => {

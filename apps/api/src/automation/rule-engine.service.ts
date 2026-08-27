@@ -1,16 +1,20 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import {
   NotificationType,
+  TagSource,
   TicketCloseReason,
   TicketPriority,
   TicketStatus,
   UserRole,
 } from '@prisma/client';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, User } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
+import { TagsService } from '../tags/tags.service';
 import { TicketsService } from '../tickets/tickets.service';
 import { TicketSlaCalculationService } from '../tickets/ticket-sla-calculation.service';
+import { fillTemplateVars } from './template-vars.util';
 
 export type AutomationTrigger =
   | 'TICKET_CREATED'
@@ -45,6 +49,38 @@ type ActionNode = {
   priority?: string;
   status?: string;
   body?: string;
+  tags?: string[];
+  categoryId?: string;
+  target?: string;
+  to?: string;
+  address?: string;
+  subject?: string;
+};
+
+/** Work that must only happen once the rule's transaction has committed (card 1.4). */
+type PostCommitTask = () => Promise<void>;
+
+/** The ticket row the action executor works on; refreshed after each mutating action. */
+type ActionTicket = {
+  id: string;
+  subject: string;
+  displayId?: string | null;
+  createdAt: Date;
+  priority: TicketPriority;
+  status: TicketStatus;
+  assignedTeamId: string | null;
+  assigneeId: string | null;
+  categoryId: string | null;
+  firstResponseDueAt: Date | null;
+  resolvedAt: Date | null;
+  closedAt: Date | null;
+  completedAt: Date | null;
+  dueAt: Date | null;
+  slaPausedAt: Date | null;
+  requesterId: string;
+  requester?: User | null;
+  assignee?: User | null;
+  assignedTeam?: { members: { userId: string }[] } | null;
 };
 
 /**
@@ -62,9 +98,13 @@ const DE_DUPED_TRIGGERS: AutomationTrigger[] = [
 const HOUR_MS = 60 * 60 * 1000;
 const DEFAULT_REQUESTER_REMINDER =
   'This ticket is waiting on you — please reply or let us know if it is resolved.';
+const AUTOMATION_EMAIL_EVENT = 'AUTOMATION_EMAIL';
+const TAGS_CHANGED_EVENT = 'TAGS_CHANGED';
 
 @Injectable()
 export class RuleEngineService {
+  private readonly logger = new Logger(RuleEngineService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly slaEngine: SlaEngineService,
@@ -72,6 +112,8 @@ export class RuleEngineService {
     private readonly ticketsService: TicketsService,
     @Inject(forwardRef(() => TicketSlaCalculationService))
     private readonly slaCalc: TicketSlaCalculationService,
+    private readonly tags: TagsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -211,8 +253,9 @@ export class RuleEngineService {
       }
 
       try {
+        let postCommit: PostCommitTask[] = [];
         await this.prisma.$transaction(async (tx) => {
-          await this.executeActions(
+          const result = await this.executeActions(
             tx,
             ticketId,
             actions,
@@ -220,6 +263,7 @@ export class RuleEngineService {
             rule.id,
             rule.createdById,
           );
+          postCommit = result.postCommit;
           await tx.ticketEvent.create({
             data: {
               ticketId,
@@ -238,6 +282,8 @@ export class RuleEngineService {
           });
         });
         executed++;
+        // Emails and other external effects only after the commit: a rolled-back rule sends nothing.
+        await this.runPostCommit(postCommit, rule.name);
         await this.ticketsService.publishAutomationRealtimeUpdate(
           ticketId,
           rule.createdById ?? null,
@@ -415,27 +461,12 @@ export class RuleEngineService {
     tx: Prisma.TransactionClient,
     ticketId: string,
     actions: ActionNode[],
-    ticket: {
-      id: string;
-      subject: string;
-      createdAt: Date;
-      priority: TicketPriority;
-      status: TicketStatus;
-      assignedTeamId: string | null;
-      assigneeId: string | null;
-      firstResponseDueAt: Date | null;
-      resolvedAt: Date | null;
-      closedAt: Date | null;
-      completedAt: Date | null;
-      dueAt: Date | null;
-      slaPausedAt: Date | null;
-      requesterId: string;
-      assignedTeam?: { members: { userId: string }[] } | null;
-    },
-    _ruleId: string,
+    ticket: ActionTicket,
+    ruleId: string,
     ruleCreatedById: string,
-  ): Promise<void> {
-    let current = ticket;
+  ): Promise<{ current: ActionTicket; postCommit: PostCommitTask[] }> {
+    let current: ActionTicket = ticket;
+    const postCommit: PostCommitTask[] = [];
     for (const action of actions) {
       switch (action.type) {
         case 'assign_team':
@@ -612,35 +643,108 @@ export class RuleEngineService {
             });
           }
           break;
+        case 'add_tag': {
+          const names = this.normalizeTagNames(action.tags);
+          if (names.length === 0) break;
+          const existing = await this.readTagNames(tx, ticketId);
+          await this.tags.attachManyToTicket(
+            ticketId,
+            names,
+            TagSource.MANUAL,
+            ruleCreatedById,
+            tx,
+          );
+          const added = names.filter((name) => !existing.has(name));
+          if (added.length > 0) {
+            await this.writeTagsEvent(tx, ticketId, added, [], ruleCreatedById);
+          }
+          break;
+        }
+        case 'remove_tag': {
+          const names = this.normalizeTagNames(action.tags);
+          if (names.length === 0) break;
+          const existing = await this.readTagNames(tx, ticketId);
+          const removed = names.filter((name) => existing.has(name));
+          if (removed.length === 0) break;
+          await tx.ticketTag.deleteMany({
+            where: { ticketId, tag: { name: { in: removed } } },
+          });
+          await this.writeTagsEvent(tx, ticketId, [], removed, ruleCreatedById);
+          break;
+        }
+        case 'set_category': {
+          if (!action.categoryId || action.categoryId === current.categoryId) {
+            break;
+          }
+          const category = await tx.category.findUnique({
+            where: { id: action.categoryId },
+            select: { id: true, isActive: true },
+          });
+          if (!category || !category.isActive) {
+            // Validated at save time; the category was deactivated or removed since. Skip, do not fail the rule.
+            this.logger.warn(
+              `set_category skipped for ticket ${ticketId}: category ${action.categoryId} is missing or inactive`,
+            );
+            break;
+          }
+          await tx.ticket.update({
+            where: { id: ticketId },
+            data: { categoryId: category.id },
+          });
+          await tx.ticketEvent.create({
+            data: {
+              ticketId,
+              type: 'TICKET_CATEGORY_CHANGED',
+              payload: {
+                from: current.categoryId,
+                to: category.id,
+                byAutomation: true,
+              },
+              createdById: ruleCreatedById,
+            },
+          });
+          current = await this.getTicketForActions(tx, ticketId);
+          break;
+        }
+        case 'add_follower': {
+          const followerId = this.resolveFollowerId(action, current);
+          if (!followerId) break;
+          await tx.ticketFollower.upsert({
+            where: { ticketId_userId: { ticketId, userId: followerId } },
+            update: {},
+            create: { ticketId, userId: followerId },
+          });
+          break;
+        }
+        case 'send_email': {
+          const task = await this.buildSendEmailTask(
+            tx,
+            ticketId,
+            current,
+            action,
+            ruleId,
+          );
+          if (task) postCommit.push(task);
+          break;
+        }
         default:
           break;
       }
     }
+    return { current, postCommit };
   }
 
   private async getTicketForActions(
     tx: Prisma.TransactionClient,
     ticketId: string,
-  ): Promise<{
-    id: string;
-    subject: string;
-    createdAt: Date;
-    assignedTeamId: string | null;
-    assigneeId: string | null;
-    priority: TicketPriority;
-    status: TicketStatus;
-    firstResponseDueAt: Date | null;
-    resolvedAt: Date | null;
-    closedAt: Date | null;
-    completedAt: Date | null;
-    dueAt: Date | null;
-    slaPausedAt: Date | null;
-    requesterId: string;
-    assignedTeam?: { members: { userId: string }[] } | null;
-  }> {
+  ): Promise<ActionTicket> {
     const t = await tx.ticket.findUnique({
       where: { id: ticketId },
-      include: { assignedTeam: { include: { members: true } } },
+      include: {
+        requester: true,
+        assignee: true,
+        assignedTeam: { include: { members: true } },
+      },
     });
     if (!t || t.deletedAt) throw new Error('Ticket not found');
     return t;
@@ -649,26 +753,10 @@ export class RuleEngineService {
   private async applyStatusTransitionAction(
     tx: Prisma.TransactionClient,
     ticketId: string,
-    current: {
-      id: string;
-      subject: string;
-      createdAt: Date;
-      assignedTeamId: string | null;
-      assigneeId: string | null;
-      priority: TicketPriority;
-      status: TicketStatus;
-      firstResponseDueAt: Date | null;
-      resolvedAt: Date | null;
-      closedAt: Date | null;
-      completedAt: Date | null;
-      dueAt: Date | null;
-      slaPausedAt: Date | null;
-      requesterId: string;
-      assignedTeam?: { members: { userId: string }[] } | null;
-    },
+    current: ActionTicket,
     newStatus: TicketStatus,
     ruleCreatedById: string,
-  ) {
+  ): Promise<ActionTicket> {
     if (newStatus === current.status) {
       return current;
     }
@@ -696,6 +784,127 @@ export class RuleEngineService {
     );
 
     return this.getTicketForActions(tx, ticketId);
+  }
+
+  /** Trim/lowercase like TagsService; silently drops names it would reject. */
+  private normalizeTagNames(raw: string[] | undefined): string[] {
+    if (!Array.isArray(raw)) return [];
+    const names = new Set<string>();
+    for (const value of raw) {
+      try {
+        names.add(this.tags.normalize(value));
+      } catch {
+        continue;
+      }
+    }
+    return [...names];
+  }
+
+  private async readTagNames(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+  ): Promise<Set<string>> {
+    const rows = await tx.ticketTag.findMany({
+      where: { ticketId },
+      select: { tag: { select: { name: true } } },
+    });
+    return new Set(rows.map((row) => row.tag.name));
+  }
+
+  private async writeTagsEvent(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+    added: string[],
+    removed: string[],
+    ruleCreatedById: string,
+  ): Promise<void> {
+    await tx.ticketEvent.create({
+      data: {
+        ticketId,
+        type: TAGS_CHANGED_EVENT,
+        payload: { added, removed, byAutomation: true },
+        createdById: ruleCreatedById,
+      },
+    });
+  }
+
+  /** Explicit userId wins; 'requester'/'assignee' resolve from the ticket (null when unassigned). */
+  private resolveFollowerId(
+    action: ActionNode,
+    current: ActionTicket,
+  ): string | null {
+    if (action.userId) return action.userId;
+    if (action.target === 'requester') return current.requesterId;
+    if (action.target === 'assignee') return current.assigneeId;
+    return null;
+  }
+
+  /**
+   * Resolve recipients and fill placeholders now (inside the transaction, so
+   * the ticket state is the one the rule saw), but defer the outbox write to
+   * after commit. Returns null when nobody would receive the email.
+   */
+  private async buildSendEmailTask(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+    current: ActionTicket,
+    action: ActionNode,
+    ruleId: string,
+  ): Promise<PostCommitTask | null> {
+    if (!action.to || !action.subject || !action.body) return null;
+    const recipients: User[] = [];
+    const addresses: string[] = [];
+    if (action.to === 'requester' && current.requester) {
+      recipients.push(current.requester);
+    } else if (action.to === 'assignee' && current.assignee) {
+      recipients.push(current.assignee);
+    } else if (action.to === 'team_leads' && current.assignedTeamId) {
+      const leads = await tx.teamMember.findMany({
+        where: { teamId: current.assignedTeamId, role: 'LEAD' },
+        include: { user: true },
+      });
+      recipients.push(...leads.map((lead) => lead.user));
+    } else if (action.to === 'address' && action.address) {
+      addresses.push(action.address);
+    }
+    if (recipients.length === 0 && addresses.length === 0) return null;
+    const vars: Record<string, string> = {
+      'ticket.displayId': current.displayId ?? '',
+      'ticket.subject': current.subject,
+      'requester.displayName': current.requester?.displayName ?? '',
+    };
+    const details = {
+      eventType: AUTOMATION_EMAIL_EVENT,
+      subject: fillTemplateVars(action.subject, vars),
+      body: fillTemplateVars(action.body, vars),
+      ticketId,
+      payload: { ruleId },
+    };
+    return async (): Promise<void> => {
+      if (recipients.length > 0) {
+        await this.notifications.notifyUsers(recipients, details);
+      }
+      if (addresses.length > 0) {
+        await this.notifications.notifyAddresses(addresses, details);
+      }
+    };
+  }
+
+  /** Run post-commit tasks one by one; a failure is logged and never undoes the rule. */
+  private async runPostCommit(
+    tasks: PostCommitTask[],
+    ruleName: string,
+  ): Promise<void> {
+    for (const task of tasks) {
+      try {
+        await task();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Rule ${ruleName}: post-commit action failed: ${msg}`,
+        );
+      }
+    }
   }
 
   private addHours(date: Date, hours: number) {

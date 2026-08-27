@@ -8,8 +8,10 @@ import {
   fetchTeamMembers,
   fetchAutomationRuleExecutions,
   fetchAutomationRules,
+  fetchCategories,
   type AutomationAction,
   type AutomationCondition,
+  type CategoryRef,
   type AutomationRule,
   type TeamRef,
   type UserRef,
@@ -35,7 +37,44 @@ type FlatCondition = {
 type FlatAction = {
   type: string;
   val: string;
+  target?: string;
+  to?: string;
+  address?: string;
+  subject?: string;
 };
+
+/** Extra action parameters accepted by the API (card 1.4); not yet on the shared client type. */
+type RuleAction = AutomationAction & {
+  tags?: string[];
+  categoryId?: string;
+  target?: string;
+  to?: string;
+  address?: string;
+  subject?: string;
+};
+
+const MAX_TAGS_PER_ACTION = 5;
+const FOLLOWER_TARGET_OPTIONS = [
+  { value: "requester", label: "Requester" },
+  { value: "assignee", label: "Assignee" },
+  { value: "user", label: "Specific person" },
+];
+const EMAIL_RECIPIENT_OPTIONS = [
+  { value: "requester", label: "Requester" },
+  { value: "assignee", label: "Assignee" },
+  { value: "team_leads", label: "Team leads" },
+  { value: "address", label: "Email address" },
+];
+const EMAIL_PLACEHOLDER_HINT =
+  "Placeholders: {{ticket.displayId}}, {{ticket.subject}}, {{requester.displayName}}. Only the ticket subject is exposed — never descriptions or messages; an external address still receives that subject.";
+
+function parseTagList(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .slice(0, MAX_TAGS_PER_ACTION);
+}
 
 type UserOption = {
   id: string;
@@ -82,6 +121,11 @@ const ACTION_TYPES = [
   { value: "notify_requester", label: "Notify requester (in-app)" },
   { value: "add_internal_note", label: "Add Internal Note" },
   { value: "set_priority", label: "Set Priority" },
+  { value: "add_tag", label: "Add tags" },
+  { value: "remove_tag", label: "Remove tags" },
+  { value: "set_category", label: "Set category" },
+  { value: "add_follower", label: "Add follower" },
+  { value: "send_email", label: "Send email" },
 ];
 
 const CONDITION_FIELDS = [
@@ -333,6 +377,8 @@ function RuleEditorModal({
   assignableUsersLoading,
   assignableUsersHint,
   conditionEditingLocked,
+  categories,
+  followerUserOptions,
   onClose,
   onSubmit,
   onChange,
@@ -353,6 +399,8 @@ function RuleEditorModal({
   assignableUsersLoading: boolean;
   assignableUsersHint: string | null;
   conditionEditingLocked: boolean;
+  categories: CategoryRef[];
+  followerUserOptions: UserOption[];
   onClose: () => void;
   onSubmit: () => void;
   onChange: (next: Partial<AutomationForm>) => void;
@@ -702,6 +750,111 @@ function RuleEditorModal({
                         </option>
                       ))}
                     </select>
+                  ) : action.type === "add_tag" ||
+                    action.type === "remove_tag" ? (
+                    <input
+                      value={action.val}
+                      onChange={(event) =>
+                        onUpdateAction(index, "val", event.target.value)
+                      }
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                      placeholder="Tags, comma-separated (max 5)"
+                    />
+                  ) : action.type === "set_category" ? (
+                    <select
+                      value={action.val}
+                      onChange={(event) =>
+                        onUpdateAction(index, "val", event.target.value)
+                      }
+                      className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="">Select category...</option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : action.type === "add_follower" ? (
+                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                      <select
+                        value={action.target ?? "requester"}
+                        onChange={(event) =>
+                          onUpdateAction(index, "target", event.target.value)
+                        }
+                        className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                      >
+                        {FOLLOWER_TARGET_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {(action.target ?? "requester") === "user" && (
+                        <select
+                          value={action.val}
+                          onChange={(event) =>
+                            onUpdateAction(index, "val", event.target.value)
+                          }
+                          className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                        >
+                          <option value="">Select person...</option>
+                          {followerUserOptions.map((user) => (
+                            <option key={user.id} value={user.id}>
+                              {user.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ) : action.type === "send_email" ? (
+                    <div className="flex flex-1 flex-wrap items-center gap-2">
+                      <select
+                        value={action.to ?? "requester"}
+                        onChange={(event) =>
+                          onUpdateAction(index, "to", event.target.value)
+                        }
+                        className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                      >
+                        {EMAIL_RECIPIENT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {(action.to ?? "requester") === "address" && (
+                        <input
+                          type="email"
+                          value={action.address ?? ""}
+                          onChange={(event) =>
+                            onUpdateAction(index, "address", event.target.value)
+                          }
+                          className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                          placeholder="name@example.com"
+                        />
+                      )}
+                      <input
+                        value={action.subject ?? ""}
+                        maxLength={200}
+                        onChange={(event) =>
+                          onUpdateAction(index, "subject", event.target.value)
+                        }
+                        className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                        placeholder="Subject"
+                      />
+                      <input
+                        value={action.val}
+                        maxLength={4000}
+                        onChange={(event) =>
+                          onUpdateAction(index, "val", event.target.value)
+                        }
+                        className="flex-1 rounded-lg border border-green-200 bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                        placeholder="Body"
+                      />
+                      <span className="w-full text-[11px] text-muted-foreground">
+                        {EMAIL_PLACEHOLDER_HINT}
+                      </span>
+                    </div>
                   ) : (
                     <input
                       value={action.val}
@@ -846,6 +999,29 @@ function toFlatActions(
     if (action.type === "notify_team_lead") {
       return { type: action.type, val: action.body ?? "" };
     }
+    const rich = action as RuleAction;
+    if (action.type === "add_tag" || action.type === "remove_tag") {
+      return { type: action.type, val: (rich.tags ?? []).join(", ") };
+    }
+    if (action.type === "set_category") {
+      return { type: action.type, val: rich.categoryId ?? "" };
+    }
+    if (action.type === "add_follower") {
+      return {
+        type: action.type,
+        val: rich.userId ?? "",
+        target: rich.userId ? "user" : (rich.target ?? "requester"),
+      };
+    }
+    if (action.type === "send_email") {
+      return {
+        type: action.type,
+        val: action.body ?? "",
+        to: rich.to ?? "requester",
+        address: rich.address ?? "",
+        subject: rich.subject ?? "",
+      };
+    }
     return {
       type: action.type,
       val: action.body ?? "",
@@ -891,8 +1067,32 @@ function toApiActions(
 ): AutomationAction[] {
   return actions
     .filter((action) => action.type.trim())
-    .map((action) => {
+    .map((action): RuleAction => {
       const value = action.val.trim();
+      if (action.type === "add_tag" || action.type === "remove_tag") {
+        return { type: action.type, tags: parseTagList(value) };
+      }
+      if (action.type === "set_category") {
+        return { type: action.type, categoryId: value || undefined };
+      }
+      if (action.type === "add_follower") {
+        const target = action.target ?? "requester";
+        return target === "user"
+          ? { type: action.type, userId: value || undefined }
+          : { type: action.type, target };
+      }
+      if (action.type === "send_email") {
+        const to = action.to ?? "requester";
+        return {
+          type: action.type,
+          to,
+          subject: (action.subject ?? "").trim(),
+          body: value,
+          ...(to === "address"
+            ? { address: (action.address ?? "").trim() }
+            : {}),
+        };
+      }
       if (action.type === "assign_team") {
         return {
           type: action.type,
@@ -942,6 +1142,7 @@ export function AutomationRulesPage({
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [uiMetaById, setUiMetaById] = useState<Record<string, RuleUiMeta>>({});
   const [allUserOptions, setAllUserOptions] = useState<UserOption[]>([]);
+  const [categories, setCategories] = useState<CategoryRef[]>([]);
   const [assignableUserOptions, setAssignableUserOptions] = useState<
     UserOption[]
   >([]);
@@ -1031,6 +1232,13 @@ export function AutomationRulesPage({
         setAllUsersLoading(false);
       });
   }, [canEdit, toast]);
+
+  useEffect(() => {
+    if (!canEdit) return;
+    fetchCategories({ includeInactive: false })
+      .then((response) => setCategories(response.data))
+      .catch(() => setCategories([]));
+  }, [canEdit]);
 
   useEffect(() => {
     if (!showEditor || !canEdit) {
@@ -1226,6 +1434,7 @@ export function AutomationRulesPage({
 
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
+      const rich = action as RuleAction;
       const n = i + 1;
       if (action.type === "assign_team" && !action.teamId) {
         const message = `Action ${n}: select a valid team.`;
@@ -1293,6 +1502,46 @@ export function AutomationRulesPage({
       }
       if (action.type === "add_internal_note" && !(action.body ?? "").trim()) {
         const message = `Action ${n}: internal note body is required.`;
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      if (
+        (action.type === "add_tag" || action.type === "remove_tag") &&
+        !(rich.tags ?? []).length
+      ) {
+        const message = `Action ${n}: enter at least one tag.`;
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      if (action.type === "set_category" && !rich.categoryId) {
+        const message = `Action ${n}: select a category.`;
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      if (action.type === "add_follower" && !rich.userId && !rich.target) {
+        const message = `Action ${n}: choose who to add as a follower.`;
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      if (
+        action.type === "send_email" &&
+        (!(rich.subject ?? "").trim() || !(action.body ?? "").trim())
+      ) {
+        const message = `Action ${n}: email subject and body are required.`;
+        setError(message);
+        toast.error(message);
+        return;
+      }
+      if (
+        action.type === "send_email" &&
+        rich.to === "address" &&
+        !(rich.address ?? "").trim()
+      ) {
+        const message = `Action ${n}: an email address is required.`;
         setError(message);
         toast.error(message);
         return;
@@ -1718,6 +1967,8 @@ export function AutomationRulesPage({
           teamsList={teamsList}
           teamAdminScopeName={teamAdminScopeTeamName}
           assignableUserOptions={assignableUserOptions}
+          categories={categories}
+          followerUserOptions={allUserOptions}
           assignableUsersLoading={assignableUsersLoading || allUsersLoading}
           assignableUsersHint={assignableUsersHint}
           conditionEditingLocked={form.conditionTreeLocked}
@@ -1772,7 +2023,7 @@ export function AutomationRulesPage({
               actions: prev.actions.map((action, itemIndex) =>
                 itemIndex === index
                   ? key === "type"
-                    ? { ...action, type: value, val: "" }
+                    ? { type: value, val: "" }
                     : { ...action, [key]: value }
                   : action,
               ),

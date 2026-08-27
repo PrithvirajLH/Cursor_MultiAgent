@@ -1,7 +1,9 @@
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
@@ -99,6 +101,22 @@ const ACTION_TYPES = [
   'notify_team_lead',
   'notify_requester',
   'add_internal_note',
+  'add_tag',
+  'remove_tag',
+  'set_category',
+  'add_follower',
+  'send_email',
+] as const;
+
+const MAX_TAGS_PER_ACTION = 5;
+const MAX_TAG_LENGTH = 40;
+const MAX_EMAIL_SUBJECT_LENGTH = 200;
+const FOLLOWER_TARGETS = ['requester', 'assignee'] as const;
+const EMAIL_RECIPIENTS = [
+  'requester',
+  'assignee',
+  'team_leads',
+  'address',
 ] as const;
 
 /** Single action: type + params */
@@ -138,6 +156,40 @@ export class AutomationActionDto {
   @IsOptional()
   @IsString()
   body?: string;
+
+  /** add_tag / remove_tag: 1–5 tag names. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_TAGS_PER_ACTION)
+  @IsString({ each: true })
+  @MaxLength(MAX_TAG_LENGTH, { each: true })
+  tags?: string[];
+
+  /** set_category */
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  /** add_follower: who to add when no explicit userId is given. */
+  @IsOptional()
+  @IsIn(FOLLOWER_TARGETS)
+  target?: string;
+
+  /** send_email: recipient selector. */
+  @IsOptional()
+  @IsIn(EMAIL_RECIPIENTS)
+  to?: string;
+
+  /** send_email: external address, only when to === 'address'. */
+  @IsOptional()
+  @IsEmail()
+  address?: string;
+
+  /** send_email: subject line; {{ticket.displayId}} etc. are filled at run time. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_EMAIL_SUBJECT_LENGTH)
+  subject?: string;
 }
 
 export class CreateAutomationRuleDto {
