@@ -169,3 +169,15 @@ Dev API (`PORT=3077`, `AUTOMATION_SCHEDULER_INTERVAL_MS=15000`) + web (`VITE_E2E
 ## 11. Handoff notes — what to report back
 
 1. Commit SHA. 2. `Tests:` lines (unit, timed spec, the two existing automation specs, full suite), vitest, both `tsc`. 3. `git diff --stat <pre-card sha> HEAD`. 4. Manual steps with accounts. 5. Anything that did not match — especially: where the threshold validation ended up (DTO vs service), whether `updatedAt` could be back-dated through Prisma or needed raw SQL, and whether the existing automation specs needed any change.
+
+---
+
+## 12. Post-implementation record (planning session, 2026-08-27)
+
+**Verdict: GREEN.** Commit `b0f0c5f`. Planner independently re-ran: full `test:integration` **395 passed + 1 skipped, 43/43 files, 0 failures** (659 s, run alone — a first attempt was invalidated by another project's dev server and test run saturating the CPU, which tripped the 60 s `beforeAll` timers in three suites; that is an environment fact, now noted in the landmines by the implementer); `jest` 222/222 (28 suites); `tsc --noEmit` clean in api and web; vitest 13 files / 36. Source read: lock key 847294; scheduler defaults (on, 5 min, batch 200); candidate queries exclude soft-deleted tickets; enqueue after commit; `gte`, `hoursSinceActivity`/`hoursUnassigned`, `AUTO_CLOSED`, `notify_requester`, threshold validation in the service; three seed rules off by default; seven integration cases as specified.
+
+**Accepted deviations:** threshold validation lives in `automation.service.ts` (cross-field) rather than the DTO; `validateActionParams` gained `notify_requester`; dev seed was not re-run against the dev DB (it wipes real accounts) — rules were created through the UI instead, and the seed was proven against the local test DB.
+
+**Follow-ups logged in the master plan:** the new-rule form race (`teamId: ''` when Create is clicked before teams load) and the no-realtime-in-dev observation.
+
+**Approved to merge; deploy together with 1.1, 1.2 (and 1.4, 1.5 when they pass).** No migration in this card.
