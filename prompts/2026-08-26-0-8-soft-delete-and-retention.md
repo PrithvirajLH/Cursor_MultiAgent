@@ -398,3 +398,15 @@ Then run §10 manual steps 1–5 with **real dev accounts**: list them with `GET
 ### 12.5 Commit and report
 
 One commit for 12.1 + 12.3 (explicit paths: `reports.service.ts`, `CLAUDE.md`, `repo-landmines.md`). Stage by explicit path; read `git status --short` first — the planning session's prompt/plan commits may be interleaved on the branch. Report: commit SHA; the four spec `Tests:` lines and the full-suite summary; both `tsc`; vitest; `git diff --stat ca31593 HEAD -- . ':!prompts' ':!docs/DR.md'`; dev-DB `migrate status` before/after; manual steps 1–5 with the accounts used; anything else that did not match.
+
+---
+
+## 13. Post-implementation record (planning session, 2026-08-27)
+
+**Verdict: GREEN.** Commits `c95ee50` → `1b5336c` → `22b05e3` → `491450b`. Planner independently re-ran: `jest` 206/206 (26 suites); full `test:integration` **374 passed + 1 skipped, 40/40 files, 0 failures** (640 s, run alone — a first attempt run alongside other checks was cut off at 29 files by a 10-minute cap, 0 failures); `tsc --noEmit` clean in api and web; vitest 13 files / 36. `scripts/check-migrations.sh origin/main` → the new migration `ALLOWED` with its declared reason, nothing else flagged. Dev (Supabase) database after the implementer's `migrate deploy`: 49 migrations, `deletedAt` on `Ticket` and `KbArticle`, both FKs `ON DELETE RESTRICT`, **all six trigram indexes present**. Source read: reports fix, owner-only history reads (404 for others), retention two-switch safety, delete/restore authorisation, category refusal, KB filter — all as designed.
+
+**Accepted deviations from round 2:** `TicketsPage.tsx` realtime removal (required for acceptance criterion 4); `TicketConversation.tsx` `readOnly` for a deleted ticket; `listMessages` owner-read fix + one extra integration test (374, not 373); dev DB was three migrations behind, all additive, all applied.
+
+**Approved to merge and deploy.** Deploy order: `prisma migrate status` against production must show exactly **one** pending migration (`20260826180000_soft_delete_and_fk_restrict`); apply it; confirm 49 and that `SELECT indexname FROM pg_indexes WHERE indexname LIKE '%trgm%'` still returns six rows; then the package. Rollback for the schema is not needed (additive columns; FK action change is behaviour-only) — if the FK change must be undone, the reverse `ALTER TABLE … DROP CONSTRAINT / ADD CONSTRAINT … ON DELETE SET NULL` is the down-migration.
+
+**Landmines recorded from this card** (in `repo-landmines.md`, commit `0d8f35d`): never two suites at once; `.env` ↔ `.env.bak` rename during resets; dev DB lags production; ports 3000/3001 busy. Follow-up logged: stale "N open tickets" header on realtime removal.
