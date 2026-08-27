@@ -69,9 +69,12 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
 
 - Branch `ui-redesign-and-api-hardening`. Remotes: `azure` (Azure DevOps, the
   deploy target), plus two **public** GitHub remotes.
-- Production App Service `TicketTicket` runs commit `c2ff777` (deployed
-  2026-08-26 17:09 UTC, package 162 MB; previous: `458543a`). Schema is up to
-  date at 48 migrations. `main` was fast-forwarded to the same commit.
+- Production App Service `TicketTicket` runs commit `d1d57bc` (deployed
+  2026-08-27 14:22 UTC; previous: `c2ff777` on 08-26, `458543a` before that).
+  Schema is up to date at **49** migrations; the six trigram indexes are intact.
+  `main` was fast-forwarded to the same commit. Soft delete + retention (card
+  0.8) is live; the retention job is **off** until `RETENTION_ENABLED=true` and
+  `RETENTION_DRY_RUN=false` are both set.
 - `azure-pipelines.yml` exists but **cannot run** — the Azure DevOps org has no
   hosted parallelism grant. **Nothing currently gates a deploy except running the
   checks above by hand.**
