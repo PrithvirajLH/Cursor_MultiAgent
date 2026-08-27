@@ -228,3 +228,13 @@ Dev DB first: `npx prisma migrate deploy` from `apps/api` with the normal `.env`
 ## 11. Handoff notes — what to report back
 
 1. Commit SHA(s). 2. `check-migrations.sh` line for your migration; test-DB migration count and trigram index count. 3. `Tests:` lines (unit, requester-actions spec, lifecycle spec, full suite), vitest, both `tsc`. 4. `git diff --stat <pre-card sha> HEAD`. 5. Dev-DB `migrate status` before/after. 6. Manual steps 1–4 with accounts. 7. Anything that did not match — especially any extra file (e.g. `rule-engine.service.ts`, web `types.ts`) and whether the HTML email body exists.
+
+---
+
+## 12. Post-implementation record (planning session, 2026-08-27)
+
+**Verdict: GREEN.** Commits `1252582` (schema + migration) and `7ff7f40` (service, email, web, specs, baselines). Planner independently re-ran: full `test:integration` **388 passed + 1 skipped, 42/42 files, 0 failures** (783 s, run alone); `jest` 206/206; `tsc --noEmit` clean in api and web; vitest 13 files / 36. `scripts/check-migrations.sh origin/main` → `20260827120000_ticket_close_reason` `ok` (two additive statements, no header needed). Source read: requester allow-list checked first and only for the ticket's own requester; `resolveCloseReason` correct; `closeReason` cleared on REOPENED and included in the status-change event; `NEW/TRIAGED → CLOSED` added to the map; email links added to the text body only (no HTML builder exists for status changes, as allowed).
+
+**Accepted deviations:** `tickets.workflow.spec.ts` and `tickets.service.spec.ts` retargeted their "invalid transition" example from `NEW → CLOSED` (now legal) to `NEW → IN_PROGRESS` (still forbidden) — correct and explained in comments; `isRequester` reused the sidebar's existing derivation instead of a new prop; `TicketCloseReason` alias lives in `api/client.ts`.
+
+**Approved to merge and deploy together with 1.1.** Deploy order: `prisma migrate status` on production must show exactly **one** pending (`20260827120000_ticket_close_reason`); apply; confirm 50 migrations and six trigram indexes; then the package. Dev DB is already at 50.
