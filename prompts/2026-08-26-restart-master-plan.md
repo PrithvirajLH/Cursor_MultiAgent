@@ -31,6 +31,8 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | 1.1 Edit ticket subject/description | **GREEN — awaiting merge + deploy** (verified 2026-08-27) | `prompts/2026-08-27-1-1-edit-ticket-subject-description.md` §12 | Commit `eeff0a2`. Planner re-ran: integration 380+1 (41/41, 0 failures), unit 206, tsc clean, vitest 36. No migration — plain deploy. New baseline 380. |
 | 1.2 Requester confirm / reopen / cancel | **GREEN — awaiting merge + deploy (with 1.1)** (verified 2026-08-27) | `prompts/2026-08-27-1-2-requester-confirm-reopen-cancel.md` §12 | Commits `1252582` `7ff7f40`. Planner re-ran: integration 388+1 (42/42, 0 failures), unit 206, tsc clean, vitest 36; migration `ok` (50th, additive). **Deploy with migration first.** New baseline 388. |
 | 1.3 Timed automations | **Handoff written** (2026-08-27) | `prompts/2026-08-27-1-3-timed-automations.md` | Scheduler + `TIME_IN_STATUS` / `UNASSIGNED_FOR` triggers, `gte` operator, `notify_requester`, `AUTO_CLOSED`. No migration, no Azure cost. Owner: build 1.3, then deploy 1.1 + 1.2 + 1.3 together. |
+| 1.4 More automation actions | **Handoff written** (2026-08-27) | `prompts/2026-08-27-1-4-more-automation-actions.md` | add_tag / remove_tag / set_category / add_follower / send_email (post-commit). Migration-free; "run all matching" switch deferred. After 1.3. |
+| 1.5 Merge duplicate tickets | **Handoff written** (2026-08-27) | `prompts/2026-08-27-1-5-merge-tickets.md` | Planner decisions (owner asked to proceed): move conversation, close source as MERGED with banner, no undo, LEAD+ for cross-requester. Additive migration (51st). Owner: build 1.4 → 1.5 → deploy 1.1–1.5 together. |
 | Phase 1–3 (rest) | Queued | — | See cards below. Phase 0 remaining: 0.9 (local perf measure), 0.10 (HR merge SQL — needs owner's yes, it changes production data). |
 
 ### Decisions log
@@ -47,6 +49,9 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | open | Retention periods (years) for closed tickets / attachments / audit | owner | 0.8 ships with the job OFF; values are config |
 
 ### Follow-ups discovered during implementation (not yet cards)
+
+- **New-automation-rule form race** (found in 1.3 manual test): on a hard load of `/automation/new`, clicking Create within ~1 s — before the team list has arrived — submits `teamId: ''` and a TEAM_ADMIN gets 403 "Only owners can create … global rules". Pre-existing. Fix: disable Create until teams are loaded, or default `teamId` to the admin's primary team. 15-minute tidy.
+- **Ticket detail does not live-update on an automation close without realtime** (dev had no Web PubSub); production has it, so no action — noted so nobody chases it.
 
 - **Queue header count does not update on realtime removal** (found in 0.8 manual test 2): `TicketsPage` shows "N open tickets" from the last fetch's `meta.total`; when a ticket is deleted (or, presumably, moves out of the filter) via realtime, the row disappears but the header count stays stale until the next fetch. Cosmetic; fold into 1.13/1.8 list work or a 30-minute tidy.
 
