@@ -44,6 +44,29 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   the database and reloads modules; a mid-run edit produced 81 phantom failures
   unrelated to the change. A full run takes about 6 minutes. Wait.
 
+- **Never run two integration suites at once.** They share one test database;
+  two concurrent `npm run test:integration` chains produced 111 and then 55
+  phantom "500" failures on 2026-08-26. A background task the harness reports as
+  "killed" can leave its npm chain alive — check for repo node processes
+  (below) before starting a run, and kill the chain, not just the shell.
+
+- **`scripts/reset-test-db.cjs` renames `apps/api/.env` → `.env.bak` around every
+  suite reset** (lines ~179/205) so Prisma cannot pick up the dev URL. A run
+  killed mid-reset strands the file as `.env.bak` — rename it back. While a suite
+  is running, anything else that reads `.env` (a dev server, `migrate deploy`, a
+  Prisma one-off) intermittently sees "no such file". Do not run those alongside
+  the suite.
+
+- **The dev (Supabase) database silently falls behind production.** On 2026-08-26
+  it was two migrations behind since 08-24 and the dev app was failing on missing
+  columns. Every deploy that carries a migration must also run
+  `npx prisma migrate deploy` from `apps/api` with the normal `.env` (Prisma uses
+  `DIRECT_URL`, port 5432, for migrations) — dev first, then production.
+
+- **Ports 3000 and 3001 are often taken by other local projects** (an "lms" API
+  and an "LRS Console" dev server were seen). Manual API checks may need
+  `PORT=3077` or similar; the web dev server proxy target must match.
+
 ---
 
 ## Prisma
