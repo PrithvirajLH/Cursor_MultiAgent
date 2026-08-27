@@ -25,6 +25,14 @@ enum TicketStatus {
   REOPENED
 }
 
+/// Why a closed ticket closed (card 1.2). Set on CLOSED, cleared on REOPENED.
+enum TicketCloseReason {
+  REQUESTER_CONFIRMED
+  REQUESTER_CANCELLED
+  AGENT_CLOSED
+  AUTO_CLOSED
+}
+
 enum TicketPriority {
   SEV1
   SEV2
@@ -284,6 +292,7 @@ model Ticket {
   slaPausedAt    DateTime?
   resolvedAt     DateTime?
   closedAt       DateTime?
+  closeReason    TicketCloseReason?
   completedAt    DateTime?
   deletedAt      DateTime?
   deletedById    String?
