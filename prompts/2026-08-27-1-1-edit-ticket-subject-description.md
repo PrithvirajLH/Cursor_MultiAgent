@@ -192,3 +192,13 @@ Dev API (`PORT=3077` if 3000 is busy) + web with `VITE_E2E_MODE=true`, accounts 
 ## 11. Handoff notes — what to report back
 
 1. Commit SHA. 2. `Tests:` lines (unit, edit spec, full suite), vitest, both `tsc`. 3. `git diff --stat HEAD~1`. 4. Manual steps 1–3 with accounts used. 5. Anything that did not match — especially the name of the event-label file and whether `Patch` had to be imported.
+
+---
+
+## 12. Post-implementation record (planning session, 2026-08-27)
+
+**Verdict: GREEN.** Commit `eeff0a2`. Planner independently re-ran: full `test:integration` **380 passed + 1 skipped, 41/41 files, 0 failures** (557 s, run alone); `jest` 206/206; `tsc --noEmit` clean in api and web; vitest 13 files / 36. Source read: DTO validators as specified; `update()` — 404 for missing/deleted (non-owner), `canWriteTicket` + requester-only-while-NEW, trim + blank rejection, no-op returns without writing, one `TICKET_EDITED` event with `changes[]`, realtime `reason: 'edited'`; web pencil gated by `canEditText`, "Ticket updated" toast, timeline label "Ticket edited by …: fields".
+
+**Accepted deviation:** `apps/web/src/pages/TicketsPage.tsx` (+11, not in §6) re-reads a row on `reason === 'edited'` so the queue shows the new subject live — required by acceptance criterion 2. Eleven files total.
+
+**Approved to merge and deploy.** No migration; plain deploy per the runbook.
