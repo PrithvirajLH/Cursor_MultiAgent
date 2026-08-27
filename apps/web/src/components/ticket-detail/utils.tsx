@@ -213,11 +213,20 @@ export function formatEventText(event: TicketEvent) {
     assigneeName?: string | null;
     assigneeEmail?: string | null;
     toTeamName?: string | null;
+    changes?: Array<{ field?: string }>;
   };
 
   switch (event.type) {
     case "TICKET_CREATED":
       return `Ticket created by ${actor}`;
+    case "TICKET_EDITED": {
+      const fields = (payload.changes ?? [])
+        .map((change) => change.field)
+        .filter((field): field is string => Boolean(field));
+      return fields.length
+        ? `Ticket edited by ${actor}: ${fields.join(", ")}`
+        : `Ticket edited by ${actor}`;
+    }
     case "TICKET_ASSIGNED":
       return `Assigned to ${payload.assigneeName ?? payload.assigneeEmail ?? "team member"}`;
     case "TICKET_STATUS_CHANGED":

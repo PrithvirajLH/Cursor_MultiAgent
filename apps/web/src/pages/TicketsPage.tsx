@@ -740,6 +740,17 @@ export function TicketsPage({
         void maybeHydrateRealtimeTicket(ticketId);
         return;
       }
+      // Subject/description are not in the realtime payload: re-read the row.
+      if (payload.reason === "edited") {
+        void fetchTicketById(ticketId)
+          .then((fresh) => {
+            setTickets((prev) =>
+              prev.map((row) => (row.id === ticketId ? { ...row, ...fresh } : row)),
+            );
+          })
+          .catch(() => undefined);
+        return;
+      }
       const presentBeforePatch = ticketsRef.current.some(
         (ticket) => ticket.id === ticketId,
       );

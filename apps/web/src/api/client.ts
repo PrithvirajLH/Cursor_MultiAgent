@@ -1168,6 +1168,17 @@ export function setTicketCategory(
   });
 }
 
+/** Edit a ticket's subject and/or description (PATCH). Returns the full detail. */
+export function updateTicket(
+  ticketId: string,
+  payload: { subject?: string; description?: string },
+) {
+  return apiFetch<TicketDetail>(`/tickets/${ticketId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchTeams(options?: Pick<RequestInit, "signal">) {
   return apiFetch<{ data: TeamRef[] }>("/teams", options);
 }

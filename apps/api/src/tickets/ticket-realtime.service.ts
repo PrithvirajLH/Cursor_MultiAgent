@@ -21,7 +21,8 @@ export type TicketRealtimeReason =
   | 'attachment_scan_status_changed'
   | 'automation_rule_executed'
   | 'deleted'
-  | 'restored';
+  | 'restored'
+  | 'edited';
 
 type TicketRealtimeAudienceTicket = {
   id: string;

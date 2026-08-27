@@ -23,7 +23,7 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-26: 206 unit (26 suites), 374 integration + 1 skipped,
+- **Baseline as of 2026-08-27: 206 unit (26 suites), 380 integration + 1 skipped,
   36 web unit (13 vitest files)**, both typechecks clean. Anything below that is a
   regression. State these numbers in any plan so regressions are obvious.
 

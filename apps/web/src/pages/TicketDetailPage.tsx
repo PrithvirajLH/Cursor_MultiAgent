@@ -10,7 +10,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Clock3, Copy, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Clock3, Copy, Pencil, Trash2 } from "lucide-react";
 import {
   addTicketMessage,
   deleteTicket,
@@ -27,6 +27,7 @@ import {
   sendTicketTypingSignal,
   setTicketCategory,
   transitionTicket,
+  updateTicket,
   transferTicket,
   unfollowTicket,
   uploadTicketAttachment,
@@ -130,6 +131,10 @@ type TypingUserEntry = {
   email: string;
   expiresAt: number;
 };
+
+// Mirror of UpdateTicketDto's limits (apps/api/src/tickets/dto/update-ticket.dto.ts).
+const TICKET_SUBJECT_MAX = 200;
+const TICKET_DESCRIPTION_MAX = 5000;
 
 type ConversationMessage = TicketMessage & {
   localStatus?: "sending" | "sent" | "failed";
@@ -235,6 +240,10 @@ export function TicketDetailPage({
   } | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingText, setEditingText] = useState(false);
+  const [editSubject, setEditSubject] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [savingText, setSavingText] = useState(false);
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
     edit: true,
     followers: false,
@@ -352,6 +361,25 @@ export function TicketDetailPage({
     const primaryTeamId = headerCtx?.currentUser?.primaryTeamId ?? null;
     return Boolean(primaryTeamId) && ticket.assignedTeam?.id === primaryTeamId;
   }, [headerCtx?.currentUser?.primaryTeamId, isDeleted, role, ticket]);
+
+  // Mirrors TicketsService.update(): anyone who can manage the ticket, plus the
+  // requester while it is still NEW. Never on a soft-deleted ticket.
+  const canEditText = useMemo(() => {
+    if (!ticket || isDeleted) return false;
+    if (canManage) return true;
+    return (
+      role === "EMPLOYEE" &&
+      ticket.status === "NEW" &&
+      ticket.requester?.email === currentEmail
+    );
+  }, [canManage, currentEmail, isDeleted, role, ticket]);
+  const trimmedEditSubject = editSubject.trim();
+  const trimmedEditDescription = editDescription.trim();
+  const textEditValid =
+    trimmedEditSubject.length >= 1 &&
+    trimmedEditSubject.length <= TICKET_SUBJECT_MAX &&
+    trimmedEditDescription.length >= 1 &&
+    trimmedEditDescription.length <= TICKET_DESCRIPTION_MAX;
 
   // Peer agent: same team, not the assignee. Can read + post INTERNAL notes only.
   const isPeerAgent = useMemo(() => {
@@ -841,7 +869,11 @@ export function TicketDetailPage({
         return;
       }
 
-      if (payload.reason === "deleted" || payload.reason === "restored") {
+      if (
+        payload.reason === "deleted" ||
+        payload.reason === "restored" ||
+        payload.reason === "edited"
+      ) {
         // Re-fetch instead of patching: for everyone but OWNER the ticket is
         // now hidden (404 -> the existing not-found state); OWNER sees the
         // deleted / restored state and the composer hides or returns.
@@ -1294,6 +1326,54 @@ export function TicketDetailPage({
       type: copied ? "success" : "error",
     });
   }, [ticketId]);
+
+  const startTextEdit = useCallback(() => {
+    if (!ticket) return;
+    setEditSubject(ticket.subject);
+    setEditDescription(ticket.description ?? "");
+    setEditingText(true);
+  }, [ticket]);
+
+  const cancelTextEdit = useCallback(() => {
+    setEditingText(false);
+  }, []);
+
+  const saveTextEdit = useCallback(async () => {
+    if (!ticket || !textEditValid || savingText) return;
+    const payload: { subject?: string; description?: string } = {};
+    if (trimmedEditSubject !== ticket.subject) {
+      payload.subject = trimmedEditSubject;
+    }
+    if (trimmedEditDescription !== (ticket.description ?? "")) {
+      payload.description = trimmedEditDescription;
+    }
+    if (payload.subject === undefined && payload.description === undefined) {
+      setEditingText(false);
+      return;
+    }
+    setSavingText(true);
+    try {
+      const updated = await updateTicket(ticket.id, payload);
+      setTicket(updated);
+      queryClient.setQueryData(["ticket", ticket.id], updated);
+      setEditingText(false);
+      toast.success("Ticket updated");
+      void loadEventsPage(ticket.id, true);
+    } catch (error) {
+      setCopyToast({ message: handleApiError(error), type: "error" });
+    } finally {
+      setSavingText(false);
+    }
+  }, [
+    loadEventsPage,
+    queryClient,
+    savingText,
+    textEditValid,
+    ticket,
+    toast,
+    trimmedEditDescription,
+    trimmedEditSubject,
+  ]);
 
   const handleDeleteTicket = useCallback(async () => {
     if (!ticket) return;
@@ -1970,19 +2050,100 @@ export function TicketDetailPage({
                   <div className="relative overflow-hidden rounded-xl border border-border bg-card px-5 py-3 shadow-sm sm:px-6 sm:py-3.5">
                     <div className="pointer-events-none absolute inset-y-0 right-[-80px] hidden w-64 rounded-full bg-gradient-to-l from-cyan-500/10 to-transparent blur-3xl sm:block" />
                     <div className="flex items-start justify-between gap-6">
-                      <div className="min-w-0">
-                        <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-                          {ticket.subject}
-                        </h1>
-                        {ticket.description ? (
-                          <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                            {extractOriginalMessage(ticket.description) ||
-                              "No description provided."}
-                          </p>
+                      <div className="min-w-0 flex-1">
+                        {editingText ? (
+                          <div
+                            className="space-y-2"
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                cancelTextEdit();
+                              }
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={editSubject}
+                              maxLength={TICKET_SUBJECT_MAX}
+                              autoFocus
+                              aria-label="Ticket subject"
+                              onChange={(event) => setEditSubject(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  void saveTextEdit();
+                                }
+                              }}
+                              className="w-full rounded-md border border-border bg-background px-3 py-2 text-lg font-semibold tracking-tight text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 sm:text-xl"
+                            />
+                            <textarea
+                              value={editDescription}
+                              maxLength={TICKET_DESCRIPTION_MAX}
+                              rows={5}
+                              aria-label="Ticket description"
+                              onChange={(event) =>
+                                setEditDescription(event.target.value)
+                              }
+                              className="w-full rounded-md border border-border bg-background px-3 py-2 text-[14px] leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+                            />
+                            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+                              <span>
+                                Subject {trimmedEditSubject.length}/{TICKET_SUBJECT_MAX} ·
+                                Description {trimmedEditDescription.length}/
+                                {TICKET_DESCRIPTION_MAX}
+                                {!textEditValid
+                                  ? " — both fields need between 1 and their maximum characters"
+                                  : ""}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={cancelTextEdit}
+                                  disabled={savingText}
+                                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted disabled:opacity-60"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void saveTextEdit()}
+                                  disabled={!textEditValid || savingText}
+                                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {savingText ? "Saving…" : "Save"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         ) : (
-                          <p className="mt-2 text-[14px] leading-relaxed italic text-muted-foreground">
-                            No description provided.
-                          </p>
+                          <>
+                            <div className="flex items-start gap-2">
+                              <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                                {ticket.subject}
+                              </h1>
+                              {canEditText && (
+                                <button
+                                  type="button"
+                                  onClick={startTextEdit}
+                                  className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+                                  title="Edit subject and description"
+                                  aria-label="Edit subject and description"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            {ticket.description ? (
+                              <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                                {extractOriginalMessage(ticket.description) ||
+                                  "No description provided."}
+                              </p>
+                            ) : (
+                              <p className="mt-2 text-[14px] leading-relaxed italic text-muted-foreground">
+                                No description provided.
+                              </p>
+                            )}
+                          </>
                         )}
                         <div className="mt-3">
                           <TagChips

@@ -5,6 +5,7 @@ import {
   Get,
   Headers,
   Param,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -35,6 +36,7 @@ import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TicketTypingDto } from './dto/ticket-typing.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
+import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsService } from './tickets.service';
 
 // ATTACHMENTS_MAX_MB configuration is now injected via ConfigService
@@ -248,6 +250,16 @@ export class TicketsController {
   @ThrottlePolicy('highWrite')
   async restore(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.ticketsService.restore(id, user);
+  }
+
+  @Patch(':id')
+  @ThrottlePolicy('highWrite')
+  async update(
+    @Param('id') id: string,
+    @Body() payload: UpdateTicketDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.update(id, payload, user);
   }
 
   @Post(':id/category')

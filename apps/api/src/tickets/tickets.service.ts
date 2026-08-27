@@ -51,6 +51,14 @@ import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { UpdateAttachmentScanDto } from './dto/update-attachment-scan.dto';
+import { UpdateTicketDto } from './dto/update-ticket.dto';
+
+/** One field changed by PATCH /tickets/:id, recorded in the TICKET_EDITED event. */
+type TicketEditChange = {
+  field: 'subject' | 'description';
+  from: string;
+  to: string;
+};
 
 export type StatusTransitionTicketSnapshot = {
   id: string;
@@ -1747,6 +1755,77 @@ export class TicketsService {
     );
 
     return updated;
+  }
+
+  /**
+   * Edit a ticket's subject and/or description. Text only — routing rules, AI
+   * classification and SLA maths are deliberately NOT re-run. Anyone
+   * `canWriteTicket` allows may edit; an EMPLOYEE (the requester) only while the
+   * ticket is still NEW — afterwards they add a reply instead. A no-op edit
+   * (same trimmed values) writes nothing. Every real edit records one
+   * TICKET_EDITED event with `{ changes: [{ field, from, to }] }` and notifies
+   * open screens with reason 'edited'. Returns the same shape as getById.
+   */
+  async update(ticketId: string, payload: UpdateTicketDto, user: AuthUser) {
+    if (payload.subject === undefined && payload.description === undefined) {
+      throw new BadRequestException('Provide subject and/or description');
+    }
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket || (ticket.deletedAt && user.role !== UserRole.OWNER)) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!this.canWriteTicket(user, ticket)) {
+      throw new ForbiddenException('No write access to edit this ticket');
+    }
+    if (user.role === UserRole.EMPLOYEE && ticket.status !== TicketStatus.NEW) {
+      throw new ForbiddenException(
+        'Requesters can edit a ticket only while it is new — add a reply instead',
+      );
+    }
+    const subject = payload.subject?.trim();
+    const description = payload.description?.trim();
+    if (subject === '' || description === '') {
+      throw new BadRequestException('Subject and description cannot be blank');
+    }
+    const changes: TicketEditChange[] = [];
+    if (subject !== undefined && subject !== ticket.subject) {
+      changes.push({ field: 'subject', from: ticket.subject, to: subject });
+    }
+    if (description !== undefined && description !== ticket.description) {
+      changes.push({
+        field: 'description',
+        from: ticket.description,
+        to: description,
+      });
+    }
+    if (changes.length === 0) {
+      return this.getById(ticketId, user);
+    }
+    const data: Prisma.TicketUpdateInput = {};
+    for (const change of changes) {
+      data[change.field] = change.to;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({ where: { id: ticketId }, data });
+      await tx.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'TICKET_EDITED',
+          payload: { changes },
+          createdById: user.id,
+        },
+      });
+    });
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'edited',
+        actorId: user.id,
+      }),
+    );
+    return this.getById(ticketId, user);
   }
 
   async setCategory(
