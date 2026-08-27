@@ -21,6 +21,17 @@ const CONDITION_OPERATORS = [
   'notIn',
   'isEmpty',
   'isNotEmpty',
+  'gte',
+] as const;
+
+/** All triggers, event-based and time-based (card 1.3 added the last two). */
+export const AUTOMATION_TRIGGERS = [
+  'TICKET_CREATED',
+  'STATUS_CHANGED',
+  'SLA_APPROACHING',
+  'SLA_BREACHED',
+  'TIME_IN_STATUS',
+  'UNASSIGNED_FOR',
 ] as const;
 
 /**
@@ -86,6 +97,7 @@ const ACTION_TYPES = [
   'set_priority',
   'set_status',
   'notify_team_lead',
+  'notify_requester',
   'add_internal_note',
 ] as const;
 
@@ -139,7 +151,7 @@ export class CreateAutomationRuleDto {
   description?: string;
 
   @IsString()
-  @IsIn(['TICKET_CREATED', 'STATUS_CHANGED', 'SLA_APPROACHING', 'SLA_BREACHED'])
+  @IsIn(AUTOMATION_TRIGGERS)
   trigger!: string;
 
   @IsArray()

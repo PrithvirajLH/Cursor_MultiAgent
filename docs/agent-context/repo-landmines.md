@@ -23,9 +23,17 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-27: 206 unit (26 suites), 388 integration + 1 skipped,
-  36 web unit (13 vitest files)**, both typechecks clean. Anything below that is a
-  regression. State these numbers in any plan so regressions are obvious.
+- **Baseline as of 2026-08-27 (card 1.3): 222 unit (28 suites), 395 integration + 1
+  skipped, 36 web unit (13 vitest files)**, both typechecks clean. Anything below
+  that is a regression. State these numbers in any plan so regressions are obvious.
+
+- **A background integration run that hits the harness's 10-minute wrapper limit
+  is reported "killed" but jest keeps running.** The kill takes the in-flight
+  `reset-test-db.cjs` child with it, so every later suite fails with
+  `Command failed: node scripts/reset-test-db.cjs` (seen 2026-08-27: 30 green
+  suites, then 13 red ones with no other cause). Kill the orphan jest, check
+  `.env` is back, and re-run detached (e.g. PowerShell `Start-Process`) with a
+  monitor on the log instead of a foreground/background wrapper with a timeout.
 
 - **The consent variable is required for integration runs.** Every integration
   suite re-runs a database reset in its own `beforeAll`, so export it for the

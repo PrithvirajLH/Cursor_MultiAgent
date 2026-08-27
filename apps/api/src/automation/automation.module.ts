@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SlasModule } from '../slas/slas.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { AutomationSchedulerService } from './automation-scheduler.service';
 import { AutomationRulesController } from './automation.controller';
 import { AutomationService } from './automation.service';
 import { RuleEngineService } from './rule-engine.service';
@@ -13,7 +14,7 @@ import { RuleEngineService } from './rule-engine.service';
     forwardRef(() => TicketsModule),
   ],
   controllers: [AutomationRulesController],
-  providers: [AutomationService, RuleEngineService],
-  exports: [RuleEngineService],
+  providers: [AutomationService, RuleEngineService, AutomationSchedulerService],
+  exports: [RuleEngineService, AutomationSchedulerService],
 })
 export class AutomationModule {}

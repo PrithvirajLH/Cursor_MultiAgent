@@ -6,6 +6,7 @@ const ACTION_TYPES = [
   { value: "set_priority", label: "Set priority" },
   { value: "set_status", label: "Set status" },
   { value: "notify_team_lead", label: "Notify team lead" },
+  { value: "notify_requester", label: "Notify requester (in-app)" },
   { value: "add_internal_note", label: "Add internal note" },
 ] as const;
 
@@ -108,12 +109,18 @@ export function ActionEditor({
           ))}
         </select>
       )}
-      {(type === "notify_team_lead" || type === "add_internal_note") && (
+      {(type === "notify_team_lead" ||
+        type === "notify_requester" ||
+        type === "add_internal_note") && (
         <input
           type="text"
           className="rounded border border-border bg-card px-2 py-1 text-xs min-w-[160px]"
           placeholder={
-            type === "add_internal_note" ? "Note text" : "Message (optional)"
+            type === "add_internal_note"
+              ? "Note text"
+              : type === "notify_requester"
+                ? "Reminder text (optional)"
+                : "Message (optional)"
           }
           value={action.body ?? ""}
           onChange={(e) => onChange({ ...action, body: e.target.value })}

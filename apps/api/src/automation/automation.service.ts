@@ -13,12 +13,53 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TicketsService } from '../tickets/tickets.service';
 import {
+  AUTOMATION_TRIGGERS,
   CreateAutomationRuleDto,
   isValidConditionNode,
 } from './dto/create-automation-rule.dto';
 import { UpdateAutomationRuleDto } from './dto/update-automation-rule.dto';
 import type { AutomationTrigger } from './rule-engine.service';
 import { RuleEngineService } from './rule-engine.service';
+import { TIME_TRIGGERS } from './time-triggers.const';
+
+const TIME_RULE_THRESHOLD_ERROR =
+  'Time-based rules need an hours threshold (and a status for TIME_IN_STATUS)';
+
+type ThresholdNode = {
+  field?: string;
+  operator?: string;
+  and?: ThresholdNode[];
+};
+
+/**
+ * A time rule must carry the condition the scheduler selects candidates on:
+ * `hoursSinceActivity gte` plus a `status` equals/in for TIME_IN_STATUS, or
+ * `hoursUnassigned gte` for UNASSIGNED_FOR. Flat leaves and and-groups count.
+ */
+function hasTimeRuleThreshold(trigger: string, conditions: unknown): boolean {
+  if (!TIME_TRIGGERS.includes(trigger as AutomationTrigger)) return true;
+  const hoursField =
+    trigger === 'TIME_IN_STATUS' ? 'hoursSinceActivity' : 'hoursUnassigned';
+  let hasHours = false;
+  let hasStatus = false;
+  const visit = (node: ThresholdNode): void => {
+    if (Array.isArray(node.and)) {
+      node.and.forEach(visit);
+      return;
+    }
+    if (node.field === hoursField && node.operator === 'gte') hasHours = true;
+    if (
+      node.field === 'status' &&
+      (node.operator === 'equals' || node.operator === 'in')
+    ) {
+      hasStatus = true;
+    }
+  };
+  (Array.isArray(conditions) ? (conditions as ThresholdNode[]) : []).forEach(
+    visit,
+  );
+  return hasHours && (trigger !== 'TIME_IN_STATUS' || hasStatus);
+}
 
 @Injectable()
 export class AutomationService {
@@ -105,14 +146,11 @@ export class AutomationService {
   async create(payload: CreateAutomationRuleDto, user: AuthUser) {
     this.ensureCanManage(user, payload.teamId ?? undefined);
 
-    const validTriggers: AutomationTrigger[] = [
-      'TICKET_CREATED',
-      'STATUS_CHANGED',
-      'SLA_APPROACHING',
-      'SLA_BREACHED',
-    ];
-    if (!validTriggers.includes(payload.trigger as AutomationTrigger)) {
+    if (!AUTOMATION_TRIGGERS.includes(payload.trigger as AutomationTrigger)) {
       throw new BadRequestException(`Invalid trigger: ${payload.trigger}`);
+    }
+    if (!hasTimeRuleThreshold(payload.trigger, payload.conditions)) {
+      throw new BadRequestException(TIME_RULE_THRESHOLD_ERROR);
     }
     this.validateActionParams(payload.actions);
 
@@ -169,14 +207,8 @@ export class AutomationService {
       this.ensureCanManage(user, payload.teamId);
     }
 
-    const validTriggers: AutomationTrigger[] = [
-      'TICKET_CREATED',
-      'STATUS_CHANGED',
-      'SLA_APPROACHING',
-      'SLA_BREACHED',
-    ];
     if (payload.trigger !== undefined) {
-      if (!validTriggers.includes(payload.trigger as AutomationTrigger)) {
+      if (!AUTOMATION_TRIGGERS.includes(payload.trigger as AutomationTrigger)) {
         throw new BadRequestException(`Invalid trigger: ${payload.trigger}`);
       }
     }
@@ -198,6 +230,13 @@ export class AutomationService {
         throw new BadRequestException('actions must be a non-empty array');
       }
       this.validateActionParams(payload.actions);
+    }
+    if (payload.trigger !== undefined || payload.conditions !== undefined) {
+      const nextTrigger = payload.trigger ?? rule.trigger;
+      const nextConditions = payload.conditions ?? rule.conditions;
+      if (!hasTimeRuleThreshold(nextTrigger, nextConditions)) {
+        throw new BadRequestException(TIME_RULE_THRESHOLD_ERROR);
+      }
     }
 
     const data: Record<string, unknown> = {};
@@ -323,7 +362,10 @@ export class AutomationService {
           }
           break;
         case 'set_priority':
-          if (!a.priority || !['SEV1', 'SEV2', 'SEV3', 'SEV4'].includes(a.priority)) {
+          if (
+            !a.priority ||
+            !['SEV1', 'SEV2', 'SEV3', 'SEV4'].includes(a.priority)
+          ) {
             throw new BadRequestException(
               `Action ${i + 1} (set_priority): priority must be SEV1, SEV2, SEV3, or SEV4.`,
             );
@@ -344,6 +386,7 @@ export class AutomationService {
           }
           break;
         case 'notify_team_lead':
+        case 'notify_requester':
           break;
         default:
           throw new BadRequestException(

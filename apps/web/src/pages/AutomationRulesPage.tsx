@@ -70,6 +70,8 @@ const TRIGGERS = [
   { value: "STATUS_CHANGED", label: "Status Changed" },
   { value: "SLA_APPROACHING", label: "SLA Approaching" },
   { value: "SLA_BREACHED", label: "SLA Breached" },
+  { value: "TIME_IN_STATUS", label: "Time in Status" },
+  { value: "UNASSIGNED_FOR", label: "Unassigned For" },
 ];
 
 const ACTION_TYPES = [
@@ -77,6 +79,7 @@ const ACTION_TYPES = [
   { value: "assign_team", label: "Assign Team" },
   { value: "assign_user", label: "Assign User" },
   { value: "notify_team_lead", label: "Notify Team Lead" },
+  { value: "notify_requester", label: "Notify requester (in-app)" },
   { value: "add_internal_note", label: "Add Internal Note" },
   { value: "set_priority", label: "Set Priority" },
 ];
@@ -90,16 +93,40 @@ const CONDITION_FIELDS = [
   "assigneeId",
   "categoryId",
   "requesterId",
+  "hoursSinceActivity",
+  "hoursUnassigned",
 ];
 const CONDITION_OPS = [
   "contains",
   "equals",
+  "gte",
   "notEquals",
   "in",
   "notIn",
   "isEmpty",
   "isNotEmpty",
 ];
+const HOUR_FIELDS = ["hoursSinceActivity", "hoursUnassigned"];
+const FIELD_LABELS: Record<string, string> = {
+  hoursSinceActivity: "hours since activity",
+  hoursUnassigned: "hours unassigned",
+};
+const OP_LABELS: Record<string, string> = { gte: "is at least" };
+
+function timeTriggerConditions(trigger: string): FlatCondition[] | null {
+  // Time triggers need their threshold condition; pre-add it so the rule saves.
+  if (trigger === "TIME_IN_STATUS") {
+    return [
+      { field: "status", op: "equals", val: "" },
+      { field: "hoursSinceActivity", op: "gte", val: "" },
+    ];
+  }
+  if (trigger === "UNASSIGNED_FOR") {
+    return [{ field: "hoursUnassigned", op: "gte", val: "" }];
+  }
+  return null;
+}
+
 const PRIORITY_OPTIONS = ["SEV1", "SEV2", "SEV3", "SEV4"];
 const STATUS_OPTIONS = [
   "NEW",
@@ -121,8 +148,11 @@ const EMPTY_CONDITION: FlatCondition = {
 const EMPTY_ACTION: FlatAction = { type: "set_status", val: "" };
 
 function triggerIcon(trigger: string): string {
-  if (trigger === "SLA_APPROACHING")
+  if (trigger === "SLA_APPROACHING" || trigger === "TIME_IN_STATUS")
     return "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z";
+  if (trigger === "UNASSIGNED_FOR") {
+    return "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z";
+  }
   if (trigger === "SLA_BREACHED") {
     return "M12 9v2m0 4h.01M10.293 4.293a1 1 0 011.414 0L21 13.586V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-5.414l9.293-9.293z";
   }
@@ -132,6 +162,8 @@ function triggerIcon(trigger: string): string {
 function triggerBg(trigger: string): string {
   if (trigger === "SLA_BREACHED") return "bg-red-100 text-red-600";
   if (trigger === "SLA_APPROACHING") return "bg-purple-100 text-purple-600";
+  if (trigger === "TIME_IN_STATUS") return "bg-sky-100 text-sky-600";
+  if (trigger === "UNASSIGNED_FOR") return "bg-amber-100 text-amber-600";
   return "bg-green-100 text-green-600";
 }
 
@@ -442,9 +474,15 @@ function RuleEditorModal({
                 </label>
                 <select
                   value={form.trigger}
-                  onChange={(event) =>
-                    onChange({ trigger: event.target.value })
-                  }
+                  onChange={(event) => {
+                    const nextTrigger = event.target.value;
+                    const preset = timeTriggerConditions(nextTrigger);
+                    onChange(
+                      preset && !conditionEditingLocked
+                        ? { trigger: nextTrigger, conditions: preset }
+                        : { trigger: nextTrigger },
+                    );
+                  }}
                   className="w-full rounded-lg border border-border bg-card px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 >
                   {TRIGGERS.map((trigger) => (
@@ -484,7 +522,7 @@ function RuleEditorModal({
                     <option value="">Field...</option>
                     {CONDITION_FIELDS.map((field) => (
                       <option key={field} value={field}>
-                        {field.replace("_", " ")}
+                        {FIELD_LABELS[field] ?? field.replace("_", " ")}
                       </option>
                     ))}
                   </select>
@@ -498,18 +536,24 @@ function RuleEditorModal({
                   >
                     {CONDITION_OPS.map((op) => (
                       <option key={op} value={op}>
-                        {op}
+                        {OP_LABELS[op] ?? op}
                       </option>
                     ))}
                   </select>
                   <input
+                    type={
+                      HOUR_FIELDS.includes(condition.field) ? "number" : "text"
+                    }
+                    min={HOUR_FIELDS.includes(condition.field) ? 0 : undefined}
                     value={condition.val}
                     onChange={(event) =>
                       onUpdateCondition(index, "val", event.target.value)
                     }
                     disabled={conditionEditingLocked}
                     className="flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
-                    placeholder="value..."
+                    placeholder={
+                      HOUR_FIELDS.includes(condition.field) ? "hours" : "value..."
+                    }
                   />
                   <button
                     type="button"
@@ -830,10 +874,13 @@ function toApiConditions(conditions: FlatCondition[]): AutomationCondition[] {
             .filter(Boolean),
         };
       }
+      const field = condition.field.trim();
       return {
-        field: condition.field.trim(),
+        field,
         operator: op,
-        value: condition.val.trim(),
+        value: HOUR_FIELDS.includes(field)
+          ? Number(condition.val.trim())
+          : condition.val.trim(),
       };
     });
 }

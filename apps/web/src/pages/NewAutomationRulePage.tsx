@@ -48,6 +48,8 @@ const TRIGGERS = [
   { value: "STATUS_CHANGED", label: "Status Changed" },
   { value: "SLA_APPROACHING", label: "SLA Approaching" },
   { value: "SLA_BREACHED", label: "SLA Breached" },
+  { value: "TIME_IN_STATUS", label: "Time in Status" },
+  { value: "UNASSIGNED_FOR", label: "Unassigned For" },
 ];
 
 const CONDITION_FIELDS = [
@@ -59,11 +61,14 @@ const CONDITION_FIELDS = [
   "assigneeId",
   "categoryId",
   "requesterId",
+  "hoursSinceActivity",
+  "hoursUnassigned",
 ];
 
 const CONDITION_OPS = [
   "contains",
   "equals",
+  "gte",
   "notEquals",
   "in",
   "notIn",
@@ -76,9 +81,31 @@ const ACTION_TYPES = [
   { value: "assign_team", label: "Assign Team" },
   { value: "assign_user", label: "Assign User" },
   { value: "notify_team_lead", label: "Notify Team Lead" },
+  { value: "notify_requester", label: "Notify requester (in-app)" },
   { value: "add_internal_note", label: "Add Internal Note" },
   { value: "set_priority", label: "Set Priority" },
 ];
+
+const HOUR_FIELDS = ["hoursSinceActivity", "hoursUnassigned"];
+const FIELD_LABELS: Record<string, string> = {
+  hoursSinceActivity: "hours since activity",
+  hoursUnassigned: "hours unassigned",
+};
+const OP_LABELS: Record<string, string> = { gte: "is at least" };
+
+function timeTriggerConditions(trigger: string): FlatCondition[] | null {
+  // Time triggers need their threshold condition; pre-add it so the rule saves.
+  if (trigger === "TIME_IN_STATUS") {
+    return [
+      { field: "status", op: "equals", val: "" },
+      { field: "hoursSinceActivity", op: "gte", val: "" },
+    ];
+  }
+  if (trigger === "UNASSIGNED_FOR") {
+    return [{ field: "hoursUnassigned", op: "gte", val: "" }];
+  }
+  return null;
+}
 
 const PRIORITY_OPTIONS = ["SEV1", "SEV2", "SEV3", "SEV4"];
 
@@ -113,7 +140,12 @@ function toApiConditions(conditions: FlatCondition[]): AutomationCondition[] {
     next.push({
       field,
       operator: op,
-      value: op === "isEmpty" || op === "isNotEmpty" ? undefined : val,
+      value:
+        op === "isEmpty" || op === "isNotEmpty"
+          ? undefined
+          : HOUR_FIELDS.includes(field)
+            ? Number(val)
+            : val,
     });
   });
   return next;
@@ -134,6 +166,15 @@ function toApiActions(
 
     if (type === "notify_team_lead") {
       next.push({ type: "notify_team_lead" });
+      return;
+    }
+
+    if (type === "notify_requester") {
+      next.push(
+        val
+          ? { type: "notify_requester", body: val }
+          : { type: "notify_requester" },
+      );
       return;
     }
 
@@ -478,12 +519,15 @@ export function NewAutomationRulePage({
                 </label>
                 <select
                   value={form.trigger}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const nextTrigger = event.target.value;
                     setForm((prev) => ({
                       ...prev,
-                      trigger: event.target.value,
-                    }))
-                  }
+                      trigger: nextTrigger,
+                      conditions:
+                        timeTriggerConditions(nextTrigger) ?? prev.conditions,
+                    }));
+                  }}
                   className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                 >
                   {TRIGGERS.map((trigger) => (
@@ -619,7 +663,7 @@ export function NewAutomationRulePage({
                       <option value="">Field…</option>
                       {CONDITION_FIELDS.map((field) => (
                         <option key={field} value={field}>
-                          {field.replace("_", " ")}
+                          {FIELD_LABELS[field] ?? field.replace("_", " ")}
                         </option>
                       ))}
                     </select>
@@ -632,13 +676,21 @@ export function NewAutomationRulePage({
                     >
                       {CONDITION_OPS.map((op) => (
                         <option key={op} value={op}>
-                          {op}
+                          {OP_LABELS[op] ?? op}
                         </option>
                       ))}
                     </select>
                     {condition.op !== "isEmpty" &&
                       condition.op !== "isNotEmpty" && (
                         <input
+                          type={
+                            HOUR_FIELDS.includes(condition.field)
+                              ? "number"
+                              : "text"
+                          }
+                          min={
+                            HOUR_FIELDS.includes(condition.field) ? 0 : undefined
+                          }
                           value={condition.val}
                           onChange={(event) =>
                             handleUpdateCondition(
@@ -648,7 +700,11 @@ export function NewAutomationRulePage({
                             )
                           }
                           className="min-w-[140px] flex-1 rounded-lg border border-border px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
-                          placeholder="value…"
+                          placeholder={
+                            HOUR_FIELDS.includes(condition.field)
+                              ? "hours"
+                              : "value…"
+                          }
                         />
                       )}
                     <button
@@ -808,6 +864,17 @@ export function NewAutomationRulePage({
                         }
                         className="min-w-[160px] flex-1 rounded-lg border border-green-500/20 bg-card text-foreground px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
                         placeholder="Note content…"
+                      />
+                    )}
+
+                    {action.type === "notify_requester" && (
+                      <input
+                        value={action.val}
+                        onChange={(event) =>
+                          handleUpdateAction(index, "val", event.target.value)
+                        }
+                        className="min-w-[160px] flex-1 rounded-lg border border-green-500/20 bg-card text-foreground px-2 py-1.5 text-sm focus:border-transparent focus:ring-2 focus:ring-ring"
+                        placeholder="Reminder text (optional)"
                       />
                     )}
 

@@ -1,6 +1,7 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import {
   NotificationType,
+  TicketCloseReason,
   TicketPriority,
   TicketStatus,
   UserRole,
@@ -15,7 +16,9 @@ export type AutomationTrigger =
   | 'TICKET_CREATED'
   | 'STATUS_CHANGED'
   | 'SLA_APPROACHING'
-  | 'SLA_BREACHED';
+  | 'SLA_BREACHED'
+  | 'TIME_IN_STATUS'
+  | 'UNASSIGNED_FOR';
 
 export type TicketContext = {
   id: string;
@@ -44,8 +47,21 @@ type ActionNode = {
   body?: string;
 };
 
-/** SLA triggers: skip if we already ran this rule for this ticket recently (idempotent). */
+/**
+ * SLA and time triggers: skip if we already ran this rule for this ticket
+ * recently (idempotent). For time rules this is what makes a reminder repeat
+ * at most daily while its condition still holds.
+ */
 const SLA_DE_DUPE_HOURS = 24;
+const DE_DUPED_TRIGGERS: AutomationTrigger[] = [
+  'SLA_APPROACHING',
+  'SLA_BREACHED',
+  'TIME_IN_STATUS',
+  'UNASSIGNED_FOR',
+];
+const HOUR_MS = 60 * 60 * 1000;
+const DEFAULT_REQUESTER_REMINDER =
+  'This ticket is waiting on you — please reply or let us know if it is resolved.';
 
 @Injectable()
 export class RuleEngineService {
@@ -183,7 +199,7 @@ export class RuleEngineService {
       }
 
       if (
-        (trigger === 'SLA_APPROACHING' || trigger === 'SLA_BREACHED') &&
+        DE_DUPED_TRIGGERS.includes(trigger) &&
         (await this.alreadyExecutedRecently(
           rule.id,
           ticketId,
@@ -247,17 +263,32 @@ export class RuleEngineService {
     return { executed, errors };
   }
 
-  private ticketToContext(ticket: {
-    id: string;
-    subject: string;
-    description: string | null;
-    priority: TicketPriority;
-    status: TicketStatus;
-    assignedTeamId: string | null;
-    assigneeId: string | null;
-    categoryId: string | null;
-    requesterId: string;
-  }): TicketContext {
+  /**
+   * Condition context. `hoursSinceActivity` is whole hours since the last
+   * write to the ticket (updatedAt); `hoursUnassigned` is whole hours since
+   * creation while no assignee is set (0 once assigned). Both feed the `gte`
+   * operator used by time-based rules (card 1.3).
+   */
+  ticketToContext(
+    ticket: {
+      id: string;
+      subject: string;
+      description: string | null;
+      priority: TicketPriority;
+      status: TicketStatus;
+      assignedTeamId: string | null;
+      assigneeId: string | null;
+      categoryId: string | null;
+      requesterId: string;
+      createdAt?: Date;
+      updatedAt?: Date;
+    },
+    now: Date = new Date(),
+  ): TicketContext {
+    const wholeHoursSince = (date: Date | undefined): number =>
+      date
+        ? Math.max(0, Math.floor((now.getTime() - date.getTime()) / HOUR_MS))
+        : 0;
     return {
       id: ticket.id,
       subject: ticket.subject,
@@ -268,6 +299,10 @@ export class RuleEngineService {
       assigneeId: ticket.assigneeId,
       categoryId: ticket.categoryId,
       requesterId: ticket.requesterId,
+      hoursSinceActivity: wholeHoursSince(ticket.updatedAt),
+      hoursUnassigned: ticket.assigneeId
+        ? 0
+        : wholeHoursSince(ticket.createdAt),
     };
   }
 
@@ -350,6 +385,12 @@ export class RuleEngineService {
           raw != null &&
           (this.normalizeComparableValue(raw) ?? '').trim() !== ''
         );
+      case 'gte': {
+        // Numeric "at least" for the hour fields; non-numeric operands never match.
+        const a = Number(raw);
+        const b = Number(value);
+        return Number.isFinite(a) && Number.isFinite(b) && a >= b;
+      }
       default:
         return false;
     }
@@ -388,6 +429,7 @@ export class RuleEngineService {
       completedAt: Date | null;
       dueAt: Date | null;
       slaPausedAt: Date | null;
+      requesterId: string;
       assignedTeam?: { members: { userId: string }[] } | null;
     },
     _ruleId: string,
@@ -529,6 +571,18 @@ export class RuleEngineService {
             }
           }
           break;
+        case 'notify_requester':
+          // In-app only (card 1.3); email arrives with send_email once SMTP exists.
+          await tx.notification.create({
+            data: {
+              userId: current.requesterId,
+              type: NotificationType.TICKET_UPDATED,
+              title: `Reminder: ${current.subject}`,
+              body: action.body ?? DEFAULT_REQUESTER_REMINDER,
+              ticketId,
+            },
+          });
+          break;
         case 'add_internal_note':
           if (action.body) {
             let authorId = ruleCreatedById;
@@ -581,6 +635,7 @@ export class RuleEngineService {
     completedAt: Date | null;
     dueAt: Date | null;
     slaPausedAt: Date | null;
+    requesterId: string;
     assignedTeam?: { members: { userId: string }[] } | null;
   }> {
     const t = await tx.ticket.findUnique({
@@ -608,6 +663,7 @@ export class RuleEngineService {
       completedAt: Date | null;
       dueAt: Date | null;
       slaPausedAt: Date | null;
+      requesterId: string;
       assignedTeam?: { members: { userId: string }[] } | null;
     },
     newStatus: TicketStatus,
@@ -633,6 +689,10 @@ export class RuleEngineService {
       },
       newStatus,
       ruleCreatedById,
+      // Every automation close is "the system closed it" (card 1.3).
+      newStatus === TicketStatus.CLOSED
+        ? TicketCloseReason.AUTO_CLOSED
+        : undefined,
     );
 
     return this.getTicketForActions(tx, ticketId);

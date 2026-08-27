@@ -8,11 +8,14 @@ const FIELDS = [
   { value: "assignedTeamId", label: "Team" },
   { value: "assigneeId", label: "Assignee" },
   { value: "categoryId", label: "Category" },
+  { value: "hoursSinceActivity", label: "Hours since activity" },
+  { value: "hoursUnassigned", label: "Hours unassigned" },
 ] as const;
 
 const OPERATORS = [
   { value: "contains", label: "contains" },
   { value: "equals", label: "equals" },
+  { value: "gte", label: "is at least" },
   { value: "notEquals", label: "not equals" },
   { value: "in", label: "is one of" },
   { value: "notIn", label: "is not one of" },
@@ -20,6 +23,7 @@ const OPERATORS = [
   { value: "isNotEmpty", label: "is not empty" },
 ] as const;
 
+const HOUR_FIELDS = ["hoursSinceActivity", "hoursUnassigned"];
 const PRIORITIES = ["SEV1", "SEV2", "SEV3", "SEV4"];
 const STATUSES = [
   "NEW",
@@ -235,6 +239,24 @@ export function ConditionEditor({
               placeholder="Select category"
               onSetValue={setValue}
             />
+          )}
+          {HOUR_FIELDS.includes(field) && (
+            <label className="flex items-center gap-1 text-xs text-muted-foreground">
+              <input
+                type="number"
+                min={0}
+                step={1}
+                className="w-20 rounded border border-border bg-card px-2 py-1 text-xs"
+                placeholder="Hours"
+                value={value != null ? String(value) : ""}
+                onChange={(e) =>
+                  setValue(
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                  )
+                }
+              />
+              hours
+            </label>
           )}
           {(field === "subject" || field === "description") && (
             <input

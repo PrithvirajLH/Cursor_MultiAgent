@@ -158,6 +158,54 @@ async function seedDevAuxiliaryData(args: {
       createdById: args.samId
     }
   });
+  // Card 1.3 — time-based rules. All off by default; an admin enables them in Automation.
+  await prisma.automationRule.create({
+    data: {
+      name: `${cannedPrefix} Automation: Auto-close resolved after 7 days`,
+      description:
+        'Closes tickets that have sat in Resolved for 7 days without activity. Off by default — enable in Automation.',
+      trigger: 'TIME_IN_STATUS',
+      conditions: [
+        { field: 'status', operator: 'equals', value: 'RESOLVED' },
+        { field: 'hoursSinceActivity', operator: 'gte', value: 168 }
+      ],
+      actions: [{ type: 'set_status', status: 'CLOSED' }],
+      isActive: false,
+      priority: 100,
+      createdById: args.samId
+    }
+  });
+  await prisma.automationRule.create({
+    data: {
+      name: `${cannedPrefix} Automation: Remind requester after 3 days waiting`,
+      description:
+        'Sends the requester an in-app reminder when a ticket has waited on them for 3 days. Off by default — enable in Automation.',
+      trigger: 'TIME_IN_STATUS',
+      conditions: [
+        { field: 'status', operator: 'equals', value: 'WAITING_ON_REQUESTER' },
+        { field: 'hoursSinceActivity', operator: 'gte', value: 72 }
+      ],
+      actions: [{ type: 'notify_requester' }],
+      isActive: false,
+      priority: 100,
+      createdById: args.samId
+    }
+  });
+  await prisma.automationRule.create({
+    data: {
+      name: `${cannedPrefix} Automation: Alert lead when unassigned 4 hours`,
+      description:
+        'Notifies the team leads when an open ticket has had no assignee for 4 hours. Off by default — enable in Automation.',
+      trigger: 'UNASSIGNED_FOR',
+      conditions: [{ field: 'hoursUnassigned', operator: 'gte', value: 4 }],
+      actions: [
+        { type: 'notify_team_lead', body: 'This ticket has been unassigned for 4 hours.' }
+      ],
+      isActive: false,
+      priority: 100,
+      createdById: args.samId
+    }
+  });
 }
 
 async function seedMinimal() {

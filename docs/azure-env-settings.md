@@ -34,6 +34,14 @@ If you **don’t** use Redis for notifications/queue, set:
 |------|--------|
 | **NOTIFICATIONS_QUEUE_ENABLED** | `false` |
 
+Time-based automation rules (`TIME_IN_STATUS`, `UNASSIGNED_FOR`) run on a small in-process scheduler. The rules are off until an admin enables them; the scheduler itself is safe to leave on.
+
+| Name | Default | Notes |
+|------|---------|-------|
+| **AUTOMATION_SCHEDULER_ENABLED** | `true` | Only the literal `false` turns the worker off. |
+| **AUTOMATION_SCHEDULER_INTERVAL_MS** | `300000` | How often it looks for tickets past a rule's threshold (5 min). |
+| **AUTOMATION_SCHEDULER_BATCH** | `200` | Max tickets enqueued per rule per tick. |
+
 If you **do** use Redis (e.g. Azure Cache for Redis):
 
 | Name | Example value |
