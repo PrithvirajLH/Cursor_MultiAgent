@@ -124,6 +124,7 @@ type AgentRow = {
 const CHANNELS = [
   { value: "PORTAL", label: "Portal" },
   { value: "EMAIL", label: "Email" },
+  { value: "API", label: "Integration" },
 ];
 const STATUSES = [
   "NEW",

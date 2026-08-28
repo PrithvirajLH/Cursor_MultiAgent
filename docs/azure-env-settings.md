@@ -124,6 +124,18 @@ Operators and monitors can read the live state of every optional integration (da
 
 ---
 
+## Optional – Integration intake (Power Automate)
+
+Shared secret for `POST /api/tickets/intake`, the endpoint an outside system uses to create a ticket in a named department. Unset means the endpoint answers 403 to everything — that is the safe default.
+
+| Name | Example value | Notes |
+|------|----------------|-------|
+| **INTAKE_API_SECRET** | (any long random string) | Required header `x-intake-secret`. Keep the value in Key Vault; rotate it if a flow is decommissioned. |
+
+The path must also be listed in **Easy Auth's excluded paths** (`az webapp auth update --excluded-paths "/api/tickets/inbound-email" "/api/tickets/intake"`), or the Microsoft login wall answers 401 before the app sees the request. The exclusion is path-exact. Full flow-builder guide: [`integration-intake-api.md`](integration-intake-api.md).
+
+---
+
 ## Optional – Azure AD / M365
 
 Only if you use Azure AD (Entra) SSO or Microsoft 365 integration:

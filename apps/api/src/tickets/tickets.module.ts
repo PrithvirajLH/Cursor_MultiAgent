@@ -6,6 +6,7 @@ import { SlasModule } from '../slas/slas.module';
 import { TagsModule } from '../tags/tags.module';
 import { AttachmentsController } from './attachments.controller';
 import { InboundEmailService } from './inbound-email.service';
+import { IntakeService } from './intake.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
@@ -27,6 +28,7 @@ import { TicketsService } from './tickets.service';
     TicketRealtimeService,
     TicketSlaCalculationService,
     InboundEmailService,
+    IntakeService,
   ],
   exports: [
     TicketsService,

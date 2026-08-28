@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -24,6 +25,7 @@ import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
+import { CreateIntakeTicketDto } from './dto/create-intake-ticket.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { DeleteTicketDto } from './dto/delete-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
@@ -37,6 +39,7 @@ import { TicketTypingDto } from './dto/ticket-typing.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import { IntakeService } from './intake.service';
 import { TicketsService } from './tickets.service';
 
 // ATTACHMENTS_MAX_MB configuration is now injected via ConfigService
@@ -58,6 +61,7 @@ export class TicketsController {
   constructor(
     private readonly ticketsService: TicketsService,
     private readonly configService: ConfigService,
+    private readonly intakeService: IntakeService,
   ) {
     const maxMb = Number.parseInt(
       this.configService.get<string>('ATTACHMENTS_MAX_MB') ?? '10',
@@ -120,6 +124,24 @@ export class TicketsController {
     @Headers('x-inbound-email-secret') inboundSecret: string | undefined,
   ) {
     return this.ticketsService.ingestInboundEmail(payload, inboundSecret);
+  }
+
+  @Post('intake')
+  @Public()
+  @ThrottlePolicy('webhook')
+  async intake(
+    @Body() payload: CreateIntakeTicketDto,
+    @Headers('x-intake-secret') intakeSecret: string | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+  ) {
+    // The generic IdempotencyInterceptor is opt-in; an integration that retries
+    // without a key would create duplicates, so the key is required here.
+    if (!idempotencyKey?.trim()) {
+      throw new BadRequestException(
+        'Idempotency-Key header is required (use the flow run id)',
+      );
+    }
+    return this.intakeService.createTicket(payload, intakeSecret);
   }
 
   @Post('bulk/assign')
@@ -269,7 +291,11 @@ export class TicketsController {
     @Body() payload: { categoryId: string | null },
     @CurrentUser() user: AuthUser,
   ) {
-    return this.ticketsService.setCategory(id, payload?.categoryId ?? null, user);
+    return this.ticketsService.setCategory(
+      id,
+      payload?.categoryId ?? null,
+      user,
+    );
   }
 
   @Get(':id/events')

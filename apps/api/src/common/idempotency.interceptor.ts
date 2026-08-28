@@ -173,6 +173,9 @@ export class IdempotencyInterceptor implements NestInterceptor {
       this.readHeaderValue(request.headers['user-agent']),
       this.readHeaderValue(request.headers['x-attachment-scan-secret']),
       this.readHeaderValue(request.headers['x-inbound-email-secret']),
+      // Keep this order stable and append only: changing the seed changes every
+      // anonymous scope and so invalidates in-flight keys.
+      this.readHeaderValue(request.headers['x-intake-secret']),
     ].join('|');
     const digest = createHash('sha256').update(seed).digest('hex').slice(0, 24);
     return `anonymous:${digest}`;

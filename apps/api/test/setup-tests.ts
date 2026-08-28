@@ -107,6 +107,9 @@ process.env.ATTACHMENT_SCAN_WEBHOOK_SECRET = 'test-scan-secret';
 // Pin the inbound-email webhook secret to the test value (the dev `.env` ships a
 // real secret); specs authenticate the webhook with 'test-inbound-secret'.
 process.env.INBOUND_EMAIL_WEBHOOK_SECRET = 'test-inbound-secret';
-process.env.M365_INBOUND_WEBHOOK_SECRET = process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
+// Integration intake (card 1.19) uses its own secret so either can be rotated alone.
+process.env.INTAKE_API_SECRET = 'test-intake-secret';
+process.env.M365_INBOUND_WEBHOOK_SECRET =
+  process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
 
 jest.setTimeout(60000);
