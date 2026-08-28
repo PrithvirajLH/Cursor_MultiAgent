@@ -69,12 +69,17 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
 
 - Branch `ui-redesign-and-api-hardening`. Remotes: `azure` (Azure DevOps, the
   deploy target), plus two **public** GitHub remotes.
-- Production App Service `TicketTicket` runs commit `d1d57bc` (deployed
-  2026-08-27 14:22 UTC; previous: `c2ff777` on 08-26, `458543a` before that).
-  Schema is up to date at **49** migrations; the six trigram indexes are intact.
-  `main` was fast-forwarded to the same commit. Soft delete + retention (card
-  0.8) is live; the retention job is **off** until `RETENTION_ENABLED=true` and
-  `RETENTION_DRY_RUN=false` are both set.
+- Production App Service `TicketTicket` runs commit `2df679d` (deployed
+  2026-08-28 22:59 UTC, deployment `4d2bc6e8`; previous `d1d57bc` 08-27,
+  `c2ff777` 08-26, `458543a` before that). Schema is up to date at **51**
+  migrations; the six trigram indexes are intact. `main` and
+  `ui-redesign-and-api-hardening` are both at `90bb414` (one docs commit ahead
+  of what shipped). Live since this deploy: ticket editing, requester
+  confirm/reopen/cancel, timed automations (scheduler on, no timed rules yet),
+  the extra automation actions, and `POST /api/tickets/intake` — **which is
+  inert** until `INTAKE_API_SECRET` is set and the path is excluded from Easy
+  Auth (§6 of `prompts/2026-08-28-deploy-cards-1-1-to-1-19.md`). The retention
+  job remains off.
 - `azure-pipelines.yml` exists but **cannot run** — the Azure DevOps org has no
   hosted parallelism grant. **Nothing currently gates a deploy except running the
   checks above by hand.**
