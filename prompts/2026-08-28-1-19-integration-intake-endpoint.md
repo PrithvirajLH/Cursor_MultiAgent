@@ -228,3 +228,31 @@ Expect 201 with the HR team. Repeat verbatim → same ticket, `Idempotency-Repla
 ## 11. Handoff notes — what to report back
 
 1. Commit SHA(s). 2. Guard line for the migration; test-DB migration and trigram counts. 3. `Tests:` lines (unit, intake spec, the idempotency + inbound-email specs, full suite), vitest, both `tsc`. 4. `git diff --stat <pre-card sha> HEAD`. 5. Dev-DB `migrate status` before/after. 6. The manual `curl` outputs (headers + body, secret redacted). 7. Anything that did not match — especially whether the interceptor seed change disturbed any existing spec, and whether `ticketsService.create` accepted `channel: 'API'` and `tags` without modification.
+
+---
+
+## 12. Post-implementation record (planning session, 2026-08-28)
+
+**Verdict: GREEN.** Commits `f423fa4` (schema + migration) and `0c5d4d1` (endpoint). Planner independently re-ran: full `test:integration` **410 passed + 1 skipped, 45/45 files, 0 failures** (336 s, run alone); `jest` 238/238 (29 suites); `tsc --noEmit` clean in api and web; vitest 13 files / 36. `scripts/check-migrations.sh origin/main` → the new migration `ok`. Source read: constant-time secret compare with the three distinct 403s; `Idempotency-Key` required in the controller with the reason in a comment; explicit `department` resolved to `assignedTeamId` so routing is bypassed (proved by integration case 3) and omitting it leaves routing in charge (case 7); unknown slug 400 lists the valid ones; `channel: API`; interceptor seed appended with a stability comment.
+
+**Accepted deviations:** `TagsService` was not injected (tags flow through `create()` — the dependency §4.6 anticipated was unnecessary); two local spec fixes (assertion on `message`, lint casts).
+
+**Correction to this prompt, accepted:** §5 Task 5 and §10 named the five *seed* department slugs. Real environments differ — the dev database has only `it-service-desk` and `hr-operations`. `docs/integration-intake-api.md` now says so and tells the flow builder to discover the list from the 400 response. **Production's list is still unread** — see the blocker below.
+
+**Landmine added by the implementer:** `ALTER TYPE … ADD VALUE` applies fine through `migrate deploy` on PG 16, but the new value cannot be used in the same transaction — never combine one with a backfill.
+
+**Approved to merge.** Deploy is blocked on the item below.
+
+### Deploy blocker found while verifying (2026-08-28)
+
+**This laptop can no longer reach the production database.** The firewall rule `dev-laptop-20260501` allows `4.7.213.210`; the machine's public address is now `107.131.98.99`, so `prisma migrate deploy` — which the runbook runs from here — fails with "Can't reach database server". The next deploy carries **two** migrations (`20260827120000_ticket_close_reason` from card 1.2 and `20260828120000_ticket_channel_api` from this card), so this must be fixed first:
+
+```bash
+az postgres flexible-server firewall-rule create -g csnhc-ai --name csh-ticketing-db \
+  --rule-name dev-laptop-20260828 --start-ip-address 107.131.98.99 --end-ip-address 107.131.98.99
+# optional tidy-up afterwards:
+az postgres flexible-server firewall-rule delete -g csnhc-ai --name csh-ticketing-db \
+  --rule-name dev-laptop-20260501 --yes
+```
+
+Owner action (Azure config, no cost). It recurs whenever the network changes; running migrations from a fixed-address host instead of the laptop is the durable fix, and is worth its own decision later.
