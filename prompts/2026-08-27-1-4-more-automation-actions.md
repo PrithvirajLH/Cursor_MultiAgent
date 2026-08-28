@@ -132,3 +132,15 @@ Dev API (`PORT=3077`) + web (`VITE_E2E_MODE=true`). As `admin@company.com` build
 ## 11. Handoff notes — what to report back
 
 1. Commit SHA. 2. `Tests:` lines (unit, actions spec, full suite), vitest, both `tsc`. 3. `git diff --stat <pre-card sha> HEAD`. 4. Manual step outcome. 5. Anything that did not match — especially whether importing `TagsModule`/`NotificationsModule` into `AutomationModule` created a dependency cycle, whether `attachManyToTicket` already writes an event, and whether case 6 was staged or replaced by the unit proof.
+
+---
+
+## 12. Post-implementation record (planning session, 2026-08-28)
+
+**Verdict: GREEN.** Commit `156c8e5`. Planner independently re-ran: full `test:integration` **401 passed + 1 skipped, 44/44 files, 0 failures** (650 s, run alone); `jest` 227/227 (28 suites); `tsc --noEmit` clean in api and web; vitest 13 files / 36. Source read: the five actions behave as specified; `postCommit` tasks are collected inside `executeActions` and run by `runPostCommit` **after** `$transaction` resolves, each wrapped in try/catch with a logged failure — so a rolled-back rule sends nothing and a failed email never undoes a rule; `fillTemplateVars` replaces unknown keys with empty strings; `TAGS_CHANGED` written only when something changed; `set_category` validated at save time and skipped with a warning at run time; DTO and `validateActionParams` gate every new parameter; `TagsModule`/`NotificationsModule` imported without a cycle.
+
+**Accepted deviations:** §3 was wrong that `ActionEditor.tsx` drives the automation pages — both pages have their own inline editors, so the implementer extended both (+237/+255) and also implemented `ActionEditor.tsx` as specified (now orphaned — logged as a tidy follow-up); `rule-engine.conditions.spec.ts` needed a 2-line constructor-arity fix; the web `AutomationAction` type was extended locally rather than in `client.ts` (follow-up); integration case 6 was staged for real rather than replaced by the unit proof.
+
+**Landmines added by the implementer (verified in the file):** automation rules are first-match and `subject contains` is a substring test, so spec tokens must not prefix one another (`ACT4` swallowed `ACT4B`); `TICKET_CREATED` is enqueued fire-and-forget after the POST returns, so specs must poll for the `AutomationExecution` row.
+
+**Approved to merge; deploy with 1.1, 1.2, 1.3 (and 1.5 when it passes).** No migration in this card.
