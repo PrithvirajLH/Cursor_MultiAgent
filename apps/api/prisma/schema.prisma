@@ -43,6 +43,7 @@ enum TicketPriority {
 enum TicketChannel {
   PORTAL
   EMAIL
+  API
 }
 
 enum MessageType {
