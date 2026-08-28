@@ -69,6 +69,8 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 
 ---
 
+**Pending deploy:** `prompts/2026-08-28-deploy-cards-1-1-to-1-19.md` — cards 1.1, 1.2, 1.3, 1.4, 1.19 (`d1d57bc` → `ba37e61`), two additive migrations, plus the intake endpoint's secret + Easy Auth exclusion. Blocked on the owner adding this laptop's IP to the production DB firewall (§0 of that file).
+
 ## Global constraints (apply to every item)
 
 Copied from `CLAUDE.md` and `docs/agent-context/repo-landmines.md`. An implementer must read both before starting anything.
