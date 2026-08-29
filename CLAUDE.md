@@ -73,8 +73,7 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
   2026-08-29 02:48 UTC, deployment `5d0d116a`; previous `2df679d` 08-28, `d1d57bc` 08-27,
   `c2ff777` 08-26, `458543a` before that). Schema is up to date at **51**
   migrations; the six trigram indexes are intact. `main` and
-  `ui-redesign-and-api-hardening` are both at `90bb414` (one docs commit ahead
-  of what shipped). Live since this deploy: ticket editing, requester
+  `ui-redesign-and-api-hardening` are both at `d8811a7` — exactly what shipped. Live since this deploy: ticket editing, requester
   confirm/reopen/cancel, timed automations (scheduler on, no timed rules yet),
   the extra automation actions, and `POST /api/tickets/intake`, which is **live**
   (secret set, path excluded from Easy Auth) and, since card 1.20, replays
