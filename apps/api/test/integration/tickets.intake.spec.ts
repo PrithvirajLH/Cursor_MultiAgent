@@ -24,6 +24,13 @@ type IntakeResponse = {
 type EventsResponse = {
   data: Array<{ type: string; payload: Record<string, unknown> | null }>;
 };
+type TicketDetailResponse = {
+  customFieldValues: Array<{
+    customFieldId: string;
+    value: string | null;
+    customField?: { name: string };
+  }>;
+};
 
 // Pinned by test/setup-tests.ts for the whole suite.
 const INTAKE_SECRET = 'test-intake-secret';
@@ -45,10 +52,15 @@ function intakeBody(overrides: Record<string, unknown> = {}) {
 describe('POST /api/tickets/intake (integration intake, card 1.19)', () => {
   let app: INestApplication;
   let server: SupertestApp;
+  let assetTagFieldId = '';
 
   function postIntake(
     body: Record<string, unknown>,
-    options: { secret?: string | null; key?: string | null } = {},
+    options: {
+      secret?: string | null;
+      key?: string | null;
+      forwardedFor?: string;
+    } = {},
   ) {
     const call = request(server).post('/api/tickets/intake');
     const secret =
@@ -60,6 +72,9 @@ describe('POST /api/tickets/intake (integration intake, card 1.19)', () => {
       options.key === undefined ? `intake-${randomKey()}` : options.key;
     if (key !== null) {
       call.set('Idempotency-Key', key);
+    }
+    if (options.forwardedFor) {
+      call.set('X-Forwarded-For', options.forwardedFor);
     }
     return call.send(body);
   }
@@ -207,6 +222,32 @@ describe('POST /api/tickets/intake (integration intake, card 1.19)', () => {
     await postIntake(intakeBody({ department: 'Not A Slug' })).expect(400);
   });
 
+  it('10: replays across connections — a fresh X-Forwarded-For port must not create a second ticket', async () => {
+    // Azure App Service writes `X-Forwarded-For: ip:port` with a new source port
+    // per TCP connection, so a network-derived idempotency scope changes between
+    // a flow's retries. Regression test for card 1.20 defect A.
+    const key = `intake-xff-${randomKey()}`;
+    const body = intakeBody({
+      subject: `Forwarded-for probe ${randomKey()}`,
+      department: 'hr',
+    });
+    const first = await postIntake(body, {
+      key,
+      forwardedFor: '1.2.3.4:1111',
+    }).expect(201);
+    const second = await postIntake(body, {
+      key,
+      forwardedFor: '1.2.3.4:2222',
+    }).expect(201);
+    expect((second.body as IntakeResponse).id).toBe(
+      (first.body as IntakeResponse).id,
+    );
+    expect(second.headers['idempotency-replayed']).toBe('true');
+    expect(
+      await getPrisma().ticket.count({ where: { subject: body.subject } }),
+    ).toBe(1);
+  });
+
   it('9: the timeline records how the ticket arrived', async () => {
     const res = await postIntake(
       intakeBody({ department: 'hr', sourceRef: 'flow-run-9' }),
@@ -225,5 +266,77 @@ describe('POST /api/tickets/intake (integration intake, card 1.19)', () => {
       department: 'hr',
       byIntegration: true,
     });
+  });
+
+  it('11: a department with a required custom field refuses intake that omits it, naming both', async () => {
+    // Created inside the case, not in beforeAll: earlier cases route to IT and
+    // must not be affected by a required field appearing on that team.
+    const created = await request(server)
+      .post('/api/custom-fields')
+      .set(authHeader(fixtureEmails.owner))
+      .send({
+        name: 'Asset Tag',
+        fieldType: 'TEXT',
+        isRequired: true,
+        teamId: fixtureTeamIds.it,
+      })
+      .expect(201);
+    assetTagFieldId = (created.body as { id: string }).id;
+    const res = await postIntake(
+      intakeBody({ department: 'it-service-desk' }),
+    ).expect(400);
+    const message = (res.body as { message: string }).message;
+    expect(message).toContain('Department "it-service-desk" requires:');
+    expect(message).toContain('Asset Tag');
+  });
+
+  it('12: the same intake succeeds when the field is supplied by name, in any case', async () => {
+    const res = await postIntake(
+      intakeBody({
+        department: 'it-service-desk',
+        customFields: { 'asset tag': 'LT-4471' },
+      }),
+    ).expect(201);
+    const created = res.body as IntakeResponse;
+    expect(created.assignedTeam?.slug).toBe('it-service-desk');
+    const detail = await request(server)
+      .get(`/api/tickets/${created.id}`)
+      .set(authHeader(fixtureEmails.owner))
+      .expect(200);
+    const values = (detail.body as TicketDetailResponse).customFieldValues;
+    expect(values).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          customFieldId: assetTagFieldId,
+          value: 'LT-4471',
+        }),
+      ]),
+    );
+  });
+
+  it('13: an unknown field name is refused with the applicable names', async () => {
+    const res = await postIntake(
+      intakeBody({
+        department: 'it-service-desk',
+        customFields: { 'Asset Tag': 'LT-1', Nope: 'x' },
+      }),
+    ).expect(400);
+    const message = (res.body as { message: string }).message;
+    expect(message).toContain(
+      'Unknown field "Nope" for department "it-service-desk"',
+    );
+    expect(message).toContain('Asset Tag');
+  });
+
+  it('14: the stored idempotency scope is a digest, never the raw secret', async () => {
+    const rows = await getPrisma().idempotencyRequest.findMany({
+      where: { route: '/api/tickets/intake' },
+      select: { actorId: true },
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.actorId).not.toContain(INTAKE_SECRET);
+      expect(row.actorId).toMatch(/^anonymous:[0-9a-f]{24}$/);
+    }
   });
 });

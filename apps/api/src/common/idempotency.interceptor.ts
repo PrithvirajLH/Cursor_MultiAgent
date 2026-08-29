@@ -14,8 +14,17 @@ import { Observable, from, of, throwError } from 'rxjs';
 import { catchError, map, mergeMap } from 'rxjs/operators';
 import { AuthRequest } from '../auth/current-user.decorator';
 import { IdempotencyScope, IdempotencyService } from './idempotency.service';
+import { stripPort } from './strip-port.util';
 
 const IDEMPOTENT_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const ACTOR_DIGEST_LENGTH = 24;
+
+/** Shared-secret headers that identify an integration caller, in priority order. */
+const SECRET_SCOPE_HEADERS = [
+  'x-intake-secret',
+  'x-inbound-email-secret',
+  'x-attachment-scan-secret',
+] as const;
 
 type BeginResult =
   | { mode: 'execute'; reservationId: string }
@@ -158,27 +167,45 @@ export class IdempotencyInterceptor implements NestInterceptor {
     return pathWithoutQuery || request.path;
   }
 
+  /**
+   * Idempotency scope for the caller. Authenticated requests scope by user id.
+   *
+   * A caller presenting a shared secret has already identified itself, so the
+   * scope is derived from THAT — never from the network. Azure App Service sets
+   * X-Forwarded-For to `ip:port` with a fresh source port per TCP connection, so
+   * a network-derived scope changes between retries and the replay never fires
+   * (proved in production 2026-08-28: two connections, two tickets).
+   *
+   * Only the digest is stored, never the secret itself. Rotating a secret
+   * deliberately invalidates that integration's in-flight keys.
+   */
   private resolveActorScope(request: Request & AuthRequest) {
     if (request.user?.id) {
       return request.user.id;
     }
-
-    const forwardedForRaw = this.readHeaderValue(
-      request.headers['x-forwarded-for'],
+    for (const header of SECRET_SCOPE_HEADERS) {
+      const value = this.readHeaderValue(request.headers[header]).trim();
+      if (value) {
+        return `anonymous:${this.digest([header, value])}`;
+      }
+    }
+    const forwardedFor = stripPort(
+      this.readHeaderValue(request.headers['x-forwarded-for'])
+        .split(',')[0]
+        ?.trim() ?? '',
     );
-    const forwardedFor = forwardedForRaw.split(',')[0]?.trim() ?? '';
-    const seed = [
-      request.ip ?? '',
+    return `anonymous:${this.digest([
+      stripPort(request.ip ?? ''),
       forwardedFor,
       this.readHeaderValue(request.headers['user-agent']),
-      this.readHeaderValue(request.headers['x-attachment-scan-secret']),
-      this.readHeaderValue(request.headers['x-inbound-email-secret']),
-      // Keep this order stable and append only: changing the seed changes every
-      // anonymous scope and so invalidates in-flight keys.
-      this.readHeaderValue(request.headers['x-intake-secret']),
-    ].join('|');
-    const digest = createHash('sha256').update(seed).digest('hex').slice(0, 24);
-    return `anonymous:${digest}`;
+    ])}`;
+  }
+
+  private digest(parts: string[]): string {
+    return createHash('sha256')
+      .update(parts.join('|'))
+      .digest('hex')
+      .slice(0, ACTOR_DIGEST_LENGTH);
   }
 
   private readHeaderValue(value: string | string[] | undefined) {

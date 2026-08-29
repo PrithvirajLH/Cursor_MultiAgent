@@ -29,6 +29,8 @@ const REQUESTER_SELECT = {
   primaryTeamId: true,
 } as const;
 const INTAKE_EVENT_TYPE = 'TICKET_CREATED_VIA_INTAKE';
+const CUSTOM_FIELDS_NEED_DEPARTMENT =
+  'customFields requires an explicit department: without one the routing rules choose the team, so field names cannot be resolved.';
 
 /**
  * Integration intake (card 1.19): creates a ticket for a named person in a
@@ -86,6 +88,12 @@ export class IntakeService {
     const categoryId = payload.category
       ? await this.resolveCategoryIdBySlug(payload.category)
       : undefined;
+    const customFieldValues = await this.resolveCustomFieldValues(
+      payload.customFields,
+      payload.department,
+      assignedTeamId,
+      categoryId,
+    );
     const requester = await this.findOrCreateIntakeRequester(
       payload.requesterEmail,
       payload.requesterName,
@@ -100,11 +108,71 @@ export class IntakeService {
         assignedTeamId,
         categoryId,
         tags: payload.tags,
+        customFieldValues,
       },
       this.toIntakeRequesterAuthUser(requester),
     );
     await this.recordIntakeEvent(created.id, payload, requester.id);
     return this.buildIntakeResponse(created.id);
+  }
+
+  /**
+   * Map the caller's `{ "Field name": "value" }` onto custom field ids for the
+   * resolved department, and refuse early — naming the department — when a
+   * required field is missing. Returns undefined when there is nothing to map,
+   * which leaves `TicketsService.create` to enforce required fields as it does
+   * for every other caller.
+   */
+  private async resolveCustomFieldValues(
+    supplied: Record<string, string> | undefined,
+    departmentSlug: string | undefined,
+    assignedTeamId: string | undefined,
+    categoryId: string | undefined,
+  ): Promise<{ customFieldId: string; value: string }[] | undefined> {
+    if (!assignedTeamId) {
+      if (supplied && Object.keys(supplied).length > 0) {
+        throw new BadRequestException(CUSTOM_FIELDS_NEED_DEPARTMENT);
+      }
+      return undefined;
+    }
+    const applicable = await this.prisma.customField.findMany({
+      where: {
+        AND: [
+          { OR: [{ teamId: null }, { teamId: assignedTeamId }] },
+          { OR: [{ categoryId: null }, { categoryId: categoryId ?? null }] },
+        ],
+      },
+      select: { id: true, name: true, isRequired: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const slug = departmentSlug ?? '';
+    const byName = new Map(
+      applicable.map((field) => [field.name.trim().toLowerCase(), field]),
+    );
+    const values: { customFieldId: string; value: string }[] = [];
+    for (const [name, value] of Object.entries(supplied ?? {})) {
+      const field = byName.get(name.trim().toLowerCase());
+      if (!field) {
+        throw new BadRequestException(
+          `Unknown field "${name}" for department "${slug}". Valid: ${applicable.map((entry) => entry.name).join(', ') || 'none'}`,
+        );
+      }
+      values.push({ customFieldId: field.id, value });
+    }
+    const provided = new Set(
+      values
+        .filter((entry) => entry.value.trim() !== '')
+        .map((entry) => entry.customFieldId),
+    );
+    const missing = applicable.filter(
+      (field) => field.isRequired && !provided.has(field.id),
+    );
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Department "${slug}" requires: ${missing.map((field) => field.name).join(', ')}`,
+      );
+    }
+    return values.length > 0 ? values : undefined;
   }
 
   /** Active team by slug, or a 400 that names the slugs a flow may use. */

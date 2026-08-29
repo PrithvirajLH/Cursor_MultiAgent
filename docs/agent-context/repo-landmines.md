@@ -23,9 +23,19 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-28 (card 1.19): 238 unit (29 suites), 410 integration + 1
+- **Baseline as of 2026-08-29 (card 1.20): 255 unit (30 suites), 415 integration + 1
   skipped, 36 web unit (13 vitest files)**, both typechecks clean. Anything below
   that is a regression. State these numbers in any plan so regressions are obvious.
+
+- **Azure App Service writes `X-Forwarded-For` as `ip:port`, and the source port
+  changes on every new TCP connection.** Never key anything on it — caching,
+  rate limiting, or (as card 1.19 did) an idempotency scope. The intake endpoint
+  shipped with a mandatory `Idempotency-Key` that never replayed in production
+  because the scope digest included that header: two connections, two tickets
+  (2026-08-28). Anonymous callers are now scoped by their shared secret
+  (`common/idempotency.interceptor.ts`, `SECRET_SCOPE_HEADERS`), and the network
+  fallback strips the port via `common/strip-port.util.ts`. Rotating a secret
+  deliberately invalidates that integration's in-flight keys.
 
 - **Automation rules use first-match semantics, and `subject contains` is a
   substring test.** In integration specs, give every rule a token no other

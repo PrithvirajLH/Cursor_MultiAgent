@@ -134,7 +134,8 @@ export class TicketsController {
     @Headers('x-intake-secret') intakeSecret: string | undefined,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
   ) {
-    // The generic IdempotencyInterceptor is opt-in; an integration that retries
+    // The generic IdempotencyInterceptor is registered globally (app.module.ts)
+    // but no-ops when this header is absent — and an integration that retries
     // without a key would create duplicates, so the key is required here.
     if (!idempotencyKey?.trim()) {
       throw new BadRequestException(

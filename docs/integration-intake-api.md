@@ -23,7 +23,7 @@ API runs on).
 |---|---|---|
 | `Content-Type` | `application/json` | Body is JSON. |
 | `x-intake-secret` | the shared secret | The only gate on this endpoint. Ask the owner; it lives in Key Vault (`TicketTicket-intake-secret`). Never put it in a document, a chat message or a flow's plain-text note — use a secure input or an environment variable. |
-| `Idempotency-Key` | a value that is stable per logical submission | **Required.** Send the flow run id. If the flow retries with the same key, the first ticket is returned again instead of a duplicate being created. Max 128 characters. |
+| `Idempotency-Key` | a value that is stable per logical submission | **Required.** Send the flow run id. If the flow retries with the same key, the first ticket is returned again instead of a duplicate being created — **from any connection**: the replay is keyed on your secret, not on the network address. Max 128 characters. |
 
 There is no user login on this path — the secret is the whole authentication
 story, so treat it as a password.
@@ -42,7 +42,8 @@ story, so treat it as a password.
   "category": "hardware-devices",            // optional — see §3
   "priority": "SEV3",                        // optional, default SEV3
   "tags": ["power-automate"],                // optional
-  "sourceRef": "form-response-4821"          // optional
+  "sourceRef": "form-response-4821",         // optional
+  "customFields": { "Asset Tag": "LT-4471" } // optional — see §3a
 }
 ```
 
@@ -57,6 +58,7 @@ story, so treat it as a password.
 | `priority` | no | `SEV1` \| `SEV2` \| `SEV3` \| `SEV4` | Defaults to `SEV3`. Anything else ⇒ 400. |
 | `tags` | no | up to 10 names, each ≤ 40 chars | Tag names are normalised (trimmed, lower-cased). |
 | `sourceRef` | no | text, ≤ 120 chars | Your own reference — a Form response id, a flow run id. Stored on the ticket's timeline entry, not on the ticket itself, so you can trace a ticket back to the submission. |
+| `customFields` | no | object, ≤ 20 entries; names ≤ 100 chars, values strings ≤ 5000 chars | Custom field values **keyed by field name**, not by id. Required when the department has required fields — see §3a. |
 
 Attachments are **not supported yet** — see §7.
 
@@ -84,6 +86,34 @@ you ship a flow.
 
 Only **active** departments and categories are accepted; a deactivated one is
 treated as unknown.
+
+---
+
+## 3a. Custom fields
+
+Some departments require extra information on every ticket. Supply those values
+with `customFields`, keyed by the **field name** exactly as an agent sees it in
+the ticket form:
+
+```json
+"customFields": { "Asset Tag": "LT-4471" }
+```
+
+- Names are matched **case-insensitively** and surrounding spaces are ignored, so
+  `"asset tag"`, `"Asset Tag"` and `"  ASSET TAG "` all work.
+- Values are strings. An empty string counts as *not supplied* for a required
+  field.
+- **Discover what a department needs the same way you discover slugs — from the
+  error.** Post without `customFields`; if something is required the answer is
+  `400 Department "it-service-desk" requires: Asset Tag`. Send a name that does
+  not exist and the answer lists every field that department accepts:
+  `400 Unknown field "Nope" for department "it-service-desk". Valid: Asset Tag`.
+- `customFields` needs an explicit `department`. Without one the routing rules
+  choose the team *after* the request is parsed, so the field names cannot be
+  resolved and the call is refused with a 400 saying exactly that. If you omit
+  `department` and the team routing picks happens to require a field, creation
+  fails with `Required custom field "X" must be provided` — name the department
+  when a department has required fields.
 
 ---
 

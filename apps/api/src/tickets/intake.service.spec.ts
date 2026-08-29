@@ -36,9 +36,21 @@ const TICKET_ROW = {
 type PrismaStub = {
   team: { findFirst: jest.Mock; findMany: jest.Mock };
   category: { findFirst: jest.Mock; findMany: jest.Mock };
+  customField: { findMany: jest.Mock };
   user: { findUnique: jest.Mock; create: jest.Mock };
   ticket: { findUnique: jest.Mock };
   ticketEvent: { create: jest.Mock };
+};
+
+const ASSET_TAG_FIELD = {
+  id: 'field-asset-tag',
+  name: 'Asset Tag',
+  isRequired: true,
+};
+const OPTIONAL_FIELD = {
+  id: 'field-floor',
+  name: 'Floor',
+  isRequired: false,
 };
 
 function makePrisma(): PrismaStub {
@@ -53,6 +65,7 @@ function makePrisma(): PrismaStub {
       findFirst: jest.fn().mockResolvedValue({ id: 'category-1' }),
       findMany: jest.fn().mockResolvedValue([{ slug: 'access-identity' }]),
     },
+    customField: { findMany: jest.fn().mockResolvedValue([]) },
     user: {
       findUnique: jest.fn().mockResolvedValue(REQUESTER),
       create: jest.fn().mockResolvedValue(REQUESTER),
@@ -195,6 +208,93 @@ describe('IntakeService.createTicket', () => {
         role: UserRole.EMPLOYEE,
       },
     });
+  });
+
+  it('maps custom field names case-insensitively, ignoring padding', async () => {
+    const { service, create, prisma } = makeService();
+    prisma.customField.findMany.mockResolvedValue([
+      ASSET_TAG_FIELD,
+      OPTIONAL_FIELD,
+    ]);
+    await service.createTicket(
+      {
+        ...BASE_PAYLOAD,
+        department: 'hr',
+        customFields: { '  asset TAG  ': 'LT-4471' },
+      },
+      'right-secret',
+    );
+    const args = create.mock.calls[0] as unknown[];
+    expect(args[0]).toMatchObject({
+      customFieldValues: [
+        { customFieldId: ASSET_TAG_FIELD.id, value: 'LT-4471' },
+      ],
+    });
+  });
+
+  it('rejects an unknown field name and lists the applicable ones', async () => {
+    const { service, create, prisma } = makeService();
+    prisma.customField.findMany.mockResolvedValue([
+      ASSET_TAG_FIELD,
+      OPTIONAL_FIELD,
+    ]);
+    await expect(
+      service.createTicket(
+        {
+          ...BASE_PAYLOAD,
+          department: 'hr',
+          customFields: { 'Asset Tag': 'LT-1', Nope: 'x' },
+        },
+        'right-secret',
+      ),
+    ).rejects.toThrow(
+      'Unknown field "Nope" for department "hr". Valid: Asset Tag, Floor',
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing or blank required field, naming the department', async () => {
+    const { service, create, prisma } = makeService();
+    prisma.customField.findMany.mockResolvedValue([ASSET_TAG_FIELD]);
+    await expect(
+      service.createTicket(
+        { ...BASE_PAYLOAD, department: 'hr' },
+        'right-secret',
+      ),
+    ).rejects.toThrow('Department "hr" requires: Asset Tag');
+    await expect(
+      service.createTicket(
+        {
+          ...BASE_PAYLOAD,
+          department: 'hr',
+          customFields: { 'Asset Tag': '   ' },
+        },
+        'right-secret',
+      ),
+    ).rejects.toThrow('Department "hr" requires: Asset Tag');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('passes no customFieldValues when the department has no fields', async () => {
+    const { service, create } = makeService();
+    await service.createTicket(
+      { ...BASE_PAYLOAD, department: 'hr' },
+      'right-secret',
+    );
+    const args = create.mock.calls[0] as unknown[];
+    expect(args[0]).toMatchObject({ customFieldValues: undefined });
+  });
+
+  it('refuses customFields without an explicit department', async () => {
+    const { service, create, prisma } = makeService();
+    await expect(
+      service.createTicket(
+        { ...BASE_PAYLOAD, customFields: { 'Asset Tag': 'LT-1' } },
+        'right-secret',
+      ),
+    ).rejects.toThrow('customFields requires an explicit department');
+    expect(prisma.customField.findMany).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('never creates a ticket when the secret is wrong', async () => {
