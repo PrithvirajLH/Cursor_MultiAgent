@@ -34,10 +34,14 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | 1.4 More automation actions | **DONE — deployed 2026-08-28** (`2df679d`) | `prompts/2026-08-27-1-4-more-automation-actions.md` §12 | Commit `156c8e5`. Planner re-ran: integration 401+1 (44/44, 0 failures), unit 227 (28 suites), tsc clean, vitest 36. No migration. New baselines 227 / 401. |
 | 1.20 Intake fixes (duplicates + required custom fields) | **DONE — deployed & verified 2026-08-29** (`d8811a7`, deployment `5d0d116a`) — §12 | `prompts/2026-08-29-1-20-intake-fixes.md` | Two defects found by the deploy agent while enabling 1.19, both re-confirmed in code. **(A)** App Service sets `X-Forwarded-For` to `ip:port` with a new port per connection, so the anonymous idempotency scope changes between retries — a Power Automate retry creates a **duplicate ticket**, defeating 1.19's mandatory key. **(B)** `it-service-desk` requires the `Asset Tag` custom field and the intake DTO cannot supply one, so **IT intake always 400s**. No flow exists yet, so nothing is broken today — but both must land before the first flow goes live. No migration, no Azure change. |
 | 1.19 Integration intake endpoint (Power Automate) | **DONE — deployed and switched on 2026-08-28** (secret set, path excluded from Easy Auth; 403 without a secret, 201 with it, `channel: API`). **See 1.20 — it ships with two defects.** — Probe tickets cleaned up; three inert `IdempotencyRequest` rows left behind. | `prompts/2026-08-28-1-19-integration-intake-endpoint.md` | Commits `f423fa4` `0c5d4d1`. Planner re-ran: integration 410+1 (45/45, 0 failures), unit 238 (29 suites), tsc clean, vitest 36; migration `ok`. New baselines 238 / 410. **Deploy blocked until the owner adds this laptop's new IP (107.131.98.99) to the production DB firewall** — see §12. Task 6 (secret + Easy Auth exclusion) still owed. | **New card, owner request.** `POST /api/tickets/intake` with a shared secret, explicit `department` slug, required `Idempotency-Key`, channel `API`. Additive migration (51st) + one Easy Auth exclusion (Task 6, owner/deploy agent — no cost). Verified fact: `/api/tickets/inbound-email` is already the only path excluded from the login wall. |
-| 1.8 Requester history panel | **Handoff written** (2026-08-30) — **next up** | `prompts/2026-08-30-1-8-requester-history-panel.md` | Owner picked this batch 2026-08-30. Web only, no API change: agents see the requester's other tickets in the ticket sidebar. Half a day. |
+| 1.8 Requester history panel | **AWAITING VERIFICATION** — implemented as `63bb4c1` (2026-08-31). Planner has **not** re-run the checks and has **not** received an implementer report; `RequesterHistoryPanel` is wired into `TicketSidebar.tsx` (marked "card 1.8"). Needs tsc + vitest + the §8 acceptance criteria before GREEN. | `prompts/2026-08-30-1-8-requester-history-panel.md` | Owner picked this batch 2026-08-30. Web only, no API change: agents see the requester's other tickets in the ticket sidebar. Half a day. |
 | 1.13 CSV export | **Handoff written** (2026-08-30) | `prompts/2026-08-30-1-13-csv-export.md` | Ticket list + report exports, streamed like the audit log; deletes the fake `helpdesk.local` share link (February's FE-09). Spreadsheet-injection escaping included. Half a day to a day. |
 | 1.21 Operations console | **Handoff written** (2026-08-30) | `prompts/2026-08-30-1-21-operations-console.md` | Admin → Operations, owner-only: three groups (switches / data in / jobs) and a jobs table with **Run now**, modelled on the LMS page the owner pointed at. Adds `runOnce()` to the SLA worker to match the other two. A few days. |
 | 1.5 Merge duplicate tickets | **ON HOLD by owner (2026-08-28)** — handoff ready, not started | `prompts/2026-08-27-1-5-merge-tickets.md` | Planner decisions (owner asked to proceed): move conversation, close source as MERGED with banner, no undo, LEAD+ for cross-requester. Additive migration (51st). Owner: build 1.4 → 1.5 → deploy 1.1–1.5 together. |
+| 1.22 Email safety rails | **Queued** — owner asked for the epic 2026-08-31 | — | **Must land before production sends a single email.** Quoted-reply trimming (there is none — verified by grep, so every reply would carry the whole thread), auto-reply/loop protection (none either — nothing checks `Auto-Submitted` or `X-Auto-Response-Suppress`), a per-sender-per-ticket inbound rate cap, bounce suppression, and a **pilot switch** ported from the LMS (`REPORT_TEST_RECIPIENTS`) that reroutes *all* outbound mail to the operator. Code only, no config, no Azure change. Size M. |
+| 1.23 Switch on outbound email (SocketLabs) | **Queued** — blocked on 1.22 | — | Config copy, not a build. Copy the seven `SMTP_*` values from `learningms/apps/lms/.env`, rename production's `SMTP_HOST_DEV_DISABLED` back to `SMTP_HOST`, point `SMTP_REPLY_TO` at the helpdesk mailbox. **One code fix required:** `EmailService` sets neither `secure` nor `requireTLS`, so on port 587 it will fall back to plaintext if STARTTLS negotiation fails — the LMS sets `requireTLS: !secure` for exactly this reason. Use a **separate SocketLabs subaccount / from-address** (see decisions log). No new Azure spend. Size S; owner + deploy agent. |
+| 1.24 Inbound mailbox worker (Graph delta polling) | **Queued** — the real build | — | A background worker polls one shared mailbox every ~30 s using a Microsoft Graph **delta token** and feeds the existing ingestion path in-process. Chosen over webhooks (push subscriptions expire every few days and silently stop; a fired webhook is lost if the app is down) and over Power Automate (throttling, silent failure, no retry control, production dependency outside the codebase). The delta token is a durable cursor, so a deploy or outage loses nothing. Needs `Mail.ReadWrite` **scoped to the single mailbox** via an Application Access Policy — unscoped, the app can read the whole tenant. Reuses `AZURE_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`. Size L. |
+| 1.25 Helpdesk mailbox + threading proof | **Queued** — owner/M365 setup, then verification | — | Create the shared mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…`), then prove all three threading paths end to end: reply token in the To address, `In-Reply-To`/`References`, and ticket id in the subject. **No build — reply tokens are already implemented** (`ticket-email-thread.service.ts`: `generateReplyToken`, `buildReplyToAddress`; `inbound-email.service.ts` extracts them). Size S. |
 | Phase 1–3 (rest) | Queued | — | See cards below. Phase 0 remaining: 0.9 (local perf measure), 0.10 (HR merge SQL — needs owner's yes, it changes production data). |
 
 ### Decisions log
@@ -51,10 +55,12 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | 2026-08-27 | **No new Azure spend for now** — 0.4 (Application Insights + alerts) deferred | owner | 0.4 parked with its handoff ready; anything else that creates an Azure resource waits too |
 | 2026-08-27 | Card 1.2 "cancel": record a `closeReason` (confirmed / cancelled / agent / auto) on CLOSED tickets rather than adding a CANCELLED status | planner (owner unopposed) | Additive enum column; no report/status-list churn; card 1.3 auto-close reuses it |
 | 2026-08-28 | Power Automate integration: build a **new dedicated intake endpoint with an explicit `department` field** (option 2 of three) rather than reusing the inbound-email webhook or waiting for full API keys | owner | New card 1.19; 1.5 put on hold to make room |
-| open | Email: configure Office 365 SMTP vs stay in-app-only | owner | blocks 1.14, 1.16 and every "email the requester" feature — **and** means an intake flow must send its own acknowledgement |
+| 2026-08-31 | **Email goes out through SocketLabs, reusing the LMS's account** — not Office 365 SMTP, not Graph `sendMail` | planner (found by reading `learningms` at the owner's request) | Unblocks 1.14, 1.16 and the whole 1.22–1.25 epic. `learningms/apps/lms/server/email/mailer.ts` sends via `smtp.socketlabs.com:587` (STARTTLS) with plain nodemailer and the **same seven env keys** this repo's `EmailService` already reads — so outbound is a config copy plus one TLS fix, not a build. Proven in production there (weekly reports, 170 facilities). **Open sub-decision (owner):** use a separate SocketLabs subaccount / from-address so a ticketing deliverability problem cannot damage the sending reputation that also carries the LMS's mail. |
 | open | Retention periods (years) for closed tickets / attachments / audit | owner | 0.8 ships with the job OFF; values are config |
 
 ### Follow-ups discovered during implementation (not yet cards)
+
+- **Email conversation: far more is built than anyone thought** (established 2026-08-31 while scoping 1.22–1.25, all verified in code). Already working: `POST /api/tickets/inbound-email` threads a reply onto the right ticket by **three** independent methods (reply token in the To address, ticket id in the subject, `In-Reply-To`/`References` matched against the outbound `Message-ID`); any sender is found-or-created as a user, so a **looped-in third party's reply lands on the ticket under their own name** — the owner's forward/CC edge case needs no work; a reply to a RESOLVED/CLOSED ticket **auto-reopens** it; email attachments are attached; the same message arriving twice is ignored (`InboundEmailReceipt`, unique on `messageId`); and `NotificationsService.messageAdded` already queues the outbound mail with the threading headers set. **Do not rebuild any of this.** The genuine gaps are exactly the four cards. One smaller gap not in a card yet: inbound email does **not** add the sender as a follower (mentions do) — that is the owner's "auto-watching" ask, ~10 lines, fold into 1.24.
 
 - ~~**Operations console for the background workers**~~ — **now card 1.21**, handoff written 2026-08-30. (Original note:) Three workers now run with no UI: the SLA breach checker, the retention job (0.8, off), and the automation scheduler (1.3, on). Nothing shows whether they are enabled, when they last ran, or lets an owner run one by hand — it is all settings-file controlled. Build an admin "Operations" page modelled on the LMS one (`learningms/apps/lms/app/admin/jobs/page.tsx`): three groups — feature switches / data in / scheduled jobs — with the jobs as one table (Job · Status · Last run · Result · Next run · Actions) plus **Run now** and an on/off toggle per row, and schedule state in a table rather than in code. Much of the plumbing exists already: `/api/health/ready` reports `slaWorker.{enabled,lastRunAt,lastRunOk}`, and `RetentionService.runOnce()` / `AutomationSchedulerService.runOnce()` are public for this purpose. Size: M. Good candidate for the next batch after the current deploy.
 
@@ -365,6 +371,131 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **What we are doing.** `apps/web/src/utils/messageDraft.ts` already stores the composer text per ticket in `localStorage`. Confirm it also preserves inline images and the public/internal toggle; if it does, close this item.
 **Depends on.** Nothing.
 **Done when.** Manual test: type, paste an image, switch to internal, reload — all three survive.
+
+---
+
+## Phase 1 (continued) — Email conversation (requested by owner 2026-08-31)
+
+One feature in four cards. The requester talks by email; the agent never leaves
+the platform. **Build them in order** — 1.22 exists so that the first email this
+system ever sends cannot start a loop or arrive as an unreadable wall of quoted
+text.
+
+Read before starting any of them: the follow-up note in the status board section
+above. Threading, third-party replies, auto-reopen, attachment ingest, duplicate
+suppression and reply-address tokens are **already implemented**. These four
+cards are the gaps, nothing more.
+
+### 1.22 Email safety rails — **Ready** · M
+
+**What we are doing.** Four guards, none of which exist today, plus one switch
+copied from the LMS.
+
+1. **Quoted-reply trimming.** Grep confirms there is no trimming anywhere. Every
+   reply carries the entire prior conversation quoted below it, so a ticket
+   becomes unreadable after three exchanges. Strip below the quote marker, keep
+   the original on the record.
+2. **Loop protection.** Nothing checks `Auto-Submitted`, `X-Auto-Response-Suppress`
+   or `Precedence: bulk`. One out-of-office responder produces a ping-pong: our
+   mail triggers theirs, theirs posts a message, that mails them again. Drop
+   auto-generated mail, and never send to a `no-reply` address.
+3. **Inbound rate cap** per sender per ticket, as the backstop for anything the
+   header checks miss.
+4. **Bounce suppression.** A hard-bounced address must stop receiving mail;
+   otherwise we retry forever and damage a sending reputation that is shared
+   with the LMS.
+5. **Pilot switch.** Port the LMS's `REPORT_TEST_RECIPIENTS` pattern
+   (`learningms/apps/lms/server/email/mailer.ts`): when the env var is set,
+   every outbound message is **replaced** — not merged, not appended — with the
+   operator's own address. The LMS pins this with a test; do the same. This is
+   what makes the first live test safe.
+
+**Depends on.** Nothing. Can start immediately.
+**Done when.** A three-deep email thread renders as three short messages; an
+out-of-office reply is dropped with an audit event and does not trigger a send;
+the pilot switch is proven by a test to make real recipients unreachable.
+
+---
+
+### 1.23 Switch on outbound email (SocketLabs) — **Ready** · S
+
+**What we are doing.** Copy the seven `SMTP_*` values from
+`learningms/apps/lms/.env` into the `TicketTicket` app settings and rename
+production's `SMTP_HOST_DEV_DISABLED` back to `SMTP_HOST`. Point `SMTP_REPLY_TO`
+at the helpdesk mailbox. One code fix goes with it: `EmailService` sets neither
+`secure` nor `requireTLS`, so on port 587 nodemailer will fall back to plaintext
+if STARTTLS negotiation fails — add `requireTLS: !secure`, which is exactly what
+the LMS does and why. Give ticketing its **own SocketLabs subaccount and
+from-address** so a problem here cannot damage the reputation carrying the LMS's
+weekly mail to 170 facilities.
+
+**Depends on.** 1.22 — do not enable sending before the rails exist.
+**Done when.** With the pilot switch on, an agent message produces one email in
+the operator's inbox carrying a `Reply-To` of
+`helpdesk+ticket-<token>@…`, and `/api/health/ready` reports SMTP configured.
+No new Azure spend, no tenant policy change, no Graph app permission.
+
+---
+
+### 1.24 Inbound mailbox worker (Graph delta polling) — **Ready** · L
+
+**What we are doing.** A background worker polls one shared mailbox every ~30 s
+with a Microsoft Graph **delta query** and feeds each new message straight into
+the existing ingestion path in-process, then moves it to a Processed folder so
+what was consumed is visible in the mailbox.
+
+**Why polling rather than a webhook.** The delta token is a durable cursor: if
+the app is down for a deploy or an outage, the next poll collects everything
+that arrived meanwhile. A push subscription fires once into a dead endpoint and
+that email is gone — and Graph mail subscriptions expire every few days, so a
+missed renewal stops inbound silently until a requester complains. Polling has
+nothing to renew and exposes no new public endpoint. A helpdesk mailbox sees a
+few hundred messages a day, so the cost is negligible.
+
+**Why not Power Automate.** Fine for a one-off test, wrong as the front door for
+every requester: throttling, silent failure, no retry policy we control, and a
+production dependency living outside the codebase where nobody reviews it.
+
+**Permissions.** `Mail.ReadWrite` **scoped to the single mailbox** with an
+Application Access Policy. Unscoped, the app registration can read every mailbox
+in the tenant — that is the security decision on this card. Reuses the existing
+`AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`.
+
+**Also in this card.** Add the inbound sender as a **follower** so they and any
+looped-in third party are auto-watched — mentions already do this, email does
+not. Roughly ten lines. This is the owner's "auto-watching" ask.
+
+Surface the worker in the Operations console (1.21) if that has landed: enabled,
+last run, last result, messages ingested, and a Run now button.
+
+**Depends on.** 1.22 and 1.23.
+**Done when.** A reply sent from a real mailbox appears on the correct ticket
+within a minute under the sender's own name; stopping the API for two minutes
+and restarting it loses nothing; the same message ingested twice creates one
+ticket message.
+
+---
+
+### 1.25 Helpdesk mailbox + threading proof — **Ready** · S
+
+**What we are doing.** Owner/M365 setup, then verification. Create the shared
+mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…` must
+deliver to `helpdesk@…`), and prove all three threading paths end to end:
+the reply token in the To address, the `In-Reply-To`/`References` headers, and
+the ticket id in the subject. **No build here** — reply tokens are already
+implemented in `notifications/ticket-email-thread.service.ts`
+(`generateReplyToken`, `buildReplyToAddress`) and extracted in
+`tickets/inbound-email.service.ts`.
+
+If plus-addressing turns out to be blocked, the fallback is a catch-all
+subdomain; decide that before 1.24 ships, because the reply token is the most
+reliable of the three methods and should be the primary one.
+
+**Depends on.** 1.24 for the end-to-end proof; the mailbox itself can be created
+any time.
+**Done when.** Each of the three paths is demonstrated on a real ticket, and a
+reply whose subject has been edited by the sender still lands correctly (that is
+the reply token doing its job).
 
 ---
 
