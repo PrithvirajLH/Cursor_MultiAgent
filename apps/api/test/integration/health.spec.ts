@@ -52,6 +52,9 @@ describe('GET /api/health/ready', () => {
       enabled: false,
       lastRunAt: null,
       lastRunOk: null,
+      // Added by card 1.21 so the operations console can show what the last
+      // tick did; still states and counts only, never configuration values.
+      lastSummary: null,
     });
   });
 

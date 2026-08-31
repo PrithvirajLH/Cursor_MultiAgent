@@ -23,8 +23,8 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-08-31 (card 1.8): 255 unit (30 suites), 415 integration + 1
-  skipped, 42 web unit (14 vitest files)**, both typechecks clean. Anything below
+- **Baseline as of 2026-08-31 (cards 1.13 + 1.21): 272 unit (32 suites), 428
+  integration + 1 skipped, 50 web unit (15 vitest files)**, both typechecks clean. Anything below
   that is a regression. State these numbers in any plan so regressions are obvious.
 
 - **Azure App Service writes `X-Forwarded-For` as `ip:port`, and the source port
