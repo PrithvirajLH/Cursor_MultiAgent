@@ -5,6 +5,7 @@ import {
   BookOpen,
   Bot,
   Bug,
+  Cog,
   FileText,
   Shield,
   Tags,
@@ -25,7 +26,8 @@ type AdminRoute =
   | "/admin/agents"
   | "/admin/kb"
   | "/reports"
-  | "/ai-debug";
+  | "/ai-debug"
+  | "/admin/operations";
 
 type AdminSidebarItem = {
   key:
@@ -39,7 +41,8 @@ type AdminSidebarItem = {
     | "agents"
     | "kb"
     | "reports"
-    | "ai-debug";
+    | "ai-debug"
+    | "operations";
   label: string;
   route: AdminRoute;
   icon: LucideIcon;
@@ -136,6 +139,14 @@ const adminItems: AdminSidebarItem[] = [
     roles: ["TEAM_ADMIN", "OWNER"],
     description: "Test AI classification pipeline",
   },
+  {
+    key: "operations",
+    label: "Operations",
+    route: "/admin/operations",
+    icon: Cog,
+    roles: ["OWNER"],
+    description: "Background jobs and what is switched on",
+  },
 ];
 
 function isItemActive(route: AdminRoute, pathname: string): boolean {
@@ -159,6 +170,8 @@ function isItemActive(route: AdminRoute, pathname: string): boolean {
   if (route === "/reports") return effectivePathname.startsWith("/reports");
   if (route === "/ai-debug") return effectivePathname.startsWith("/ai-debug");
   if (route === "/admin/kb") return effectivePathname.startsWith("/kb");
+  if (route === "/admin/operations")
+    return effectivePathname.startsWith("/operations");
   return effectivePathname.startsWith("/categories");
 }
 

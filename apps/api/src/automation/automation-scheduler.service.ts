@@ -20,7 +20,7 @@ const DEFAULT_INTERVAL_MS = 300_000;
 const DEFAULT_BATCH_SIZE = 200;
 const TICKET_STATUSES = Object.values(TicketStatus) as string[];
 
-type SchedulerRunSummary = {
+export type SchedulerRunSummary = {
   ranAt: string;
   rulesConsidered: number;
   rulesSkippedNoThreshold: number;
@@ -61,6 +61,9 @@ export class AutomationSchedulerService
   private readonly logger = new Logger(AutomationSchedulerService.name);
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private lastRunAt: Date | null = null;
+  private lastRunOk: boolean | null = null;
+  private lastSummary: SchedulerRunSummary | null = null;
   private readonly policy: SchedulerPolicy;
 
   constructor(
@@ -202,6 +205,22 @@ export class AutomationSchedulerService
   }
 
   /**
+   * Last-run state for the operations console (card 1.21). In memory only — a
+   * restart clears it.
+   */
+  getRunState(): {
+    lastRunAt: string | null;
+    lastRunOk: boolean | null;
+    lastSummary: SchedulerRunSummary | null;
+  } {
+    return {
+      lastRunAt: this.lastRunAt ? this.lastRunAt.toISOString() : null,
+      lastRunOk: this.lastRunOk,
+      lastSummary: this.lastSummary,
+    };
+  }
+
+  /**
    * One scheduler tick. Returns null when another instance holds the lock or a
    * tick is already running here. Public so tests and a future admin endpoint
    * can trigger it.
@@ -285,8 +304,14 @@ export class AutomationSchedulerService
         ticketsEnqueued: plan.pairs.length,
       };
       this.logger.log(JSON.stringify(summary));
+      this.lastSummary = summary;
+      this.lastRunOk = true;
       return summary;
+    } catch (error) {
+      this.lastRunOk = false;
+      throw error;
     } finally {
+      this.lastRunAt = new Date();
       this.running = false;
     }
   }

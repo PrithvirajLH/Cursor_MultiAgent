@@ -2648,6 +2648,66 @@ export async function exportReportCsv(
   return response.text();
 }
 
+// ─── Operations console (card 1.21) ─────────────────────────────────────────
+
+export type OperationsSwitch = {
+  key: string;
+  label: string;
+  description: string;
+  on: boolean;
+  state: string;
+  setting: string | null;
+};
+
+export type OperationsDataIn = {
+  key: string;
+  label: string;
+  path: string;
+  configured: boolean;
+  state: string;
+};
+
+export type OperationsJobRow = {
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  intervalMs: number | null;
+  lastRunAt: string | null;
+  lastRunOk: boolean | null;
+  lastSummary: Record<string, unknown> | null;
+  nextRunAt: string | null;
+};
+
+export type OperationsSnapshot = {
+  generatedAt: string;
+  switches: OperationsSwitch[] | null;
+  dataIn: OperationsDataIn[] | null;
+  jobs: OperationsJobRow[];
+};
+
+export type OperationsJobRunResult = {
+  key: string;
+  ran: boolean;
+  skipped: "locked" | null;
+  summary: Record<string, unknown> | null;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+};
+
+/** Everything the Operations page needs, in one owner-only call. */
+export function fetchOperationsSnapshot() {
+  return apiFetch<OperationsSnapshot>("/operations");
+}
+
+/** Run one background job now. Owner only; a locked job answers skipped: "locked". */
+export function runOperationsJob(key: string) {
+  return apiFetch<OperationsJobRunResult>(`/operations/jobs/${key}/run`, {
+    method: "POST",
+  });
+}
+
 // ─── AI Classification ──────────────────────────────────────────────────────
 
 export interface AiPipelineStep {

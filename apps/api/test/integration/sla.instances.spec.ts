@@ -24,7 +24,6 @@ type TicketResponse = {
 
 type BreachRunner = {
   enabled: boolean;
-  checkBreaches: () => Promise<void>;
 };
 
 async function createTicket(server: SupertestApp) {
@@ -182,7 +181,7 @@ describe('SLA instances and breaches', () => {
 
     const breachRunner = slaBreach as unknown as BreachRunner;
     breachRunner.enabled = true;
-    await breachRunner.checkBreaches();
+    await slaBreach.runOnce();
 
     const instance = await prisma.slaInstance.findUnique({
       where: { ticketId: ticket.id },
@@ -230,7 +229,7 @@ describe('SLA instances and breaches', () => {
 
     const breachRunner = slaBreach as unknown as BreachRunner;
     breachRunner.enabled = true;
-    await breachRunner.checkBreaches();
+    await slaBreach.runOnce();
 
     const instance = await prisma.slaInstance.findUnique({
       where: { ticketId: ticket.id },

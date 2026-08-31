@@ -95,6 +95,11 @@ const SlaSettingsPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
 );
+const OperationsPage = lazy(() =>
+  import("./pages/OperationsPage").then((m) => ({
+    default: m.OperationsPage,
+  })),
+);
 const AuditLogPage = lazy(() =>
   import("./pages/AuditLogPage").then((m) => ({ default: m.AuditLogPage })),
 );
@@ -820,6 +825,8 @@ function AuthenticatedShell({
   const canViewReports = canAccessReports(currentPersona.role);
   const isAdminOrOwner =
     currentPersona.role === "TEAM_ADMIN" || currentPersona.role === "OWNER";
+  // Operations can run jobs that delete data, so it is owner-only (card 1.21).
+  const isOwner = currentPersona.role === "OWNER";
 
   return (
     <div className="min-h-screen overflow-hidden">
@@ -968,6 +975,10 @@ function AuthenticatedShell({
                     />
                     <Route path="/help" element={<KbBrowsePage />} />
                     <Route path="/help/:slug" element={<KbArticlePage />} />
+                    <Route
+                      path="/admin/operations"
+                      element={guardRoute(isOwner, <OperationsPage />)}
+                    />
                     <Route
                       path="/admin/kb"
                       element={guardRoute(isAdminOrOwner, <KbAdminPage />)}

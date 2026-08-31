@@ -36,6 +36,9 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private policy: RetentionPolicy;
+  private lastRunAt: Date | null = null;
+  private lastRunOk: boolean | null = null;
+  private lastSummary: RetentionRunSummary | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -113,6 +116,22 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Current effective policy (copy). */
+  /**
+   * Last-run state for the operations console (card 1.21). In memory only — a
+   * restart clears it; persisting runs would need a table.
+   */
+  getRunState(): {
+    lastRunAt: string | null;
+    lastRunOk: boolean | null;
+    lastSummary: RetentionRunSummary | null;
+  } {
+    return {
+      lastRunAt: this.lastRunAt ? this.lastRunAt.toISOString() : null,
+      lastRunOk: this.lastRunOk,
+      lastSummary: this.lastSummary,
+    };
+  }
+
   getPolicy(): RetentionPolicy {
     return { ...this.policy };
   }
@@ -160,8 +179,14 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
         },
       });
       this.logger.log(JSON.stringify(summary));
+      this.lastSummary = summary;
+      this.lastRunOk = true;
       return summary;
+    } catch (error) {
+      this.lastRunOk = false;
+      throw error;
     } finally {
+      this.lastRunAt = new Date();
       this.running = false;
     }
   }

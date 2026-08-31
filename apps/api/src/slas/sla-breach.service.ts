@@ -17,6 +17,7 @@ import { InAppNotificationsService } from '../notifications/in-app-notifications
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from './sla-engine.service';
+import type { SlaWorkerRunSummary } from './sla-worker-run-summary.type';
 import type { SlaWorkerState } from './sla-worker-state.type';
 
 type BreachType = 'FIRST_RESPONSE' | 'RESOLUTION';
@@ -46,6 +47,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
   private enabled = true;
   private lastRunAt: Date | null = null;
   private lastRunOk: boolean | null = null;
+  private lastSummary: SlaWorkerRunSummary | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -68,12 +70,12 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.timer = setInterval(() => {
-      this.checkBreaches().catch((error) => {
+      this.runOnce().catch((error) => {
         this.logger.error('SLA breach worker failed', (error as Error).stack);
       });
     }, intervalMs);
 
-    this.checkBreaches().catch((error) => {
+    this.runOnce().catch((error) => {
       this.logger.error('SLA breach worker failed', (error as Error).stack);
     });
   }
@@ -91,15 +93,23 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       enabled: this.enabled,
       lastRunAt: this.lastRunAt ? this.lastRunAt.toISOString() : null,
       lastRunOk: this.lastRunOk,
+      lastSummary: this.lastSummary,
     };
   }
 
-  private async checkBreaches() {
-    if (!this.enabled || this.running) {
-      return;
+  /**
+   * One breach-worker tick. Returns `null` when another instance holds the
+   * advisory lock or a tick is already running here — that is information, not
+   * a failure. Public so the operations console can trigger a run (card 1.21);
+   * the interval calls exactly the same path it always did.
+   */
+  async runOnce(): Promise<SlaWorkerRunSummary | null> {
+    if (this.running) {
+      return null;
     }
 
     this.running = true;
+    let lockAcquired = false;
     try {
       // Run backfill separately with its own session-level lock.
       // If backfill fails, we still run breach processing so existing instances are checked.
@@ -139,6 +149,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
           if (!locked) {
             return; // Another instance is already processing
           }
+          lockAcquired = true;
 
           const instances = await tx.slaInstance.findMany({
             where: { nextDueAt: { lte: windowEnd } },
@@ -172,6 +183,21 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
           );
       }
       this.lastRunOk = true;
+      if (!lockAcquired) {
+        return null;
+      }
+      const summary: SlaWorkerRunSummary = {
+        ranAt: new Date().toISOString(),
+        ok: true,
+        breachesProcessed: notificationIntents.filter(
+          (intent) => intent.kind === 'BREACH',
+        ).length,
+        atRiskProcessed: notificationIntents.filter(
+          (intent) => intent.kind === 'AT_RISK',
+        ).length,
+      };
+      this.lastSummary = summary;
+      return summary;
     } catch (error) {
       this.lastRunOk = false;
       throw error;

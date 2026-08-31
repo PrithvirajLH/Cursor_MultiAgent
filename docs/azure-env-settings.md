@@ -124,6 +124,27 @@ Operators and monitors can read the live state of every optional integration (da
 
 ---
 
+## Operations console (Admin → Operations)
+
+An **owner** can open **Admin → Operations** to see which background jobs exist, whether each is on, when it last ran and what it did, and to run any of them by hand (`GET /api/operations`, `POST /api/operations/jobs/:key/run` — both owner-only).
+
+The switches on that page are **read-only**: they report the settings below, they do not change them. Turning the retention job on still means editing the app settings here and restarting.
+
+| Switch on the page | Reflects |
+|---|---|
+| Retention job | `RETENTION_ENABLED`, `RETENTION_DRY_RUN` (shows "Dry run" when enabled but not deleting) |
+| Automation scheduler | `AUTOMATION_SCHEDULER_ENABLED` |
+| SLA worker | `SLA_BREACH_WORKER_ENABLED` |
+| AI pipeline | `AZURE_AI_FOUNDRY_ENDPOINT` + `AZURE_AI_FOUNDRY_API_KEY` |
+| Realtime updates | `AZURE_WEB_PUBSUB_CONNECTION_STRING` |
+| Attachment scanning | `ATTACHMENT_SCAN_ENABLED`, `ATTACHMENT_SCAN_WEBHOOK_SECRET` |
+| Data in — inbound email | `INBOUND_EMAIL_WEBHOOK_SECRET` / `M365_INBOUND_WEBHOOK_SECRET` |
+| Data in — integration intake | `INTAKE_API_SECRET` |
+
+Two things to know: **last run and result are held in memory**, so an app restart resets them to "—"; and **Run now is synchronous** — a job that ever approached the 120 s request timeout would need to become asynchronous, which is a change, not a setting.
+
+---
+
 ## Optional – Integration intake (Power Automate)
 
 Shared secret for `POST /api/tickets/intake`, the endpoint an outside system uses to create a ticket in a named department. Unset means the endpoint answers 403 to everything — that is the safe default.
