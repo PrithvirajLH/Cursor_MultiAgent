@@ -27,13 +27,13 @@ functions. There is no AGENTS.md here; `.cursorrules` is it.
 
 ## Baseline — do not regress these
 
-**255 unit tests (30 suites), 415 integration + 1 skipped, 36 web unit tests (13 files)**, both typechecks clean.
+**255 unit tests (30 suites), 415 integration + 1 skipped, 42 web unit tests (14 files)**, both typechecks clean.
 
 ```bash
 cd apps/api && npx tsc --noEmit
 cd apps/web && npx tsc --noEmit
 cd apps/api && npx jest                       # 255, 30 suites
-cd apps/web && npx vitest run                 # 36, 13 files
+cd apps/web && npx vitest run                 # 42, 14 files
 
 export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
 cd apps/api && npm run test:integration       # 415 + 1 skipped, takes ~6-10 min

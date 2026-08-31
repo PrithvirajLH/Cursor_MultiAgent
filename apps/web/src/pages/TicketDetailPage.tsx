@@ -184,8 +184,7 @@ export function TicketDetailPage({
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
-  const [activeTab, setActiveTab] =
-    useState<TicketDetailTabId>("conversation");
+  const [activeTab, setActiveTab] = useState<TicketDetailTabId>("conversation");
   const [messageType, setMessageType] = useState<"PUBLIC" | "INTERNAL">(
     "PUBLIC",
   );
@@ -249,6 +248,7 @@ export function TicketDetailPage({
     followers: false,
     additional: false,
     history: false,
+    requesterHistory: false,
   });
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [typingUsersById, setTypingUsersById] = useState<
@@ -722,10 +722,7 @@ export function TicketDetailPage({
         // Messages / events still clear so the conversation pane shows
         // a coherent loading state (cached convo would be a much bigger
         // refactor; cursor-based pagination doesn't fit cleanly).
-        const cached = queryClient.getQueryData<TicketDetail>([
-          "ticket",
-          id,
-        ]);
+        const cached = queryClient.getQueryData<TicketDetail>(["ticket", id]);
         setTicket(cached ?? null);
         setMessages([]);
         setEvents([]);
@@ -1641,7 +1638,10 @@ export function TicketDetailPage({
         await bulkPriorityTickets([ticket.id], priority);
         void refreshAfterMutation(ticket.id);
         notifyTicketAggregatesChanged();
-        setCopyToast({ message: `Priority set to ${priority}.`, type: "success" });
+        setCopyToast({
+          message: `Priority set to ${priority}.`,
+          type: "success",
+        });
       } catch {
         setTicket((prev) => (prev ? { ...prev, priority: previous } : prev));
         setActionError("Unable to change priority.");
@@ -1659,11 +1659,8 @@ export function TicketDetailPage({
       const previous = ticket.category ?? null;
       setActionError(null);
       setActionLoading(true);
-      const nextCategory =
-        categories.find((c) => c.id === categoryId) ?? null;
-      setTicket((prev) =>
-        prev ? { ...prev, category: nextCategory } : prev,
-      );
+      const nextCategory = categories.find((c) => c.id === categoryId) ?? null;
+      setTicket((prev) => (prev ? { ...prev, category: nextCategory } : prev));
       try {
         await setTicketCategory(ticket.id, categoryId);
         void refreshAfterMutation(ticket.id);
@@ -1710,8 +1707,7 @@ export function TicketDetailPage({
       setAttachmentError(null);
       setAttachmentUploading(true);
       try {
-        for (const file of files)
-          await uploadTicketAttachment(ticketId, file);
+        for (const file of files) await uploadTicketAttachment(ticketId, file);
         void refreshAfterMutation(ticketId);
         setCopyToast({
           message:
@@ -1847,7 +1843,10 @@ export function TicketDetailPage({
   );
 
   const handleTabKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLButtonElement>, currentTab: TicketDetailTabId) => {
+    (
+      event: ReactKeyboardEvent<HTMLButtonElement>,
+      currentTab: TicketDetailTabId,
+    ) => {
       const nextTab = getNextTicketDetailTab(currentTab, event.key);
       if (!nextTab) {
         return;
@@ -1936,63 +1935,63 @@ export function TicketDetailPage({
 
       {/* Sticky header — hidden when embedded in tabs */}
       {!ticketIdProp && (
-      <div className="shrink-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
-        <div className="px-6 py-3">
-          <TopBar
-            title={headerTitle}
-            subtitle={
-              headerCtx?.subtitle ??
-              "Review context, collaborate, and update workflow in one workspace."
-            }
-            currentEmail={headerCtx?.currentEmail ?? currentEmail}
-            onOpenSearch={headerCtx?.onOpenSearch}
-            notificationProps={headerCtx?.notificationProps}
-            leftAction={
-              <button
-                type="button"
-                onClick={navigateBack}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-foreground hover:bg-accent hover:text-foreground"
-                aria-label="Back"
-                title="Back"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-            }
-            leftContent={
-              ticket ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-muted-foreground">
-                    {formatTicketId(ticket)}
-                  </span>
-                  <span
-                    className={`rounded-md px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}
-                  >
-                    {formatStatus(ticket.status)}
-                  </span>
-                  <span
-                    className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}
-                  >
-                    {formatPriority(ticket.priority)}
-                  </span>
-                  <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-400">
-                    {formatChannel(ticket.channel)}
-                  </span>
-                </div>
-              ) : (
-                <div>
-                  <h1 className="text-xl font-semibold text-foreground">
-                    Ticket details
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    Review context, collaborate, and update workflow in one
-                    workspace.
-                  </p>
-                </div>
-              )
-            }
-          />
+        <div className="shrink-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
+          <div className="px-6 py-3">
+            <TopBar
+              title={headerTitle}
+              subtitle={
+                headerCtx?.subtitle ??
+                "Review context, collaborate, and update workflow in one workspace."
+              }
+              currentEmail={headerCtx?.currentEmail ?? currentEmail}
+              onOpenSearch={headerCtx?.onOpenSearch}
+              notificationProps={headerCtx?.notificationProps}
+              leftAction={
+                <button
+                  type="button"
+                  onClick={navigateBack}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-foreground hover:bg-accent hover:text-foreground"
+                  aria-label="Back"
+                  title="Back"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              }
+              leftContent={
+                ticket ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      {formatTicketId(ticket)}
+                    </span>
+                    <span
+                      className={`rounded-md px-2 py-1 text-xs font-semibold ${statusBadgeClass(ticket.status)}`}
+                    >
+                      {formatStatus(ticket.status)}
+                    </span>
+                    <span
+                      className={`rounded-md px-2 py-1 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}
+                    >
+                      {formatPriority(ticket.priority)}
+                    </span>
+                    <span className="rounded-md bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-400">
+                      {formatChannel(ticket.channel)}
+                    </span>
+                  </div>
+                ) : (
+                  <div>
+                    <h1 className="text-xl font-semibold text-foreground">
+                      Ticket details
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      Review context, collaborate, and update workflow in one
+                      workspace.
+                    </p>
+                  </div>
+                )
+              }
+            />
+          </div>
         </div>
-      </div>
       )}
 
       {/* Top progress bar — visible while a ticket fetch is in flight.
@@ -2058,7 +2057,8 @@ export function TicketDetailPage({
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       Deleted on {new Date(ticket.deletedAt).toLocaleString()}.
-                      Hidden from every queue and report; an owner can restore it.
+                      Hidden from every queue and report; an owner can restore
+                      it.
                     </div>
                   )}
                   <div className="relative overflow-hidden rounded-xl border border-border bg-card px-5 py-3 shadow-sm sm:px-6 sm:py-3.5">
@@ -2081,7 +2081,9 @@ export function TicketDetailPage({
                               maxLength={TICKET_SUBJECT_MAX}
                               autoFocus
                               aria-label="Ticket subject"
-                              onChange={(event) => setEditSubject(event.target.value)}
+                              onChange={(event) =>
+                                setEditSubject(event.target.value)
+                              }
                               onKeyDown={(event) => {
                                 if (event.key === "Enter") {
                                   event.preventDefault();
@@ -2102,8 +2104,9 @@ export function TicketDetailPage({
                             />
                             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
                               <span>
-                                Subject {trimmedEditSubject.length}/{TICKET_SUBJECT_MAX} ·
-                                Description {trimmedEditDescription.length}/
+                                Subject {trimmedEditSubject.length}/
+                                {TICKET_SUBJECT_MAX} · Description{" "}
+                                {trimmedEditDescription.length}/
                                 {TICKET_DESCRIPTION_MAX}
                                 {!textEditValid
                                   ? " — both fields need between 1 and their maximum characters"
@@ -2219,7 +2222,9 @@ export function TicketDetailPage({
                     id={getTicketDetailTabIds("conversation").tabId}
                     role="tab"
                     aria-selected={activeTab === "conversation"}
-                    aria-controls={getTicketDetailTabIds("conversation").panelId}
+                    aria-controls={
+                      getTicketDetailTabIds("conversation").panelId
+                    }
                     tabIndex={
                       getTicketDetailTabAccessibilityState(
                         "conversation",
@@ -2335,7 +2340,9 @@ export function TicketDetailPage({
                     <div
                       id={getTicketDetailTabIds("conversation").panelId}
                       role="tabpanel"
-                      aria-labelledby={getTicketDetailTabIds("conversation").tabId}
+                      aria-labelledby={
+                        getTicketDetailTabIds("conversation").tabId
+                      }
                       aria-hidden={
                         getTicketDetailTabAccessibilityState(
                           "conversation",
@@ -2404,7 +2411,9 @@ export function TicketDetailPage({
                     <div
                       id={getTicketDetailTabIds("attachments").panelId}
                       role="tabpanel"
-                      aria-labelledby={getTicketDetailTabIds("attachments").tabId}
+                      aria-labelledby={
+                        getTicketDetailTabIds("attachments").tabId
+                      }
                       aria-hidden={
                         getTicketDetailTabAccessibilityState(
                           "attachments",
@@ -2495,7 +2504,9 @@ export function TicketDetailPage({
                 statusSelectRef={statusSelectRef}
                 onTransition={() => void handleTransition()}
                 onTransitionTo={(s) => void transitionTo(s)}
-                onRequesterTransition={(s, label) => void transitionTo(s, label)}
+                onRequesterTransition={(s, label) =>
+                  void transitionTo(s, label)
+                }
                 requesterAction={
                   ticket.status === "RESOLVED" ? requesterActionParam : null
                 }
@@ -2521,6 +2532,7 @@ export function TicketDetailPage({
                 onFollowToggle={() => void handleFollowToggle()}
                 statusEvents={statusEvents}
                 currentEmail={currentEmail}
+                canSeeRequesterHistory={role !== "EMPLOYEE"}
               />
             </div>
           )}

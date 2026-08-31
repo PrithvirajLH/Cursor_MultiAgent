@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Check, UserPlus, UserMinus, Clock } from "lucide-react";
 import { AiSummaryPanel } from "./AiSummaryPanel";
 import { CsatWidget } from "./CsatWidget";
+import { RequesterHistoryPanel } from "./RequesterHistoryPanel";
 import type {
   CategoryRef,
   TicketDetail,
@@ -128,6 +129,8 @@ export type ExpandedSections = {
   followers: boolean;
   additional: boolean;
   history: boolean;
+  /** "Other tickets from this requester" (card 1.8). Distinct from `history`, which is the status log. */
+  requesterHistory: boolean;
 };
 
 export type TicketSidebarProps = {
@@ -168,6 +171,8 @@ export type TicketSidebarProps = {
   onFollowToggle: () => void;
   statusEvents: TicketEvent[];
   currentEmail?: string;
+  /** Card 1.8: the requester-history panel is hidden from EMPLOYEE (the page owns the role check). */
+  canSeeRequesterHistory?: boolean;
   ticketId?: string;
   csatTicketId?: string;
   csatTicketStatus?: string;
@@ -179,9 +184,7 @@ export type TicketSidebarProps = {
   onRequesterActionConsumed?: () => void;
 };
 
-export function TicketSidebar(
-  props: TicketSidebarProps,
-) {
+export function TicketSidebar(props: TicketSidebarProps) {
   const {
     ticket,
     canManage,
@@ -209,6 +212,7 @@ export function TicketSidebar(
     followError,
     onFollowToggle,
     statusEvents,
+    canSeeRequesterHistory = false,
     expandedSections,
     toggleSection,
     currentEmail,
@@ -226,8 +230,11 @@ export function TicketSidebar(
 
   // Requester-only controls (card 1.2). Agents keep the status dropdown.
   const showRequesterActions = isRequester && !canManage;
-  const requesterActions = showRequesterActions ? requesterActionsFor(ticket) : [];
-  const [pendingAction, setPendingAction] = useState<RequesterActionSpec | null>(null);
+  const requesterActions = showRequesterActions
+    ? requesterActionsFor(ticket)
+    : [];
+  const [pendingAction, setPendingAction] =
+    useState<RequesterActionSpec | null>(null);
   useEffect(() => {
     if (!requesterAction) return;
     const match = requesterActions.find((a) => a.action === requesterAction);
@@ -406,7 +413,8 @@ export function TicketSidebar(
                   const pendingMember = assignToId
                     ? teamMembers.find((m) => m.user.id === assignToId)
                     : null;
-                  const hasPendingChange = assignToId && assignToId !== (ticket.assignee?.id ?? "");
+                  const hasPendingChange =
+                    assignToId && assignToId !== (ticket.assignee?.id ?? "");
 
                   return (
                     <>
@@ -427,7 +435,9 @@ export function TicketSidebar(
                             return (
                               <div className="flex items-center gap-1.5 text-foreground truncate font-medium">
                                 <Avatar name={pendingMember.user.displayName} />
-                                <span className="truncate">{pendingMember.user.displayName}</span>
+                                <span className="truncate">
+                                  {pendingMember.user.displayName}
+                                </span>
                               </div>
                             );
                           }
@@ -435,11 +445,17 @@ export function TicketSidebar(
                             return (
                               <div className="flex items-center gap-1.5 text-foreground truncate font-medium">
                                 <Avatar name={ticket.assignee.displayName} />
-                                <span className="truncate">{ticket.assignee.displayName}</span>
+                                <span className="truncate">
+                                  {ticket.assignee.displayName}
+                                </span>
                               </div>
                             );
                           }
-                          return <span className="text-muted-foreground font-medium">Unassigned</span>;
+                          return (
+                            <span className="text-muted-foreground font-medium">
+                              Unassigned
+                            </span>
+                          );
                         }}
                       />
                       {hasPendingChange && !actionLoading ? (
@@ -501,7 +517,9 @@ export function TicketSidebar(
                         {label}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground font-medium">None</span>
+                      <span className="text-muted-foreground font-medium">
+                        None
+                      </span>
                     );
                   }}
                 />
@@ -613,10 +631,15 @@ export function TicketSidebar(
             label="Requester"
             value={ticket.requester?.displayName ?? "Unknown"}
           />
-          {(ticket.requester?.graphProfile?.jobTitle || ticket.requester?.department) && (
+          {(ticket.requester?.graphProfile?.jobTitle ||
+            ticket.requester?.department) && (
             <DetailRow
               label="Job Title"
-              value={ticket.requester.graphProfile?.jobTitle || ticket.requester.department || "—"}
+              value={
+                ticket.requester.graphProfile?.jobTitle ||
+                ticket.requester.department ||
+                "—"
+              }
             />
           )}
           <DetailRow
@@ -624,10 +647,17 @@ export function TicketSidebar(
             value={ticket.requester?.email ?? "—"}
             mono
           />
-          {(ticket.requester?.location || ticket.requester?.graphProfile?.officeLocation || facility) && (
+          {(ticket.requester?.location ||
+            ticket.requester?.graphProfile?.officeLocation ||
+            facility) && (
             <DetailRow
               label="Facility"
-              value={ticket.requester?.location || ticket.requester?.graphProfile?.officeLocation || facility || "—"}
+              value={
+                ticket.requester?.location ||
+                ticket.requester?.graphProfile?.officeLocation ||
+                facility ||
+                "—"
+              }
             />
           )}
           <DetailRow label="Reference" value={formatTicketId(ticket)} mono />
@@ -637,6 +667,16 @@ export function TicketSidebar(
           />
         </div>
       </div>
+
+      {/* Other tickets from this requester (card 1.8) */}
+      {canSeeRequesterHistory && ticket.requester?.id && (
+        <RequesterHistoryPanel
+          requesterId={ticket.requester.id}
+          currentTicketId={ticket.id}
+          expanded={expandedSections.requesterHistory}
+          onToggle={() => toggleSection("requesterHistory")}
+        />
+      )}
 
       {/* Custom Fields */}
       {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
@@ -701,15 +741,17 @@ export function TicketSidebar(
                   {/* Timeline rail */}
                   <div className="flex flex-col items-center w-4 flex-shrink-0">
                     <div className="h-2 w-2 mt-2 rounded-full bg-primary ring-2 ring-card" />
-                    {!isLast && (
-                      <div className="flex-1 w-px bg-border mt-1" />
-                    )}
+                    {!isLast && <div className="flex-1 w-px bg-border mt-1" />}
                   </div>
                   {/* Event content */}
                   <div className="flex-1 pb-3">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <StatusBadge status={fromLabel.toUpperCase().replace(/ /g, "_")} />
-                      <span className="text-[10px] text-muted-foreground">→</span>
+                      <StatusBadge
+                        status={fromLabel.toUpperCase().replace(/ /g, "_")}
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        →
+                      </span>
                       <StatusBadge status={toStatus} />
                     </div>
                     <div className="mt-1 text-[11px] text-muted-foreground">
@@ -783,11 +825,14 @@ function SlaRow({
 
   let bgClass = "bg-muted/30 border-border";
   if (isDanger)
-    bgClass = "bg-rose-50 border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30";
+    bgClass =
+      "bg-rose-50 border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30";
   if (isWarning)
-    bgClass = "bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30";
+    bgClass =
+      "bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30";
   if (isSuccess)
-    bgClass = "bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30";
+    bgClass =
+      "bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30";
 
   const dotClass = isDanger
     ? "bg-rose-500"
@@ -798,7 +843,9 @@ function SlaRow({
         : "bg-muted-foreground";
 
   return (
-    <div className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border ${bgClass}`}>
+    <div
+      className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border ${bgClass}`}
+    >
       <div className="flex items-start gap-2">
         <span className={`mt-1 h-2 w-2 rounded-full ${dotClass}`} />
         <div className="flex flex-col gap-0.5">
@@ -810,7 +857,9 @@ function SlaRow({
           </span>
         </div>
       </div>
-      <div className={`text-[11px] font-bold ${sla.tone} px-2 py-0.5 rounded-md`}>
+      <div
+        className={`text-[11px] font-bold ${sla.tone} px-2 py-0.5 rounded-md`}
+      >
         {sla.label}
       </div>
     </div>
@@ -821,17 +870,28 @@ function StatusBadge({ status }: { status: string }) {
   const colorMap: Record<string, string> = {
     NEW: "bg-violet-100 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400",
     TRIAGED: "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400",
-    ASSIGNED: "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400",
-    IN_PROGRESS: "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
-    WAITING_ON_REQUESTER: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400",
-    WAITING_ON_VENDOR: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400",
-    RESOLVED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
-    CLOSED: "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400",
-    REOPENED: "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400",
+    ASSIGNED:
+      "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400",
+    IN_PROGRESS:
+      "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
+    WAITING_ON_REQUESTER:
+      "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400",
+    WAITING_ON_VENDOR:
+      "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400",
+    RESOLVED:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+    CLOSED:
+      "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400",
+    REOPENED:
+      "bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400",
   };
-  const colors = colorMap[status] ?? "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400";
+  const colors =
+    colorMap[status] ??
+    "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400";
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${colors}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${colors}`}
+    >
       <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
       {formatStatus(status)}
     </span>
@@ -899,8 +959,10 @@ function InlineSelect({
     function handleOutsideClick(event: MouseEvent) {
       const target = event.target as Node;
       if (
-        containerRef.current && !containerRef.current.contains(target) &&
-        dropdownRef.current && !dropdownRef.current.contains(target)
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
@@ -1044,61 +1106,66 @@ function InlineSelect({
         )}
       </button>
 
-      {isOpen && createPortal(
-        <ul
-          ref={(node) => {
-            dropdownRef.current = node;
-            // Move keyboard focus into the listbox when it opens so arrow
-            // keys / Enter / Escape are handled here.
-            if (node) node.focus();
-          }}
-          role="listbox"
-          tabIndex={-1}
-          aria-label={ariaLabel}
-          aria-activedescendant={
-            activeIndex >= 0 && options[activeIndex]
-              ? `inline-select-option-${options[activeIndex].value}`
-              : undefined
-          }
-          onKeyDown={handleListboxKeyDown}
-          className="fixed z-[9999] max-h-60 overflow-y-auto rounded-xl border border-border bg-card py-1.5 shadow-elevated focus:outline-none"
-          style={{ top: dropdownPos.top, left: dropdownPos.left, width: dropdownPos.width }}
-        >
-          {options.map((option, index) => (
-            <li
-              key={option.value}
-              id={`inline-select-option-${option.value}`}
-              ref={(node) => {
-                optionRefs.current[index] = node;
-              }}
-              role="option"
-              aria-selected={value === option.value}
-              onClick={() => selectOption(index)}
-              onMouseEnter={() => setActiveIndex(index)}
-              className={`relative cursor-pointer select-none py-2.5 pl-3 pr-9 text-[12px] transition-colors ${
-                value === option.value
-                  ? "bg-primary/8 text-primary font-semibold"
-                  : "text-foreground"
-              } ${index === activeIndex ? "bg-accent/60" : ""}`}
-            >
-              <div className="flex items-center gap-2 truncate">
-                {option.avatarString && <Avatar name={option.avatarString} />}
-                <span
-                  className={`block truncate ${value === option.value ? "font-medium" : ""}`}
-                >
-                  {option.label}
-                </span>
-              </div>
-              {value === option.value && (
-                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-primary">
-                  <Check className="h-4 w-4" aria-hidden="true" />
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>,
-        document.body,
-      )}
+      {isOpen &&
+        createPortal(
+          <ul
+            ref={(node) => {
+              dropdownRef.current = node;
+              // Move keyboard focus into the listbox when it opens so arrow
+              // keys / Enter / Escape are handled here.
+              if (node) node.focus();
+            }}
+            role="listbox"
+            tabIndex={-1}
+            aria-label={ariaLabel}
+            aria-activedescendant={
+              activeIndex >= 0 && options[activeIndex]
+                ? `inline-select-option-${options[activeIndex].value}`
+                : undefined
+            }
+            onKeyDown={handleListboxKeyDown}
+            className="fixed z-[9999] max-h-60 overflow-y-auto rounded-xl border border-border bg-card py-1.5 shadow-elevated focus:outline-none"
+            style={{
+              top: dropdownPos.top,
+              left: dropdownPos.left,
+              width: dropdownPos.width,
+            }}
+          >
+            {options.map((option, index) => (
+              <li
+                key={option.value}
+                id={`inline-select-option-${option.value}`}
+                ref={(node) => {
+                  optionRefs.current[index] = node;
+                }}
+                role="option"
+                aria-selected={value === option.value}
+                onClick={() => selectOption(index)}
+                onMouseEnter={() => setActiveIndex(index)}
+                className={`relative cursor-pointer select-none py-2.5 pl-3 pr-9 text-[12px] transition-colors ${
+                  value === option.value
+                    ? "bg-primary/8 text-primary font-semibold"
+                    : "text-foreground"
+                } ${index === activeIndex ? "bg-accent/60" : ""}`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  {option.avatarString && <Avatar name={option.avatarString} />}
+                  <span
+                    className={`block truncate ${value === option.value ? "font-medium" : ""}`}
+                  >
+                    {option.label}
+                  </span>
+                </div>
+                {value === option.value && (
+                  <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-primary">
+                    <Check className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>,
+          document.body,
+        )}
     </div>
   );
 }
