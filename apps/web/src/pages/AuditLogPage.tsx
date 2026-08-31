@@ -12,6 +12,7 @@ import { TopBar } from "../components/TopBar";
 import { Drawer } from "../components/ui/Drawer";
 import { EmptyState } from "../components/ui/EmptyState";
 import { useHeaderContext } from "../contexts/HeaderContext";
+import { downloadCsvContent } from "../utils/download-csv";
 import { handleApiError } from "../utils/handleApiError";
 
 const CATEGORY_META: Record<
@@ -274,16 +275,6 @@ function summarize(entry: AuditLogEntry): string {
       return `${detailLabel(first)}: ${detailValue(payload[first])}`;
     }
   }
-}
-
-function downloadCsvContent(content: string, fileName: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = fileName;
-  anchor.click();
-  window.URL.revokeObjectURL(url);
 }
 
 function ymd(date: Date): string {

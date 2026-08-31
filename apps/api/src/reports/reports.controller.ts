@@ -1,4 +1,12 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  StreamableFile,
+  UseGuards,
+} from '@nestjs/common';
+import { Readable } from 'stream';
 import { LeadOrAdminGuard } from '../auth/lead-or-admin.guard';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { ReportQueryDto, ResolutionTimeQueryDto } from './dto/report-query.dto';
@@ -25,7 +33,9 @@ export class ReportsController {
     @CurrentUser() user: AuthUser,
   ) {
     const parsed = daysRaw ? Number.parseInt(daysRaw, 10) : 30;
-    const days = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 365) : 30;
+    const days = Number.isFinite(parsed)
+      ? Math.min(Math.max(parsed, 1), 365)
+      : 30;
     return this.reportsService.getTagAnalytics(days, user);
   }
 
@@ -170,5 +180,20 @@ export class ReportsController {
   @Get('transfers')
   getTransfers(@Query() query: ReportQueryDto, @CurrentUser() user: AuthUser) {
     return this.reportsService.getTransfers(query, user);
+  }
+
+  // Declared after every fixed route so ':report' cannot swallow them.
+  @Get(':report/export.csv')
+  async exportCsv(
+    @Param('report') report: string,
+    @Query() query: ReportQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const csv = await this.reportsService.exportCsv(report, query, user);
+    const stamp = new Date().toISOString().slice(0, 10);
+    return new StreamableFile(Readable.from([csv]), {
+      type: 'text/csv; charset=utf-8',
+      disposition: `attachment; filename="report-${report}-${stamp}.csv"`,
+    });
   }
 }

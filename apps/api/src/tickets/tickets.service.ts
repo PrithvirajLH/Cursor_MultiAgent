@@ -24,6 +24,7 @@ import {
 } from '@prisma/client';
 import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
+import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
 import { AiObservabilityService } from '../common/ai-observability.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
@@ -91,6 +92,60 @@ export type TeamAssignmentTicketSnapshot = {
   assignedTeamId: string | null;
   assigneeId: string | null;
 };
+
+/** Ticket CSV export (card 1.13): column order, batching and the hard row cap. */
+const TICKET_EXPORT_COLUMNS = [
+  'Ticket',
+  'Subject',
+  'Status',
+  'Priority',
+  'Department',
+  'Assignee',
+  'Requester',
+  'Requester email',
+  'Category',
+  'Channel',
+  'Tags',
+  'Created',
+  'Updated',
+  'Resolved',
+  'Closed',
+  'Close reason',
+  'First response due',
+  'Resolution due',
+  'SLA state',
+] as const;
+const TICKET_EXPORT_BATCH_SIZE = 500;
+const TICKET_EXPORT_MAX_ROWS = 50_000;
+const SLA_AT_RISK_WINDOW_MS = 4 * 60 * 60 * 1000;
+const TICKET_EXPORT_SELECT = {
+  id: true,
+  number: true,
+  displayId: true,
+  subject: true,
+  status: true,
+  priority: true,
+  channel: true,
+  createdAt: true,
+  updatedAt: true,
+  resolvedAt: true,
+  closedAt: true,
+  closeReason: true,
+  completedAt: true,
+  dueAt: true,
+  firstResponseDueAt: true,
+  assignedTeam: { select: { name: true } },
+  assignee: { select: { displayName: true } },
+  requester: { select: { displayName: true, email: true } },
+  category: { select: { name: true } },
+  tags: { select: { tag: { select: { name: true } } } },
+} satisfies Prisma.TicketSelect;
+
+/** "WAITING_ON_REQUESTER" -> "Waiting on requester" for human-readable cells. */
+function formatStatusLabel(value: string): string {
+  const spaced = value.replace(/_/g, ' ').toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 @Injectable()
 export class TicketsService {
@@ -271,13 +326,18 @@ export class TicketsService {
     return this.accessControl.accessConditionSql(user, alias);
   }
 
-  async list(query: ListTicketsDto, user: AuthUser) {
+  /**
+   * The `where` clause behind `GET /api/tickets` — every filter the list UI can
+   * set, plus the caller's access filter. Shared with `exportCsv` so the export
+   * and the list can never drift apart (card 1.13).
+   */
+  private buildListWhere(
+    query: ListTicketsDto,
+    user: AuthUser,
+  ): Prisma.TicketWhereInput {
     if (query.includeDeleted && user.role !== UserRole.OWNER) {
       throw new ForbiddenException('Only owners can list deleted tickets');
     }
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-    const skip = (page - 1) * pageSize;
 
     const statuses = this.toArray<string>(
       query.statuses as string | string[] | undefined,
@@ -473,6 +533,14 @@ export class TicketsService {
     );
 
     const where = filters.length > 1 ? { AND: filters } : (filters[0] ?? {});
+    return where;
+  }
+
+  async list(query: ListTicketsDto, user: AuthUser) {
+    const where = this.buildListWhere(query, user);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
 
     const orderByField = query.sort ?? 'updatedAt';
     const orderByDirection = query.order ?? 'desc';
@@ -1307,6 +1375,109 @@ export class TicketsService {
     return result ?? updatedTicket;
   }
 
+  /**
+   * Stream the filtered ticket list as CSV. Uses the very same `where` as
+   * `list()`, so an export is exactly what the caller can see on screen — the
+   * access filter and the soft-delete exclusion come with it (card 1.13).
+   * Capped at TICKET_EXPORT_MAX_ROWS; a truncated file says so on its last line.
+   */
+  async *exportCsv(
+    query: ListTicketsDto,
+    user: AuthUser,
+  ): AsyncGenerator<string> {
+    const where = this.buildListWhere(query, user);
+    const now = new Date();
+    yield toCsvRow([...TICKET_EXPORT_COLUMNS]);
+    let cursor: { id: string } | undefined;
+    let emitted = 0;
+    while (emitted < TICKET_EXPORT_MAX_ROWS) {
+      const take = Math.min(
+        TICKET_EXPORT_BATCH_SIZE,
+        TICKET_EXPORT_MAX_ROWS - emitted,
+      );
+      const rows = await this.prisma.ticket.findMany({
+        where,
+        take,
+        ...(cursor ? { cursor, skip: 1 } : {}),
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        select: TICKET_EXPORT_SELECT,
+      });
+      if (rows.length === 0) {
+        return;
+      }
+      yield rows.map((row) => this.toTicketCsvRow(row, now)).join('');
+      emitted += rows.length;
+      cursor = { id: rows[rows.length - 1].id };
+      if (rows.length < take) {
+        return;
+      }
+    }
+    const more = await this.prisma.ticket.findMany({
+      where,
+      take: 1,
+      ...(cursor ? { cursor, skip: 1 } : {}),
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: { id: true },
+    });
+    if (more.length > 0) {
+      yield `# truncated at ${TICKET_EXPORT_MAX_ROWS} rows — narrow your filters
+`;
+    }
+  }
+
+  private toTicketCsvRow(
+    ticket: Prisma.TicketGetPayload<{ select: typeof TICKET_EXPORT_SELECT }>,
+    now: Date,
+  ): string {
+    return toCsvRow([
+      ticket.displayId ?? `#${ticket.number}`,
+      ticket.subject,
+      formatStatusLabel(ticket.status),
+      ticket.priority,
+      ticket.assignedTeam?.name ?? null,
+      ticket.assignee?.displayName ?? null,
+      ticket.requester?.displayName ?? null,
+      ticket.requester?.email ?? null,
+      ticket.category?.name ?? null,
+      ticket.channel,
+      ticket.tags.map((row) => row.tag.name).join('; '),
+      ticket.createdAt,
+      ticket.updatedAt,
+      ticket.resolvedAt,
+      ticket.closedAt,
+      ticket.closeReason ? formatStatusLabel(ticket.closeReason) : null,
+      ticket.firstResponseDueAt,
+      ticket.dueAt,
+      this.slaStateLabel(ticket, now),
+    ]);
+  }
+
+  /** Mirrors the `slaStatus` filter in `buildListWhere` so both agree. */
+  private slaStateLabel(
+    ticket: {
+      completedAt: Date | null;
+      dueAt: Date | null;
+      status: TicketStatus;
+    },
+    now: Date,
+  ): string {
+    if (ticket.completedAt) {
+      return 'Completed';
+    }
+    if ((this.WAITING_STATUSES as TicketStatus[]).includes(ticket.status)) {
+      return 'Paused';
+    }
+    if (!ticket.dueAt) {
+      return '';
+    }
+    if (ticket.dueAt.getTime() < now.getTime()) {
+      return 'Breached';
+    }
+    return ticket.dueAt.getTime() <= now.getTime() + SLA_AT_RISK_WINDOW_MS
+      ? 'At risk'
+      : 'On track';
+  }
+
   async addMessage(
     ticketId: string,
     payload: AddTicketMessageDto,
@@ -1353,8 +1524,7 @@ export class TicketsService {
       : (payload.type ?? MessageType.PUBLIC);
 
     const shouldSetFirstResponse =
-      user.role !== UserRole.EMPLOYEE &&
-      effectiveType === MessageType.PUBLIC;
+      user.role !== UserRole.EMPLOYEE && effectiveType === MessageType.PUBLIC;
 
     const now = new Date();
     const message = await this.prisma.$transaction(async (tx) => {
@@ -3010,7 +3180,8 @@ export class TicketsService {
       categoryId: ctx.categoryId ?? null,
       senderEmail,
     };
-    const legacyText = `${evalCtx.subject} ${evalCtx.description}`.toLowerCase();
+    const legacyText =
+      `${evalCtx.subject} ${evalCtx.description}`.toLowerCase();
 
     for (const rule of rules) {
       const conditions = Array.isArray(rule.conditions) ? rule.conditions : [];

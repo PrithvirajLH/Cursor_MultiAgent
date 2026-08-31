@@ -5,9 +5,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { Download, Filter } from "lucide-react";
+import { Filter } from "lucide-react";
 import {
   createSavedView,
+  exportReportCsv,
   fetchAllUsers,
   fetchReportChannelBreakdown,
   fetchReportCsatDrivers,
@@ -51,6 +52,7 @@ import { TagAnalyticsPanel } from "../components/tags/TagAnalyticsPanel";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { useToast } from "../hooks/useToast";
+import { downloadCsvContent } from "../utils/download-csv";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   type RealtimeTicketChangedEventPayload,
@@ -477,6 +479,53 @@ function EmptyData({ label }: { label: string }) {
     </div>
   );
 }
+
+/**
+ * Which table-shaped reports each tab actually shows (card 1.13). Verified
+ * against the loaders in this file; the "Export and sharing" tab offers every
+ * exportable report because it is not tied to one view.
+ */
+const EXPORTABLE_REPORTS_BY_TAB: Record<string, { key: string; label: string }[]> = {
+  overview: [
+    { key: "tickets-by-status", label: "Tickets by status" },
+    { key: "tickets-by-priority", label: "Tickets by priority" },
+    { key: "tickets-by-category", label: "Tickets by category" },
+    { key: "channel-breakdown", label: "Channel breakdown" },
+  ],
+  sla: [
+    { key: "sla-breaches", label: "SLA breaches" },
+    { key: "sla-compliance", label: "SLA compliance" },
+    { key: "sla-compliance-by-priority", label: "SLA compliance by priority" },
+    { key: "sla-compliance-by-team", label: "SLA compliance by team" },
+  ],
+  volume: [
+    { key: "ticket-volume", label: "Ticket volume" },
+    { key: "transfers", label: "Transfers" },
+  ],
+  agents: [
+    { key: "agent-performance", label: "Agent performance" },
+    { key: "agent-workload", label: "Agent workload" },
+    { key: "resolution-time", label: "Resolution time" },
+    { key: "reopen-rate", label: "Reopen rate" },
+  ],
+  csat: [
+    { key: "csat-trend", label: "CSAT trend" },
+    { key: "csat-drivers", label: "CSAT drivers" },
+    { key: "csat-low-tags", label: "CSAT low-score tags" },
+  ],
+  backlog: [
+    { key: "tickets-by-age", label: "Tickets by age" },
+    { key: "team-summary", label: "Team summary" },
+  ],
+};
+
+const ALL_EXPORTABLE_REPORTS = Array.from(
+  new Map(
+    Object.values(EXPORTABLE_REPORTS_BY_TAB)
+      .flat()
+      .map((entry) => [entry.key, entry]),
+  ).values(),
+).sort((a, b) => a.label.localeCompare(b.label));
 
 export function ReportsPage({ role }: { role: Role }) {
   const headerCtx = useHeaderContext();
@@ -1352,40 +1401,29 @@ export function ReportsPage({ role }: { role: Role }) {
     }
   }
 
-  const shareLink = useMemo(() => {
-    if (typeof window === "undefined") {
-      return "/reports";
-    }
-
-    const params = new URLSearchParams();
-    params.set("tab", tab);
-    params.set("range", filters.range);
-    if (filters.teamId !== "all") params.set("teamId", filters.teamId);
-    if (filters.channel !== "all") params.set("channel", filters.channel);
-    if (filters.status !== "all") params.set("status", filters.status);
-    if (filters.priority !== "all") params.set("priority", filters.priority);
-    if (filters.assignee !== "all") params.set("assignee", filters.assignee);
-    if (filters.compare) params.set("compare", "1");
-
-    const query = params.toString();
-    return `${window.location.origin}/reports${query ? `?${query}` : ""}`;
-  }, [
-    filters.assignee,
-    filters.channel,
-    filters.compare,
-    filters.priority,
-    filters.range,
-    filters.status,
-    filters.teamId,
-    tab,
-  ]);
   const exportScopeLabel = `${rangeLabel} - ${scopeLabel}`;
+  const [exportingReport, setExportingReport] = useState<string | null>(null);
+  const tabReports =
+    tab === "export"
+      ? ALL_EXPORTABLE_REPORTS
+      : (EXPORTABLE_REPORTS_BY_TAB[tab] ?? ALL_EXPORTABLE_REPORTS);
 
-  function copyShareLink() {
-    navigator.clipboard
-      .writeText(shareLink)
-      .then(() => toast.success("Link copied"))
-      .catch(() => toast.error("Failed to copy link"));
+  // Downloads the report with the filters currently on screen; the API scopes it
+  // to what this user may see.
+  async function handleExportReport(report: string) {
+    setExportingReport(report);
+    try {
+      const csv = await exportReportCsv(report, reportQuery);
+      downloadCsvContent(
+        csv,
+        `report-${report}-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast.success("Export downloaded");
+    } catch (err) {
+      toast.error(handleApiError(err));
+    } finally {
+      setExportingReport(null);
+    }
   }
 
   return (
@@ -2429,25 +2467,13 @@ export function ReportsPage({ role }: { role: Role }) {
                       </div>
                       <div className="rounded-xl border border-border bg-card p-4">
                         <p className="text-sm font-semibold text-foreground">
-                          Share link
+                          Before you share a file
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Share the current report view URL.
+                          Exports download to your computer. Anyone you send the
+                          file to can read it — it contains requester names and
+                          email addresses.
                         </p>
-                        <div className="mt-3 flex items-center gap-2">
-                          <input
-                            readOnly
-                            value={shareLink}
-                            className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
-                          />
-                          <button
-                            type="button"
-                            onClick={copyShareLink}
-                            className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
-                          >
-                            Copy
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </CardShell>
@@ -2566,61 +2592,29 @@ export function ReportsPage({ role }: { role: Role }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  {
-                    key: "tickets",
-                    label: "Tickets",
-                    desc: "All ticket records in scope",
-                  },
-                  {
-                    key: "sla",
-                    label: "SLA events",
-                    desc: "Timers, breaches, escalations",
-                  },
-                  {
-                    key: "agent",
-                    label: "Agent metrics",
-                    desc: "Solved, SLA, CSAT per agent",
-                  },
-                  {
-                    key: "csat",
-                    label: "CSAT responses",
-                    desc: "Survey answers and tags",
-                  },
-                ].map((dataset) => (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {tabReports.map((report) => (
                   <button
-                    key={dataset.key}
+                    key={report.key}
                     type="button"
-                    className="rounded-xl border border-border p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50"
+                    disabled={exportingReport !== null || !canExport}
+                    onClick={() => void handleExportReport(report.key)}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-border p-4 text-left transition-all hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <p className="text-sm font-semibold text-foreground">
-                      {dataset.label}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {dataset.desc}
-                    </p>
+                    <span className="text-sm font-semibold text-foreground">
+                      {report.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {exportingReport === report.key ? "Exporting…" : "CSV"}
+                    </span>
                   </button>
                 ))}
               </div>
 
-              <div className="rounded-xl border border-border p-4">
-                <p className="text-sm font-semibold text-foreground">Format</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {["CSV", "XLSX", "PDF (summary)", "JSON"].map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
-                    >
-                      {format}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  PDF exports a snapshot of the dashboard cards and tables.
-                </p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Downloads a CSV of that table using the filters above. Dates are
+                written in UTC so they sort correctly in Excel.
+              </p>
 
               <div className="flex items-center justify-end gap-3">
                 <button
@@ -2628,18 +2622,7 @@ export function ReportsPage({ role }: { role: Role }) {
                   onClick={() => setShowExportModal(false)}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowExportModal(false);
-                    toast.success("Export started");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
-                >
-                  <Download className="h-4 w-4" />
-                  Export
+                  Close
                 </button>
               </div>
             </div>

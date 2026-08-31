@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { Download, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { TicketTabBar } from "../components/TicketTabBar";
@@ -10,6 +10,7 @@ import {
   bulkStatusTickets,
   bulkTransferTickets,
   fetchTicketById,
+  exportTicketsCsv,
   fetchTickets,
   fetchUsers,
   type BulkResult,
@@ -30,6 +31,8 @@ import { useFocusSearchOnShortcut } from "../hooks/useKeyboardShortcuts";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { useTicketSelection } from "../hooks/useTicketSelection";
 import { useToast } from "../hooks/useToast";
+import { downloadCsvContent } from "../utils/download-csv";
+import { handleApiError } from "../utils/handleApiError";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   type RealtimeTicketChangedEventPayload,
@@ -196,6 +199,28 @@ export function TicketsPage({
   const { filters, setFilters, clearFilters, hasActiveFilters, apiParams } =
     useFilters(presetScope, presetStatus);
   const toast = useToast();
+  const [exportingCsv, setExportingCsv] = useState(false);
+
+  // Exports exactly what the list is showing: same params, same access filter.
+  async function handleExportCsv() {
+    setExportingCsv(true);
+    try {
+      const csv = await exportTicketsCsv({
+        ...apiParams,
+        page: undefined,
+        pageSize: undefined,
+      });
+      downloadCsvContent(
+        csv,
+        `tickets-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
+      toast.success("Export downloaded");
+    } catch (err) {
+      toast.error(handleApiError(err));
+    } finally {
+      setExportingCsv(false);
+    }
+  }
 
   const [tickets, setTickets] = useState<TicketRecord[]>([]);
   const [listMeta, setListMeta] = useState<{
@@ -1364,6 +1389,18 @@ export function TicketsPage({
                 filters={filters}
                 disabled={!hasActiveFilters}
               />
+            ) : null}
+
+            {role !== "EMPLOYEE" ? (
+              <button
+                type="button"
+                onClick={() => void handleExportCsv()}
+                disabled={exportingCsv}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground transition-all hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Download className="h-4 w-4" />
+                {exportingCsv ? "Exporting…" : "Export"}
+              </button>
             ) : null}
 
             {onCreateTicket ? (

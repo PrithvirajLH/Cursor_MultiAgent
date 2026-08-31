@@ -9,10 +9,12 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
   PayloadTooLargeException,
 } from '@nestjs/common';
+import { Readable } from 'stream';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Express } from 'express';
@@ -100,6 +102,19 @@ export class TicketsController {
   @Get('metrics')
   async getMetrics(@CurrentUser() user: AuthUser) {
     return this.ticketsService.getMetrics(user);
+  }
+
+  // Declared before @Get(':id') — otherwise "export.csv" is swallowed as a ticket id.
+  @Get('export.csv')
+  exportCsv(@Query() query: ListTicketsDto, @CurrentUser() user: AuthUser) {
+    const stamp = new Date().toISOString().slice(0, 10);
+    return new StreamableFile(
+      Readable.from(this.ticketsService.exportCsv(query, user)),
+      {
+        type: 'text/csv; charset=utf-8',
+        disposition: `attachment; filename="tickets-${stamp}.csv"`,
+      },
+    );
   }
 
   @Get(':id')

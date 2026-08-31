@@ -1,4 +1,9 @@
-import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +18,8 @@ import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiAccuracyService } from './ai-accuracy.service';
 import { ReportQueryDto, ResolutionTimeQueryDto } from './dto/report-query.dto';
+import { toCsvRow } from '../common/csv.util';
+import { EXPORTABLE_REPORTS, type ReportKey } from './exportable-reports.const';
 
 const CACHE_SUMMARY_TTL_MS_DEFAULT = 45_000;
 
@@ -27,6 +34,60 @@ function summaryCacheKey(userId: string, query: ReportQueryDto): string {
     {},
   );
   return `reports:summary:${userId}:${JSON.stringify(normalized)}`;
+}
+
+type ReportRow = Record<string, unknown>;
+
+/**
+ * Reduce a report payload to table rows. Most reports answer `{ data: [...] }`;
+ * a few answer a single object of totals (one row), and one nests its series
+ * inside `data`. Anything else is not a table and is refused rather than
+ * flattened into something misleading.
+ */
+function toReportRows(payload: unknown): ReportRow[] {
+  const root =
+    payload && typeof payload === 'object' && 'data' in payload
+      ? (payload as { data: unknown }).data
+      : payload;
+  if (Array.isArray(root)) {
+    return root.filter(
+      (row): row is ReportRow => Boolean(row) && typeof row === 'object',
+    );
+  }
+  if (!root || typeof root !== 'object') {
+    return [];
+  }
+  const entries = Object.entries(root as ReportRow);
+  const arrays = entries.filter(([, value]) => Array.isArray(value));
+  if (arrays.length === 1) {
+    return (arrays[0][1] as unknown[]).filter(
+      (row): row is ReportRow => Boolean(row) && typeof row === 'object',
+    );
+  }
+  if (arrays.length === 0) {
+    return [root as ReportRow];
+  }
+  throw new BadRequestException(
+    'This report does not flatten to a single table; export it from the page instead.',
+  );
+}
+
+/** `avgResolutionHours` -> `Avg resolution hours`. */
+function toColumnLabel(key: string): string {
+  const spaced = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function toReportCell(value: unknown): string | number | Date | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return JSON.stringify(value);
 }
 
 @Injectable()
@@ -300,6 +361,57 @@ export class ReportsService {
   }
 
   /** Returns report summary; result is cached briefly (PERF-02, see CACHE_SUMMARY_TTL_MS). */
+  /**
+   * One table-shaped report as a CSV string (card 1.13). Reuses the report's own
+   * service method, so `scopeReportQuery` still pins a TEAM_ADMIN to their team
+   * and no access logic is duplicated. These are bounded aggregates — only the
+   * ticket export needs streaming.
+   */
+  async exportCsv(
+    report: string,
+    query: ReportQueryDto,
+    user: AuthUser,
+  ): Promise<string> {
+    if (!EXPORTABLE_REPORTS.includes(report as ReportKey)) {
+      throw new BadRequestException(
+        `Unknown report "${report}". Valid: ${EXPORTABLE_REPORTS.join(', ')}`,
+      );
+    }
+    const loaders: Record<ReportKey, () => Promise<unknown>> = {
+      'team-summary': () => this.getTeamSummary(query, user),
+      'agent-performance': () => this.getAgentPerformance(query, user),
+      'agent-workload': () => this.getAgentWorkload(query, user),
+      'sla-breaches': () => this.getSlaBreaches(query, user),
+      'tickets-by-status': () => this.getTicketsByStatus(query, user),
+      'tickets-by-priority': () => this.getTicketsByPriority(query, user),
+      'tickets-by-category': () => this.getTicketsByCategory(query, user),
+      'tickets-by-age': () => this.getTicketsByAge(query, user),
+      'channel-breakdown': () => this.getChannelBreakdown(query, user),
+      'reopen-rate': () => this.getReopenRate(query, user),
+      transfers: () => this.getTransfers(query, user),
+      'resolution-time': () => this.getResolutionTime(query, user),
+      'sla-compliance': () => this.getSlaCompliance(query, user),
+      'sla-compliance-by-priority': () =>
+        this.getSlaComplianceByPriority(query, user),
+      'sla-compliance-by-team': () => this.getSlaComplianceByTeam(query, user),
+      'csat-trend': () => this.getCsatTrend(query, user),
+      'csat-drivers': () => this.getCsatDrivers(query, user),
+      'csat-low-tags': () => this.getCsatLowTags(query, user),
+      'ticket-volume': () => this.getTicketVolume(query, user),
+    };
+    const rows = toReportRows(await loaders[report as ReportKey]());
+    if (rows.length === 0) {
+      return '# no rows for the selected filters\n';
+    }
+    const columns = Object.keys(rows[0]);
+    return (
+      toCsvRow(columns.map(toColumnLabel)) +
+      rows
+        .map((row) => toCsvRow(columns.map((key) => toReportCell(row[key]))))
+        .join('')
+    );
+  }
+
   async getSummary(query: ReportQueryDto, user: AuthUser) {
     const ttlMs = parsePositiveInt(
       this.config.get<string>('CACHE_SUMMARY_TTL_MS'),

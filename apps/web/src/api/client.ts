@@ -2596,6 +2596,58 @@ export async function fetchAuditLogExport(
   return response.text();
 }
 
+/**
+ * The filtered ticket list as CSV (card 1.13). Takes the very same params the
+ * list query uses, so the download is what is on screen.
+ */
+export async function exportTicketsCsv(
+  params?: Record<string, string | number | boolean | undefined | string[]>,
+): Promise<string> {
+  const query = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === "") return;
+      if (Array.isArray(value)) {
+        if (value.length) query.set(key, value.join(","));
+      } else {
+        query.set(key, String(value));
+      }
+    });
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await fetchWithTimeout(
+    `${API_BASE}/tickets/export.csv${suffix}`,
+    { headers: { ...authHeaders() } },
+  );
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new ApiError(
+      formatApiErrorMessage(raw, "Export failed"),
+      response.status,
+    );
+  }
+  return response.text();
+}
+
+/** One table-shaped report as CSV, scoped exactly like the report itself. */
+export async function exportReportCsv(
+  report: string,
+  params: ReportQuery,
+): Promise<string> {
+  const response = await fetchWithTimeout(
+    `${API_BASE}/reports/${report}/export.csv${reportQueryString(params)}`,
+    { headers: { ...authHeaders() } },
+  );
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new ApiError(
+      formatApiErrorMessage(raw, "Export failed"),
+      response.status,
+    );
+  }
+  return response.text();
+}
+
 // ─── AI Classification ──────────────────────────────────────────────────────
 
 export interface AiPipelineStep {
