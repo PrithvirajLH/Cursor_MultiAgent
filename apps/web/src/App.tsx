@@ -304,6 +304,8 @@ function isShellLayoutPath(pathname: string): boolean {
   if (pathname === "/categories" || pathname.startsWith("/categories/"))
     return true;
   if (pathname === "/admin/tags") return true;
+  // Operations renders its own TopBar, so the shell must not add a second one.
+  if (pathname === "/admin/operations") return true;
   if (pathname === "/admin/agents" || pathname.startsWith("/admin/agents/"))
     return true;
   if (pathname === "/admin/kb" || pathname.startsWith("/admin/kb/")) return true;
