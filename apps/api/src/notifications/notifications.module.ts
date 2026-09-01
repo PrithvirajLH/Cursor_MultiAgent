@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { EmailProcessorService } from './email-processor.service';
 import { EmailQueueService } from './email-queue.service';
+import { EmailSuppressionService } from './email-suppression.service';
 import { EmailService } from './email.service';
 import { InAppNotificationsController } from './in-app-notifications.controller';
 import { InAppNotificationsService } from './in-app-notifications.service';
@@ -21,6 +22,7 @@ import { TicketEmailThreadService } from './ticket-email-thread.service';
     EmailService,
     EmailProcessorService,
     EmailQueueService,
+    EmailSuppressionService,
   ],
   exports: [
     NotificationsService,
@@ -28,6 +30,7 @@ import { TicketEmailThreadService } from './ticket-email-thread.service';
     TicketEmailThreadService,
     EmailService,
     EmailQueueService,
+    EmailSuppressionService,
   ],
 })
 export class NotificationsModule {}

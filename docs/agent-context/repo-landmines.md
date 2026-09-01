@@ -23,7 +23,7 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   Do **not** set the server timezone to anything but UTC — two `tickets-misc`
   date-window tests fail on a non-UTC server.
 
-- **Baseline as of 2026-09-01 (card 1.22): 326 unit (38 suites), 437
+- **Baseline as of 2026-09-01 (card 1.23): 344 unit (39 suites), 446
   integration + 1 skipped, 70 web unit (18 vitest files)**, both typechecks clean. Anything below
   that is a regression. State these numbers in any plan so regressions are obvious.
 
@@ -114,9 +114,12 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   CI runs this as `scripts/check-migrations.sh` on every new migration; an
   intentional drop needs a first-line `-- allow-drop: <reason>` (first use:
   `20260826180000_soft_delete_and_fk_restrict`, an FK action change). The
-  migration count is **51** as of 2026-08-28 (`20260828120000_ticket_channel_api`
-  added the `API` value to `TicketChannel`); `prisma migrate status` against any
-  environment should report exactly that. An `ALTER TYPE … ADD VALUE` migration
+  migration count is **52** as of 2026-09-01
+  (`20260901180000_email_suppression`, card 1.23, one new table); `prisma
+  migrate status` against any environment should report exactly that. That 52nd
+  was hand-written from `prisma migrate diff`, which emitted **twelve**
+  destructive statements, all removed: the six trigram DROP INDEXes plus six
+  `ALTER COLUMN ... DROP DEFAULT`. An `ALTER TYPE … ADD VALUE` migration
   applies cleanly through `migrate deploy` on PostgreSQL 16 — but the new value
   cannot be *used* in the same transaction that adds it, so never combine one
   with a backfill in a single migration file.

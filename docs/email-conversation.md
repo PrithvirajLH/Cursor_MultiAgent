@@ -1,11 +1,18 @@
-# Email safety rails
+# Email conversation: safety rails and switching on
 
-**Status: sending is OFF.** This document describes guards, not a feature. After
-card 1.22 the system still sends no email at all — `SMTP_HOST` is unset in
-production (the setting is deliberately named `SMTP_HOST_DEV_DISABLED`), so
-`EmailService` refuses every send with `SMTP not configured` and
-`GET /api/health/ready` continues to report SMTP as not configured. Card 1.23
-turns sending on, and must not be started until this is deployed.
+**Status after card 1.23: production CAN send, and every message goes to the
+pilot list.** `EMAIL_TEST_RECIPIENTS` is set to the owner's address in the same
+change that sets `SMTP_HOST`, so no requester can be reached. While that
+variable holds an address, a real person outside the pilot list cannot receive
+mail from this app — a property pinned by a test, not by this paragraph.
+
+**Turning the pilot switch off is the moment this system starts emailing real
+people.** Do it deliberately, with the domain allowlist checked and someone
+watching the outbox, not as a tidy-up at the end of a deploy.
+
+Before 1.23 the system sent nothing at all: `SMTP_HOST` was unset in production
+(the setting was deliberately named `SMTP_HOST_DEV_DISABLED`) and `EmailService`
+refused every send with `SMTP not configured`.
 
 Everything here is cheap now and expensive after the first bad email reaches a
 real person.
@@ -94,25 +101,67 @@ one that needed a restart would be useless at exactly that moment.
 | Name | Default | Notes |
 |---|---|---|
 | `EMAIL_ALLOWED_DOMAINS` | `csnhc.com` | Comma-separated. Matched on the domain after the last `@`, case-insensitive. Relaxing it later is a setting change, not a deploy. |
-| `EMAIL_TEST_RECIPIENTS` | empty | Comma-separated pilot list. Empty means normal addressing. **Leave empty in production.** |
+| `EMAIL_TEST_RECIPIENTS` | empty | Comma-separated pilot list. **Set to the owner's address in production as of card 1.23.** Empty means real recipients receive mail. |
+| `SMTP_HOST` | unset | `smtp.socketlabs.com`. Setting this is what makes the system able to send at all. |
+| `SMTP_PORT` | `587` | STARTTLS. Not 465. |
+| `SMTP_SECURE` | `false` | `false` + port 587 is STARTTLS. `true` means TLS from the first byte, which belongs to 465; setting it true on 587 hangs the handshake. |
+| `SMTP_USER` / `SMTP_PASS` | unset | SocketLabs credentials. |
+| `SMTP_FROM` | `no-reply@localhost` | The desk address. The display name lives in code, not here. |
+| `SMTP_REPLY_TO` | falls back to `SMTP_FROM` | The helpdesk mailbox, so a reply is aimed correctly before card 1.24 exists. A per-message `+ticket-<token>` reply-to overrides it. |
 
-Both are read at send time. Neither can make the system send anything while
-`SMTP_HOST` is unset.
+The pilot list and the allowlist are read on every send. The transport settings
+are read when the module loads, so changing those needs a restart.
+
+**STARTTLS is mandatory.** The transport sets `requireTLS: !secure`. Without it
+nodemailer falls back to plaintext when STARTTLS negotiation fails, which would
+put the SMTP password on the wire.
 
 ---
 
+## Bounce suppression
+
+An address that fails to accept mail stops receiving it, and stays stopped
+across restarts — the `EmailSuppression` table, added by the 52nd migration.
+
+- A **HARD** failure (a 5xx reply: no such mailbox) suppresses immediately.
+- A **SOFT** failure (a 4xx reply: mailbox full, greylisted) only counts. Five
+  of them suppress. Suppressing a full mailbox permanently on one failure would
+  lose real mail from someone who is merely away.
+- A failure we cannot read is treated as SOFT. Guessing HARD would silence an
+  address on one unrecognised error.
+- A hard failure upgrades an address that had only failed softly. A soft one
+  never downgrades a hard one.
+
+**Listing and clearing.** Owner only; a team admin or a lead gets 403.
+
+    curl -s https://<host>/api/operations/email-suppressions
+
+    curl -s -X POST https://<host>/api/operations/email-suppressions/clear \
+      -H "content-type: application/json" \
+      -d "{\"address\":\"someone@csnhc.com\"}"
+
+The address goes in the body rather than the path because an email address in a
+URL segment is an encoding trap. Clearing deletes the row outright rather than
+zeroing a counter, so a fresh failure starts from scratch.
+
 ## Known gaps, deliberately left
 
-- **Bounce suppression has no durable store.** `resolveOutboundRecipients` takes
-  the suppressed list as a parameter and there is nowhere yet to keep it. A real
-  version needs a table keyed on address with the bounce type (hard vs soft), a
-  count, first and last seen, and an operator way to clear one — an additive
-  migration that belongs to the card that actually starts sending.
-- **The From-line formatter is built but not wired.** `buildFromIdentity`
-  produces `"Sarah Chen (CSNHC Helpdesk)" <helpdesk@csnhc.com>`, correctly quoted
-  for a display name containing a comma or a quote. Nothing calls it yet, because
-  card 1.22 sends nothing; 1.23 wires it where the agent's name is known.
-- **The guards are not yet applied at the composing end.** `EmailService` applies
-  the recipient guard immediately above the transport, so nothing can reach
-  `sendMail` unguarded. Recording refusals *on the ticket* needs the queueing
-  path, which is 1.23's work.
+- **Bounces are only learned synchronously.** A suppression row is written when
+  the SMTP conversation itself rejects a recipient. An asynchronous bounce —
+  accepted now, rejected minutes later, which is the common case — needs
+  SocketLabs to POST to us: a new public endpoint, an Easy Auth exclusion and a
+  shared secret, the same shape as the intake endpoint. **That webhook is still
+  owed** and is its own card.
+- **The From line is the generic desk identity on every message.**
+  `EmailService` builds it through `buildFromIdentity`, so mail goes out as
+  `CSNHC Helpdesk <helpdesk@csnhc.com>` rather than a bare address, and the
+  parameter for an agent's name exists. Nothing supplies one yet: the outbox row
+  carries only the message id and the reply headers, so neither the actor nor
+  the ticket's team reaches the transport. Naming the agent — and using the
+  generic identity for HR and Payroll specifically — needs those to travel with
+  the outbox record, which is a change to what gets queued, not to what sends.
+- **Refusals are still not recorded on the ticket.** `EmailService` applies the
+  recipient guard immediately above the transport, so nothing reaches `sendMail`
+  unguarded and a refusal is counted in the log. Showing an agent that their
+  message did not reach someone needs the queueing path to carry the refusal
+  back, which is still owed.

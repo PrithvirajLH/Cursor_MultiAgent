@@ -645,6 +645,27 @@ model NotificationOutbox {
   @@index([ticketId])
 }
 
+/// Addresses that must not be emailed again, and why. Card 1.23.
+///
+/// `kind` is a plain string the way CustomField.fieldType is, rather than a new
+/// enum: adding an enum VALUE later needs its own migration that cannot be used
+/// in the same transaction, and this list may well grow a third kind.
+model EmailSuppression {
+  id           String   @id @default(uuid())
+  /// Always stored lowercased; the service lowercases before reading or writing.
+  address      String   @unique
+  /// HARD (suppressed immediately) or SOFT (suppressed once failureCount hits 5).
+  kind         String
+  failureCount Int      @default(1)
+  lastReason   String?
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([kind])
+}
+
 model Attachment {
   id           String               @id @default(uuid())
   ticketId     String
