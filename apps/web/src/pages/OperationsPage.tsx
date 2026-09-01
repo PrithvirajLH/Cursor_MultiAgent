@@ -82,47 +82,49 @@ export function OperationsPage() {
   }
 
   const headerValue = headerCtx;
+  const pageHeading = (
+    <div className="flex min-w-0 items-center gap-4">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold text-foreground">Operations</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Background jobs and what this deployment has switched on.
+          {snapshot ? (
+            <>
+              {" "}
+              Last loaded {new Date(snapshot.generatedAt).toLocaleTimeString()}.
+            </>
+          ) : null}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => void load()}
+        disabled={loading}
+        className="inline-flex h-9 flex-shrink-0 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm transition-all hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        Refresh
+      </button>
+    </div>
+  );
 
   return (
     <section className="min-h-full bg-background animate-fade-in">
       <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
         <div className="mx-auto max-w-[1600px] px-6 py-4">
+          {/* The page owns its title (like Routing Rules): one header row, not two. */}
           {headerValue ? (
             <TopBar
               title={headerValue.title}
               subtitle={headerValue.subtitle}
               currentEmail={headerValue.currentEmail}
               onOpenSearch={headerValue.onOpenSearch}
+              notificationProps={headerValue.notificationProps}
+              leftContent={pageHeading}
             />
-          ) : null}
-          <div className="mt-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">
-                Operations
-              </h1>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Background jobs and what this deployment has switched on.
-                {snapshot ? (
-                  <>
-                    {" "}
-                    Last loaded{" "}
-                    {new Date(snapshot.generatedAt).toLocaleTimeString()}.
-                  </>
-                ) : null}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void load()}
-              disabled={loading}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm transition-all hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-              />
-              Refresh
-            </button>
-          </div>
+          ) : (
+            pageHeading
+          )}
         </div>
       </div>
 

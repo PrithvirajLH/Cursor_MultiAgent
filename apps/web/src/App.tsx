@@ -464,6 +464,11 @@ const routeTitleOverrides: {
     title: "Agents",
     subtitle: "Agent performance and per-person analytics.",
   },
+  {
+    prefix: "/admin/operations",
+    title: "Operations",
+    subtitle: "Background jobs and what this deployment has switched on.",
+  },
 ];
 
 function resolveViewTitle(
