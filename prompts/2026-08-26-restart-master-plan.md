@@ -42,6 +42,7 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | 1.23 Switch on outbound email (SocketLabs) | **Queued** — blocked on 1.22 | — | Config copy, not a build. Copy the seven `SMTP_*` values from `learningms/apps/lms/.env`, rename production's `SMTP_HOST_DEV_DISABLED` back to `SMTP_HOST`, point `SMTP_REPLY_TO` at the helpdesk mailbox. **One code fix required:** `EmailService` sets neither `secure` nor `requireTLS`, so on port 587 it will fall back to plaintext if STARTTLS negotiation fails — the LMS sets `requireTLS: !secure` for exactly this reason. Use a **separate SocketLabs subaccount / from-address** (see decisions log). No new Azure spend. Size S; owner + deploy agent. |
 | 1.24 Inbound mailbox worker (Graph delta polling) | **Queued** — the real build | — | A background worker polls one shared mailbox every ~30 s using a Microsoft Graph **delta token** and feeds the existing ingestion path in-process. Chosen over webhooks (push subscriptions expire every few days and silently stop; a fired webhook is lost if the app is down) and over Power Automate (throttling, silent failure, no retry control, production dependency outside the codebase). The delta token is a durable cursor, so a deploy or outage loses nothing. Needs `Mail.ReadWrite` **scoped to the single mailbox** via an Application Access Policy — unscoped, the app can read the whole tenant. Reuses `AZURE_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`. Size L. |
 | 1.25 Helpdesk mailbox + threading proof | **Queued** — owner/M365 setup, then verification | — | Create the shared mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…`), then prove all three threading paths end to end: reply token in the To address, `In-Reply-To`/`References`, and ticket id in the subject. **No build — reply tokens are already implemented** (`ticket-email-thread.service.ts`: `generateReplyToken`, `buildReplyToAddress`; `inbound-email.service.ts` extracts them). Size S. |
+| 1.26 The ticket list must not lie about how fresh it is | **Queued** — owner asked for both halves 2026-09-01 | — | **Verified 2026-09-01:** new tickets *do* arrive in the list without a refresh — `handleTicketChanged` in `TicketsPage.tsx` fires on every realtime reason and calls `maybeHydrateRealtimeTicket`, which fetches the row and inserts it in sort order. But `hooks/useRealtimeEvents.ts` has **no polling fallback**, so if Web PubSub drops the list silently stops updating and an idle queue is indistinguishable from a broken one. Three parts: **(a)** a poll backstop for the list, copying the pattern already in `hooks/useNotifications.ts:325` (interval + `isTabVisible` gate); **(b)** a visible connection state so silence is never ambiguous; **(c)** the stale header count (was a separate follow-up — the row appears but "N open tickets" does not move). Also note `maybeHydrateRealtimeTicket` returns early when `filters.page > 1`, so nothing arrives on page 2+. Web only. Size S–M. |
 | Phase 1–3 (rest) | Queued | — | See cards below. Phase 0 remaining: 0.9 (local perf measure), 0.10 (HR merge SQL — needs owner's yes, it changes production data). |
 
 ### Decisions log
@@ -81,7 +82,7 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 - **New-automation-rule form race** (found in 1.3 manual test): on a hard load of `/automation/new`, clicking Create within ~1 s — before the team list has arrived — submits `teamId: ''` and a TEAM_ADMIN gets 403 "Only owners can create … global rules". Pre-existing. Fix: disable Create until teams are loaded, or default `teamId` to the admin's primary team. 15-minute tidy.
 - **Ticket detail does not live-update on an automation close without realtime** (dev had no Web PubSub); production has it, so no action — noted so nobody chases it.
 
-- **Queue header count does not update on realtime removal** (found in 0.8 manual test 2): `TicketsPage` shows "N open tickets" from the last fetch's `meta.total`; when a ticket is deleted (or, presumably, moves out of the filter) via realtime, the row disappears but the header count stays stale until the next fetch. Cosmetic; fold into 1.13/1.8 list work or a 30-minute tidy.
+- **Queue header count does not update on realtime removal** (found in 0.8 manual test 2): `TicketsPage` shows "N open tickets" from the last fetch's `meta.total`; when a ticket is deleted (or, presumably, moves out of the filter) via realtime, the row disappears but the header count stays stale until the next fetch. **Now part of card 1.26** (2026-09-01), which covers list freshness as one problem rather than three tidies.
 
 - **Essentials are gitignored (decision needed, owner).** `.gitignore` deliberately excludes files the repo depends on: `.cursorrules` (the coding conventions `CLAUDE.md` points at), `IT.pdf` (the requirements source), `create-deploy-zip.ps1` (used by `package.json` `deploy:zip` and the deploy runbook), `scripts/perf/*.mjs` (needed by card 0.9), `PROJECT_DOCUMENTATION.md`, `USER_MANUAL.md`, `DATABASE.md`, `BUGS_VERIFIED.md`, `QUALITY_ASSESSMENT_REPORT.md`. A fresh clone — or the deploy agent on another machine — has none of them. The `.gitignore` comment says the exclusion was for a public remote and "no longer applies", yet `origin` and `update` on GitHub are still public. Decide: (a) make the GitHub remotes private (ties into card 0.2), then un-ignore and commit the lot; or (b) keep them local and accept that only this machine can build/deploy. Scanned 2026-08-26: `.cursorrules`, `create-deploy-zip.ps1` and `scripts/perf/*` contain no credentials; `studio.ps1`, `migrate-to-azure-postgres.ps1` and `rollback.ps1` read secrets and must stay ignored.
 
@@ -506,6 +507,51 @@ any time.
 **Done when.** Each of the three paths is demonstrated on a real ticket, and a
 reply whose subject has been edited by the sender still lands correctly (that is
 the reply token doing its job).
+
+---
+
+### 1.26 The ticket list must not lie about how fresh it is — **Ready** · S–M
+
+**What we are doing.** Three related fixes so an agent can trust what is on screen.
+
+The good news first, established by reading the code on 2026-09-01: new tickets
+**already** appear without a refresh. `handleTicketChanged` in `TicketsPage.tsx`
+runs for every realtime reason, and when the ticket is not already in the list it
+calls `maybeHydrateRealtimeTicket`, which fetches the row and inserts it in sort
+order if it matches the current filters. That part works and needs no change.
+
+What is missing:
+
+1. **A poll backstop.** `hooks/useRealtimeEvents.ts` has no fallback of any kind.
+   If the Web PubSub connection drops, the list stops updating and **nothing says
+   so** — a quiet queue and a broken socket look identical. Copy the pattern
+   already in `hooks/useNotifications.ts:325`: an interval, gated on
+   `isTabVisible` so a background tab costs nothing. Poll every 30–60 s.
+   **Design care needed:** realtime patches rows in place, so a poll must
+   reconcile rather than replace the array, or rows will flicker and in-flight
+   patches will be clobbered. Only poll on page 1, matching the existing
+   `filters.page > 1` early return.
+2. **A visible connection state.** connected / reconnecting / offline, somewhere
+   unobtrusive on the list. The point is that silence stops being ambiguous. If
+   the socket is down and the poll is carrying the list, say so quietly rather
+   than pretending nothing changed.
+3. **The header count.** "N open tickets" comes from the last fetch's
+   `meta.total` and never moves — a realtime insert or delete changes the rows
+   underneath it while the number stays put. Was its own follow-up from the 0.8
+   manual test; folded in here because it is the same problem.
+
+**Also worth knowing, decide as part of this.** Nothing arrives on page 2 or
+later, by design (`maybeHydrateRealtimeTicket` returns early). That is defensible
+— an agent paging through history does not want rows shifting under them — but it
+should be a stated decision rather than an accident, and the connection indicator
+is a good place to admit it.
+
+**Depends on.** Nothing. Web only, no API change, no schema, no Azure change.
+**Done when.** Killing the Web PubSub connection in dev (point
+`AZURE_WEB_PUBSUB_CONNECTION_STRING` at nothing) still surfaces a ticket created
+by another session within one poll interval, and the indicator says the socket is
+down. With realtime healthy, an insert does not flicker and the header count
+moves with the rows.
 
 ---
 
