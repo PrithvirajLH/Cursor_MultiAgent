@@ -11,6 +11,7 @@ import {
   Clock,
   Ticket as TicketIcon,
   Flag,
+  Webhook,
 } from "lucide-react";
 
 type TimelineEventProps = {
@@ -36,6 +37,8 @@ function eventIcon(type: string) {
       return <MessageSquare className="h-4 w-4 text-muted-foreground" />;
     case "ATTACHMENT_ADDED":
       return <FileUp className="h-4 w-4 text-muted-foreground" />;
+    case "TICKET_CREATED_VIA_INTAKE":
+      return <Webhook className="h-4 w-4 text-muted-foreground" />;
     case "SLA_BREACHED":
       return <AlertTriangle className="h-4 w-4 text-red-600" />;
     case "SLA_AT_RISK":
@@ -111,6 +114,22 @@ function eventLabel(
       return {
         title: `Attachment uploaded: ${fileName}`,
         subtitle: `by ${actor}`,
+      };
+    }
+    case "TICKET_CREATED_VIA_INTAKE": {
+      // sourceRef is the calling system's own reference (a Power Automate flow
+      // passes its Forms response id). It is recorded on this event and nowhere
+      // else, so this is the only place an agent can trace a ticket back to the
+      // record that produced it.
+      const sourceRef = payload.sourceRef ? String(payload.sourceRef) : null;
+      const department = payload.department ? String(payload.department) : null;
+      const parts = [
+        sourceRef ? `from ${sourceRef}` : null,
+        department ? `routed to ${department}` : null,
+      ].filter((part): part is string => part !== null);
+      return {
+        title: "Ticket created by an integration",
+        subtitle: parts.length > 0 ? parts.join(" · ") : `by ${actor}`,
       };
     }
     case "SLA_BREACHED":
