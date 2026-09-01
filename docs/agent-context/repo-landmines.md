@@ -189,6 +189,39 @@ real run burns CPU, an orphan is flat.
 
 ---
 
+## The API runs from `dist`, the web runs from source
+
+**A manual pass can verify code that is not running.** Found by the 1.27
+implementer on 2026-09-01, who tested against a stale build and had three
+acceptance criteria fail for that reason alone.
+
+Vite serves `apps/web` **from source** — save a file, the browser has it. The API
+does not. Every script runs the compiled output:
+
+| Script | What it runs | Picks up a source edit? |
+|---|---|---|
+| `npm run dev` / `start:dev` | `nest start --watch` → compiles to `dist`, runs `dist` | **Only while the watcher is alive** |
+| `npm start` / `start:prod` | `node dist/src/main.js` | **Never** |
+
+So the trap is not "the API ignores edits" — a healthy watcher recompiles fine.
+The trap is that **nothing tells you when the watcher has stopped**, and it
+stops more often than you would expect: after a compile error it can wedge, and
+it does not survive a branch switch or a `git checkout` cleanly.
+
+Before trusting a manual pass against the API:
+
+1. Watch the API log for the recompile line after your edit. No line, no rebuild.
+2. If in doubt, stop it and run `npx nest build` (or restart `npm run dev`) and
+   wait for it to finish before testing.
+3. If a change you are certain about appears to have no effect, **suspect the
+   build before you suspect the code.**
+
+Jest and the integration suite compile from source through `ts-jest`, so they are
+**not** affected — a green test run says nothing about whether the dev server is
+current.
+
+---
+
 ## Tests and AI configuration
 
 - **`test/setup-tests.ts` blanks (sets to `''`, not `delete`) every `AZURE_*`,
