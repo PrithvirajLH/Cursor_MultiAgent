@@ -619,6 +619,20 @@ export function TicketSidebar(props: TicketSidebarProps) {
         </div>
       </div>
 
+      {/* Custom Fields */}
+      {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
+        <div className="rounded-xl border border-border bg-card shadow-card">
+          <div className="px-4 py-3 border-b border-border">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Custom Fields
+            </h4>
+          </div>
+          <div className="p-4 space-y-3">
+            <CustomFieldsDisplay values={ticket.customFieldValues} />
+          </div>
+        </div>
+      )}
+
       {/* Details */}
       <div className="rounded-xl border border-border bg-card shadow-card">
         <div className="px-4 py-3 border-b border-border">
@@ -676,20 +690,6 @@ export function TicketSidebar(props: TicketSidebarProps) {
           expanded={expandedSections.requesterHistory}
           onToggle={() => toggleSection("requesterHistory")}
         />
-      )}
-
-      {/* Custom Fields */}
-      {ticket.customFieldValues && ticket.customFieldValues.length > 0 && (
-        <div className="rounded-xl border border-border bg-card shadow-card">
-          <div className="px-4 py-3 border-b border-border">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Custom Fields
-            </h4>
-          </div>
-          <div className="p-4 space-y-3">
-            <CustomFieldsDisplay values={ticket.customFieldValues} />
-          </div>
-        </div>
       )}
 
       {/* History */}

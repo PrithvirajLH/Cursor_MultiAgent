@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type {
   CustomFieldRecord,
   CustomFieldValueRecord,
@@ -24,6 +25,64 @@ function parseOptions(raw: unknown): { value: string; label: string }[] {
 }
 
 /** Display a single custom field value (read-only). */
+/**
+ * One custom-field row in the ticket sidebar.
+ *
+ * Laid out to match `DetailRow` in `TicketSidebar` — fixed label column, value
+ * right-aligned — so the Custom Fields panel reads as part of the same sidebar as
+ * the Information panel directly above it. Before this, every field type carried
+ * its own copy of a `flex flex-wrap` wrapper with no label column, so values
+ * started at a different x position on every row.
+ *
+ * A long label is allowed to wrap rather than truncate: the label is what tells
+ * an agent what they are looking at. A long value truncates and keeps the whole
+ * string in `title`.
+ */
+/**
+ * Beyond this many characters a value cannot sit on one truncated line in a
+ * sidebar without hiding most of itself, so it stacks under its label instead.
+ * The old layout wrapped everything and never truncated; aligning the short
+ * values must not cost the long ones their readability.
+ */
+const STACK_VALUE_OVER_CHARS = 32;
+
+function FieldRow({
+  label,
+  isRequired,
+  children,
+  full,
+}: {
+  label: string;
+  isRequired: boolean;
+  children: ReactNode;
+  /** Stack label above value — for content a single truncated line cannot carry. */
+  full?: boolean;
+}) {
+  const labelText = `${label}${isRequired ? " *" : ""}`;
+  if (full) {
+    return (
+      <div className="space-y-1">
+        <span className="block text-xs leading-snug text-muted-foreground">
+          {labelText}
+        </span>
+        <span className="block whitespace-pre-wrap break-words text-xs font-medium text-foreground">
+          {children}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-baseline gap-x-3">
+      <span className="w-[104px] shrink-0 text-xs leading-snug text-muted-foreground">
+        {labelText}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-right text-xs font-medium text-foreground">
+        {children}
+      </span>
+    </div>
+  );
+}
+
 export function CustomFieldDisplay({
   field,
   value,
@@ -37,38 +96,18 @@ export function CustomFieldDisplay({
 
   if (raw === null || raw === "") {
     return (
-      <div className="flex flex-wrap gap-x-2 gap-y-1">
-        <span className="text-xs text-muted-foreground">
-          {label}
-          {isRequired ? " *" : ""}
-        </span>
-        <span className="text-sm text-muted-foreground">—</span>
-      </div>
+      <FieldRow label={label} isRequired={isRequired}>
+        <span className="text-muted-foreground">—</span>
+      </FieldRow>
     );
   }
 
   switch (field.fieldType) {
     case "CHECKBOX":
       return (
-        <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-muted-foreground">
-            {label}
-            {isRequired ? " *" : ""}
-          </span>
-          <span className="text-sm text-foreground">
-            {raw === "true" || raw === "1" ? "Yes" : "No"}
-          </span>
-        </div>
-      );
-    case "DATE":
-      return (
-        <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-muted-foreground">
-            {label}
-            {isRequired ? " *" : ""}
-          </span>
-          <span className="text-sm text-foreground">{raw}</span>
-        </div>
+        <FieldRow label={label} isRequired={isRequired}>
+          {raw === "true" || raw === "1" ? "Yes" : "No"}
+        </FieldRow>
       );
     case "DROPDOWN":
     case "USER": {
@@ -76,50 +115,51 @@ export function CustomFieldDisplay({
       const option = options.find((o) => o.value === raw);
       const display = option ? option.label : raw;
       return (
-        <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-muted-foreground">
-            {label}
-            {isRequired ? " *" : ""}
-          </span>
-          <span className="text-sm text-foreground">{display}</span>
-        </div>
+        <FieldRow
+          label={label}
+          isRequired={isRequired}
+          full={display.length > STACK_VALUE_OVER_CHARS}
+        >
+          <span title={display}>{display}</span>
+        </FieldRow>
       );
     }
     case "MULTISELECT": {
       const options = parseOptions(field.options);
-      const values = raw
+      const selected = raw
         .split(",")
         .map((v) => v.trim())
         .filter(Boolean);
-      const labels = values.map(
+      const labels = selected.map(
         (v) => options.find((o) => o.value === v)?.label ?? v,
       );
+      // Several values will not fit on one truncated line without losing some.
       return (
-        <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-muted-foreground">
-            {label}
-            {isRequired ? " *" : ""}
-          </span>
-          <span className="text-sm text-foreground">
-            {labels.length ? labels.join(", ") : raw}
-          </span>
-        </div>
+        <FieldRow label={label} isRequired={isRequired} full>
+          {labels.length ? labels.join(", ") : raw}
+        </FieldRow>
       );
     }
+    case "TEXTAREA":
+      // Free text, and the reason the original kept `whitespace-pre-wrap`.
+      return (
+        <FieldRow label={label} isRequired={isRequired} full>
+          {raw}
+        </FieldRow>
+      );
     default:
       return (
-        <div className="flex flex-wrap gap-x-2 gap-y-1">
-          <span className="text-xs text-muted-foreground">
-            {label}
-            {isRequired ? " *" : ""}
-          </span>
-          <span className="text-sm text-foreground whitespace-pre-wrap">
-            {raw}
-          </span>
-        </div>
+        <FieldRow
+          label={label}
+          isRequired={isRequired}
+          full={raw.length > STACK_VALUE_OVER_CHARS}
+        >
+          <span title={raw}>{raw}</span>
+        </FieldRow>
       );
   }
 }
+
 
 /** Edit a single custom field (controlled input). */
 export function CustomFieldInput({
