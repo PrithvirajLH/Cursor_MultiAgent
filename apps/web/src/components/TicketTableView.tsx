@@ -19,7 +19,9 @@ import { useToast } from "../hooks/useToast";
 
 /**
  * For AI-generated tickets, extracts only the original user message.
- * Handles both Agent 4 format and buildDescription format.
+ * Handles both Agent 4 format and buildDescription format. Everything else is
+ * returned verbatim — the "Facility:" two-line strip was removed 2026-09-01
+ * (see the matching note in TicketDetailPage.tsx).
  */
 function extractOriginalMessage(description: string): string {
   // Try markdown bold format
@@ -33,11 +35,6 @@ function extractOriginalMessage(description: string): string {
   const plainIdx = description.indexOf(plainMarker);
   if (plainIdx !== -1) {
     return description.substring(plainIdx + plainMarker.length).trim();
-  }
-  // Strip "Facility: ..." prefix for legacy tickets
-  const lines = description.split("\n");
-  if (lines[0]?.startsWith("Facility:")) {
-    return lines.slice(2).join("\n").trim();
   }
   return description;
 }

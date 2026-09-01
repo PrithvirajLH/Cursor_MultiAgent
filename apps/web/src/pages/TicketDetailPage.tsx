@@ -88,22 +88,18 @@ import {
   type RealtimeTicketMessagePayload,
 } from "../realtime/events";
 
-/** Strips "Facility: ..." prefix from description so only the message is shown. */
-function stripFacilityFromDescription(description: string): string {
-  const lines = description.split("\n");
-  const firstLine = lines[0] ?? "";
-  if (firstLine.startsWith("Facility:")) {
-    return lines.slice(2).join("\n").trim();
-  }
-  return description;
-}
-
 /**
  * For AI-generated tickets, extracts only the original user message from the
  * structured description. Handles both formats:
  *   - Agent 4 format: "What: ...\nWho: ...\nOriginal message: <text>"
  *   - buildDescription format: "**What:** ...\n---\n**Original message:**\n<text>"
- * Returns just the original message portion. For non-AI descriptions, returns as-is.
+ * Everything else is returned verbatim.
+ *
+ * A "Facility:" first line used to have its first TWO lines stripped here,
+ * which silently destroyed line 2 of every integration payload (a Power
+ * Automate termination lost the employee's name). Removed at the owner's
+ * request, 2026-09-01: the description is shown exactly as submitted. The
+ * Facility row in the sidebar reads line 1 for itself and is unaffected.
  */
 function extractOriginalMessage(description: string): string {
   // Try markdown bold format first
@@ -118,11 +114,7 @@ function extractOriginalMessage(description: string): string {
   if (plainIdx !== -1) {
     return description.substring(plainIdx + plainMarker.length).trim();
   }
-  // Check if it starts with "What:" — AI structured description, return as-is but strip metadata
-  if (description.match(/^What:/m)) {
-    return stripFacilityFromDescription(description);
-  }
-  return stripFacilityFromDescription(description);
+  return description;
 }
 
 type TypingUserEntry = {
