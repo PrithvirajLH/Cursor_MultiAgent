@@ -214,9 +214,24 @@ export function formatEventText(event: TicketEvent) {
     assigneeEmail?: string | null;
     toTeamName?: string | null;
     changes?: Array<{ field?: string }>;
+    sourceRef?: string | null;
+    department?: string | null;
   };
 
   switch (event.type) {
+    case "TICKET_CREATED_VIA_INTAKE": {
+      // sourceRef is the calling system's own reference - a Power Automate flow
+      // passes its Forms response id. It is recorded only on this event and
+      // shown nowhere else, so this line is the only place an agent can trace a
+      // ticket back to the record that produced it.
+      const origin = [
+        payload.sourceRef ? `from ${payload.sourceRef}` : null,
+        payload.department ? `routed to ${payload.department}` : null,
+      ].filter((part): part is string => part !== null);
+      return origin.length > 0
+        ? `Ticket created by an integration (${origin.join(", ")})`
+        : "Ticket created by an integration";
+    }
     case "TICKET_CREATED":
       return `Ticket created by ${actor}`;
     case "TICKET_EDITED": {
