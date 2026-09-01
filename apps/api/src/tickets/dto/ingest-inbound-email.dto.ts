@@ -94,6 +94,36 @@ export class IngestInboundEmailDto {
   @IsEnum(TicketPriority)
   priority?: TicketPriority;
 
+  // Loop-protection headers (card 1.22). Every one is optional and absent by
+  // default: a receiver that knows nothing about them keeps working exactly as
+  // it did, which is what makes this additive rather than a contract change.
+  // `returnPath` allows the empty string on purpose - a null reverse path is
+  // the signal, not a missing value.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  autoSubmitted?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  autoResponseSuppress?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  precedence?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(998)
+  listId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(998)
+  returnPath?: string;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(25)

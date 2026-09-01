@@ -1482,6 +1482,11 @@ export class TicketsService {
     ticketId: string,
     payload: AddTicketMessageDto,
     user: AuthUser,
+    // Card 1.22: an automated or rate-capped inbound email is still recorded on
+    // the ticket - an agent should see the out-of-office arrived - but must not
+    // set any outbound mail going. Realtime is deliberately NOT suppressed: the
+    // message still belongs on the screen.
+    options: { suppressNotifications?: boolean } = {},
   ) {
     if (payload.authorId && payload.authorId !== user.id) {
       throw new ForbiddenException('Message author must match current user');
@@ -1642,7 +1647,7 @@ export class TicketsService {
           );
         }
       }
-      if (allowedMentionedIds.length > 0) {
+      if (allowedMentionedIds.length > 0 && !options.suppressNotifications) {
         await this.safeNotify(() =>
           this.notifications.notifyMentioned(
             ticketId,
@@ -1653,9 +1658,11 @@ export class TicketsService {
         );
       }
     }
-    await this.safeNotify(() =>
-      this.notifications.messageAdded(ticketId, message, user),
-    );
+    if (!options.suppressNotifications) {
+      await this.safeNotify(() =>
+        this.notifications.messageAdded(ticketId, message, user),
+      );
+    }
     await this.ticketRealtime.safeRealtime(() =>
       this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId,

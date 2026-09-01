@@ -26,6 +26,10 @@ type MockPrisma = {
   ticketEvent: {
     create: jest.Mock;
   };
+  // Card 1.22 counts recent receipts for the inbound rate cap.
+  inboundEmailReceipt: {
+    count: jest.Mock;
+  };
   user: {
     findUnique: jest.Mock;
     create: jest.Mock;
@@ -100,6 +104,9 @@ describe('InboundEmailService', () => {
       },
       ticketEvent: {
         create: jest.fn(),
+      },
+      inboundEmailReceipt: {
+        count: jest.fn().mockResolvedValue(0),
       },
       user: {
         findUnique: jest.fn(),
@@ -244,6 +251,8 @@ describe('InboundEmailService', () => {
       'ticket-1',
       { body: payload.body, type: MessageType.PUBLIC },
       expect.objectContaining({ id: requester.id }),
+      // Card 1.22: ordinary human mail is recorded AND announced.
+      { suppressNotifications: false },
     );
     expect(completeSpy).toHaveBeenCalledWith('receipt-1', 'ticket-1', true);
     expect(releaseSpy).not.toHaveBeenCalled();

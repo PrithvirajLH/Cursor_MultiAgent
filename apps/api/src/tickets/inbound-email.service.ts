@@ -19,6 +19,7 @@ import { timingSafeEqual, randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { extractOutboxIdsFromThreadHeaders } from '../notifications/email-threading.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isAutomatedEmail } from './auto-reply.util';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
@@ -66,6 +67,10 @@ type PersistedInboundEmailMutation = {
 @Injectable()
 export class InboundEmailService {
   private readonly logger = new Logger(InboundEmailService.name);
+  /** Layer two of loop protection: more than this from one sender on one
+   *  ticket inside the window and we stop answering, without ever bouncing. */
+  private static readonly INBOUND_RATE_LIMIT = 5;
+  private static readonly INBOUND_RATE_WINDOW_MS = 5 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -113,6 +118,11 @@ export class InboundEmailService {
         payload.references,
       );
 
+      // Layer one: the sender told us this was machine-generated. Cheap,
+      // header-only, and the reason an out-of-office cannot start a war with
+      // our acknowledgement.
+      const automated = isAutomatedEmail(payload);
+
       if (threadTarget) {
         // A reply that threads to a soft-deleted ticket is treated as "no
         // thread": `existing` stays null and a new ticket is created instead.
@@ -133,6 +143,16 @@ export class InboundEmailService {
         });
 
         if (existing) {
+          // Layer two: a sender who is not flagged as automated but is
+          // behaving like it. Counted from receipts already on this ticket, so
+          // no new table and no state of our own to keep correct.
+          const recentFromSender = await this.countRecentInboundFromSender(
+            existing.id,
+            payload.fromEmail,
+          );
+          const rateLimited =
+            recentFromSender >= InboundEmailService.INBOUND_RATE_LIMIT;
+          const suppressNotifications = automated || rateLimited;
           if (
             existing.status === TicketStatus.RESOLVED ||
             existing.status === TicketStatus.CLOSED
@@ -158,7 +178,18 @@ export class InboundEmailService {
             existing.id,
             { body: payload.body, type: MessageType.PUBLIC },
             requesterAuth,
+            { suppressNotifications },
           );
+          if (suppressNotifications) {
+            await this.recordInboundSuppression({
+              ticketId: existing.id,
+              requesterId: requester.id,
+              fromEmail: requester.email,
+              messageId,
+              reason: automated ? 'automated' : 'rate_limited',
+              recentFromSender,
+            });
+          }
           persistedMutation = {
             ticketId: existing.id,
             threaded: true,
@@ -246,6 +277,23 @@ export class InboundEmailService {
       });
 
       await this.completeInboundEmailReceipt(reservation.id, created.id, false);
+      if (automated) {
+        // The acknowledgement is the one message this system sends without a
+        // person asking it to, which makes it the one that can loop. A machine
+        // gets a ticket and silence.
+        await this.recordInboundSuppression({
+          ticketId: created.id,
+          requesterId: requester.id,
+          fromEmail: requester.email,
+          messageId,
+          reason: 'automated',
+          recentFromSender: 0,
+        });
+        return {
+          threaded: false,
+          ticket: created,
+        };
+      }
       await this.notifications
         .inboundEmailAcknowledged({
           ticketId: created.id,
@@ -754,6 +802,61 @@ export class InboundEmailService {
       ticketId: existing[0].ticketId,
       threaded: existing[0].threaded ?? false,
     };
+  }
+
+  /**
+   * How many emails this sender has already put on this ticket inside the
+   * window. Read from InboundEmailReceipt, which is written for every inbound
+   * message and already unique on messageId, so the count cannot double-count a
+   * retry of the same delivery.
+   */
+  private async countRecentInboundFromSender(
+    ticketId: string,
+    fromEmail: string,
+  ): Promise<number> {
+    const since = new Date(
+      Date.now() - InboundEmailService.INBOUND_RATE_WINDOW_MS,
+    );
+    return this.prisma.inboundEmailReceipt.count({
+      where: {
+        ticketId,
+        fromEmail: { equals: fromEmail, mode: 'insensitive' },
+        createdAt: { gte: since },
+      },
+    });
+  }
+
+  /** Say on the ticket that a message arrived and deliberately answered nothing. */
+  private async recordInboundSuppression(input: {
+    ticketId: string;
+    requesterId: string;
+    fromEmail: string;
+    messageId: string;
+    reason: 'automated' | 'rate_limited';
+    recentFromSender: number;
+  }) {
+    await this.prisma.ticketEvent
+      .create({
+        data: {
+          ticketId: input.ticketId,
+          type: 'INBOUND_EMAIL_SUPPRESSED',
+          payload: {
+            fromEmail: input.fromEmail,
+            messageId: input.messageId,
+            reason: input.reason,
+            recentFromSender: input.recentFromSender,
+            windowMinutes:
+              InboundEmailService.INBOUND_RATE_WINDOW_MS / 60_000,
+          },
+          createdById: input.requesterId,
+        },
+      })
+      .catch((error) =>
+        this.logger.error(
+          'Failed to record inbound email suppression',
+          (error as Error).stack,
+        ),
+      );
   }
 
   async completeInboundEmailReceipt(
