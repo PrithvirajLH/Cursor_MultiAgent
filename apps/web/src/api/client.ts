@@ -59,6 +59,23 @@ function invalidateApiCacheByPath(mutatedPath: string) {
   }
 }
 
+/**
+ * Drop the cached sidebar badge counts.
+ *
+ * Counts only, deliberately: clearing the whole `/tickets` prefix would make
+ * every open list re-fetch on every realtime event. Invalidating the react
+ * query alone is not enough - its refetch would be answered by the hot GET
+ * cache below for up to HOT_GET_CACHE_TTL_MS.
+ */
+export function invalidateTicketCountsCache() {
+  const prefix = `${cacheScopeKey()}:/tickets/counts`;
+  for (const key of apiGetCache.keys()) {
+    if (key.startsWith(prefix)) {
+      apiGetCache.delete(key);
+    }
+  }
+}
+
 /** Thrown by apiFetch when response is not ok; includes status for UI (e.g. 403). */
 export class ApiError extends Error {
   readonly status: number;

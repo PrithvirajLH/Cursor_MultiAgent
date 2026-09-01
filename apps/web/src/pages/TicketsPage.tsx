@@ -873,8 +873,9 @@ export function TicketsPage({
         void maybeHydrateRealtimeTicket(ticketId);
         return;
       }
-      // Subject/description are not in the realtime payload: re-read the row.
-      if (payload.reason === "edited") {
+      // Neither the edited text nor any SLA field is in the realtime payload,
+      // so both reasons mean the same thing here: re-read the row.
+      if (payload.reason === "edited" || payload.reason === "sla_changed") {
         void fetchTicketById(ticketId)
           .then((fresh) => {
             setTickets((prev) =>

@@ -859,6 +859,14 @@ export function TicketDetailPage({
         return;
       }
 
+      if (payload.reason === "sla_changed") {
+        // The payload carries no dueAt and no SLA instance, so the countdown
+        // and the badge can only come from a re-read. Breaches are rare, so one
+        // extra fetch is cheaper than keeping two field lists in step.
+        void loadTicketDetail(ticketId);
+        return;
+      }
+
       if (
         payload.reason === "deleted" ||
         payload.reason === "restored" ||

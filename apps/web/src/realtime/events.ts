@@ -14,10 +14,33 @@ export type RealtimeTicketMessagePayload = {
   };
 };
 
+/**
+ * Mirrors TicketRealtimeReason in the API
+ * (apps/api/src/tickets/ticket-realtime.service.ts). Kept as a union rather
+ * than `string` so a reason the web never handles cannot be compared against
+ * silently.
+ */
+export type RealtimeTicketReason =
+  | "ticket_created"
+  | "message_added"
+  | "assigned"
+  | "transferred"
+  | "status_changed"
+  | "priority_changed"
+  | "category_changed"
+  | "followers_changed"
+  | "attachment_added"
+  | "attachment_scan_status_changed"
+  | "automation_rule_executed"
+  | "deleted"
+  | "restored"
+  | "edited"
+  | "sla_changed";
+
 export type RealtimeTicketChangedEventPayload = {
   occurredAt?: string;
   ticketId?: string;
-  reason?: string;
+  reason?: RealtimeTicketReason;
   actorId?: string | null;
   status?: string;
   priority?: string;

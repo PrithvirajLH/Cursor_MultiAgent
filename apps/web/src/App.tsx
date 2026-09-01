@@ -29,6 +29,7 @@ import {
 import { ErrorBoundary, RouteErrorFallback } from "./components/ErrorBoundary";
 import {
   fetchTeams,
+  invalidateTicketCountsCache,
   type CurrentUserSession,
   type TeamRef,
 } from "./api/client";
@@ -557,8 +558,11 @@ function AuthenticatedShell({
       );
 
       // Pages now apply ticket deltas directly from realtime payloads, so we only
-      // refresh lightweight shared aggregates (e.g. sidebar counts).
+      // refresh lightweight shared aggregates (e.g. sidebar counts). The hot GET
+      // cache has to be dropped first or the refetch this triggers is answered
+      // from it and the badges keep the number the rows have already left behind.
       if (payload.reason !== "message_added") {
+        invalidateTicketCountsCache();
         notifyTicketAggregatesChanged();
       }
     },

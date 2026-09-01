@@ -131,6 +131,25 @@ describe("notification client caching", () => {
     expect(second).toEqual(first);
   });
 
+  it("lets a realtime push drop the cached counts so the badges can move", async () => {
+    // Card 1.27: invalidating the react query alone is not enough, because its
+    // refetch is answered from this cache for up to 15s - which is exactly how
+    // long the sidebar badge would keep a number the rows have already left.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ open: 3, atRisk: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ open: 4, atRisk: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = await import("./client");
+    const before = await client.fetchTicketCounts();
+    client.invalidateTicketCountsCache();
+    const after = await client.fetchTicketCounts();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(before).not.toEqual(after);
+  });
+
   it("times out shared apiFetch requests instead of hanging forever", async () => {
     vi.useFakeTimers();
     const fetchMock = hangingFetch();
