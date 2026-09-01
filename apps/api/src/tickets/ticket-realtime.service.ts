@@ -22,7 +22,10 @@ export type TicketRealtimeReason =
   | 'automation_rule_executed'
   | 'deleted'
   | 'restored'
-  | 'edited';
+  | 'edited'
+  // The SLA worker changed this ticket's breach or at-risk state. The payload
+  // carries no SLA fields, so the web re-reads the row - see card 1.27.
+  | 'sla_changed';
 
 type TicketRealtimeAudienceTicket = {
   id: string;

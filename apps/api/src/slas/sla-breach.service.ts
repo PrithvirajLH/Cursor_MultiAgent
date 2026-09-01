@@ -16,6 +16,7 @@ import { AutomationQueueService } from '../common/automation-queue.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { TicketRealtimeService } from '../tickets/ticket-realtime.service';
 import { SlaEngineService } from './sla-engine.service';
 import type { SlaWorkerRunSummary } from './sla-worker-run-summary.type';
 import type { SlaWorkerState } from './sla-worker-state.type';
@@ -56,6 +57,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly slaEngine: SlaEngineService,
     private readonly automationQueue: AutomationQueueService,
+    private readonly ticketRealtime: TicketRealtimeService,
   ) {}
 
   onModuleInit() {
@@ -135,6 +137,11 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       // Collect notification intents during transaction, dispatch after commit
       // This keeps the transaction short and prevents duplicate notifications on rollback
       const notificationIntents: NotificationIntent[] = [];
+      // Tickets whose SLA state this tick actually changed. Deliberately NOT
+      // derived from notificationIntents: a breach on a team with no lead and
+      // no on-call address is marked and then returns without an intent, and
+      // that ticket still has to reach the screen.
+      const changedTicketIds = new Set<string>();
 
       // Use a transaction with advisory lock to ensure only one instance processes
       // pg_try_advisory_xact_lock is released automatically when transaction ends.
@@ -159,7 +166,13 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
           });
 
           for (const instance of instances) {
-            await this.handleInstance(tx, instance, now, notificationIntents);
+            await this.handleInstance(
+              tx,
+              instance,
+              now,
+              notificationIntents,
+              changedTicketIds,
+            );
           }
         },
         { timeout: 60_000, maxWait: 10_000 },
@@ -181,6 +194,20 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
               `Failed to enqueue automation for ticket ${intent.ticketId}: ${(err as Error).message}`,
             ),
           );
+      }
+      // Best effort and deliberately last: the breach marking and the
+      // notifications are the job, this is a courtesy. safeRealtime swallows
+      // and logs, so a broken socket cannot fail or shorten a tick.
+      for (const ticketId of changedTicketIds) {
+        await this.ticketRealtime.safeRealtime(() =>
+          this.ticketRealtime.emitTicketRealtimeEvent({
+            ticketId,
+            reason: 'sla_changed',
+            // No user raised this. Same as the attachment scan callback, which
+            // is the existing precedent for a system-raised ticket event.
+            actorId: null,
+          }),
+        );
       }
       this.lastRunOk = true;
       if (!lockAcquired) {
@@ -279,6 +306,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     },
     now: Date,
     notificationIntents: NotificationIntent[],
+    changedTicketIds: Set<string>,
   ) {
     const ticket = instance.ticket;
 
@@ -301,6 +329,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         'FIRST_RESPONSE',
         now,
         notificationIntents,
+        changedTicketIds,
       );
       return;
     }
@@ -319,6 +348,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         'RESOLUTION',
         now,
         notificationIntents,
+        changedTicketIds,
       );
       return;
     }
@@ -342,6 +372,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
           'FIRST_RESPONSE',
           now,
           notificationIntents,
+          changedTicketIds,
         );
         return;
       }
@@ -362,6 +393,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
           'RESOLUTION',
           now,
           notificationIntents,
+          changedTicketIds,
         );
         return;
       }
@@ -451,6 +483,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     breachType: BreachType,
     now: Date,
     notificationIntents: NotificationIntent[],
+    changedTicketIds: Set<string>,
   ) {
     const nextDueAt =
       breachType === 'FIRST_RESPONSE' && !instance.resolutionBreachedAt
@@ -471,6 +504,10 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     if (updateResult.count === 0) {
       return;
     }
+    // updateMany matched, so this tick is the one that changed the state - a
+    // concurrent worker that got there first leaves count at 0 and returns
+    // above, so this cannot double-publish.
+    changedTicketIds.add(ticket.id);
 
     const dueAt =
       breachType === 'FIRST_RESPONSE'
@@ -566,6 +603,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     breachType: BreachType,
     now: Date,
     notificationIntents: NotificationIntent[],
+    changedTicketIds: Set<string>,
   ) {
     const dueAt =
       breachType === 'FIRST_RESPONSE'
@@ -590,6 +628,10 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     if (updateResult.count === 0) {
       return;
     }
+    // updateMany matched, so this tick is the one that changed the state - a
+    // concurrent worker that got there first leaves count at 0 and returns
+    // above, so this cannot double-publish.
+    changedTicketIds.add(ticket.id);
 
     await tx.ticketEvent.create({
       data: {
