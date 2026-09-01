@@ -9,6 +9,7 @@ import {
 } from "../api/client";
 import { shouldRefreshNotificationsAfterCountPoll } from "./notification-fallback";
 import { handleApiError } from "../utils/handleApiError";
+import { useTabVisible } from "./useTabVisible";
 
 type UseNotificationsOptions = {
   /** Polling interval in milliseconds (default: 30000 = 30 seconds) */
@@ -46,10 +47,7 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   const [page, setPage] = useState(1);
   // Track when userKey is synced to storage to prevent fetching with stale credentials
   const [userKeySynced, setUserKeySynced] = useState(false);
-  const [isTabVisible, setIsTabVisible] = useState(() => {
-    if (typeof document === "undefined") return true;
-    return document.visibilityState === "visible";
-  });
+  const isTabVisible = useTabVisible();
 
   const pollingRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
@@ -266,16 +264,6 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     }
   }, [userKey]);
 
-  // Pause polling when the tab is not visible to reduce background contention.
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const handleVisibility = () =>
-      setIsTabVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
-
   // Check if userKey is synced to storage and trigger fetch when ready.
   // Use a single delayed check instead of an interval loop.
   useEffect(() => {
@@ -310,7 +298,8 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     };
   }, [fetchData, userKeySynced]);
 
-  // Set up polling (only when user is synced)
+  // Set up polling (only when user is synced). Paused while the tab is not
+  // visible, to reduce background contention.
   useEffect(() => {
     if (
       !enablePolling ||

@@ -768,7 +768,10 @@ function unwrapDataEnvelope<T>(value: T | DataEnvelope<T>): T {
 
 export function fetchTickets(
   params?: Record<string, string | number | boolean | undefined | string[]>,
-  options?: Pick<RequestInit, "signal">,
+  // `cache` is here so a caller that exists to discover what it missed (the
+  // ticket list's reconnect refetch) can pass "no-store" and skip the 15s hot
+  // GET cache, which would otherwise hand it the snapshot it is replacing.
+  options?: Pick<RequestInit, "signal" | "cache">,
 ) {
   const query = new URLSearchParams();
   if (params) {

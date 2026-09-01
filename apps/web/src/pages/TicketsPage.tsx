@@ -30,6 +30,7 @@ import { useFilters } from "../hooks/useFilters";
 import { useFocusSearchOnShortcut } from "../hooks/useKeyboardShortcuts";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import { useTicketSelection } from "../hooks/useTicketSelection";
+import { useTabVisible } from "../hooks/useTabVisible";
 import { useToast } from "../hooks/useToast";
 import { downloadCsvContent } from "../utils/download-csv";
 import { handleApiError } from "../utils/handleApiError";
@@ -40,6 +41,7 @@ import {
 import type { Role, StatusFilter, TicketFilters, TicketScope } from "../types";
 // import { useHeaderContext } from "../contexts/HeaderContext";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
+import { ListFreshnessNotice } from "../components/ListFreshnessNotice";
 
 type SortPreset =
   | "updated_desc"
@@ -48,6 +50,8 @@ type SortPreset =
   | "created_asc"
   | "completed_desc";
 const DEFAULT_PAGE_SIZE = 50;
+/** Backstop poll, used only while the realtime socket is down (card 1.26). */
+const LIST_POLL_INTERVAL_MS = 30_000;
 const PAGE_KEYS: Array<keyof TicketFilters> = ["page", "pageSize"];
 const RESOLVED_STATUSES = new Set(["RESOLVED", "CLOSED"]);
 
@@ -129,6 +133,45 @@ function parseDateMillis(value?: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/**
+ * Is this realtime payload older than the row already on screen?
+ *
+ * Shared by the row patch and the header-count arithmetic so the two can never
+ * disagree about whether an event was applied.
+ */
+function isStaleRealtimePatch(
+  current: TicketRecord,
+  payload: RealtimeTicketChangedEventPayload,
+): boolean {
+  const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt);
+  return (
+    incomingUpdatedAtMs > 0 &&
+    incomingUpdatedAtMs < parseDateMillis(current.updatedAt)
+  );
+}
+
+/**
+ * Merge a background refresh into the rows already on screen.
+ *
+ * The server decides membership and ordering; a row already held locally wins
+ * only when it is strictly newer, so a realtime patch that landed while the
+ * request was in flight is not undone by it. Same comparison the realtime
+ * handler makes, for the same reason.
+ */
+function reconcileTicketRows(
+  current: TicketRecord[],
+  incoming: TicketRecord[],
+): TicketRecord[] {
+  const currentById = new Map(current.map((row) => [row.id, row]));
+  return incoming.map((row) => {
+    const existing = currentById.get(row.id);
+    if (!existing) return row;
+    return parseDateMillis(existing.updatedAt) > parseDateMillis(row.updatedAt)
+      ? existing
+      : row;
+  });
+}
+
 function isResolvedStatus(status: string): boolean {
   return RESOLVED_STATUSES.has(status);
 }
@@ -166,6 +209,7 @@ export function TicketsPage({
   presetStatus,
   presetScope,
   teamsList,
+  realtimeAvailable,
   onCreateTicket,
 }: {
   role: Role;
@@ -173,6 +217,8 @@ export function TicketsPage({
   presetStatus: StatusFilter;
   presetScope: TicketScope;
   teamsList: TeamRef[];
+  /** Whether the realtime socket is up. False means this list must poll. */
+  realtimeAvailable: boolean;
   onCreateTicket?: () => void;
 }) {
   // const headerCtx = useHeaderContext();
@@ -230,6 +276,7 @@ export function TicketsPage({
     totalPages: number;
   } | null>(null);
   const [loadingTickets, setLoadingTickets] = useState(false);
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
@@ -244,6 +291,10 @@ export function TicketsPage({
   const ticketsRequestSeqRef = useRef(0);
   const realtimeHydrationInFlightRef = useRef<Set<string>>(new Set());
   const ticketsRef = useRef<TicketRecord[]>([]);
+  const isTabVisible = useTabVisible();
+  const hasLoadedOnceRef = useRef(false);
+  const previousRealtimeAvailableRef = useRef(realtimeAvailable);
+  const previousTabVisibleRef = useRef(isTabVisible);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const advancedFiltersDialogRef = useRef<HTMLDivElement>(null);
   const advancedFiltersAnchorRef = useRef<HTMLDivElement>(null);
@@ -537,6 +588,18 @@ export function TicketsPage({
     [],
   );
 
+  /**
+   * Move the header total with a realtime insert or removal.
+   *
+   * An approximation between fetches, and deliberately so: an exact count needs
+   * an API round trip. The poll and the reconnect refetch both correct it.
+   */
+  const adjustListTotal = useCallback((delta: number) => {
+    setListMeta((prev) =>
+      prev ? { ...prev, total: Math.max(0, prev.total + delta) } : prev,
+    );
+  }, []);
+
   const maybeHydrateRealtimeTicket = useCallback(
     async (ticketId: string) => {
       if (filters.page > 1) {
@@ -548,6 +611,13 @@ export function TicketsPage({
       realtimeHydrationInFlightRef.current.add(ticketId);
       try {
         const ticket = await fetchTicketById(ticketId);
+        // Decided out here, not inside the updater: a state updater must stay
+        // pure, and the header total is a second piece of state. A row that the
+        // page-size slice hides still belongs in the total.
+        const alreadyPresent = ticketsRef.current.some(
+          (row) => row.id === ticket.id,
+        );
+        const belongsInList = matchesTicketFilters(ticket);
         setTickets((prev) => {
           if (prev.some((row) => row.id === ticket.id)) {
             return prev;
@@ -560,6 +630,9 @@ export function TicketsPage({
           );
           return next.slice(0, filters.pageSize);
         });
+        if (!alreadyPresent && belongsInList) {
+          adjustListTotal(1);
+        }
       } catch {
         // Ignore hydration misses for deleted/hidden tickets.
       } finally {
@@ -567,6 +640,7 @@ export function TicketsPage({
       }
     },
     [
+      adjustListTotal,
       effectiveSort,
       filters.order,
       filters.page,
@@ -717,29 +791,57 @@ export function TicketsPage({
     [assignableUsers, currentEmail],
   );
 
-  const loadTickets = useCallback(async () => {
-    const requestSeq = ++ticketsRequestSeqRef.current;
-    setLoadingTickets(true);
-    setTicketError(null);
-    try {
-      const response = await fetchTickets({
-        ...apiParams,
-        sort: effectiveSort,
-      });
-      if (ticketsRequestSeqRef.current !== requestSeq) return;
-      setTickets(response.data);
-      setListMeta(response.meta ?? null);
-    } catch {
-      if (ticketsRequestSeqRef.current !== requestSeq) return;
-      setTicketError("Unable to load tickets.");
-      setListMeta(null);
-      setTickets([]);
-    } finally {
-      if (ticketsRequestSeqRef.current === requestSeq) {
-        setLoadingTickets(false);
+  /**
+   * Load the list. A background refresh (the poll and the reconnect catch-up)
+   * shows no skeleton, merges rather than replaces, and leaves the rows alone if
+   * it fails - a stale list an agent can still read beats an empty one.
+   */
+  const loadTickets = useCallback(
+    async (options: { background?: boolean } = {}) => {
+      const isBackgroundRefresh = options.background === true;
+      // A foreground load claims the list and supersedes everything older. A
+      // background refresh does not: it keeps the current sequence number, so
+      // an initial load still in flight is left alone and this refresh is the
+      // one discarded if a foreground load starts while it is out.
+      const requestSeq = isBackgroundRefresh
+        ? ticketsRequestSeqRef.current
+        : ++ticketsRequestSeqRef.current;
+      if (!isBackgroundRefresh) {
+        setLoadingTickets(true);
+        setTicketError(null);
       }
-    }
-  }, [apiParams, effectiveSort]);
+      try {
+        const response = await fetchTickets(
+          { ...apiParams, sort: effectiveSort },
+          // A background refresh exists to find what the socket missed, so it
+          // must not be served from the 15s hot GET cache - that cache is the
+          // very snapshot it is trying to replace.
+          isBackgroundRefresh ? { cache: "no-store" } : undefined,
+        );
+        if (ticketsRequestSeqRef.current !== requestSeq) return;
+        setTickets((prev) =>
+          isBackgroundRefresh
+            ? reconcileTicketRows(prev, response.data)
+            : response.data,
+        );
+        setListMeta(response.meta ?? null);
+        setTicketError(null);
+        setLastLoadedAt(new Date().toISOString());
+        hasLoadedOnceRef.current = true;
+      } catch {
+        if (ticketsRequestSeqRef.current !== requestSeq) return;
+        if (isBackgroundRefresh) return;
+        setTicketError("Unable to load tickets.");
+        setListMeta(null);
+        setTickets([]);
+      } finally {
+        if (ticketsRequestSeqRef.current === requestSeq && !isBackgroundRefresh) {
+          setLoadingTickets(false);
+        }
+      }
+    },
+    [apiParams, effectiveSort],
+  );
 
   const searchParamsString = searchParams.toString();
   useEffect(() => {
@@ -758,7 +860,13 @@ export function TicketsPage({
       // leave every queue immediately (the API hides it from all non-owner
       // reads), and a restored one comes back through the normal hydrate path.
       if (payload.reason === "deleted") {
+        const wasPresent = ticketsRef.current.some(
+          (ticket) => ticket.id === ticketId,
+        );
         setTickets((prev) => prev.filter((ticket) => ticket.id !== ticketId));
+        if (wasPresent) {
+          adjustListTotal(-1);
+        }
         return;
       }
       if (payload.reason === "restored") {
@@ -779,22 +887,25 @@ export function TicketsPage({
       const presentBeforePatch = ticketsRef.current.some(
         (ticket) => ticket.id === ticketId,
       );
+      // Same reason as the hydrate path: worked out here so the updater stays
+      // pure. A status change can move a ticket out of the filter the agent is
+      // looking at, which is a removal as far as the header total is concerned.
+      const rowBeforePatch = ticketsRef.current.find(
+        (ticket) => ticket.id === ticketId,
+      );
+      const leavesTheList =
+        rowBeforePatch !== undefined &&
+        !isStaleRealtimePatch(rowBeforePatch, payload) &&
+        !matchesTicketFilters(applyRealtimeTicketPatch(rowBeforePatch, payload));
       setTickets((prev) => {
         const index = prev.findIndex((ticket) => ticket.id === ticketId);
         if (index === -1) {
           return prev;
         }
         const current = prev[index];
-        const currentUpdatedAtMs = parseDateMillis(current.updatedAt);
-        const incomingUpdatedAtMs = parseDateMillis(payload.updatedAt);
-
-        if (
-          incomingUpdatedAtMs > 0 &&
-          incomingUpdatedAtMs < currentUpdatedAtMs
-        ) {
+        if (isStaleRealtimePatch(current, payload)) {
           return prev;
         }
-
         const patched = applyRealtimeTicketPatch(current, payload);
         if (!matchesTicketFilters(patched)) {
           return prev.filter((ticket) => ticket.id !== ticketId);
@@ -806,6 +917,9 @@ export function TicketsPage({
         return next;
       });
 
+      if (leavesTheList) {
+        adjustListTotal(-1);
+      }
       if (!presentBeforePatch) {
         void maybeHydrateRealtimeTicket(ticketId);
       }
@@ -823,12 +937,48 @@ export function TicketsPage({
       );
     };
   }, [
+    adjustListTotal,
     applyRealtimeTicketPatch,
     effectiveSort,
     filters.order,
     matchesTicketFilters,
     maybeHydrateRealtimeTicket,
   ]);
+
+  // --- Freshness: the socket is the live path, this is what happens without it.
+  //
+  // Web PubSub does not replay messages missed while a socket was down, so the
+  // reconnect below must re-read the list once or every ticket created during
+  // the outage stays invisible until the agent happens to act.
+  useEffect(() => {
+    if (realtimeAvailable || !isTabVisible || filters.page > 1) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadTickets({ background: true });
+    }, LIST_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [filters.page, isTabVisible, loadTickets, realtimeAvailable]);
+
+  useEffect(() => {
+    const wasAvailable = previousRealtimeAvailableRef.current;
+    previousRealtimeAvailableRef.current = realtimeAvailable;
+    if (wasAvailable || !realtimeAvailable || !hasLoadedOnceRef.current) {
+      return;
+    }
+    void loadTickets({ background: true });
+  }, [loadTickets, realtimeAvailable]);
+
+  // A tab hidden while disconnected ran no poll at all, so catch up on the way
+  // back in rather than making the agent wait out another interval.
+  useEffect(() => {
+    const wasVisible = previousTabVisibleRef.current;
+    previousTabVisibleRef.current = isTabVisible;
+    if (wasVisible || !isTabVisible || realtimeAvailable || filters.page > 1) {
+      return;
+    }
+    void loadTickets({ background: true });
+  }, [filters.page, isTabVisible, loadTickets, realtimeAvailable]);
 
   useEffect(() => {
     if (role === "EMPLOYEE") {
@@ -1420,7 +1570,15 @@ export function TicketsPage({
       {/* Queue view — ticket list */}
       {isQueueView ? (
       <div className="flex-1 min-h-0 overflow-y-auto p-6">
-        <p className="text-sm text-muted-foreground">{countLabel}</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{countLabel}</p>
+          {/* Page 2+ polls nothing by design (rows must not move under someone
+              paging through history) but still says so when the socket is down. */}
+          <ListFreshnessNotice
+            connected={realtimeAvailable}
+            lastUpdatedAt={lastLoadedAt}
+          />
+        </div>
 
         <div
           className={`mt-4 grid transition-all duration-300 ease-out ${

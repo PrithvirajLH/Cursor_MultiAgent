@@ -529,8 +529,9 @@ function AuthenticatedShell({
     useState<StatusFilter>("open");
   const [ticketPresetScope, setTicketPresetScope] =
     useState<TicketScope>("all");
-  const [notificationsRealtimeAvailable, setNotificationsRealtimeAvailable] =
-    useState(false);
+  // One socket, two consumers: the notification poll (below) and the ticket
+  // list, which uses it to decide whether it must poll as a backstop.
+  const [realtimeAvailable, setRealtimeAvailable] = useState(false);
 
   // Command Palette — create now lives at the /tickets/new page
   const commandPalette = useCommandPalette({
@@ -540,9 +541,7 @@ function AuthenticatedShell({
   // Notifications
   const notifications = useNotifications({
     pollingInterval: 30000,
-    enablePolling: shouldEnableNotificationPolling(
-      notificationsRealtimeAvailable,
-    ),
+    enablePolling: shouldEnableNotificationPolling(realtimeAvailable),
     userKey: currentEmail,
     onActionError: toast.error,
   });
@@ -596,7 +595,7 @@ function AuthenticatedShell({
     onTicketChanged: handleRealtimeTicketChange,
     onTicketTyping: handleRealtimeTicketTyping,
     onNotificationsUpdated: handleRealtimeNotificationsUpdated,
-    onAvailabilityChange: setNotificationsRealtimeAvailable,
+    onAvailabilityChange: setRealtimeAvailable,
   });
 
   // Keyboard shortcuts
@@ -1180,6 +1179,7 @@ function AuthenticatedShell({
                           presetStatus={ticketPresetStatus}
                           presetScope={ticketPresetScope}
                           teamsList={teamsList}
+                          realtimeAvailable={realtimeAvailable}
                           onCreateTicket={() => navigate("/tickets/new")}
                         />
                       }
