@@ -53,6 +53,7 @@ import {
   type ExpandedSections,
 } from "../components/ticket-detail/TicketSidebar";
 import {
+  collapseIntakeCreationEvents,
   formatChannel,
   formatPriority,
   priorityBadgeClass,
@@ -1827,7 +1828,14 @@ export function TicketDetailPage({
   }, []);
 
   const conversationCount = messages.length;
-  const timelineCount = events.length;
+  // Intake writes a plain TICKET_CREATED and a TICKET_CREATED_VIA_INTAKE in the
+  // same instant. The intake row names the actor and the source, so it stands in
+  // for both here; the audit log still shows each separately on purpose.
+  const timelineEvents = useMemo(
+    () => collapseIntakeCreationEvents(events),
+    [events],
+  );
+  const timelineCount = timelineEvents.length;
   const attachmentsCount = ticket?.attachments.length ?? 0;
   const ticketTabRefs = {
     conversation: conversationTabRef,
@@ -2468,7 +2476,7 @@ export function TicketDetailPage({
                       )}
                     >
                       <TicketTimeline
-                        events={events}
+                        events={timelineEvents}
                         eventsHasMore={eventsHasMore}
                         eventsLoading={eventsLoading}
                         eventsError={eventsError}

@@ -229,8 +229,8 @@ export function formatEventText(event: TicketEvent) {
         payload.department ? `routed to ${payload.department}` : null,
       ].filter((part): part is string => part !== null);
       return origin.length > 0
-        ? `Ticket created by an integration (${origin.join(", ")})`
-        : "Ticket created by an integration";
+        ? `Ticket created by ${actor} via an integration (${origin.join(", ")})`
+        : `Ticket created by ${actor} via an integration`;
     }
     case "TICKET_CREATED":
       return `Ticket created by ${actor}`;
@@ -257,4 +257,31 @@ export function formatEventText(event: TicketEvent) {
     default:
       return formatStatus(event.type.replace(/_/g, " "));
   }
+}
+
+
+/**
+ * Intake writes TWO events in the same instant: the shared `TICKET_CREATED` that
+ * every channel writes, and `TICKET_CREATED_VIA_INTAKE` carrying the calling
+ * system's own reference.
+ *
+ * On the audit log both belong — it is a compliance trail, and hiding a recorded
+ * event from it would be wrong. On a ticket's own timeline they read as
+ * duplicates, so the intake row stands in for both: it already names the actor
+ * (the event is written with the requester as its author) and adds where the
+ * ticket came from.
+ *
+ * Returns the array unchanged when there is no intake event — which is every
+ * ticket from every other channel.
+ */
+export function collapseIntakeCreationEvents(
+  events: TicketEvent[],
+): TicketEvent[] {
+  const hasIntakeEvent = events.some(
+    (event) => event.type === "TICKET_CREATED_VIA_INTAKE",
+  );
+  if (!hasIntakeEvent) {
+    return events;
+  }
+  return events.filter((event) => event.type !== "TICKET_CREATED");
 }

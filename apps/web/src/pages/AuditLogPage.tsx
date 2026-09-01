@@ -71,6 +71,7 @@ const EMPTY_CATEGORY_COUNTS: AuditLogCategoryCounts = {
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   TICKET_CREATED: "Created Ticket",
+  TICKET_CREATED_VIA_INTAKE: "Arrived via integration",
   TICKET_ASSIGNED: "Assigned Ticket",
   TICKET_TRANSFERRED: "Transferred Ticket",
   TICKET_STATUS_CHANGED: "Status Changed",
@@ -262,6 +263,18 @@ function summarize(entry: AuditLogEntry): string {
       return payload.fileName
         ? `Uploaded ${String(payload.fileName)}`
         : "Attachment uploaded";
+    case "TICKET_CREATED_VIA_INTAKE": {
+      // Deliberately its own row here, unlike the ticket timeline: this page is
+      // the compliance trail, and "a ticket was created" and "it arrived from
+      // PAF-52596" are two different facts.
+      const origin = [
+        payload.sourceRef ? `From ${String(payload.sourceRef)}` : null,
+        payload.department ? String(payload.department) : null,
+      ].filter((part): part is string => part !== null);
+      return origin.length > 0
+        ? origin.join(" · ")
+        : "Arrived via integration";
+    }
     case "MESSAGE_ADDED":
       return "Message added";
     case "CUSTOM_FIELD_UPDATED": {
