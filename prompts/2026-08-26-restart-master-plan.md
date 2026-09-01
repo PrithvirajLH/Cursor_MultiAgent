@@ -43,6 +43,7 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | 1.24 Inbound mailbox worker (Graph delta polling) | **Queued** — the real build | — | A background worker polls one shared mailbox every ~30 s using a Microsoft Graph **delta token** and feeds the existing ingestion path in-process. Chosen over webhooks (push subscriptions expire every few days and silently stop; a fired webhook is lost if the app is down) and over Power Automate (throttling, silent failure, no retry control, production dependency outside the codebase). The delta token is a durable cursor, so a deploy or outage loses nothing. Needs `Mail.ReadWrite` **scoped to the single mailbox** via an Application Access Policy — unscoped, the app can read the whole tenant. Reuses `AZURE_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`. Size L. |
 | 1.25 Helpdesk mailbox + threading proof | **Queued** — owner/M365 setup, then verification | — | Create the shared mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…`), then prove all three threading paths end to end: reply token in the To address, `In-Reply-To`/`References`, and ticket id in the subject. **No build — reply tokens are already implemented** (`ticket-email-thread.service.ts`: `generateReplyToken`, `buildReplyToAddress`; `inbound-email.service.ts` extracts them). Size S. |
 | 1.26 The ticket list must not lie about how fresh it is | **Handoff written** (2026-09-01) — **next up**, owner picked it 2026-09-01 | `prompts/2026-09-01-1-26-ticket-list-freshness.md` | **Verified 2026-09-01:** new tickets *do* arrive in the list without a refresh — `handleTicketChanged` in `TicketsPage.tsx` fires on every realtime reason and calls `maybeHydrateRealtimeTicket`, which fetches the row and inserts it in sort order. But `hooks/useRealtimeEvents.ts` has **no polling fallback**, so if Web PubSub drops the list silently stops updating and an idle queue is indistinguishable from a broken one. Three parts: **(a)** a poll backstop for the list, copying the pattern already in `hooks/useNotifications.ts:325` (interval + `isTabVisible` gate); **(b)** a visible connection state so silence is never ambiguous; **(c)** the stale header count (was a separate follow-up — the row appears but "N open tickets" does not move). Also note `maybeHydrateRealtimeTicket` returns early when `filters.page > 1`, so nothing arrives on page 2+. Web only. Size S–M. |
+| 1.27 SLA breaches and badge counts must reach the screen | **Handoff written** (2026-09-01) | `prompts/2026-09-01-1-27-sla-and-counts-realtime.md` | From the Web PubSub audit the owner asked for. **`slas/sla-breach.service.ts` publishes no realtime event at all** — it raises the bell and the email, so an agent is told, but the ticket row's SLA badge stays green, "Breach risk · 1h" does not move, and the detail panel does not update. A countdown that is silently wrong is worse than none. Also folds in two smaller gaps found in the same audit: **nothing outside `client.ts` ever invalidates the `/tickets/counts` cache**, so a change made by *another* agent moves the rows but not the sidebar badges; and `retention.service.ts` purges tickets without emitting `deleted`. Design decision recorded: a **new `sla_changed` reason and the web re-reads the row**, rather than widening the realtime payload — the payload carries no SLA fields and adding them means keeping two field lists in sync. CSAT deliberately excluded. API + web, no schema. Size S. |
 | Phase 1–3 (rest) | Queued | — | See cards below. Phase 0 remaining: 0.9 (local perf measure), 0.10 (HR merge SQL — needs owner's yes, it changes production data). |
 
 ### Decisions log
@@ -305,7 +306,17 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** Visible on every ticket for AGENT+; hidden for EMPLOYEE; one query, cached by React Query.
 
-### 1.9 "Someone is already on this" warning — **Ready** · S
+### 1.9 "Someone is already on this" warning — **Ready, and smaller than it looks** · S
+
+> **Re-scoped 2026-09-01** after the Web PubSub audit. The typing channel is
+> already wired **end to end**: `POST /tickets/:id/typing` →
+> `RealtimeService.publishTicketTyping` → `REALTIME_TICKET_TYPING_EVENT`, with a
+> live consumer in `TicketDetailPage.tsx:1122`. The transport, the endpoint and
+> the consumer pattern all exist. What is missing is a **presence** notion
+> (someone has this ticket open, not just typing) with a timeout, and a consumer
+> on the queue side. Do not plan this as a fresh realtime build — read the typing
+> path first and decide whether presence is a second event or a longer-lived
+> typing signal.
 
 **What we are doing.** Two agents answering the same requester is the classic embarrassment. Show who is viewing.
 
