@@ -59,6 +59,7 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | 2026-08-27 | **No new Azure spend for now** — 0.4 (Application Insights + alerts) deferred | owner | 0.4 parked with its handoff ready; anything else that creates an Azure resource waits too |
 | 2026-08-27 | Card 1.2 "cancel": record a `closeReason` (confirmed / cancelled / agent / auto) on CLOSED tickets rather than adding a CANCELLED status | planner (owner unopposed) | Additive enum column; no report/status-list churn; card 1.3 auto-close reuses it |
 | 2026-08-28 | Power Automate integration: build a **new dedicated intake endpoint with an explicit `department` field** (option 2 of three) rather than reusing the inbound-email webhook or waiting for full API keys | owner | New card 1.19; 1.5 put on hold to make room |
+| 2026-09-01 | **One helpdesk mailbox carries both department and ticket addressing via plus-suffixes** — `helpdesk+payroll@` opens a Payroll ticket, `helpdesk+ticket-<token>@` replies to one | owner | Told apart by one rule: a suffix beginning `ticket-` is a reply token, anything else is a department slug. Department slugs beginning `ticket-` are forbidden. Fallback if the tenant blocks plus-addressing: catch-all subdomain, then one mailbox per department. **Owner to test plus-addressing before 1.24 is built** — it changes the design, not a constant. |
 | 2026-09-01 | **Outbound ticket email is internal only** — the send path refuses any recipient that is not `@csnhc.com`, and the refusal is recorded visibly on the ticket rather than swallowed | owner | A typo'd or external address cannot leak a termination, and it takes the PHI question off the table for now. One rule to relax later if external requesters are ever wanted. |
 | 2026-09-01 | **From line = agent name + desk address** — `Sarah Chen (CSNHC Helpdesk) <helpdesk@csnhc.com>`, never the agent's own address | owner (chose from three mocked options) | A name gets replies, which is the point of the feature; the desk address is what makes the reply come back. **Per-department switch to the generic `CSNHC Helpdesk` identity for HR and Payroll**, where an agent may not want to be personally named on a termination. Agent's own address was rejected — replies would land in a personal inbox and the ticket would die half-finished. |
 | 2026-09-01 | **Reply to a closed ticket: reopen within 6 months, new linked ticket after** | owner | Matches Zendesk. **The link is stored cheaply** — a ticket event plus a line in the description — rather than waiting for card 1.6 (link related tickets), which is unbuilt. 1.6 upgrades it later; six-month-old reopens are rare and are not worth blocking the epic on a medium card. |
@@ -66,6 +67,8 @@ Updated by the planning session as cards move. States: **Queued** → **Handoff 
 | open | Retention periods (years) for closed tickets / attachments / audit | owner | 0.8 ships with the job OFF; values are config |
 
 ### Follow-ups discovered during implementation (not yet cards)
+
+- **A required custom field silently swallows an inbound email — latent today, live the moment department addressing ships (found 2026-09-01).** `TicketsService.create` enforces required custom fields unless `skipRequiredCustomFields` is set, and **only `ai/tools/ticket-tools.service.ts:51` sets it**. `inbound-email.service.ts` does not. `it-service-desk` requires `Asset Tag` (established in card 1.20, which hit the same wall from the intake endpoint), and an email cannot supply a form field — so an inbound email routed to IT is rejected and the ticket never exists. Nothing has hit it because no mailbox feeds the webhook yet. **Two independent fixes, do both:** (1) **owner, 30 seconds, no deploy** — in Admin → Custom Fields, set `Asset Tag` to **not required**. Keep the field: you still capture the asset tag whenever someone can supply one, and nothing is blocked. This is better than deleting it, which loses the capture. (2) **code, small** — have the inbound path pass `skipRequiredCustomFields: true`, so a *future* required field on any team cannot swallow email again. Fix 1 clears today's problem; fix 2 stops it recurring. Folded into card 1.24's notes.
 
 - **The browser pass paid off immediately — and 1.8's is still owed (2026-09-01).** Ran the pass on a dev server (API 3077 + web 5173, personas via `localStorage.demoUserEmail`, `AUTH_ALLOW_INSECURE_HEADERS=true`). It caught a **dead-code bug of my own**: commit `2d78d92` added the intake `sourceRef` to `components/TimelineEvent.tsx`, which is reached only through `ActivityTimeline.tsx`, and nothing imports `ActivityTimeline` — so the feature did nothing while tsc and all 50 vitest tests passed. Real path was `components/ticket-detail/utils.tsx` (`formatEventText`); fixed in `3d4ee84` and confirmed on a live intake ticket. **Verified in the browser:** Operations (one header, three groups, Run now → "Just now / Dry run" with no reload), Reports export (both cards, restored link carrying live filters), ticket description rendering raw (`Facility:` + line 2 both visible), lead redirected off `/admin/operations` with no nav entry, and owner-200 / team-admin-lead-agent-requester-403 over live HTTP. **Still outstanding:** card 1.8's own §10 check — expanding the requester-history panel, confirming a row opens in a new tab, and confirming an EMPLOYEE does not see it. I had the browser on a ticket and did not do it. Do it in the deploy smoke test.
 
@@ -494,6 +497,38 @@ not. Roughly ten lines. This is the owner's "auto-watching" ask.
 
 Surface the worker in the Operations console (1.21) if that has landed: enabled,
 last run, last result, messages ingested, and a Run now button.
+
+**One mailbox, two kinds of plus-suffix** (owner request, 2026-09-01). The
+department address and the reply token share one mailbox and are told apart by a
+single rule: **a suffix beginning `ticket-` is a reply token; anything else is a
+department slug.**
+
+| Address | Means |
+|---|---|
+| `helpdesk+payroll@csnhc.com` | new ticket in Payroll |
+| `helpdesk+ticket-a1b2c3@csnhc.com` | reply onto that ticket |
+
+Department addressing applies only to the **first** message: once the ticket
+exists, outbound mail sets `Reply-To` to the `+ticket-` address (already built,
+`ticket-email-thread.service.ts`), so the thread moves onto the ticket by itself.
+`resolveTeamIdBySlug` already does the slug lookup. **Forbid any department slug
+beginning `ticket-`** so the rule cannot become ambiguous.
+
+Three things this must get right:
+
+- **Look for our address in `To`, `CC` *and* `Delivered-To`.** On a reply-all or a
+  forward, the plus address is often not in `To`. Parsing only `To` will drop
+  exactly the loop-in cases the owner cares about.
+- **Friendly aliases.** Production slugs include `it-service-desk` and
+  `medicaid-pending`; nobody will type `helpdesk+it-service-desk@csnhc.com`. Carry
+  a small alias map (`it`, `pay`, `hr`, …) alongside the slugs.
+- **Required custom fields will reject a department email** — see the follow-up
+  note above. Make the inbound path pass `skipRequiredCustomFields: true` the way
+  `ai/tools/ticket-tools.service.ts:51` already does.
+
+**If the tenant blocks plus-addressing**, fall back in this order: a catch-all
+subdomain (`anything@tickets.csnhc.com`), then one mailbox per department. Confirm
+before building — this changes the design, not just a constant.
 
 **Depends on.** 1.22 and 1.23.
 **Done when.** A reply sent from a real mailbox appears on the correct ticket
