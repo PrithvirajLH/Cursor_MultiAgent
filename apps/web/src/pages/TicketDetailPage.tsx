@@ -44,6 +44,7 @@ import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { LinkifiedText } from "../components/LinkifiedText";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
 import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
@@ -2144,8 +2145,13 @@ export function TicketDetailPage({
                             </div>
                             {ticket.description ? (
                               <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                                {extractOriginalMessage(ticket.description) ||
-                                  "No description provided."}
+                                <LinkifiedText
+                                  text={
+                                    extractOriginalMessage(
+                                      ticket.description,
+                                    ) || "No description provided."
+                                  }
+                                />
                               </p>
                             ) : (
                               <p className="mt-2 text-[14px] leading-relaxed italic text-muted-foreground">
