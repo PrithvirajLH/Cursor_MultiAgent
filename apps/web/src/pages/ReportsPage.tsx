@@ -1401,6 +1401,43 @@ export function ReportsPage({ role }: { role: Role }) {
     }
   }
 
+  /**
+   * A link back to this report view, filters included. Restored 2026-09-01: it
+   * was deleted on a card that wrongly called it a fake link to a non-existent
+   * domain. It has always pointed at this app, and the recipient still has to
+   * sign in and is still scoped by their own role.
+   */
+  const shareLink = useMemo(() => {
+    if (typeof window === "undefined") {
+      return "/reports";
+    }
+    const params = new URLSearchParams();
+    params.set("tab", tab);
+    params.set("range", filters.range);
+    if (filters.teamId !== "all") params.set("teamId", filters.teamId);
+    if (filters.channel !== "all") params.set("channel", filters.channel);
+    if (filters.status !== "all") params.set("status", filters.status);
+    if (filters.priority !== "all") params.set("priority", filters.priority);
+    if (filters.assignee !== "all") params.set("assignee", filters.assignee);
+    if (filters.compare) params.set("compare", "1");
+    const query = params.toString();
+    return `${window.location.origin}/reports${query ? `?${query}` : ""}`;
+  }, [
+    filters.assignee,
+    filters.channel,
+    filters.compare,
+    filters.priority,
+    filters.range,
+    filters.status,
+    filters.teamId,
+    tab,
+  ]);
+  function copyShareLink() {
+    navigator.clipboard
+      .writeText(shareLink)
+      .then(() => toast.success("Link copied"))
+      .catch(() => toast.error("Failed to copy link"));
+  }
   const exportScopeLabel = `${rangeLabel} - ${scopeLabel}`;
   const [exportingReport, setExportingReport] = useState<string | null>(null);
   const tabReports =
@@ -2464,6 +2501,31 @@ export function ReportsPage({ role }: { role: Role }) {
                         >
                           Open export
                         </button>
+                      </div>
+                      <div className="rounded-xl border border-border bg-card p-4">
+                        <p className="text-sm font-semibold text-foreground">
+                          Copy link to this view
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Opens this report with the same filters. Whoever you
+                          send it to still has to sign in, and still sees only
+                          what their own role allows.
+                        </p>
+                        <div className="mt-3 flex items-center gap-2">
+                          <input
+                            readOnly
+                            aria-label="Link to this report view"
+                            value={shareLink}
+                            className="flex-1 rounded-lg border border-border bg-muted px-3 py-2 text-sm text-muted-foreground"
+                          />
+                          <button
+                            type="button"
+                            onClick={copyShareLink}
+                            className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
+                          >
+                            Copy
+                          </button>
+                        </div>
                       </div>
                       <div className="rounded-xl border border-border bg-card p-4">
                         <p className="text-sm font-semibold text-foreground">
