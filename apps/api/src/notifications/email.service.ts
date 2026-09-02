@@ -131,6 +131,8 @@ export class EmailService {
      * `buildFromIdentity` picks the shape from whether this is set.
      */
     agentDisplayName?: string | null;
+    /** Everyone else who should see a public reply (card 1.33). */
+    cc?: string[] | null;
     text: string;
     html?: string;
     replyTo?: string;
@@ -142,7 +144,11 @@ export class EmailService {
       throw new Error('SMTP not configured');
     }
 
-    const intended = parseAddressList(payload.to);
+    const intendedTo = parseAddressList(payload.to);
+    const intendedCc = parseAddressList((payload.cc ?? []).join(','));
+    // Everyone the message was meant for, To and CC alike: the pilot notice
+    // names all of them and the pilot invariant is about all of them.
+    const intended = [...new Set([...intendedTo, ...intendedCc])];
     const pilot = this.pilotRecipients();
     const isPilot = pilot.length > 0;
     const requested = isPilot ? pilot : intended;
@@ -171,6 +177,13 @@ export class EmailService {
       throw new Error('No allowed recipients after the outbound guard');
     }
 
+    // THE PILOT INVARIANT, restated for CC: in pilot mode the allowed list IS
+    // the pilot list, so To takes it and CC is emptied. There is no branch here
+    // that can put an intended address in either field.
+    const toAddresses = isPilot ? allowed : this.pickTo(intendedTo, allowed);
+    const ccAddresses = isPilot
+      ? []
+      : allowed.filter((address) => !toAddresses.includes(address));
     const info = await this.deliver({
       // Display name in code, address from SMTP_FROM - card 1.22 built the
       // formatter for exactly this and there must not be a second one.
@@ -179,7 +192,8 @@ export class EmailService {
         address: this.fromAddress,
       }),
       replyTo: payload.replyTo ?? this.replyToAddress,
-      to: allowed,
+      to: toAddresses,
+      ...(ccAddresses.length > 0 ? { cc: ccAddresses } : {}),
       subject: payload.subject,
       text: this.decorateBody(payload.text, isPilot ? intended : null),
       html: this.decorateHtmlBody(payload.html, isPilot ? intended : null),
@@ -263,6 +277,22 @@ export class EmailService {
       header.push(`<p>${this.pilotNotice(intended)}</p>`);
     }
     return `${header.join('')}${html}`;
+  }
+
+  /**
+   * Who goes in `To:`.
+   *
+   * The intended To addresses that survived the guard, or - when every one of
+   * them was refused - the first surviving CC promoted up. A message with an
+   * empty To and only CC recipients is a spam signal, and an intake ticket
+   * whose requester never resolved is a real case.
+   */
+  private pickTo(intendedTo: string[], allowed: string[]): string[] {
+    const lowerTo = new Set(intendedTo.map((address) => address.toLowerCase()));
+    const survivingTo = allowed.filter((address) =>
+      lowerTo.has(address.toLowerCase()),
+    );
+    return survivingTo.length > 0 ? survivingTo : allowed.slice(0, 1);
   }
 
   private pilotNotice(intended: string[]): string {

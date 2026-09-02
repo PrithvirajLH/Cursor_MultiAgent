@@ -1,9 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { OutboxStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  buildOutboundMessageId,
+  buildTicketRootMessageId,
+  isUnroutableMessageId,
+} from './email-threading.util';
 import type { EmailOutboxMetadata } from './outbox.service';
+
+/** RFC 5322 has no hard limit; 20 is what this codebase already used. */
+const MAX_REFERENCES = 20;
+/** How much prior ancestry to rebuild per side of the conversation. */
+const ANCESTRY_LOOKBACK = 25;
 
 type OutboundEmailContext = {
   subject: string;
@@ -12,6 +23,8 @@ type OutboundEmailContext = {
 
 @Injectable()
 export class TicketEmailThreadService {
+  private readonly logger = new Logger(TicketEmailThreadService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -29,20 +42,30 @@ export class TicketEmailThreadService {
       params.ticketId,
       params.ticketSubject,
     );
+    const replyTo = this.buildReplyToAddress(thread.replyToken);
+    // The one id that never changes for this ticket, and deliberately FIRST so
+    // the cap below can never be the thing that drops it.
+    const root = buildTicketRootMessageId(thread.replyToken, replyTo);
+    const ancestry = await this.rebuildAncestry(params.ticketId, replyTo);
     const inReplyTo =
       params.preferredInReplyTo?.trim() ||
-      this.pickThreadAnchorMessageId(thread);
+      this.pickInReplyTo(thread, root);
     const references = Array.from(
       new Set(
         [
+          root,
           ...(params.additionalReferences ?? []),
+          ...ancestry,
           params.preferredInReplyTo ?? undefined,
           thread.rootInboundMessageId ?? undefined,
           thread.lastInboundMessageId ?? undefined,
           thread.lastOutboundMessageId ?? undefined,
-        ].filter((value): value is string => Boolean(value?.trim())),
+        ].filter(
+          (value): value is string =>
+            Boolean(value?.trim()) && !isUnroutableMessageId(value),
+        ),
       ),
-    ).slice(0, 20);
+    ).slice(0, MAX_REFERENCES);
 
     return {
       subject: this.formatTicketSubject(
@@ -51,11 +74,59 @@ export class TicketEmailThreadService {
         params.ticketNumber,
       ),
       emailMetadata: {
-        replyTo: this.buildReplyToAddress(thread.replyToken),
+        replyTo,
         inReplyTo: inReplyTo || null,
         references: references.length > 0 ? references : null,
       },
     };
+  }
+
+  /**
+   * Every message id this conversation has really seen, oldest first.
+   *
+   * Recomputed rather than stored. `TicketEmailThread` has no column that could
+   * hold a growing list - every field is a single VarChar(255) - and card 1.33
+   * says stop rather than add one, so this rebuilds the same information from
+   * rows that already exist.
+   *
+   * Two properties matter more than completeness:
+   *  - Only SENT outbox rows count. A queued-but-never-delivered message is
+   *    exactly what used to poison the chain, and it cannot get in here.
+   *  - Anything without a routable domain is dropped, so historic
+   *    `@localhost` ids stop being used as anchors without a data fixup.
+   */
+  private async rebuildAncestry(
+    ticketId: string,
+    replyAddress: string,
+  ): Promise<string[]> {
+    const [inbound, outbound] = await Promise.all([
+      this.prisma.inboundEmailReceipt.findMany({
+        where: { ticketId },
+        orderBy: { createdAt: 'asc' },
+        take: ANCESTRY_LOOKBACK,
+        select: { messageId: true },
+      }),
+      this.prisma.notificationOutbox.findMany({
+        where: { ticketId, status: OutboxStatus.SENT },
+        orderBy: { createdAt: 'asc' },
+        take: ANCESTRY_LOOKBACK,
+        select: { id: true },
+      }),
+    ]);
+    const ids = [
+      ...inbound.map((row) => this.normalizeMessageId(row.messageId)),
+      ...outbound.map((row) => buildOutboundMessageId(row.id, replyAddress)),
+    ];
+    return ids.filter(
+      (id): id is string => Boolean(id) && !isUnroutableMessageId(id),
+    );
+  }
+
+  /** Inbound ids arrive from other people's clients; bracket them if they are bare. */
+  private normalizeMessageId(messageId: string | null | undefined) {
+    const raw = messageId?.trim() ?? '';
+    if (!raw) return '';
+    return raw.startsWith('<') ? raw : `<${raw}>`;
   }
 
   async recordInboundEmail(params: {
@@ -93,6 +164,14 @@ export class TicketEmailThreadService {
     if (!messageId) {
       return;
     }
+    // An id with no routable domain is worse than no id: it gets quoted forever
+    // in every reply and can never be matched. Skip rather than persist it.
+    if (isUnroutableMessageId(messageId)) {
+      this.logger.warn(
+        `Not recording an outbound message id for ticket ${params.ticketId}: no routable reply domain is configured`,
+      );
+      return;
+    }
 
     const updated = await this.prisma.ticketEmailThread.updateMany({
       where: { ticketId: params.ticketId },
@@ -115,35 +194,6 @@ export class TicketEmailThreadService {
       data: {
         lastOutboundMessageId: messageId,
         lastOutboundAt: params.sentAt ?? new Date(),
-      },
-    });
-  }
-
-  async reserveOutboundEmail(params: { ticketId: string; messageId: string }) {
-    const messageId = params.messageId.trim();
-    if (!messageId) {
-      return;
-    }
-
-    const updated = await this.prisma.ticketEmailThread.updateMany({
-      where: { ticketId: params.ticketId },
-      data: {
-        lastOutboundMessageId: messageId,
-      },
-    });
-
-    if (updated.count > 0) {
-      return;
-    }
-
-    const thread = await this.getOrCreateThread(
-      params.ticketId,
-      'Ticket update',
-    );
-    await this.prisma.ticketEmailThread.update({
-      where: { id: thread.id },
-      data: {
-        lastOutboundMessageId: messageId,
       },
     });
   }
@@ -252,23 +302,37 @@ export class TicketEmailThreadService {
     return `${canonicalSubject} [${label}]`;
   }
 
-  private pickThreadAnchorMessageId(thread: {
-    rootInboundMessageId: string | null;
-    lastInboundMessageId: string | null;
-    lastInboundAt: Date | null;
-    lastOutboundMessageId: string | null;
-    lastOutboundAt: Date | null;
-  }) {
-    // Keep the whole ticket anchored to the first inbound message whenever
-    // possible. Outlook-style clients are much more reliable when follow-up
-    // notifications reply to the root thread rather than hopping across the
-    // latest outbound update.
-    return (
-      thread.rootInboundMessageId ??
-      thread.lastInboundMessageId ??
-      thread.lastOutboundMessageId ??
-      undefined
-    );
+  /**
+   * In-Reply-To should name a message the recipient actually holds.
+   *
+   * Their own last inbound message is the safest such thing: they sent it, so
+   * it is in their sent items. Failing that, the synthetic root, which every
+   * email about this ticket references.
+   *
+   * Deliberately NEVER `lastOutboundMessageId`. That field is shared across the
+   * whole ticket while Message-IDs were per recipient, so it usually named
+   * somebody else's copy - which is the fault that made at least one recipient
+   * of every multi-recipient reply unable to thread.
+   */
+  private pickInReplyTo(
+    thread: {
+      rootInboundMessageId: string | null;
+      lastInboundMessageId: string | null;
+    },
+    root: string,
+  ) {
+    const candidates = [
+      thread.lastInboundMessageId,
+      thread.rootInboundMessageId,
+      root,
+    ];
+    for (const candidate of candidates) {
+      const normalized = this.normalizeMessageId(candidate);
+      if (normalized && !isUnroutableMessageId(normalized)) {
+        return normalized;
+      }
+    }
+    return undefined;
   }
 
   private extractEmailAddress(address: string | null | undefined) {

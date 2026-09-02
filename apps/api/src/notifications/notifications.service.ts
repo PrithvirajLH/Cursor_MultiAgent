@@ -4,8 +4,9 @@ import { MessageType, Prisma, TicketStatus, UserRole } from '@prisma/client';
 import type { TicketMessage, User } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
-import { buildOutboundMessageId } from './email-threading.util';
 import { EmailQueueService } from './email-queue.service';
+import { EmailSuppressionService } from './email-suppression.service';
+import { resolveOutboundRecipients } from './outbound-recipients.util';
 import { InAppNotificationsService } from './in-app-notifications.service';
 import {
   type EmailOutboxContent,
@@ -43,6 +44,7 @@ export class NotificationsService {
     private readonly config: ConfigService,
     private readonly inAppNotifications: InAppNotificationsService,
     private readonly ticketEmailThreads: TicketEmailThreadService,
+    private readonly emailSuppression: EmailSuppressionService,
   ) {}
 
   async ticketCreated(ticket: { id: string }, actor: AuthUser) {
@@ -136,43 +138,23 @@ export class NotificationsService {
       excludeEmployees: isInternal,
     });
 
-    const emailContext = await this.buildTicketEmailContext(fullTicket);
-    const subject = isInternal
-      ? `[Ticket ${this.ticketLabel(fullTicket)}] Internal note`
-      : emailContext.subject;
-    const body = isInternal
-      ? [
-          `${actor.email} added an internal note.`,
-          '',
-          message.body,
-          '',
-          `View: ${this.ticketLink(fullTicket.id)}`,
-        ].join('\n')
-      : this.buildPublicReplyTextBody(fullTicket, actor, message.body);
-    const emailContent = isInternal
-      ? undefined
-      : {
-          html: this.buildPublicReplyHtmlBody(fullTicket, actor, message.body),
-        };
-    // Queue email notifications
-    await this.queueEmails(recipients, {
-      eventType: 'MESSAGE_ADDED',
-      subject,
-      body,
-      ticketId: fullTicket.id,
-      payload: {
-        messageId: message.id,
-        type: message.type,
-        // Only messageAdded has a person behind it. The other five queueEmails
-        // call sites are worker- or system-raised and correctly omit this, so
-        // they keep the generic desk identity. An internal note carries the
-        // name too: 1.22 already refuses to address one to the requester, and
-        // staff may as well see who wrote it.
-        ...(agentDisplayName === null ? {} : { agentDisplayName }),
-      },
-      emailMetadata: emailContext.emailMetadata,
-      emailContent,
-    });
+    // An INTERNAL note sends no email, to anybody (card 1.33 section 4.0b).
+    // Staff see it in the ticket conversation and get the in-app notification
+    // raised below, which already has a realtime push and a poll fallback;
+    // email added nothing and cost a great deal - it moved the thread pointer,
+    // so a requester's next email referenced a note they were never sent.
+    // There is deliberately no subject or body built for it here: dead code
+    // that still compiles is how a future card re-enables this by accident.
+    // Card 1.22's refusal stays in place as defence in depth.
+    if (!isInternal) {
+      await this.queuePublicReplyEmail(
+        fullTicket,
+        recipients,
+        message,
+        actor,
+        agentDisplayName,
+      );
+    }
 
     // Create in-app notifications
     const recipientIds = recipients.map((r) => r.id);
@@ -492,6 +474,135 @@ export class NotificationsService {
     return users;
   }
 
+  /**
+   * One public reply, one email: `To:` the requester, `CC:` everyone else.
+   *
+   * This is how a person sends mail, and it removes card 1.33's worst fault at
+   * the root. Previously each recipient got their own outbox row and therefore
+   * their own Message-ID, while the thread pointer was a single shared field -
+   * so the pointer usually named somebody else's copy and at least one
+   * recipient of every multi-recipient reply could never thread.
+   *
+   * Suppressed and out-of-domain addresses are dropped from the CC here, before
+   * the message is composed, rather than failing the send at the transport. One
+   * bad colleague address must not stop the requester hearing back.
+   */
+  private async queuePublicReplyEmail(
+    ticket: {
+      id: string;
+      displayId: string | null;
+      number: number;
+      subject: string;
+      status: TicketStatus;
+      requester?: User | null;
+    },
+    recipients: User[],
+    message: TicketMessage,
+    actor: AuthUser,
+    agentDisplayName: string | null,
+  ) {
+    const requesterEmail = ticket.requester?.email?.trim() ?? '';
+    const candidates = recipients
+      .map((user) => ({
+        address: user.email?.trim() ?? '',
+        userId: user.id,
+        isRequester: Boolean(
+          requesterEmail &&
+            user.email?.trim().toLowerCase() === requesterEmail.toLowerCase(),
+        ),
+      }))
+      .filter((candidate) => candidate.address !== '');
+    if (candidates.length === 0) {
+      return;
+    }
+    const suppressed: string[] = [];
+    for (const candidate of candidates) {
+      if (await this.emailSuppression.isSuppressed(candidate.address)) {
+        suppressed.push(candidate.address);
+      }
+    }
+    const { allowed, refused } = resolveOutboundRecipients({
+      recipients: candidates.map((candidate) => ({
+        address: candidate.address,
+        isRequester: candidate.isRequester,
+      })),
+      messageType: message.type,
+      suppressed,
+    });
+    if (refused.length > 0) {
+      await this.recordRefusedRecipients(ticket.id, refused);
+    }
+    if (allowed.length === 0) {
+      return;
+    }
+    const allowedLower = new Set(
+      allowed.map((address) => address.toLowerCase()),
+    );
+    // The requester takes To. With no requester - an intake ticket whose
+    // requester never resolved - the first surviving CC is promoted, because a
+    // message with an empty To and only CC recipients is a spam signal.
+    const toCandidate =
+      candidates.find(
+        (candidate) =>
+          candidate.isRequester && allowedLower.has(candidate.address.toLowerCase()),
+      ) ??
+      candidates.find((candidate) =>
+        allowedLower.has(candidate.address.toLowerCase()),
+      );
+    if (!toCandidate) {
+      return;
+    }
+    const cc = allowed.filter(
+      (address) => address.toLowerCase() !== toCandidate.address.toLowerCase(),
+    );
+    const emailContext = await this.buildTicketEmailContext(ticket);
+    await this.createAndEnqueueEmail(toCandidate.address, toCandidate.userId, {
+      eventType: 'MESSAGE_ADDED',
+      subject: emailContext.subject,
+      body: this.buildPublicReplyTextBody(ticket, actor, message.body),
+      ticketId: ticket.id,
+      payload: {
+        messageId: message.id,
+        type: message.type,
+        // Only a reply has a person behind it. The five worker- and
+        // system-raised call sites omit this and keep the desk identity.
+        ...(agentDisplayName === null ? {} : { agentDisplayName }),
+      },
+      emailMetadata: { ...emailContext.emailMetadata, cc },
+      emailContent: {
+        html: this.buildPublicReplyHtmlBody(ticket, actor, message.body),
+      },
+    });
+  }
+
+  /**
+   * Say on the ticket that someone did not receive the reply.
+   *
+   * The guard returns its refusals rather than dropping them precisely so an
+   * agent can see this. Addresses go in the event payload, which is what an
+   * agent reads - not into the log, per the logging rules.
+   */
+  private async recordRefusedRecipients(
+    ticketId: string,
+    refused: { address: string; reason: string }[],
+  ) {
+    await this.prisma.ticketEvent
+      .create({
+        data: {
+          ticketId,
+          type: 'EMAIL_RECIPIENT_REFUSED',
+          payload: { refused },
+          createdById: null,
+        },
+      })
+      .catch((error) =>
+        this.logger.error(
+          'Failed to record refused email recipients',
+          (error as Error).stack,
+        ),
+      );
+  }
+
   private async queueEmails(recipients: User[], details: QueuedEmailDetails) {
     const tasks = recipients.map((user) =>
       this.queueEmail(user, details).catch((error) => {
@@ -538,27 +649,12 @@ export class NotificationsService {
       emailContent: this.resolveEmailContent(details),
     });
 
-    await this.reserveTicketEmailThread(details, outbox.id);
+    // Deliberately nothing here about the thread pointer. It used to be
+    // reserved at this point, on INTENT: a row that then failed to send left
+    // the whole ticket referencing a message nobody ever received. Only
+    // recordOutboundEmail writes it now, after markSent. The thread row itself
+    // is created earlier, by buildOutboundEmailContext.
     await this.emailQueue.enqueue(outbox.id);
-  }
-
-  private async reserveTicketEmailThread(
-    details: QueuedEmailDetails,
-    outboxId: string,
-  ) {
-    if (!details.ticketId) {
-      return;
-    }
-
-    const replyTo =
-      details.emailMetadata?.replyTo ??
-      this.ticketEmailThreads.getBaseReplyToAddress();
-    const messageId = buildOutboundMessageId(outboxId, replyTo);
-
-    await this.ticketEmailThreads.reserveOutboundEmail({
-      ticketId: details.ticketId,
-      messageId,
-    });
   }
 
   private buildTicketEmailContext(ticket: {

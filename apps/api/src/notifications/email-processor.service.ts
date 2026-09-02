@@ -30,6 +30,11 @@ function getEmailMetadata(payload: unknown) {
           typeof value === 'string' && value.length > 0,
       )
     : undefined;
+  const cc = Array.isArray(email.cc)
+    ? email.cc.filter(
+        (value): value is string => typeof value === 'string' && value !== '',
+      )
+    : undefined;
   const html = typeof content.html === 'string' ? content.html : undefined;
   // Card 1.31: the agent's name rides on the event half of the envelope, put
   // there by NotificationsService.messageAdded. Absent for every other event,
@@ -41,7 +46,7 @@ function getEmailMetadata(payload: unknown) {
       ? event.agentDisplayName
       : undefined;
 
-  return { replyTo, inReplyTo, references, html, agentDisplayName };
+  return { replyTo, inReplyTo, references, cc, html, agentDisplayName };
 }
 
 @Injectable()
@@ -73,6 +78,7 @@ export class EmailProcessorService {
         subject: record.subject,
         text: record.body,
         html: metadata.html,
+        cc: metadata.cc,
         agentDisplayName: metadata.agentDisplayName,
         replyTo,
         messageId,

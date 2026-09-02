@@ -128,12 +128,13 @@ describe('Outbound From identity', () => {
     }
   });
 
-  it('names the writer of an internal note as well', async () => {
-    // 1.22 already refuses to address an internal note to the requester, and
-    // staff may as well see who wrote it.
+  it('queues no email at all for an internal note', async () => {
+    // REPLACES a card 1.31 test that asserted an internal note carried the
+    // writer's name. Card 1.33 section 4.0b removed the email entirely: staff
+    // read the note in the ticket and get the in-app notification, and an
+    // internal note that queued email is what used to move the thread pointer
+    // so a requester's next email referenced a note they never received.
     const ticket = await createTicket(fixtureTeamIds.it);
-    // An internal note excludes EMPLOYEEs, so without a staff recipient there
-    // would be no row at all and the assertion below would pass vacuously.
     await request(server)
       .post(`/api/tickets/${ticket.id}/assign`)
       .set(authHeader(fixtureEmails.lead))
@@ -144,10 +145,6 @@ describe('Outbound From identity', () => {
       .set(authHeader(fixtureEmails.owner))
       .send({ body: 'Internal: checking with the vendor.', type: 'INTERNAL' })
       .expect(201);
-    const rows = await messageRows(ticket.id);
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(queuedAgentName(row.payload)).toBe(ownerDisplayName);
-    }
+    expect(await messageRows(ticket.id)).toHaveLength(0);
   });
 });

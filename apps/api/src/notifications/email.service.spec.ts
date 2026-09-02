@@ -37,16 +37,24 @@ function buildService(): EmailService {
 function lastCall() {
   return sendMail.mock.calls[sendMail.mock.calls.length - 1][0] as {
     to: string[];
+    cc?: string[];
     text: string;
     html?: string;
   };
 }
 
-/** Every recipient the transport was ever handed, flattened. */
+/**
+ * Every recipient the transport was ever handed, To and CC alike.
+ *
+ * Card 1.22's invariant test read only `to`. Once a public reply grew a CC
+ * (card 1.33) that would have passed while leaking an intended address into
+ * the CC field, so it reads both.
+ */
 function everyRecipientEverSent(): string[] {
-  return sendMail.mock.calls.flatMap(
-    (call) => (call[0] as { to: string[] }).to,
-  );
+  return sendMail.mock.calls.flatMap((call) => {
+    const message = call[0] as { to: string[]; cc?: string[] };
+    return [...message.to, ...(message.cc ?? [])];
+  });
 }
 
 describe('EmailService', () => {
@@ -114,12 +122,74 @@ describe('EmailService', () => {
     ];
     for (const to of intendedAddresses) {
       await service.sendEmail({ to, subject: 'Ticket update', text: 'Hello' });
+      // ...and again with a CC list, which is the field card 1.33 added.
+      await service.sendEmail({
+        to,
+        cc: ['follower@csnhc.com', 'assignee@csnhc.com'],
+        subject: 'Ticket update',
+        text: 'Hello',
+      });
     }
     const sent = everyRecipientEverSent().map((address) => address.toLowerCase());
     expect(sent.length).toBeGreaterThan(0);
     for (const address of sent) {
       expect(['operator@csnhc.com', 'second@csnhc.com']).toContain(address);
     }
+  });
+
+  it('sends one email with a To and a CC rather than one each', async () => {
+    await buildService().sendEmail({
+      to: 'sarah.chen@csnhc.com',
+      cc: ['follower@csnhc.com', 'assignee@csnhc.com'],
+      subject: 'Ticket update',
+      text: 'Hello',
+    });
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    const call = lastCall();
+    expect(call.to).toEqual(['sarah.chen@csnhc.com']);
+    expect(call.cc).toEqual(['follower@csnhc.com', 'assignee@csnhc.com']);
+  });
+
+  it('drops a refused CC address without failing the message', async () => {
+    // One bad colleague address must not stop the requester hearing back.
+    await buildService().sendEmail({
+      to: 'sarah.chen@csnhc.com',
+      cc: ['follower@csnhc.com', 'outsider@gmail.com', 'no-reply@csnhc.com'],
+      subject: 'Ticket update',
+      text: 'Hello',
+    });
+    const call = lastCall();
+    expect(call.to).toEqual(['sarah.chen@csnhc.com']);
+    expect(call.cc).toEqual(['follower@csnhc.com']);
+  });
+
+  it('promotes a CC address to To when the To itself was refused', async () => {
+    // An empty To with only CC recipients is a spam signal.
+    await buildService().sendEmail({
+      to: 'outsider@gmail.com',
+      cc: ['follower@csnhc.com', 'assignee@csnhc.com'],
+      subject: 'Ticket update',
+      text: 'Hello',
+    });
+    const call = lastCall();
+    expect(call.to).toEqual(['follower@csnhc.com']);
+    expect(call.cc).toEqual(['assignee@csnhc.com']);
+  });
+
+  it('empties the CC in pilot mode so nothing intended can ride along', async () => {
+    process.env.EMAIL_TEST_RECIPIENTS = 'operator@csnhc.com';
+    await buildService().sendEmail({
+      to: 'sarah.chen@csnhc.com',
+      cc: ['follower@csnhc.com', 'assignee@csnhc.com'],
+      subject: 'Ticket update',
+      text: 'Hello',
+    });
+    const call = lastCall();
+    expect(call.to).toEqual(['operator@csnhc.com']);
+    expect(call.cc).toBeUndefined();
+    // The pilot note still names everyone it would have reached.
+    expect(call.text).toContain('sarah.chen@csnhc.com');
+    expect(call.text).toContain('follower@csnhc.com');
   });
 
   it('refuses to send when every recipient is outside the allowed domains', async () => {

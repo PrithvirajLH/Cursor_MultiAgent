@@ -43,6 +43,11 @@ process.env.NOTIFICATIONS_QUEUE_ENABLED = 'false';
 process.env.SLA_BREACH_WORKER_ENABLED = 'false';
 process.env.AUTH_ALLOW_INSECURE_HEADERS = 'true';
 process.env.TEST_DB_RESET_STRATEGY = 'migrate';
+// Card 1.33 moved the domain allowlist from send time to compose time, so an
+// out-of-domain recipient is now dropped before an email is queued at all.
+// Every fixture user lives on company.com, so without this the suite would
+// queue nothing and any assertion about an outbound email would pass vacuously.
+process.env.EMAIL_ALLOWED_DOMAINS = 'company.com';
 
 // ---------------------------------------------------------------------------
 // Make the test environment hermetic against the dev `.env`.

@@ -1,6 +1,5 @@
 import { ConfigService } from '@nestjs/config';
 import { EmailQueueService } from './email-queue.service';
-import { buildOutboundMessageId } from './email-threading.util';
 import { InAppNotificationsService } from './in-app-notifications.service';
 import { NotificationsService } from './notifications.service';
 import { OutboxService } from './outbox.service';
@@ -16,13 +15,13 @@ type MockEmailQueue = Pick<EmailQueueService, 'enqueue'> & {
 
 type MockTicketEmailThreads = Pick<
   TicketEmailThreadService,
-  'getBaseReplyToAddress' | 'reserveOutboundEmail'
+  'getBaseReplyToAddress' | 'recordOutboundEmail'
 > & {
   getBaseReplyToAddress: jest.MockedFunction<
     TicketEmailThreadService['getBaseReplyToAddress']
   >;
-  reserveOutboundEmail: jest.MockedFunction<
-    TicketEmailThreadService['reserveOutboundEmail']
+  recordOutboundEmail: jest.MockedFunction<
+    TicketEmailThreadService['recordOutboundEmail']
   >;
 };
 
@@ -46,7 +45,7 @@ describe('NotificationsService', () => {
     };
     ticketEmailThreads = {
       getBaseReplyToAddress: jest.fn(),
-      reserveOutboundEmail: jest.fn(),
+      recordOutboundEmail: jest.fn(),
     };
     config = {
       get: jest.fn(),
@@ -69,15 +68,21 @@ describe('NotificationsService', () => {
       config as unknown as ConfigService,
       {} as InAppNotificationsService,
       ticketEmailThreads as unknown as TicketEmailThreadService,
+      // Card 1.33: a public reply drops suppressed addresses before composing.
+      { isSuppressed: jest.fn().mockResolvedValue(false) } as never,
     );
   });
 
-  it('reserves the outbound thread anchor before enqueueing a ticket email', async () => {
+  it('writes no thread pointer when it queues an email', async () => {
+    // This replaces a test that asserted the opposite - that the pointer was
+    // reserved BEFORE the send was attempted. That was the bug, not the
+    // behaviour: a row that then failed to send left the whole ticket
+    // referencing a message that reached nobody (card 1.33, fault 1). Only
+    // recordOutboundEmail may write it, and only after markSent.
     outbox.createEmail.mockResolvedValue({
       id: 'outbox-1',
     } as Awaited<ReturnType<OutboxService['createEmail']>>);
     emailQueue.enqueue.mockResolvedValue(undefined);
-    ticketEmailThreads.reserveOutboundEmail.mockResolvedValue(undefined);
 
     await service.notifyAddresses(['requester@example.com'], {
       eventType: 'TICKET_STATUS_CHANGED',
@@ -96,16 +101,7 @@ describe('NotificationsService', () => {
         eventType: 'TICKET_STATUS_CHANGED',
       }),
     );
-    expect(ticketEmailThreads.reserveOutboundEmail).toHaveBeenCalledWith({
-      ticketId: 'ticket-1',
-      messageId: buildOutboundMessageId(
-        'outbox-1',
-        'support+ticket-abc123@example.com',
-      ),
-    });
     expect(emailQueue.enqueue).toHaveBeenCalledWith('outbox-1');
-    expect(
-      ticketEmailThreads.reserveOutboundEmail.mock.invocationCallOrder[0],
-    ).toBeLessThan(emailQueue.enqueue.mock.invocationCallOrder[0]);
+    expect(ticketEmailThreads.recordOutboundEmail).not.toHaveBeenCalled();
   });
 });

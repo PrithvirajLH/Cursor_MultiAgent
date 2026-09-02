@@ -144,6 +144,90 @@ The address goes in the body rather than the path because an email address in a
 URL segment is an encoding trap. Clearing deletes the row outright rather than
 zeroing a counter, so a fresh failure starts from scratch.
 
+## One ticket, one conversation
+
+Every email about a ticket references the same synthetic root id:
+
+    <ticket.{replyToken}@{sending domain}>
+
+It is **derived, never stored** - from the `replyToken` the thread row already
+has. That is the whole trick, and it is worth understanding why, because four
+separate faults were fixed by it rather than by tracking the anchor more
+carefully.
+
+**What was wrong.** The thread pointer (`lastOutboundMessageId`) was written
+when an email was *queued*, not when it was *delivered*. A message queued while
+SMTP was off still advanced the pointer, so every later email quoted a message
+that existed in nobody's mailbox. Worse, each recipient used to get their own
+outbox row and therefore their own `Message-ID`, while the pointer was a single
+shared field - so it usually named somebody else's copy, and with two
+recipients at least one of them could never thread. An internal note moved the
+same pointer, so a requester's next email referenced a note they were never
+sent. And `References` was composed from a fixed set rather than accumulating,
+so there was no fallback ancestry to survive any of it.
+
+**What holds now:**
+
+- **A derived root cannot go stale.** Nothing records it, so a failed send
+  cannot poison it, and an internal note cannot move it.
+- **`References` accumulates**, root first so the 20-item cap can never drop
+  it, then the real ancestry - rebuilt from inbound receipts and outbox rows
+  that are actually `SENT`. A queued-but-never-delivered message cannot get in.
+  A client matching on any one id in the list still threads.
+- **`In-Reply-To` names something the recipient actually holds**: their own last
+  inbound message, else the root. Never a shared outbound id.
+- **No `@localhost` id is ever emitted or persisted.** When no reply domain is
+  configured the id is recognised as unroutable and skipped, rather than being
+  written into a header that is quoted forever.
+
+**One caveat, stated plainly:** the root's domain comes from the configured
+reply address, so if the sending domain ever changes, threads break at that
+boundary. Rare, acceptable, and softened by the accumulating `References`.
+
+Existing `@localhost` values from before this fix are left in the table. They
+simply stop being used as anchors; there is no cleanup script, because the data
+no longer matters.
+
+## A public reply is one email
+
+`To:` the requester, `CC:` everyone else who should see it - followers, the
+assignee, looped-in colleagues. Not one email each. This is how a person sends
+mail, and it removes the per-recipient `Message-ID` divergence at the root.
+
+Three things follow:
+
+- **CC is public.** Every recipient sees every other address. Recipients are
+  internal-only (`EMAIL_ALLOWED_DOMAINS`), which is what makes that acceptable -
+  but it is worth knowing before anyone widens that list.
+- **Suppressed and out-of-domain addresses are dropped before the message is
+  composed**, not at the transport, and the refusal is recorded on the ticket as
+  an `EMAIL_RECIPIENT_REFUSED` event. One bad colleague address must not stop
+  the requester hearing back. A consequence: if the *whole* recipient list is
+  out of domain, no email is queued at all - previously a row was queued and
+  then refused at send.
+- **Bounce attribution is fuzzier.** A bounce for a message with four
+  recipients no longer names one person. The suppression row still records the
+  address the server rejected when it names one; where it does not, we know the
+  message bounced but not for whom.
+
+## An internal note sends no email
+
+Staff read it in the ticket, and it raises an in-app notification with a
+realtime push and a poll fallback. Email added nothing and cost the thread
+pointer.
+
+The trade-off, accepted: an agent who is not logged in learns of an internal
+note when they next open the app. That is right for a colleague-to-colleague
+note on a ticket someone is already working, and it is consistent with mentions,
+which have never queued email either.
+
+Card 1.22's refusal to address an internal note to the requester **stays in
+place**, tests and all. Nothing composes one as an email any more, so the guard
+is now structural rather than defensive - but it is what would catch a future
+card wiring this back up.
+
+---
+
 ## Who the email comes from
 
 A reply from an agent goes out as:

@@ -14,6 +14,13 @@ export type EmailOutboxMetadata = {
   replyTo?: string | null;
   inReplyTo?: string | null;
   references?: string[] | null;
+  /**
+   * Everyone else on a public reply (card 1.33). Carried in the payload
+   * envelope rather than a column: NotificationOutbox has no `cc` field and
+   * this card adds no migration, and the envelope already carries the other
+   * per-message headers.
+   */
+  cc?: string[] | null;
 };
 
 export type EmailOutboxContent = {
@@ -258,6 +265,9 @@ export class OutboxService {
 
     if (emailMetadata) {
       const email: Record<string, Prisma.InputJsonValue> = {};
+      if (emailMetadata.cc && emailMetadata.cc.length > 0) {
+        email.cc = emailMetadata.cc;
+      }
       if (emailMetadata.replyTo) {
         email.replyTo = emailMetadata.replyTo;
       }

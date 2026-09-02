@@ -3,7 +3,10 @@ import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
 import { TicketEmailThreadService } from '../../src/notifications/ticket-email-thread.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { buildOutboundMessageId } from '../../src/notifications/email-threading.util';
+import {
+  buildOutboundMessageId,
+  buildTicketRootMessageId,
+} from '../../src/notifications/email-threading.util';
 import {
   fixtureEmails,
   fixtureTeamIds,
@@ -318,12 +321,17 @@ describe('Inbound email ingestion', () => {
     const transferHtml = getOutboxHtml(transferOutbox?.payload);
     const statusHtml = getOutboxHtml(statusOutbox?.payload);
 
-    expect(transferMetadata.inReplyTo).toBe(inboundMessageId);
-    expect(statusMetadata.inReplyTo).toBe(inboundMessageId);
-    expect(replyMetadata.inReplyTo).toBe(inboundMessageId);
-    expect(transferMetadata.references).toContain(inboundMessageId);
-    expect(statusMetadata.references).toContain(inboundMessageId);
-    expect(replyMetadata.references).toContain(inboundMessageId);
+    // Card 1.33 brackets composed msg-ids. RFC 5322 requires
+    // `msg-id = "<" id-left "@" id-right ">"`, and this webhook payload
+    // supplies the id bare; emitting it bare was malformed and could fail a
+    // strict client's matching. The STORED value is unchanged.
+    const bracketed = `<${inboundMessageId}>`;
+    expect(transferMetadata.inReplyTo).toBe(bracketed);
+    expect(statusMetadata.inReplyTo).toBe(bracketed);
+    expect(replyMetadata.inReplyTo).toBe(bracketed);
+    expect(transferMetadata.references).toContain(bracketed);
+    expect(statusMetadata.references).toContain(bracketed);
+    expect(replyMetadata.references).toContain(bracketed);
 
     const transferMessageId = buildOutboundMessageId(
       transferOutbox!.id,
@@ -382,16 +390,15 @@ describe('Inbound email ingestion', () => {
       .send({ status: 'RESOLVED' })
       .expect(201);
 
-    // A single transition fans out a notification to EVERY recipient (here the
-    // requester AND the assigned agent). queueEmails reserves the thread anchor
-    // for each recipient in parallel (Promise.all), so the
-    // thread.lastOutboundMessageId that the NEXT transition threads against is
-    // whichever recipient's reservation happened to land last — it is NOT
-    // guaranteed to be the requester's copy. The two copies for a given step
-    // share the same outbound message-id candidates, so assert that the next
-    // step replies to ONE of the prior step's notifications rather than
-    // hard-coding the requester's copy (which made this test depend on a
-    // nondeterministic reservation race — see FLAG in the report).
+    // REWRITTEN BY CARD 1.33. This test used to assert that each step's
+    // In-Reply-To named one of the PREVIOUS step's outbound message ids, and
+    // its own comment described the mechanism as "a nondeterministic
+    // reservation race". That race was the bug: one shared
+    // thread.lastOutboundMessageId while Message-IDs were per recipient, so
+    // the pointer usually named somebody else's copy and at least one
+    // recipient could never thread. The contract now is the opposite - every
+    // notification about a ticket carries the same synthetic root, and
+    // In-Reply-To never names a shared outbound id.
     const statusOutbox = await prisma.notificationOutbox.findMany({
       where: {
         ticketId: created.id,
@@ -437,15 +444,28 @@ describe('Inbound email ingestion', () => {
 
     expect(reopenedMetadata.replyTo).toMatch(expectedReplyToPattern());
     expect(resolvedMetadata.replyTo).toMatch(expectedReplyToPattern());
-    // Each step threads onto one of the immediately-preceding step's messages.
-    expect(closedMessageIds).toContain(reopenedMetadata.inReplyTo);
-    expect(reopenedMetadata.references ?? []).toEqual(
-      expect.arrayContaining([reopenedMetadata.inReplyTo]),
+    // Every step references the one stable root, so they all land in one
+    // conversation regardless of which recipient's copy went out when.
+    const thread = await prisma.ticketEmailThread.findUnique({
+      where: { ticketId: created.id },
+      select: { replyToken: true },
+    });
+    const root = buildTicketRootMessageId(
+      thread?.replyToken ?? '',
+      reopenedMetadata.replyTo,
     );
-    expect(reopenedMessageIds).toContain(resolvedMetadata.inReplyTo);
-    expect(resolvedMetadata.references ?? []).toEqual(
-      expect.arrayContaining([resolvedMetadata.inReplyTo]),
-    );
+    expect(reopenedMetadata.references?.[0]).toBe(root);
+    expect(resolvedMetadata.references?.[0]).toBe(root);
+    // And In-Reply-To is never one of those per-recipient outbound ids.
+    expect(closedMessageIds).not.toContain(reopenedMetadata.inReplyTo);
+    expect(reopenedMessageIds).not.toContain(resolvedMetadata.inReplyTo);
+    // Nothing unroutable is ever emitted.
+    for (const metadata of [reopenedMetadata, resolvedMetadata]) {
+      expect(metadata.inReplyTo ?? '').not.toContain('@localhost');
+      expect(
+        (metadata.references ?? []).some((id) => id.includes('@localhost')),
+      ).toBe(false);
+    }
   });
 
   it('ingests inbound attachments for a newly created EMAIL ticket', async () => {

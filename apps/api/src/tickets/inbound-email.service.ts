@@ -17,7 +17,10 @@ import {
 } from '@prisma/client';
 import { timingSafeEqual, randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
-import { extractOutboxIdsFromThreadHeaders } from '../notifications/email-threading.util';
+import {
+  extractOutboxIdsFromThreadHeaders,
+  extractReplyTokensFromThreadHeaders,
+} from '../notifications/email-threading.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { isAutomatedEmail } from './auto-reply.util';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
@@ -681,6 +684,33 @@ export class InboundEmailService {
         return {
           ticketId,
           threadedByReplyToken: replyToken,
+          threadedByDisplayId: null,
+          threadedByOutboxId: null,
+        };
+      }
+    }
+
+    // Card 1.33: every outbound email references <ticket.{replyToken}@domain>.
+    // A reply that quotes only that root still has to land on the right ticket,
+    // and the outbox-id matcher below cannot see it - it only matches
+    // `outbox.<uuid>`. Checked before the outbox ids because the root is the
+    // one id guaranteed to be present.
+    const headerTokens = extractReplyTokensFromThreadHeaders(
+      inReplyTo,
+      references,
+    );
+    if (headerTokens.length > 0) {
+      const thread = await this.prisma.ticketEmailThread.findFirst({
+        where: {
+          replyToken: { in: headerTokens },
+          ticket: { deletedAt: null },
+        },
+        select: { ticketId: true, replyToken: true },
+      });
+      if (thread) {
+        return {
+          ticketId: thread.ticketId,
+          threadedByReplyToken: thread.replyToken,
           threadedByDisplayId: null,
           threadedByOutboxId: null,
         };
