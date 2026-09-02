@@ -1,3 +1,4 @@
+import type { OutboxCounts } from '../notifications/outbox.service';
 import type { JobKey } from './job-key.const';
 
 /**
@@ -49,4 +50,6 @@ export type OperationsSnapshot = {
   switches: OperationsSwitch[] | null;
   dataIn: OperationsDataIn[] | null;
   jobs: OperationsJobRow[];
+  /** Email outbox depth (card 1.32). Numbers only; null if unreadable. */
+  outbox: OutboxCounts | null;
 };

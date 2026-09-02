@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { EmailProcessorService } from './email-processor.service';
+import { EmailOutboxSweeperService } from './email-outbox-sweeper.service';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
 import { EmailService } from './email.service';
@@ -23,6 +24,7 @@ import { TicketEmailThreadService } from './ticket-email-thread.service';
     EmailProcessorService,
     EmailQueueService,
     EmailSuppressionService,
+    EmailOutboxSweeperService,
   ],
   exports: [
     NotificationsService,
@@ -31,6 +33,9 @@ import { TicketEmailThreadService } from './ticket-email-thread.service';
     EmailService,
     EmailQueueService,
     EmailSuppressionService,
+    EmailOutboxSweeperService,
+    // Readiness and the operations console both read outbox depth (card 1.32).
+    OutboxService,
   ],
 })
 export class NotificationsModule {}

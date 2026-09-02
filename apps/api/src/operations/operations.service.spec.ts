@@ -31,6 +31,8 @@ type Overrides = {
   retentionRunOnce?: jest.Mock;
   schedulerRunOnce?: jest.Mock;
   slaRunOnce?: jest.Mock;
+  sweeperRunOnce?: jest.Mock;
+  outboxCounts?: jest.Mock;
 };
 
 function makeService(overrides: Overrides = {}) {
@@ -70,6 +72,32 @@ function makeService(overrides: Overrides = {}) {
       overrides.schedulerRunOnce ??
       jest.fn().mockResolvedValue({ ticketsEnqueued: 0 }),
   };
+  const outboxSweeper = {
+    getPolicy: () => ({ enabled: true, intervalMs: 60_000, batchSize: 20 }),
+    getRunState: () => ({
+      lastRunAt: null,
+      lastRunOk: null,
+      lastSummary: null,
+    }),
+    runOnce:
+      overrides.sweeperRunOnce ??
+      jest.fn().mockResolvedValue({
+        ranAt: '2026-09-02T10:00:00.000Z',
+        ok: true,
+        reclaimed: 0,
+        exhausted: 0,
+        retried: 0,
+        sent: 0,
+        failed: 0,
+      }),
+  };
+  const outbox = {
+    counts:
+      overrides.outboxCounts ??
+      jest
+        .fn()
+        .mockResolvedValue({ pending: 2, processing: 0, sent: 7, failed: 1 }),
+  };
   const health = {
     readiness: overrides.readiness ?? (() => Promise.resolve(READINESS)),
   };
@@ -78,21 +106,25 @@ function makeService(overrides: Overrides = {}) {
     slaBreach as never,
     retention as never,
     scheduler as never,
+    outboxSweeper as never,
+    outbox as never,
     new ConfigService({
       INTAKE_API_SECRET: 'set',
       SLA_BREACH_INTERVAL_MS: '60000',
     }),
   );
-  return { service, slaBreach, retention, scheduler };
+  return { service, slaBreach, retention, scheduler, outboxSweeper, outbox };
 }
 
 describe('OperationsService.snapshot', () => {
-  it('reports the three jobs, the switches and where tickets arrive from', async () => {
+  it('reports the four jobs, the switches and where tickets arrive from', async () => {
     const { service } = makeService();
     const snapshot = await service.snapshot();
     expect(snapshot.jobs.map((job) => job.key)).toEqual([
       'sla-breach',
       'retention',
+      // Card 1.32 added the sweeper between retention and the scheduler.
+      'email-outbox',
       'automation-scheduler',
     ]);
     expect(snapshot.switches?.map((row) => row.key)).toEqual(
@@ -136,7 +168,7 @@ describe('OperationsService.snapshot', () => {
       readiness: () => Promise.reject(new Error('redis down')),
     });
     const snapshot = await service.snapshot();
-    expect(snapshot.jobs).toHaveLength(3);
+    expect(snapshot.jobs).toHaveLength(4);
     // The switch group keeps the three worker rows readiness does not own.
     expect(snapshot.switches?.map((row) => row.key)).toEqual([
       'retention',
@@ -158,7 +190,7 @@ describe('OperationsService.snapshot', () => {
       lastRunAt: null,
       nextRunAt: null,
     });
-    expect(snapshot.jobs).toHaveLength(3);
+    expect(snapshot.jobs).toHaveLength(4);
   });
 });
 

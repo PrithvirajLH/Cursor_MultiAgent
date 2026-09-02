@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { EmailQueueService } from '../notifications/email-queue.service';
 import { EmailService } from '../notifications/email.service';
+import { OutboxService } from '../notifications/outbox.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SlaBreachService } from '../slas/sla-breach.service';
@@ -22,6 +23,7 @@ export class HealthService {
     private readonly realtime: RealtimeService,
     private readonly attachments: TicketAttachmentService,
     private readonly slaBreach: SlaBreachService,
+    private readonly outbox: OutboxService,
   ) {}
 
   /** Live state of every optional integration. States only, never values. */
@@ -43,7 +45,17 @@ export class HealthService {
       attachmentScanner: this.scannerState(),
       aiPipeline: this.aiState(),
       slaWorker: this.slaBreach.getWorkerState(),
+      outbox: await this.outboxCounts(),
     };
+  }
+
+  /** Numbers only, and never at the cost of the whole readiness report. */
+  private async outboxCounts() {
+    try {
+      return await this.outbox.counts();
+    } catch {
+      return null;
+    }
   }
 
   private async checkDatabase(): Promise<'ok' | 'error'> {

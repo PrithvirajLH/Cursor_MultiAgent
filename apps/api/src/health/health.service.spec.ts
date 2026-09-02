@@ -55,6 +55,11 @@ function build(env: Record<string, string>, dbOk = true) {
         lastRunOk: null,
       }),
     },
+    // Card 1.32: readiness now reports outbox depth.
+    outbox: {
+      counts: () =>
+        Promise.resolve({ pending: 0, processing: 0, sent: 0, failed: 0 }),
+    },
   };
   return new HealthService(
     new ConfigService(env),
@@ -65,6 +70,7 @@ function build(env: Record<string, string>, dbOk = true) {
     deps.realtime as never,
     deps.attachments as never,
     deps.slaBreach as never,
+    deps.outbox as never,
   );
 }
 

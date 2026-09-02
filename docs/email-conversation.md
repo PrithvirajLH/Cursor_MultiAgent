@@ -144,6 +144,51 @@ The address goes in the body rather than the path because an email address in a
 URL segment is an encoding trap. Clearing deletes the row outright rather than
 zeroing a counter, so a fresh failure starts from scratch.
 
+## The outbox sweeper
+
+Queued email lives in `NotificationOutbox`. It is attempted once, when it is
+queued, and `markFailed` puts the row back to `PENDING` for a retry — but the
+only things that call the processor are the BullMQ worker and that one inline
+call, and **Redis is off in production**. So before card 1.32 the retry ladder
+was fully written and never climbed: a transient failure left a row sitting at
+`PENDING` forever and nobody was told.
+
+The sweeper is the thing that climbs it. Every 60 seconds it:
+
+1. **Reclaims abandoned rows.** `claimPending` moves a row to `PROCESSING`; a
+   process that dies before finishing leaves it there in a status nothing looks
+   at. Anything `PROCESSING` for more than 10 minutes goes back to `PENDING` —
+   or to `FAILED` if it has already used its five attempts, rather than looping.
+2. **Retries up to 20 `PENDING` rows** that have attempts left, oldest first, by
+   calling the same processor the queue calls. It does not reimplement sending.
+
+**It never touches a `FAILED` row.** A row reaches `FAILED` either by exhausting
+its attempts or because the failure was terminal — `SMTP not configured`, or a
+suppressed address. Retrying those would send mail somebody decided should not
+be sent.
+
+The summary it reports (`reclaimed`, `exhausted`, `retried`, `sent`, `failed`,
+`stillPending`) is read from the rows afterwards, not from what the processor
+returned: the processor returns normally in cases where nothing was actually
+sent, so counting its return values would report sends that never happened.
+
+**Where to look.** `Admin → Operations` shows outbox depth — waiting, in flight,
+sent, given up — and lists the sweeper as a fourth job with **Run now**. The same
+counts are on `GET /api/health/ready` as `outbox`. Numbers only: no address, no
+subject, no body.
+
+One thing worth remembering: the sweeper runs while the pilot switch is on, so
+anything it retries goes to the pilot list. It is also the thing that will send
+the accumulated backlog the moment `EMAIL_TEST_RECIPIENTS` is cleared.
+
+| Name | Default | Notes |
+|---|---|---|
+| `EMAIL_OUTBOX_SWEEP_ENABLED` | `true` | Only the literal `false` turns it off. |
+| `EMAIL_OUTBOX_SWEEP_INTERVAL_MS` | `60000` | |
+| `EMAIL_OUTBOX_SWEEP_BATCH` | `20` | Rows per tick. |
+
+---
+
 ## Known gaps, deliberately left
 
 - **Bounces are only learned synchronously.** A suppression row is written when

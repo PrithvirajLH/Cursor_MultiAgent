@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AutomationSchedulerService } from '../automation/automation-scheduler.service';
+import { EmailOutboxSweeperService } from '../notifications/email-outbox-sweeper.service';
+import { OutboxService } from '../notifications/outbox.service';
 import { HealthService } from '../health/health.service';
 import { RetentionService } from '../retention/retention.service';
 import { SlaBreachService } from '../slas/sla-breach.service';
@@ -39,6 +41,8 @@ export class OperationsService {
     private readonly slaBreach: SlaBreachService,
     private readonly retention: RetentionService,
     private readonly scheduler: AutomationSchedulerService,
+    private readonly outboxSweeper: EmailOutboxSweeperService,
+    private readonly outbox: OutboxService,
     private readonly config: ConfigService,
   ) {}
 
@@ -50,7 +54,21 @@ export class OperationsService {
       switches: this.buildSwitches(readiness),
       dataIn: this.buildDataIn(),
       jobs: this.buildJobs(),
+      outbox: await this.readOutboxCounts(),
     };
+  }
+
+  /** Same defensive shape as the rest of the snapshot: a failure is null, not a 500. */
+  private async readOutboxCounts() {
+    try {
+      return await this.outbox.counts();
+    } catch (error) {
+      this.logger.error(
+        'Outbox counts unavailable for the operations snapshot',
+        (error as Error).stack,
+      );
+      return null;
+    }
   }
 
   /** Run one job now. Throws only when the job itself throws. */
@@ -81,6 +99,9 @@ export class OperationsService {
     }
     if (key === 'retention') {
       return this.toRecord(await this.retention.runOnce());
+    }
+    if (key === 'email-outbox') {
+      return this.toRecord(await this.outboxSweeper.runOnce());
     }
     return this.toRecord(await this.scheduler.runOnce());
   }
@@ -241,6 +262,22 @@ export class OperationsService {
         () => {
           const policy = this.retention.getPolicy();
           const state = this.retention.getRunState();
+          return {
+            enabled: policy.enabled,
+            intervalMs: policy.intervalMs,
+            lastRunAt: state.lastRunAt,
+            lastRunOk: state.lastRunOk,
+            lastSummary: state.lastSummary as Record<string, unknown> | null,
+          };
+        },
+      ),
+      this.jobRow(
+        'email-outbox',
+        'Email outbox sweeper',
+        'Retries queued email that failed, and reclaims rows abandoned mid-send.',
+        () => {
+          const policy = this.outboxSweeper.getPolicy();
+          const state = this.outboxSweeper.getRunState();
           return {
             enabled: policy.enabled,
             intervalMs: policy.intervalMs,

@@ -9,6 +9,7 @@ import {
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { JobsTable } from "../components/operations/JobsTable";
+import { StatCard } from "../components/ui/StatCard";
 import { SwitchCard } from "../components/operations/SwitchCard";
 import { TopBar } from "../components/TopBar";
 import { useHeaderContext } from "../contexts/HeaderContext";
@@ -193,6 +194,41 @@ export function OperationsPage() {
                 </p>
               )}
             </section>
+
+            {snapshot.outbox ? (
+              <section className="flex flex-col gap-3">
+                <h2 className={EYEBROW}>Email outbox</h2>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <StatCard
+                    label="Waiting"
+                    value={snapshot.outbox.pending}
+                    tone={snapshot.outbox.pending > 0 ? "amber" : "neutral"}
+                    hint="Queued, not yet sent"
+                  />
+                  <StatCard
+                    label="In flight"
+                    value={snapshot.outbox.processing}
+                    tone={snapshot.outbox.processing > 0 ? "blue" : "neutral"}
+                    hint="Claimed by a sender"
+                  />
+                  <StatCard
+                    label="Sent"
+                    value={snapshot.outbox.sent}
+                    tone="green"
+                  />
+                  <StatCard
+                    label="Given up"
+                    value={snapshot.outbox.failed}
+                    tone={snapshot.outbox.failed > 0 ? "red" : "neutral"}
+                    hint="Out of attempts, or refused"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground/80">
+                  Counts only. Waiting rows are retried by the outbox sweeper
+                  below; given-up rows are never retried on purpose.
+                </p>
+              </section>
+            ) : null}
 
             <section className="flex flex-col gap-3">
               <h2 className={EYEBROW}>Scheduled jobs</h2>

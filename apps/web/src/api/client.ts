@@ -2699,11 +2699,20 @@ export type OperationsJobRow = {
   nextRunAt: string | null;
 };
 
+/** Email outbox depth (card 1.32). Numbers only - no address, no subject. */
+export type OperationsOutboxCounts = {
+  pending: number;
+  processing: number;
+  sent: number;
+  failed: number;
+};
+
 export type OperationsSnapshot = {
   generatedAt: string;
   switches: OperationsSwitch[] | null;
   dataIn: OperationsDataIn[] | null;
   jobs: OperationsJobRow[];
+  outbox: OperationsOutboxCounts | null;
 };
 
 export type OperationsJobRunResult = {
