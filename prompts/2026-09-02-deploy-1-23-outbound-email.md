@@ -72,8 +72,19 @@ Follow `docs/DEPLOYMENT.md`.
 1. **Migration to Supabase (local dev) first.** `prisma migrate deploy`.
 2. **Migration to Azure Postgres**, then the app restart — migration before app,
    per the runbook.
-3. **Package and deploy**: `create-deploy-zip.ps1` then `deploy-to-azure.ps1`
-   (Kudu zipdeploy). **Never push to the `azure` git remote** — Oryx rebuilds and
+3. **Package and deploy**: build with `create-deploy-zip.ps1`, then push with
+
+   ```bash
+   az webapp deploy -g csnhc-ai -n TicketTicket --type zip --async true --src-path <zip>
+   ```
+
+   **Do NOT run `deploy-to-azure.ps1`.** `docs/DEPLOYMENT.md:38` forbids it: the
+   package is ~169 MB and its Kudu zipdeploy dies with **502**, which tells you
+   nothing — on 2026-05-21 a 502 left production untouched on a months-old build
+   while looking like something had happened. (This correction is the planner's:
+   four consecutive handoffs of mine named the wrong command, and the deploy
+   agent corrected it every time. The stale planner memory behind it is now
+   fixed.) **Never push to the `azure` git remote** either — Oryx rebuilds and
    breaks the flat `wwwroot` layout.
 4. Kill stray node processes before building, or the Prisma query engine stays
    held and the build dies with `EPERM`. **Port 3000 is the LMS — leave it.**
@@ -109,7 +120,7 @@ and the pilot list is empty:
 
 | Setting | Value |
 |---|---|
-| `SMTP_HOST_DEV_DISABLED` | **rename to `SMTP_HOST`**, value `smtp.socketlabs.com` |
+| `SMTP_HOST` | **create it** — value `smtp.socketlabs.com`. **There is nothing to rename.** An earlier version of this file said to rename `SMTP_HOST_DEV_DISABLED`; that key lives in the local `apps/api/.env`, **not** on the App Service, which the deploy agent confirmed by listing all 38 settings. The only mail-related key there is `INBOUND_EMAIL_WEBHOOK_SECRET`. |
 | `SMTP_PORT` | `587` |
 | `SMTP_SECURE` | `false` — this is STARTTLS. `true` belongs to port 465 and will hang the handshake |
 | `SMTP_USER` | (a) |
