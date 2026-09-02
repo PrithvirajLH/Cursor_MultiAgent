@@ -25,7 +25,7 @@ department** — no per-department variant. Reviewed at
 stress-tested across eleven exchanges with a mid-thread loop-in at
 `https://claude.ai/code/artifact/17360b4b-212a-40c6-a87f-2dd8605b19c8`.
 
-The whole body is four things:
+The whole body is:
 
 ```
 ----- Reply above this line -----
@@ -34,10 +34,17 @@ The whole body is four things:
 ┃ Thanks Dana — so 08-31 is right but the punch is missing.
 ┃ Can you send a corrected timesheet?
 
-Reply to this email and your answer goes onto the ticket.
+Reply to this email
+──────────────────
+view online
 ```
 
-**Marker. Quote block with a name and time. One instruction line. Nothing else.**
+**Marker. Quote block with a name and time. A two-line footer: the instruction
+and the link. Nothing else.**
+
+The instruction is exactly **"Reply to this email"** — the owner's wording. An
+earlier draft read "Reply to this email and your answer goes onto the ticket";
+the shorter line is the decision.
 
 ### What was deliberately removed, and why
 
@@ -49,7 +56,6 @@ them:
 | Ticket ID in the footer | The **subject** already carries `[PA_20260901_001]` |
 | Facility in the footer | The subject already carries it too |
 | "Also copied: …" | The `Cc` header does this. Every client shows at least "and 2 others" |
-| `view online` link | A requester never logs in. See §4.5 for the one consequence |
 | "Update on your request" heading | Says nothing the subject has not said |
 | "We have an update on your request" | Same, and it pushes the real content below the fold |
 | "Ticket details" block | Redundant with the subject, and it carried the status enum |
@@ -88,13 +94,12 @@ inbox preview is the question. Nothing else is in the message.
    doubles. This is a rule, not an omission — write it in a comment.
 4. **One design for every department.** The generic-vs-named From line
    (card 1.31) still applies and is unchanged; the *body* does not vary by team.
-5. **No route back to the platform.** Dropping `view online` means the email is a
-   pure conversation. For a requester that costs nothing — they never log in. For
-   someone looped in mid-thread who wants earlier history, the answer is now "ask
-   whoever added you". Owner's decision, recorded here so it is not
-   reintroduced as a bug fix.
+5. **The footer is two lines: the instruction, then `view online`.** Nothing
+   else — no ticket id, no facility, no "Also copied". The link stays because it
+   is the only route to earlier history for someone looped in mid-thread.
 6. **Plain text mirrors the HTML exactly:** marker, `Name · time`, the message,
-   the instruction line. Same order, no ASCII-art borders.
+   `Reply to this email`, then the URL on its own line. Same order, no ASCII-art
+   borders.
 
 ## 5. The work
 
@@ -131,15 +136,17 @@ is committed first.**
       word boundary, and is not visible text (asserted on the style attribute).
 - [ ] A message containing `<script>` or `&` is escaped; newlines become `<br />`.
 - [ ] A name containing a quote or comma does not break the label.
-- [ ] The plain-text part has the same four parts in the same order.
+- [ ] The plain-text part has the same parts in the same order, with the URL on
+      its own line.
 - [ ] **A long message does not have history appended** — assert the body
       contains the message once.
 - [ ] Targeted run, then the **full** suite. **Do not edit source while it runs.**
 
 ### Task 4 — Docs, baselines, commit
 
-- [ ] `docs/email-conversation.md`: the four parts, and the removed-on-purpose
-      table from §1 so nobody helpfully adds a footer back.
+- [ ] `docs/email-conversation.md`: the body's parts, and the
+      removed-on-purpose table from §1 so nobody helpfully adds the ticket
+      details block back.
 - [ ] `CLAUDE.md` + `repo-landmines.md` baselines, real numbers.
 - [ ] One commit. `e2e/` is untracked on purpose.
 
@@ -173,12 +180,15 @@ Delete those two log files afterwards.
 
 ## 8. Acceptance criteria
 
-1. The body is exactly the four parts in §1 and nothing else.
+1. The body is exactly the parts in §1 and nothing else: marker, quote block,
+   the line **"Reply to this email"**, and a `view online` link.
 2. The inbox preview shows the beginning of the agent's message.
-3. No `TicketStatus` value, no "View Ticket", no sign-off, no footer appears
-   anywhere in either part.
+3. No `TicketStatus` value, no "View Ticket" **button**, no sign-off, no ticket
+   id, no facility and no "Also copied" appears in either part. A plain
+   `view online` **text link** is expected and correct.
 4. HTML escaping holds, including in the preheader.
-5. The plain-text part carries the same four parts in the same order.
+5. The plain-text part carries the same parts in the same order, with the URL
+   on its own line.
 6. The subject is **unchanged**.
 7. Every 1.22 and 1.33 test still passes untouched.
 8. Both `tsc` clean; unit, integration and vitest at or above baseline.
