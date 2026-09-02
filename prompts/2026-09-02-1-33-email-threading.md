@@ -71,11 +71,57 @@ would have survived faults 1–3. We do not have it.
 
 ## 3. Goal
 
-Every email ever sent about a ticket — first reply, tenth reply, internal note,
-status notification, to any recipient — lands in **one conversation** in every
+Every email ever sent about a ticket lands in **one conversation** in every
 recipient's client, and no failed or never-sent message can break it.
 
+**Two owner decisions taken on 2026-09-02 change the shape of this card**, and
+make most of §2 disappear at the source rather than being compensated for. Read
+§4.0 first — it is why the work is smaller than the fault list suggests.
+
 ## 4. Decisions and assumptions
+
+### 4.0 The recipient model changes (owner, 2026-09-02)
+
+**a. A public reply is ONE email.** `To:` the requester, `CC:` everyone else who
+should see it — followers, assignee, looped-in colleagues. Not one email each.
+
+This is how a person sends mail, and it **removes fault 3 at the root**: one
+email means one `Message-ID`, so there is no per-recipient divergence for a
+shared pointer to get wrong. The stable root (§4.1) becomes belt to that braces
+rather than the only thing holding threading together.
+
+Three consequences to handle, not ignore:
+
+- **Suppression applies before composing, not at send.** Drop a suppressed or
+  out-of-domain address from the CC; do **not** let one bad address fail the
+  whole message. Card 1.23's `resolveOutboundRecipients` already returns
+  `refused` separately — build the CC from `allowed` and record the refusals on
+  the ticket as it already does.
+- **Bounce attribution gets fuzzier.** "This message bounced" no longer names one
+  person. Record what you can, and say in the report what is now unknowable.
+- **CC is public.** Every recipient sees every other address. Internal-only
+  recipients (decisions log, 2026-09-01) makes that acceptable, but write it down
+  in `docs/email-conversation.md` so nobody is surprised later.
+
+**b. An internal note sends NO email, to anybody.** Staff see it in the ticket
+conversation, and `inAppNotifications.notifyNewMessage` already raises an in-app
+notification with a realtime push and a poll fallback. Email adds nothing.
+
+Deleting that path:
+
+- **removes fault 4's first half** — an internal note cannot move a thread
+  pointer it never touches;
+- makes card **1.22's guard structural rather than defensive**. Today an internal
+  note is *refused* when addressed to the requester; after this, no internal note
+  is composed as an email at all, so the "requester who happens to be staff" hole
+  closes by construction. **Keep 1.22's guard and its tests regardless** —
+  defence in depth, and it is what would catch a future card wiring this back up.
+- **Accepted trade-off:** an agent who is not logged in learns of an internal note
+  only when they next open the app. Right for colleague-to-colleague notes on a
+  ticket someone is already working, and **consistent with mentions**, which
+  raise in-app notifications and queue no email today either.
+
+### 4.1 The threading fix
 
 1. **Stop tracking a moving target. Mint one stable root per ticket.** Do not try
    to track the anchor more carefully — remove the need to. Derive a synthetic
@@ -127,7 +173,30 @@ recipient's client, and no failed or never-sent message can break it.
 Kill stray node processes; Postgres up; no other test run active; export the
 consent variable for the whole integration run.
 
-### Task 1 — The stable root
+### Task 1 — The recipient model (§4.0)
+
+**Files:** Modify `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/notifications/email.service.ts`, `apps/api/src/notifications/outbox.service.ts`, `apps/api/src/notifications/email-processor.service.ts`
+
+- [ ] `messageAdded`, **internal** branch: raise the in-app notification and
+      **queue no email**. Delete the internal subject/body construction with it —
+      dead code that still compiles is how a future card accidentally re-enables
+      this.
+- [ ] `messageAdded`, **public** branch: compose **one** email. `To:` the
+      requester; `CC:` the remaining recipients minus the author, built from
+      `resolveOutboundRecipients` so suppressed and out-of-domain addresses drop
+      out of the CC instead of failing the send.
+- [ ] `sendEmail`, the outbox row and the processor need a **`cc`** field.
+      Additive — the other five `queueEmails` call sites pass nothing and keep
+      their current per-recipient behaviour.
+- [ ] **If there is no requester** (an intake ticket whose requester never
+      resolved), promote the first CC to `To:`. An email with only CC recipients
+      is a spam signal.
+- [ ] **The pilot switch must still replace everything, To and CC alike.** Card
+      1.22's invariant test asserts no intended recipient reaches `sendMail` —
+      confirm it still holds with a CC present, and **extend it if it only
+      inspected `to`.**
+
+### Task 2 — The stable root
 
 **Files:** Modify `apps/api/src/notifications/email-threading.util.ts` + spec
 
@@ -140,7 +209,7 @@ consent variable for the whole integration run.
 - [ ] Unit tests: stable across calls; a missing reply address degrades the same
       way the existing helper does; the root is recognised by the extractor.
 
-### Task 2 — Compose the headers correctly
+### Task 3 — Compose the headers correctly
 
 **Files:** Modify `apps/api/src/notifications/ticket-email-thread.service.ts` + spec
 
@@ -153,7 +222,7 @@ consent variable for the whole integration run.
       migration, and an accumulating list can be recomputed from what is already
       stored.
 
-### Task 3 — Record on delivery, never on intent
+### Task 4 — Record on delivery, never on intent
 
 **Files:** Modify `apps/api/src/notifications/notifications.service.ts`, `apps/api/src/notifications/ticket-email-thread.service.ts`
 
@@ -166,7 +235,7 @@ consent variable for the whole integration run.
       missing at send time, skip recording rather than writing an unroutable id.
       Log it at warn.
 
-### Task 4 — Tests
+### Task 5 — Tests
 
 - [ ] Unit: two recipients on one message produce two Message-IDs but **the same
       `References` root**; a second message references the same root; an internal
@@ -177,7 +246,7 @@ consent variable for the whole integration run.
       real send or open a socket.**
 - [ ] Targeted, then the **full** suite. **Do not edit source while it runs.**
 
-### Task 5 — Docs, baselines, commit
+### Task 6 — Docs, baselines, commit
 
 - [ ] `docs/email-conversation.md`: how threading works now, why the root is
       derived rather than stored, and the sending-domain caveat from §4.3.
@@ -217,15 +286,21 @@ files afterwards.
 
 1. Two agent replies on one ticket arrive as **one conversation** in the
    recipient's client.
-2. With two or more recipients, **each** recipient's copies thread with each
-   other — the shared-pointer fault is gone.
-3. An internal note between two public replies does not break the public thread.
-4. A send that fails records nothing; the next email still threads.
-5. No `@localhost` id is ever persisted or emitted.
-6. `References` accumulates, and the synthetic root is always present.
-7. **Inbound still works**: a reply to any of these emails still lands on the
+2. A public reply with several recipients produces **exactly one email** — `To:`
+   the requester, `CC:` the rest — and it threads for all of them.
+3. **An internal note produces no email at all**, for anybody, while still
+   raising the in-app notification. An internal note between two public replies
+   does not break the public thread.
+4. A suppressed or out-of-domain address is **dropped from the CC** and recorded
+   on the ticket; the email still reaches everyone else.
+5. A send that fails records nothing; the next email still threads.
+6. No `@localhost` id is ever persisted or emitted.
+7. `References` accumulates, and the synthetic root is always present.
+8. **Inbound still works**: a reply to any of these emails still lands on the
    right ticket, by reply token, by subject id, and by header.
-8. Both `tsc` clean; unit, integration and vitest at or above baseline.
+9. **Every 1.22 guard still passes**, including the pilot-switch invariant with a
+   CC list present.
+10. Both `tsc` clean; unit, integration and vitest at or above baseline.
 
 ## 9. Manual test steps
 
