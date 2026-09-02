@@ -80,6 +80,19 @@ Azure needs a Conditional Access token and the failure does not say so.
    `repo-landmines.md` — a broad `node.exe` filter took down an unrelated dev
    server on 2026-09-02.
 2. **Build** with `create-deploy-zip.ps1`.
+
+   > ⚠️ **DO NOT REBUILD after 2026-09-02 16:00.** `create-deploy-zip.ps1` compiles
+   > from the **working tree** (`npm run build -w apps/api`, then it copies
+   > `apps/api/dist`) — it does not build from a commit. An implementer started the
+   > four-card batch (1.36/1.38/1.37/1.28) at ~16:00, so the tree now carries
+   > half-finished permission and composer changes, and a rebuild would package them.
+   >
+   > The zip at `Codex_Ticketing_System_deploy.zip` (**15:48, 170 MB**) is correct and
+   > **planner-verified to contain card 1.35** (`insertIntoBody` and `BODY_OPEN_TAG`
+   > present in `dist/src/notifications/email.service.js`). **If the push fails,
+   > re-push that same zip — do not rebuild.** If you genuinely need a fresh package,
+   > stop and say so: it has to come from a clean checkout of `9638a64` in a separate
+   > directory, not from this tree.
 3. **Push** with:
 
    ```bash
