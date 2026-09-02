@@ -155,7 +155,32 @@ Previous deploy: 2026-09-01 21:11 UTC — **`1ffe722`**. Six cards live: **1.8, 
 
 Previous deploy: 2026-08-29 02:48 UTC — card 1.20 shipped as `d8811a7` (deployment `5d0d116a`, status 4, no migration). The production probe proved the fix: one `Idempotency-Key` over **two separate connections** returned the same ticket with `Idempotency-Replayed: true`, where the same test before 1.20 produced two tickets. IT intake with an `Asset Tag` custom field → 201; missing or misspelled → a 400 naming the valid fields. **`POST /api/tickets/intake` is ready for a real Power Automate flow.** Previous deploy 2026-08-28 22:59 UTC: cards 1.1–1.4 + 1.19 as `2df679d`, two migrations (51 total).
 
-**Owner to-do:** delete probe tickets `PA_20260829_021` and `IT_20260829_022` (production holds 3 real tickets + these 2); move the intake secret file out of the home directory into a password manager; optionally capture `/api/health/ready` from a signed-in tab — the automated browser's SSO session has expired and now asks for an ADFS password.
+**Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
+
+*Blocking other work:*
+
+1. **Request the Graph permission** — `Mail.ReadWrite` **scoped to one mailbox** via an Application Access Policy, on the existing app registration. Unscoped, the app can read every mailbox in the tenant. **Card 1.24 cannot start without this**, and in a corporate tenant it takes days. Longest lead time on the board.
+2. **Create the helpdesk mailbox and test plus-addressing** — send to `helpdesk+test@csnhc.com` and confirm it arrives at `helpdesk@`. **A negative result changes 1.24's design**, so it is worth answering before anyone builds it. Fallback order: catch-all subdomain, then one mailbox per department.
+3. **Ask whoever owns SocketLabs two things:** whether the account restricts which addresses it may send *as* (if `csnhc.com` is validated, `helpdesk@csnhc.com` is fine); and whether ticketing can have its own Server, so a deliverability problem here cannot damage the reputation carrying the LMS's weekly mail to 170 facilities. Shared credentials with a distinct from-address is an acceptable interim.
+
+*Small, and each closes a real gap:*
+
+4. **Set `Asset Tag` to not-required** (Admin → Custom Fields, 30 seconds). Today a required field silently rejects any inbound email routed to `it-service-desk`. Keep the field — you still capture the tag when someone can supply one.
+5. **Finish the PAF flow.** The 13 `paf-termination` custom fields exist in production but the flow is not sending `category` + `customFields`, so those tickets are still a wall of text. Also: remove the `<b>` HTML tags, and put a blank line after the `Facility:` line.
+6. **Delete the probe tickets** — `PA_20260829_021`, `IT_20260829_022`, and the PAF test tickets — before anyone new explores the system.
+7. **Read one real reply email** after the current deploy, then run the **staff-requester internal-note check** (post an internal note on a ticket raised by `phulgur@` or `gweitzer@` and confirm nothing arrives). The earlier check used an EMPLOYEE requester, whom the pre-existing filter already excluded, so it passed on code that predates card 1.22's fix.
+
+*Security hygiene:*
+
+8. **Rotate the Smartsheet token** — hardcoded 11 times in `PAFFlowV5-…json`.
+9. **Move `ticketticket-intake-secret.txt`** out of the home directory into a password manager.
+10. **Delete the two commented-out Supabase lines** in `apps/api/.env.test` (gitignored and never committed — verified — but the password is real).
+
+*Deliberate, and not yet:*
+
+11. **Clearing `EMAIL_TEST_RECIPIENTS`** is the moment real requesters become reachable. Do it after card 1.35 (so the inbox preview is right), after card 1.28 (so agents can see their audience), and when you can watch it — card 1.32's sweeper flushes any backlog at the same time.
+
+*Suggested, not decided:* a **custom domain** for the app. `ticketticket-gmgwf9efe4h6bmfb.southcentralus-01.azurewebsites.net` is not a URL anyone will trust or remember, and it appears in every email. DNS plus Azure config, no code.
 
 ## Global constraints (apply to every item)
 
