@@ -119,7 +119,11 @@ Also from this card: the standing Prisma drift is **twelve** statements, not the
 
 ---
 
-**Last deploy:** 2026-08-29 02:48 UTC — card 1.20 shipped as `d8811a7` (deployment `5d0d116a`, status 4, no migration). The production probe proved the fix: one `Idempotency-Key` over **two separate connections** returned the same ticket with `Idempotency-Replayed: true`, where the same test before 1.20 produced two tickets. IT intake with an `Asset Tag` custom field → 201; missing or misspelled → a 400 naming the valid fields. **`POST /api/tickets/intake` is ready for a real Power Automate flow.** Previous deploy 2026-08-28 22:59 UTC: cards 1.1–1.4 + 1.19 as `2df679d`, two migrations (51 total).
+**Last deploy:** 2026-09-01 21:11 UTC — **`1ffe722`**. Six cards live: **1.8, 1.13, 1.21, 1.22, 1.26, 1.27** plus seven fixes. Schema unchanged at **51** — that batch carried no migration.
+
+**Critically: 1.23 (`ecfd3c4`) is NOT in this build** — verified with `git merge-base --is-ancestor`. So **the SMTP App Service settings must not be applied yet.** Two reasons: `requireTLS` lives in 1.23, so turning SMTP on against `1ffe722` could put the SMTP password on the wire in plaintext; and 1.23's code expects the `EmailSuppression` table, which is migration **52** and is not applied to production. Correct order: **deploy 1.23 + migration 52, then apply the settings.** 1.22's guards *are* live, so the gate is satisfied — it is only the valve that must wait.
+
+Previous deploy: 2026-08-29 02:48 UTC — card 1.20 shipped as `d8811a7` (deployment `5d0d116a`, status 4, no migration). The production probe proved the fix: one `Idempotency-Key` over **two separate connections** returned the same ticket with `Idempotency-Replayed: true`, where the same test before 1.20 produced two tickets. IT intake with an `Asset Tag` custom field → 201; missing or misspelled → a 400 naming the valid fields. **`POST /api/tickets/intake` is ready for a real Power Automate flow.** Previous deploy 2026-08-28 22:59 UTC: cards 1.1–1.4 + 1.19 as `2df679d`, two migrations (51 total).
 
 **Owner to-do:** delete probe tickets `PA_20260829_021` and `IT_20260829_022` (production holds 3 real tickets + these 2); move the intake secret file out of the home directory into a password manager; optionally capture `/api/health/ready` from a signed-in tab — the automated browser's SSO session has expired and now asks for an ADFS password.
 
