@@ -81,6 +81,38 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Teams whose outbound mail stays anonymous, by slug.
+   *
+   * The owner named HR and Payroll because of termination work, but that is a
+   * policy that will change and should not need a deploy - so it is config,
+   * read at send time. The rule is expressed by simply NOT putting the name on
+   * the payload: `buildFromIdentity` then returns the generic identity by
+   * itself, so there is one decision in one place and the formatter stays dumb.
+   */
+  private genericIdentityTeamSlugs(): Set<string> {
+    const raw =
+      this.config.get<string>('EMAIL_GENERIC_IDENTITY_TEAMS') ?? 'hr,payroll';
+    return new Set(
+      raw
+        .split(',')
+        .map((slug) => slug.trim().toLowerCase())
+        .filter((slug) => slug !== ''),
+    );
+  }
+
+  /** The name to sign a reply with, or null when this team stays anonymous. */
+  private agentDisplayNameFor(
+    teamSlug: string | null | undefined,
+    actor: AuthUser,
+  ): string | null {
+    if (teamSlug && this.genericIdentityTeamSlugs().has(teamSlug.toLowerCase())) {
+      return null;
+    }
+    const name = (actor.displayName || actor.email || '').trim();
+    return name === '' ? null : name;
+  }
+
   async messageAdded(
     ticketId: string,
     message: TicketMessage,
@@ -92,6 +124,10 @@ export class NotificationsService {
     }
 
     const isInternal = message.type === MessageType.INTERNAL;
+    const agentDisplayName = this.agentDisplayNameFor(
+      fullTicket.assignedTeam?.slug,
+      actor,
+    );
     const recipients = this.buildRecipients(fullTicket, {
       includeRequester: true,
       includeAssignee: true,
@@ -127,6 +163,12 @@ export class NotificationsService {
       payload: {
         messageId: message.id,
         type: message.type,
+        // Only messageAdded has a person behind it. The other five queueEmails
+        // call sites are worker- or system-raised and correctly omit this, so
+        // they keep the generic desk identity. An internal note carries the
+        // name too: 1.22 already refuses to address one to the requester, and
+        // staff may as well see who wrote it.
+        ...(agentDisplayName === null ? {} : { agentDisplayName }),
       },
       emailMetadata: emailContext.emailMetadata,
       emailContent,

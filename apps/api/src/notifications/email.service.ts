@@ -125,13 +125,12 @@ export class EmailService {
     to: string;
     subject: string;
     /**
-     * The agent whose reply this is. Absent means the generic desk identity,
-     * which is every message today: the outbox row carries only the message id
-     * and the reply headers, so no caller can supply this yet. See the card
-     * 1.23 report - getting the agent's name here needs the actor and team to
-     * travel with the outbox record, which is a decision, not a tidy-up.
+     * The agent whose reply this is (card 1.31). Absent means the generic desk
+     * identity, which is correct for every worker- and system-raised
+     * notification and for the teams listed in EMAIL_GENERIC_IDENTITY_TEAMS.
+     * `buildFromIdentity` picks the shape from whether this is set.
      */
-    fromDisplayName?: string | null;
+    agentDisplayName?: string | null;
     text: string;
     html?: string;
     replyTo?: string;
@@ -176,7 +175,7 @@ export class EmailService {
       // Display name in code, address from SMTP_FROM - card 1.22 built the
       // formatter for exactly this and there must not be a second one.
       from: buildFromIdentity({
-        agentDisplayName: payload.fromDisplayName,
+        agentDisplayName: payload.agentDisplayName,
         address: this.fromAddress,
       }),
       replyTo: payload.replyTo ?? this.replyToAddress,

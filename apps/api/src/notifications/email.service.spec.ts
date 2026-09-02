@@ -205,10 +205,47 @@ describe('EmailService', () => {
       to: 'sarah.chen@csnhc.com',
       subject: 'Ticket update',
       text: 'Hello',
-      fromDisplayName: 'Sarah Chen',
+      agentDisplayName: 'Sarah Chen',
     });
     const call = sendMail.mock.calls[0][0] as { from: string };
     expect(call.from).toBe('"Sarah Chen (CSNHC Helpdesk)" <helpdesk@csnhc.com>');
+  });
+
+  it('RFC-quotes an agent name containing a comma, end to end', async () => {
+    // Covered in the util too, but this is the path that actually builds the
+    // header: an unquoted comma would read as a second address.
+    await buildService().sendEmail({
+      to: 'sarah.chen@csnhc.com',
+      subject: 'Ticket update',
+      text: 'Hello',
+      agentDisplayName: 'Chen, Sarah',
+    });
+    const call = sendMail.mock.calls[0][0] as { from: string };
+    expect(call.from).toBe('"Chen, Sarah (CSNHC Helpdesk)" <helpdesk@csnhc.com>');
+  });
+
+  it('RFC-escapes an agent name containing a quote, end to end', async () => {
+    await buildService().sendEmail({
+      to: 'sarah.chen@csnhc.com',
+      subject: 'Ticket update',
+      text: 'Hello',
+      agentDisplayName: 'Sarah "Sam" Chen',
+    });
+    const call = sendMail.mock.calls[0][0] as { from: string };
+    expect(call.from).toBe(
+      '"Sarah \\"Sam\\" Chen (CSNHC Helpdesk)" <helpdesk@csnhc.com>',
+    );
+  });
+
+  it('falls back to the generic identity when the name is blank', async () => {
+    await buildService().sendEmail({
+      to: 'sarah.chen@csnhc.com',
+      subject: 'Ticket update',
+      text: 'Hello',
+      agentDisplayName: '   ',
+    });
+    const call = sendMail.mock.calls[0][0] as { from: string };
+    expect(call.from).toBe('CSNHC Helpdesk <helpdesk@csnhc.com>');
   });
 
   it('refuses a suppressed address', async () => {

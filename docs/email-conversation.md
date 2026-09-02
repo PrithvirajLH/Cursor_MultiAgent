@@ -144,6 +144,44 @@ The address goes in the body rather than the path because an email address in a
 URL segment is an encoding trap. Clearing deletes the row outright rather than
 zeroing a counter, so a fresh failure starts from scratch.
 
+## Who the email comes from
+
+A reply from an agent goes out as:
+
+    "Sarah Chen (CSNHC Helpdesk)" <helpdesk@csnhc.com>
+
+A name gets replies; a faceless desk address gets ignored. The display name is
+built in code (`from-identity.util.ts`) and only the address is configuration,
+so a typo in an env var cannot brand the mail wrong. A name containing a comma
+or a quote is RFC-quoted, because `Chen, Sarah` unquoted reads as two
+recipients.
+
+**Two things get the generic `CSNHC Helpdesk` identity instead**, and both work
+the same way — by simply not putting a name on the queued row, which makes
+`buildFromIdentity` fall back on its own:
+
+1. **Teams listed in `EMAIL_GENERIC_IDENTITY_TEAMS`** (slugs, default
+   `hr,payroll`). The owner named HR and Payroll because of termination work,
+   where the person handling it should not be the visible sender. It is
+   configuration because that policy will change, and changing it should not
+   need a deploy.
+2. **Everything not written by a person.** Ticket created, assigned,
+   transferred, status changed, inbound acknowledged — five of the six places
+   email is queued are worker- or system-raised. Only a reply has an author, so
+   only a reply carries a name.
+
+An **internal** note does carry the writer's name: card 1.22 already refuses to
+address one to the requester, and staff may as well see who wrote it.
+
+`agentDisplayName` becomes visible to requesters. That is the owner's decision,
+and `EMAIL_GENERIC_IDENTITY_TEAMS` is the escape hatch.
+
+| Name | Default | Notes |
+|---|---|---|
+| `EMAIL_GENERIC_IDENTITY_TEAMS` | `hr,payroll` | Team slugs, comma-separated. Read at send time. Empty means every team names its agent. |
+
+---
+
 ## The outbox sweeper
 
 Queued email lives in `NotificationOutbox`. It is attempted once, when it is
@@ -197,14 +235,8 @@ the accumulated backlog the moment `EMAIL_TEST_RECIPIENTS` is cleared.
   SocketLabs to POST to us: a new public endpoint, an Easy Auth exclusion and a
   shared secret, the same shape as the intake endpoint. **That webhook is still
   owed** and is its own card.
-- **The From line is the generic desk identity on every message.**
-  `EmailService` builds it through `buildFromIdentity`, so mail goes out as
-  `CSNHC Helpdesk <helpdesk@csnhc.com>` rather than a bare address, and the
-  parameter for an agent's name exists. Nothing supplies one yet: the outbox row
-  carries only the message id and the reply headers, so neither the actor nor
-  the ticket's team reaches the transport. Naming the agent — and using the
-  generic identity for HR and Payroll specifically — needs those to travel with
-  the outbox record, which is a change to what gets queued, not to what sends.
+- ~~The From line is the generic desk identity on every message.~~ **Closed by
+  card 1.31** — see "Who the email comes from" above.
 - **Refusals are still not recorded on the ticket.** `EmailService` applies the
   recipient guard immediately above the transport, so nothing reaches `sendMail`
   unguarded and a refusal is counted in the log. Showing an agent that their

@@ -23,6 +23,12 @@ type SnapshotResponse = {
     lastRunOk: boolean | null;
     nextRunAt: string | null;
   }[];
+  outbox: {
+    pending: number;
+    processing: number;
+    sent: number;
+    failed: number;
+  } | null;
 };
 type RunResponse = {
   key: string;
@@ -47,7 +53,7 @@ describe('Operations console (card 1.21)', () => {
     await disconnectPrisma();
   });
 
-  it('1: an owner sees the three jobs, the switches and the intake paths', async () => {
+  it('1: an owner sees the four jobs, the switches and the intake paths', async () => {
     const res = await request(server)
       .get('/api/operations')
       .set(authHeader(fixtureEmails.owner))
@@ -57,7 +63,16 @@ describe('Operations console (card 1.21)', () => {
     expect(body.jobs.map((job) => job.key)).toEqual([
       'sla-breach',
       'retention',
+      // Card 1.32 added the outbox sweeper as a fourth job.
+      'email-outbox',
       'automation-scheduler',
+    ]);
+    // Card 1.32: outbox depth, numbers only.
+    expect(Object.keys(body.outbox ?? {}).sort()).toEqual([
+      'failed',
+      'pending',
+      'processing',
+      'sent',
     ]);
     expect(body.switches?.map((row) => row.key)).toEqual(
       expect.arrayContaining([

@@ -31,8 +31,17 @@ function getEmailMetadata(payload: unknown) {
       )
     : undefined;
   const html = typeof content.html === 'string' ? content.html : undefined;
+  // Card 1.31: the agent's name rides on the event half of the envelope, put
+  // there by NotificationsService.messageAdded. Absent for every other event,
+  // which is what makes those keep the generic identity.
+  const event = isRecord(payload.event) ? payload.event : {};
+  const agentDisplayName =
+    typeof event.agentDisplayName === 'string' &&
+    event.agentDisplayName.trim() !== ''
+      ? event.agentDisplayName
+      : undefined;
 
-  return { replyTo, inReplyTo, references, html };
+  return { replyTo, inReplyTo, references, html, agentDisplayName };
 }
 
 @Injectable()
@@ -64,6 +73,7 @@ export class EmailProcessorService {
         subject: record.subject,
         text: record.body,
         html: metadata.html,
+        agentDisplayName: metadata.agentDisplayName,
         replyTo,
         messageId,
         inReplyTo: metadata.inReplyTo,

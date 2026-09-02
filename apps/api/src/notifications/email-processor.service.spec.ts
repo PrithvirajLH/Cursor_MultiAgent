@@ -71,6 +71,57 @@ describe('EmailProcessorService', () => {
     expect(ticketEmailThreads.recordOutboundEmail).not.toHaveBeenCalled();
   });
 
+  /** A claimed row with whatever event payload the test needs. */
+  function claimRow(eventPayload: Record<string, unknown> | null) {
+    outbox.claimPending.mockResolvedValue({
+      id: 'outbox-1',
+      status: OutboxStatus.PROCESSING,
+      toEmail: 'requester@example.com',
+      subject: 'Subject',
+      body: 'Body',
+      payload: eventPayload === null ? null : { event: eventPayload },
+      ticketId: null,
+    } as Awaited<ReturnType<OutboxService['claimPending']>>);
+    outbox.markSent.mockResolvedValue({
+      id: 'outbox-1',
+    } as Awaited<ReturnType<OutboxService['markSent']>>);
+    email.isConfigured.mockReturnValue(true);
+    email.getReplyToAddress.mockReturnValue('no-reply@example.com');
+    email.sendEmail.mockResolvedValue(undefined);
+  }
+
+  it('passes the agent name on to the send when the payload carries one', async () => {
+    claimRow({ messageId: 'm1', agentDisplayName: 'Sarah Chen' });
+
+    await service.process('outbox-1');
+
+    expect(email.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ agentDisplayName: 'Sarah Chen' }),
+    );
+  });
+
+  it('sends no agent name for a worker-raised notification', async () => {
+    // The five system-raised queueEmails call sites omit the field entirely,
+    // which is how they keep the generic desk identity.
+    claimRow({ messageId: 'm1' });
+
+    await service.process('outbox-1');
+
+    expect(email.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ agentDisplayName: undefined }),
+    );
+  });
+
+  it('ignores a blank agent name rather than sending an empty display name', async () => {
+    claimRow({ messageId: 'm1', agentDisplayName: '   ' });
+
+    await service.process('outbox-1');
+
+    expect(email.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ agentDisplayName: undefined }),
+    );
+  });
+
   it('sends and marks sent after successfully claiming a pending email', async () => {
     outbox.claimPending.mockResolvedValue({
       id: 'outbox-1',
