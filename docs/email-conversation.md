@@ -144,6 +144,65 @@ The address goes in the body rather than the path because an email address in a
 URL segment is an encoding trap. Clearing deletes the row outright rather than
 zeroing a counter, so a fresh failure starts from scratch.
 
+## What a reply email actually says
+
+Design 2, the quoted block, for **every** department - the owner reviewed five
+directions and chose this one. The whole body is four things:
+
+    ----- Reply above this line -----
+
+    ┃ VI LE · SEP 2, 17:07 UTC
+    ┃ Thanks Dana - so 08-31 is right but the punch is missing.
+    ┃ Can you send a corrected timesheet?
+
+    Reply to this email
+    ──────────────────
+    view online
+
+The marker comes from `EmailService`, not the body builder. The rest is
+`buildPublicReplyHtmlBody` and its plain-text sibling in
+`notifications.service.ts`.
+
+**The preheader is the highest-value part.** A hidden element at the very top of
+the body carries the first ~90 characters of the agent's message, so the inbox
+preview is the question rather than boilerplate. It is escaped like everything
+else, which is easy to forget because it is invisible.
+
+**The quote block is the only structural device**, and it exists so a ticket with
+eleven exchanges stays readable: a left border, a small uppercase `NAME · TIME`
+label, the message.
+
+**No conversation history, ever.** The recipient's client already quotes the
+previous message; a digest here would sit on top of that and double the length of
+every email. That is a rule, not an omission.
+
+### Removed on purpose - do not add these back
+
+Every one of these was in an earlier draft and was cut. If you are about to
+reintroduce one, this table is the reason not to:
+
+| Removed | Because |
+|---|---|
+| Ticket ID in the footer | The **subject** already carries `[PA_20260901_001]` |
+| Facility in the footer | The subject already carries it too |
+| "Also copied: ..." | The `Cc` header does this; every client shows at least "and 2 others" |
+| "Update on your request" heading | Says nothing the subject has not said |
+| "We have an update on your request" | Same, and it pushed the real content below the fold |
+| "Ticket details" block | Redundant with the subject - and it printed `ticket.status` raw, so a requester was shown `WAITING_ON_REQUESTER` |
+| "Best regards, CSNHC Support" | Duplicates the From line |
+| "View Ticket" button | The thing we want is a reply; the link stays, as plain text |
+
+The `view online` link stays because it is the only route to earlier history for
+someone looped in mid-thread.
+
+**One known imperfection.** The design shows `SEP 2, 10:02` - the reader's local
+time. There is no timezone configuration anywhere in this repo to derive that
+from, and guessing one would put visibly wrong times in a requester's inbox, so
+the label states its zone: `SEP 2, 17:07 UTC`. Give the organisation a
+display-timezone setting and `formatQuoteLabelTime` drops the suffix.
+
+---
+
 ## One ticket, one conversation
 
 Every email about a ticket references the same synthetic root id:

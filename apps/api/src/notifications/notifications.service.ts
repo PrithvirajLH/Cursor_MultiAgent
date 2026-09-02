@@ -15,6 +15,25 @@ import {
 } from './outbox.service';
 import { TicketEmailThreadService } from './ticket-email-thread.service';
 
+/**
+ * The one instruction in a reply email. The owner's exact wording - an earlier
+ * draft read "Reply to this email and your answer goes onto the ticket" and the
+ * shorter line is the decision. Do not lengthen it.
+ */
+const REPLY_INSTRUCTION = 'Reply to this email';
+
+/** Roughly what an inbox preview shows before it truncates anyway. */
+const PREHEADER_MAX_LENGTH = 90;
+
+/**
+ * NOTE ON THE TIMESTAMP. The design shows `SEP 2, 10:02` with no zone, which
+ * means the reader's local time - and there is no timezone configuration
+ * anywhere in this repo to derive that from. Guessing one would put visibly
+ * wrong times in a requester's inbox, so the zone is stated instead. Give the
+ * organisation a display-timezone setting and this becomes `SEP 2, 10:02`.
+ */
+const QUOTE_LABEL_TIME_ZONE = 'UTC';
+
 type RecipientOptions = {
   includeRequester?: boolean;
   includeAssignee?: boolean;
@@ -559,7 +578,12 @@ export class NotificationsService {
     await this.createAndEnqueueEmail(toCandidate.address, toCandidate.userId, {
       eventType: 'MESSAGE_ADDED',
       subject: emailContext.subject,
-      body: this.buildPublicReplyTextBody(ticket, actor, message.body),
+      body: this.buildPublicReplyTextBody(
+        ticket,
+        actor,
+        message.body,
+        message.createdAt,
+      ),
       ticketId: ticket.id,
       payload: {
         messageId: message.id,
@@ -570,7 +594,12 @@ export class NotificationsService {
       },
       emailMetadata: { ...emailContext.emailMetadata, cc },
       emailContent: {
-        html: this.buildPublicReplyHtmlBody(ticket, actor, message.body),
+        html: this.buildPublicReplyHtmlBody(
+          ticket,
+          actor,
+          message.body,
+          message.createdAt,
+        ),
       },
     });
   }
@@ -671,107 +700,106 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * The plain-text half, mirroring the HTML exactly: name and time, the
+   * message, the instruction, then the URL on its own line.
+   *
+   * Not an afterthought - it is a deliverability signal, and it is what a watch
+   * or a screen reader shows. No ASCII-art borders: they read as noise when
+   * spoken aloud.
+   */
   private buildPublicReplyTextBody(
     ticket: {
       id: string;
       displayId: string | null;
       number: number;
       subject: string;
-      status: TicketStatus;
       requester?: User | null;
     },
     actor: AuthUser,
     messageBody: string,
+    sentAt?: Date,
   ) {
-    const requesterName =
-      ticket.requester?.displayName ?? ticket.requester?.email ?? 'there';
-    const ticketId = this.ticketLabel(ticket);
-    const companyName = this.companyName();
-
     return [
-      `Hello ${requesterName},`,
-      '',
-      'We have an update on your request.',
-      '',
-      `${actor.displayName || actor.email} wrote:`,
+      `${actor.displayName || actor.email} \u00b7 ${this.formatQuoteLabelTime(sentAt)}`,
       '',
       messageBody,
       '',
-      'Ticket details',
-      `Ticket ID: ${ticketId}`,
-      `Subject: ${ticket.subject}`,
-      `Status: ${ticket.status}`,
-      '',
-      'Reply to this email if you need anything else, or view the ticket here:',
+      REPLY_INSTRUCTION,
       this.ticketLink(ticket.id),
-      '',
-      'Best regards,',
-      `${companyName} Support`,
     ].join('\n');
   }
 
+  /**
+   * The reply a requester receives. Card 1.34, design 2, every department.
+   *
+   * Four parts and nothing else: a hidden preheader, the quoted message with a
+   * name and time, the instruction, and one text link. Everything that used to
+   * be here - a heading, a greeting, "We have an update on your request", a
+   * Ticket details block, a View Ticket button, a sign-off - was removed
+   * deliberately. Each one either repeated the subject line or pushed the real
+   * content below the fold, and the details block leaked `WAITING_ON_REQUESTER`
+   * to the person waiting. See docs/email-conversation.md before adding
+   * anything back.
+   *
+   * NO CONVERSATION HISTORY, EVER. The recipient's own client quotes the
+   * previous message; a digest here would sit on top of that and double the
+   * length of every email. This is a rule, not an omission.
+   *
+   * The marker at the top is added by EmailService, not here, and
+   * stripQuotedReply matches on it - so this body must not carry a second one.
+   */
   private buildPublicReplyHtmlBody(
     ticket: {
       id: string;
       displayId: string | null;
       number: number;
       subject: string;
-      status: TicketStatus;
       requester?: User | null;
     },
     actor: AuthUser,
     messageBody: string,
+    sentAt?: Date,
   ) {
-    const requesterName = this.escapeHtml(
-      ticket.requester?.displayName ?? ticket.requester?.email ?? 'there',
-    );
     const actorName = this.escapeHtml(actor.displayName || actor.email);
+    const quoteLabelTime = this.escapeHtml(this.formatQuoteLabelTime(sentAt));
     const escapedMessage = this.escapeHtml(messageBody).replace(
       /\n/g,
       '<br />',
     );
-    const ticketId = this.escapeHtml(this.ticketLabel(ticket));
-    const ticketSubject = this.escapeHtml(ticket.subject);
-    const ticketStatus = this.escapeHtml(ticket.status);
+    // Escaped like everything else. Easy to forget precisely because it is
+    // invisible, which is why there is a test for it.
+    const preheader = this.escapeHtml(this.buildPreheader(messageBody));
     const ticketUrl = this.escapeHtml(this.ticketLink(ticket.id));
-    const companyName = this.escapeHtml(this.companyName());
 
     return [
       '<!DOCTYPE html>',
       '<html>',
-      '  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">',
+      // 'Segoe UI' is quoted: unquoted it is invalid CSS and strict clients
+      // silently drop the whole font stack.
+      `  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Segoe UI', Arial, sans-serif;color:#1f2937;">`,
+      // The preheader must be the FIRST thing in the body: clients build the
+      // inbox preview from the earliest text they find.
+      `    <div style="display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;">${preheader}</div>`,
       '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f6f8;padding:24px 0;">',
       '      <tr>',
       '        <td align="center">',
-      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">',
+      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">',
       '            <tr>',
-      '              <td style="padding:32px 32px 16px 32px;">',
-      '                <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:16px;">',
-      '                  Update on your request',
-      '                </div>',
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">Hello ${requesterName},</div>`,
-      '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">',
-      '                  We have an update on your request.',
-      '                </div>',
-      '                <div style="background:#f8fafc;border:1px solid #dbe4ea;border-left:5px solid #2563eb;border-radius:10px;padding:20px;margin:0 0 24px 0;">',
-      `                  <div style="font-size:13px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:#2563eb;margin-bottom:10px;">${actorName} wrote</div>`,
-      `                  <div style="font-size:15px;line-height:1.8;color:#111827;white-space:normal;">${escapedMessage}</div>`,
-      '                </div>',
-      '                <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:12px;">Ticket details</div>',
-      '                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin-bottom:24px;">',
-      '                  <div style="font-size:14px;line-height:1.8;color:#374151;">',
-      `                    <div><strong>Ticket ID:</strong> ${ticketId}</div>`,
-      `                    <div><strong>Subject:</strong> ${ticketSubject}</div>`,
-      `                    <div><strong>Status:</strong> ${ticketStatus}</div>`,
-      '                  </div>',
-      '                </div>',
-      '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">',
-      '                  Reply to this email if you need anything else, or view the ticket here:',
-      '                </div>',
-      '                <div style="margin-bottom:28px;">',
-      `                  <a href="${ticketUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;">View Ticket</a>`,
-      '                </div>',
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;">Best regards,<br />${companyName} Support</div>`,
+      '              <td style="padding:32px;">',
+      // A bordered <td> rather than a div with border-left: Outlook renders
+      // this reliably and has neither flexbox nor a usable <style> block.
+      '                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">',
+      '                  <tr>',
+      '                    <td style="border-left:4px solid #2563eb;padding:2px 0 2px 16px;">',
+      `                      <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;">${actorName} &middot; ${quoteLabelTime}</div>`,
+      `                      <div style="font-size:16px;line-height:1.7;color:#111827;">${escapedMessage}</div>`,
+      '                    </td>',
+      '                  </tr>',
+      '                </table>',
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin:28px 0 0 0;">${REPLY_INSTRUCTION}</div>`,
+      '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
+      `                <div><a href="${ticketUrl}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
       '              </td>',
       '            </tr>',
       '          </table>',
@@ -781,6 +809,41 @@ export class NotificationsService {
       '  </body>',
       '</html>',
     ].join('\n');
+  }
+
+  /**
+   * The first words of the message, for the inbox preview.
+   *
+   * The highest-value part of this card: without it the preview is boilerplate
+   * and the requester has to open the email to learn there is a question in it.
+   * Truncated on a word boundary so it does not end mid-word.
+   */
+  private buildPreheader(messageBody: string) {
+    const flat = messageBody.replace(/\s+/g, ' ').trim();
+    if (flat.length <= PREHEADER_MAX_LENGTH) {
+      return flat;
+    }
+    const clipped = flat.slice(0, PREHEADER_MAX_LENGTH);
+    const lastSpace = clipped.lastIndexOf(' ');
+    const onWordBoundary = lastSpace > 0 ? clipped.slice(0, lastSpace) : clipped;
+    return `${onWordBoundary.trimEnd()}\u2026`;
+  }
+
+  /** `SEP 2, 15:02 UTC` - see QUOTE_LABEL_TIME_ZONE for why the zone is shown. */
+  private formatQuoteLabelTime(sentAt?: Date) {
+    const when = sentAt ?? new Date();
+    const date = new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      timeZone: QUOTE_LABEL_TIME_ZONE,
+    }).format(when);
+    const time = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: QUOTE_LABEL_TIME_ZONE,
+    }).format(when);
+    return `${date}, ${time} ${QUOTE_LABEL_TIME_ZONE}`;
   }
 
   private buildInboundAcknowledgementTextBody(details: {

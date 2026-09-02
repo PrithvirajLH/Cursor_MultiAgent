@@ -643,10 +643,18 @@ describe('Inbound email ingestion', () => {
     expect(outbox?.body).toContain('Reply to this email');
     const html = getOutboxHtml(outbox?.payload);
     const emailMetadata = getOutboxEmailMetadata(outbox?.payload);
-    expect(html).toContain('Update on your request');
-    expect(html).toContain('Ticket details');
-    expect(html).toContain('background:#f8fafc');
-    expect(html).toContain('View Ticket');
+    // Card 1.34 rewrote this body. It used to assert the heading, the "Ticket
+    // details" block and the View Ticket button - all three removed on purpose:
+    // the first two repeated the subject line, and the details block printed
+    // ticket.status raw, so a requester was shown WAITING_ON_REQUESTER. What
+    // the body must carry now is the message, the instruction and the link.
+    expect(html).toContain('please restart your VPN client');
+    expect(html).toContain('Reply to this email');
+    expect(html).toContain('view online');
+    expect(html).toContain('mso-hide:all');
+    expect(html).not.toContain('Update on your request');
+    expect(html).not.toContain('Ticket details');
+    expect(html).not.toContain('View Ticket');
     expect(emailMetadata.replyTo).toMatch(expectedReplyToPattern());
 
     const threadedReply = `Reply from inbox ${Date.now()}: the restart worked.`;

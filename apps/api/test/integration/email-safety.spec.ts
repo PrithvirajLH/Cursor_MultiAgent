@@ -225,6 +225,55 @@ describe('Email safety rails', () => {
     expect(await suppressionEvents(ticket.id)).toHaveLength(0);
   });
 
+  it('drops an out-of-domain recipient from the CC and says so on the ticket', async () => {
+    // INHERITED FROM CARD 1.33, which shipped this path untested. Card 1.33
+    // moved the domain check to compose time, so an out-of-domain colleague now
+    // drops out of the Cc and everyone else still gets the email. The
+    // EMAIL_RECIPIENT_REFUSED event it writes is the ONLY way an agent ever
+    // learns somebody did not receive their reply - and the write is wrapped in
+    // a .catch() that only logs, so if it broke, nothing would look wrong.
+    const ticket = await createTicket(server, 'Out of domain colleague');
+    const outsider = await prisma.user.create({
+      data: {
+        email: `outside.colleague.${Date.now()}@gmail.com`,
+        displayName: 'Outside Colleague',
+        role: 'EMPLOYEE',
+      },
+    });
+    await prisma.ticketFollower.create({
+      data: { ticketId: ticket.id, userId: outsider.id },
+    });
+    const before = await outboxCount(ticket.id);
+
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/messages`)
+      .set(authHeader(fixtureEmails.owner))
+      .send({ body: 'Here is the answer.', type: 'PUBLIC' })
+      .expect(201);
+
+    // (a) the email still went out, to everyone who was allowed
+    expect(await outboxCount(ticket.id)).toBeGreaterThan(before);
+    const rows = await prisma.notificationOutbox.findMany({
+      where: { ticketId: ticket.id, eventType: 'MESSAGE_ADDED' },
+    });
+    expect(rows).toHaveLength(1);
+    const envelope = rows[0].payload as { email?: { cc?: string[] } } | null;
+    const cc = envelope?.email?.cc ?? [];
+    expect(cc).not.toContain(outsider.email);
+
+    // (b) and the ticket records who did not get it, with the address
+    const refusals = await prisma.ticketEvent.findMany({
+      where: { ticketId: ticket.id, type: 'EMAIL_RECIPIENT_REFUSED' },
+    });
+    expect(refusals).toHaveLength(1);
+    const payload = refusals[0].payload as {
+      refused?: Array<{ address: string; reason: string }>;
+    };
+    expect(payload.refused).toEqual([
+      { address: outsider.email, reason: 'outside the allowed domains' },
+    ]);
+  });
+
   it('still refuses an inbound email with a bad secret', async () => {
     await request(server)
       .post('/api/tickets/inbound-email')
