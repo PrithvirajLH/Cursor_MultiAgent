@@ -124,6 +124,16 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
   cannot be *used* in the same transaction that adds it, so never combine one
   with a backfill in a single migration file.
 
+- **`scripts/check-migrations.sh` only sees migrations that are already
+  committed**, so running it before you commit tells you nothing. Line 39 is
+  `git diff --name-only --diff-filter=A "$base...HEAD"` — files added *in
+  commits*. An uncommitted migration is not in that list, so the script exits 0
+  having checked nothing, which reads exactly like a pass. Found by the 1.23
+  implementer, whose file was invisible to it on the first run.
+
+  So the order is: commit the migration, **then** run the checker. If it prints
+  no `ok <path>` line naming your file, it did not look at it.
+
 - **`prisma migrate dev` cannot run non-interactively at all** — it aborts with
   "Prisma Migrate has detected that the environment is non-interactive", even with
   `--create-only`, because a warning needs a prompt. Working recipe: use
