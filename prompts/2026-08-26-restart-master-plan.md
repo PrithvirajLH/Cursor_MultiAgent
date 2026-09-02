@@ -120,7 +120,13 @@ Also from this card: the standing Prisma drift is **twelve** statements, not the
 
 ---
 
-**Last deploy:** 2026-09-01 21:11 UTC — **`1ffe722`**. Six cards live: **1.8, 1.13, 1.21, 1.22, 1.26, 1.27** plus seven fixes. Schema unchanged at **51** — that batch carried no migration.
+**Last deploy:** 2026-09-02 14:06 UTC — **`61a6853`** (deployment `590e9d03`, status 4, RuntimeSuccessful). **Card 1.23 is live**, and with it **migration 52** — applied to Supabase first, then Azure, as the runbook requires; **six trigram GIN indexes intact before and after**; `EmailSuppression` present with 0 rows and all three indexes. `/api/health/ready` still reports `smtp: "missing"`, which is the intended result — the code is live and the valve is shut.
+
+**§5 was not approved and not run.** Production still cannot send. Applying the nine App Service settings needs three values only the owner has (SocketLabs credentials, the from/reply-to address, and the owner's own address for `EMAIL_TEST_RECIPIENTS`) — see `prompts/2026-09-02-deploy-1-23-outbound-email.md` §5.
+
+**Two errors of mine the deploy agent caught, both now fixed at source.** (a) `SMTP_HOST_DEV_DISABLED` is **not** an App Service setting — it lives in the local `apps/api/.env`, which is where I read it and then assumed it was production's. All 38 settings were listed; the only mail-related key is `INBOUND_EMAIL_WEBHOOK_SECRET`. So `SMTP_HOST` gets **created**, not renamed. (b) I named `deploy-to-azure.ps1` for the **fourth** consecutive handoff, despite `docs/DEPLOYMENT.md:38` forbidding it (~169 MB package, Kudu zipdeploy 502s, and a 502 tells you nothing — on 2026-05-21 one left production untouched on a months-old build). The root cause was my own project memory recording it as the deploy step in contradiction of the runbook; **that memory has been rewritten** to say build with `create-deploy-zip.ps1`, push with `az webapp deploy --async`, and to trust `DEPLOYMENT.md` over itself.
+
+Previous deploy: 2026-09-01 21:11 UTC — **`1ffe722`**. Six cards live: **1.8, 1.13, 1.21, 1.22, 1.26, 1.27** plus seven fixes. Schema unchanged at **51** — that batch carried no migration.
 
 **Critically: 1.23 (`ecfd3c4`) is NOT in this build** — verified with `git merge-base --is-ancestor`. So **the SMTP App Service settings must not be applied yet.** Two reasons: `requireTLS` lives in 1.23, so turning SMTP on against `1ffe722` could put the SMTP password on the wire in plaintext; and 1.23's code expects the `EmailSuppression` table, which is migration **52** and is not applied to production. Correct order: **deploy 1.23 + migration 52, then apply the settings.** 1.22's guards *are* live, so the gate is satisfied — it is only the valve that must wait.
 
