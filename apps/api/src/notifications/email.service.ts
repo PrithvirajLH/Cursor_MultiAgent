@@ -17,6 +17,18 @@ function parseAddressList(raw: string | undefined): string[] {
   return [...seen];
 }
 
+/** An opening <body> tag, however it is attributed. */
+const BODY_OPEN_TAG = /<body[^>]*>/i;
+
+/**
+ * A hidden preheader element, by the signature every preheader uses.
+ *
+ * EmailService knows this much about the body it is given on purpose: the
+ * marker has to land AFTER the preheader, and only the thing doing the
+ * inserting can enforce that ordering.
+ */
+const HIDDEN_PREHEADER = /<div[^>]*mso-hide:all[^>]*>[\s\S]*?<\/div>/i;
+
 /** Longest reason we keep; an SMTP server can be very talkative. */
 const MAX_REASON_LENGTH = 300;
 
@@ -265,6 +277,18 @@ export class EmailService {
     return parts.join('\n');
   }
 
+  /**
+   * The HTML half, with the marker placed INSIDE the document.
+   *
+   * It used to be prepended to the whole thing, producing
+   * `<p>marker</p><!DOCTYPE html><html>...`. Two faults in one line: content
+   * before the doctype drops clients into quirks mode and leaves the marker
+   * outside `<html>`, where Outlook is least predictable - and the marker,
+   * being the first text in the message, led the inbox preview. It took about
+   * a third of the ~90 characters that decide whether the email is opened,
+   * which the pre-1.34 evidence shows verbatim: "----- Reply above this line
+   * ----- Update on your request Hello...".
+   */
   private decorateHtmlBody(
     html: string | undefined,
     intended: string[] | null,
@@ -276,7 +300,48 @@ export class EmailService {
     if (intended !== null) {
       header.push(`<p>${this.pilotNotice(intended)}</p>`);
     }
-    return `${header.join('')}${html}`;
+    return this.insertIntoBody(html, header.join(''));
+  }
+
+  /**
+   * Put a block just inside `<body>`, but after a hidden preheader if there is
+   * one.
+   *
+   * ORDER MATTERS, AND IT IS A TRADE-OFF. The preheader has to come first or
+   * the marker leads the inbox preview again, which is the whole point of this
+   * change. But `stripQuotedReply` cuts at the marker and keeps everything
+   * above it - so in a reply quoted by a client that adds NO attribution line
+   * of its own, the preheader text can survive into the agent's view of the
+   * requester's reply.
+   *
+   * Measured rather than assumed: of the five quoting layouts in
+   * email.service.spec, the four that any mainstream client produces (Gmail's
+   * "On ... wrote:", Outlook's From:/Sent: block, its underscore rule, and
+   * "-----Original Message-----") all sit ABOVE the preheader in the quote, so
+   * the trimmer cuts there and the preheader never appears. Only a bare
+   * verbatim quote leaves it, and what leaks is the agent's own previous words
+   * to a person who already received them - confusing, not a disclosure, and
+   * the stored body is untouched either way. Both behaviours are pinned by
+   * tests; reverse the order in this one method if that trade lands
+   * differently for someone.
+   */
+  private insertIntoBody(html: string, block: string): string {
+    const bodyOpen = BODY_OPEN_TAG.exec(html);
+    if (!bodyOpen) {
+      // A fragment rather than a whole document. Fall back to prepending: a
+      // missing marker would silently stop every reply from being trimmed,
+      // which is worse than a malformed fragment.
+      return `${block}${html}`;
+    }
+    let at = bodyOpen.index + bodyOpen[0].length;
+    const rest = html.slice(at);
+    const preheader = HIDDEN_PREHEADER.exec(rest);
+    // Only skip a preheader that really is the first thing in the body; a
+    // hidden element further down is something else entirely.
+    if (preheader && rest.slice(0, preheader.index).trim() === '') {
+      at += preheader.index + preheader[0].length;
+    }
+    return `${html.slice(0, at)}${block}${html.slice(at)}`;
   }
 
   /**

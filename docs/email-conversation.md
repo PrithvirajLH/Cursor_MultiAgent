@@ -163,6 +163,30 @@ The marker comes from `EmailService`, not the body builder. The rest is
 `buildPublicReplyHtmlBody` and its plain-text sibling in
 `notifications.service.ts`.
 
+**Where the marker goes, and why it matters.** `EmailService` inserts
+`----- Reply above this line -----` just inside `<body>`, after the preheader.
+It used to be prepended to the entire document, which produced
+`<p>marker</p><!DOCTYPE html><html>...` - malformed, so clients dropped into
+quirks mode with the marker outside `<html>` where Outlook is least
+predictable - and it made the marker, not the preheader, lead the inbox
+preview. The pre-1.34 evidence reads verbatim: "----- Reply above this line
+----- Update on your request Hello...", about a third of the ~90 characters
+that decide whether the email is opened.
+
+The preheader has to stay ahead of the marker or that regression comes straight
+back, and that ordering is a deliberate trade. `stripQuotedReply` cuts at the
+marker and keeps everything above it, so in a reply quoted by a client that adds
+no attribution line of its own, the preheader text can survive into the agent's
+view of the requester's reply. Measured across five quoting layouts: the four
+that any mainstream client produces (Gmail's `On ... wrote:`, Outlook's
+`From:`/`Sent:` block, its underscore rule, and `-----Original Message-----`)
+all sit above the preheader in the quote, so the trimmer cuts there and the
+preheader never appears. Only a bare verbatim quote leaves it, and what shows is
+the agent's own previous words to someone who already received them - confusing,
+not a disclosure, and the stored body is untouched either way. Both behaviours
+are pinned by tests in `email.service.spec.ts`; reversing the order is a
+one-method change in `insertIntoBody` if the trade ever lands differently.
+
 **The preheader is the highest-value part.** A hidden element at the very top of
 the body carries the first ~90 characters of the agent's message, so the inbox
 preview is the question rather than boilerplate. It is escaped like everything

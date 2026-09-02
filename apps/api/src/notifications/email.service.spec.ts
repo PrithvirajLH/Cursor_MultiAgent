@@ -2,7 +2,10 @@ import { ConfigService } from '@nestjs/config';
 import nodemailer from 'nodemailer';
 import { EmailService } from './email.service';
 import type { EmailSuppressionService } from './email-suppression.service';
-import { REPLY_ABOVE_MARKER } from './quoted-reply.util';
+import {
+  REPLY_ABOVE_MARKER,
+  stripQuotedReply,
+} from './quoted-reply.util';
 
 const sendMail = jest.fn().mockResolvedValue({ messageId: 'sent', rejected: [] });
 
@@ -56,6 +59,19 @@ function everyRecipientEverSent(): string[] {
     return [...message.to, ...(message.cc ?? [])];
   });
 }
+
+const PREHEADER_TEXT = 'Thanks Dana - can you send a corrected timesheet?';
+
+/** The shape buildPublicReplyHtmlBody produces: a document, preheader first. */
+const REPLY_DOCUMENT = [
+  '<!DOCTYPE html>',
+  '<html>',
+  `  <body style="margin:0;padding:0;">`,
+  `    <div style="display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;">${PREHEADER_TEXT}</div>`,
+  '    <table role="presentation"><tr><td>The visible message.</td></tr></table>',
+  '  </body>',
+  '</html>',
+].join('\n');
 
 describe('EmailService', () => {
   const previousPilot = process.env.EMAIL_TEST_RECIPIENTS;
@@ -190,6 +206,122 @@ describe('EmailService', () => {
     // The pilot note still names everyone it would have reached.
     expect(call.text).toContain('sarah.chen@csnhc.com');
     expect(call.text).toContain('follower@csnhc.com');
+  });
+
+  describe('where the reply-above marker goes', () => {
+    async function sentHtml(html: string): Promise<string> {
+      await buildService().sendEmail({
+        to: 'sarah.chen@csnhc.com',
+        subject: 'Ticket update',
+        text: 'Hello',
+        html,
+      });
+      return (sendMail.mock.calls[0][0] as { html: string }).html;
+    }
+
+    it('leaves the document well-formed, with nothing before the doctype', async () => {
+      // It used to be prepended to the whole document, giving
+      // `<p>marker</p><!DOCTYPE html>...` - quirks mode, and the marker outside
+      // <html> where Outlook is least predictable.
+      const html = await sentHtml(REPLY_DOCUMENT);
+      expect(html.trimStart().startsWith('<!DOCTYPE html>')).toBe(true);
+      expect(html.indexOf(REPLY_ABOVE_MARKER)).toBeGreaterThan(
+        html.indexOf('<body'),
+      );
+      expect(html.indexOf(REPLY_ABOVE_MARKER)).toBeLessThan(
+        html.indexOf('</body>'),
+      );
+    });
+
+    it('keeps the preheader ahead of the marker, so the preview is the question', async () => {
+      const html = await sentHtml(REPLY_DOCUMENT);
+      expect(html.indexOf(PREHEADER_TEXT)).toBeLessThan(
+        html.indexOf(REPLY_ABOVE_MARKER),
+      );
+    });
+
+    it('still emits the marker exactly once, so the trimmer has one cut point', async () => {
+      const html = await sentHtml(REPLY_DOCUMENT);
+      expect(html.split(REPLY_ABOVE_MARKER)).toHaveLength(2);
+    });
+
+    it('puts the pilot notice inside the body too', async () => {
+      process.env.EMAIL_TEST_RECIPIENTS = 'operator@csnhc.com';
+      const html = await sentHtml(REPLY_DOCUMENT);
+      const notice = html.indexOf('would otherwise have gone to');
+      expect(notice).toBeGreaterThan(html.indexOf('<body'));
+      expect(notice).toBeLessThan(html.indexOf('</body>'));
+    });
+
+    it('falls back to prepending for a fragment with no body tag', async () => {
+      // A missing marker would silently stop every reply being trimmed, which
+      // is worse than a malformed fragment.
+      const html = await sentHtml('<p>Just a fragment.</p>');
+      expect(html.startsWith(`<p>${REPLY_ABOVE_MARKER}</p>`)).toBe(true);
+    });
+
+    it('ignores a hidden element that is not the first thing in the body', async () => {
+      const document = [
+        '<!DOCTYPE html>',
+        '<html>',
+        '  <body>',
+        '    <p>Visible first.</p>',
+        '    <div style="mso-hide:all;">Hidden later.</div>',
+        '  </body>',
+        '</html>',
+      ].join('\n');
+      const html = await sentHtml(document);
+      expect(html.indexOf(REPLY_ABOVE_MARKER)).toBeLessThan(
+        html.indexOf('Visible first.'),
+      );
+    });
+  });
+
+  describe('what the trimmer leaves of a quoted reply', () => {
+    // The trade-off from insertIntoBody, measured rather than assumed. The
+    // preheader sits above the marker, and stripQuotedReply keeps everything
+    // above the FIRST marker it finds - so whether the preheader survives
+    // depends entirely on whether the quoting client adds an attribution line
+    // of its own above the quote.
+    const quotedCopy = [
+      PREHEADER_TEXT,
+      REPLY_ABOVE_MARKER,
+      'The visible message.',
+      'Reply to this email',
+    ];
+
+    const inboundWith = (lead: string[]) =>
+      [...lead, ...quotedCopy].join('\n');
+
+    it.each([
+      [
+        'Gmail',
+        ['On Wed, 2 Sep 2026 at 17:07, CSNHC Helpdesk <helpdesk@csnhc.com> wrote:'],
+      ],
+      [
+        'Outlook header block',
+        ['From: CSNHC Helpdesk <helpdesk@csnhc.com>', 'Sent: Wednesday 2 September'],
+      ],
+      ['Outlook rule', ['________________________________']],
+      ['Original Message', ['-----Original Message-----']],
+    ])('drops the preheader when %s quotes our email', (_client, lead) => {
+      const shown = stripQuotedReply(
+        inboundWith(['Yes, sending it now.', '', ...lead]),
+      );
+      expect(shown).toContain('Yes, sending it now.');
+      expect(shown).not.toContain(PREHEADER_TEXT);
+    });
+
+    it('leaves the preheader behind only for a bare verbatim quote', () => {
+      // Pinned so the residual is recorded rather than folklore. What survives
+      // is the agent's own previous words, to someone who already received
+      // them - confusing, not a disclosure. Reverse the order in
+      // insertIntoBody if this ever matters more than the inbox preview.
+      const shown = stripQuotedReply(inboundWith(['Yes, sending it now.', '']));
+      expect(shown).toContain('Yes, sending it now.');
+      expect(shown).toContain(PREHEADER_TEXT);
+      expect(shown).not.toContain('The visible message.');
+    });
   });
 
   it('refuses to send when every recipient is outside the allowed domains', async () => {
