@@ -3,11 +3,18 @@
 **Date:** 2026-09-02
 **Repo:** `Ticketing System Quality Review` (branch `ui-redesign-and-api-hardening`)
 **Card:** 1.36 in `prompts/2026-08-26-restart-master-plan.md`
-**Closes:** two faults with one cause — the app decides what someone may see on a
-ticket from their **rank**, never asking whether they are the person who **raised
-it**.
+**Closes:** three faults with one cause — the app decides what someone may see or
+do on a ticket from their **rank** or their **roster row**, never from their
+actual relationship to the ticket.
 
-**Cost:** none. API only. **No migration.** Two conditions and their tests.
+**Cost:** none. **No migration.** Faults A and B are API-only; Fault C is a
+one-line disagreement between the web and the API.
+
+| | Fault | State |
+|---|---|---|
+| A | A staff requester reads the internal notes written about them | latent — 0 of 46 tickets raised by staff |
+| B | A staff member cannot see a ticket they raised into another team | dormant — only one staffed team exists |
+| C | UI requires a roster row where the API accepts `primaryTeamId` | **hit in production 2026-09-02**, worked around |
 
 > ⚠️ This document describes a live weakness in a running system, and both GitHub
 > remotes are public. Same handling as `docs/security-audit-2026-08.md` — think
@@ -127,6 +134,37 @@ Note the interaction: this **widens** ticket access, which is exactly what makes
 Fault A worth fixing in the same change. Landing B without A means a staff
 requester can suddenly reach a ticket *and* read its internal notes. **Do A first,
 or both together — never B alone.**
+
+## 3b. Fault C — the UI and the API disagree about what a team is
+
+**Observed live on 2026-09-02**, and the only one of the three that has actually
+cost anyone time.
+
+`phulgur@` (AGENT) had `primaryTeamId = payroll` but **no `TeamMember` row**. The
+agent could open payroll tickets but the assign control never appeared — and no
+request reached the server, because the UI never rendered it.
+
+The two layers answer "is this person on the team?" differently:
+
+| Layer | Rule |
+|---|---|
+| API — `auth.guard.ts:116` | `membership?.teamId ?? user.primaryTeamId ?? null`, then `operationalTeamIds` falls back to that `teamId` |
+| Web — `TicketDetailPage.tsx:333` | `teamMembers.some(m => m.user.email === currentEmail)` — roster rows **only** |
+
+So the API accepts `primaryTeamId` as team scope; the UI requires a roster row.
+An account configured with one and not the other looks fully functional and can
+silently do nothing. `canAssignTicket` would have allowed the assignment on any
+of the 53 unassigned tickets.
+
+**Resolved in production** by adding the roster row; verified afterwards that no
+account is left with a `primaryTeamId` and no matching `TeamMember`.
+
+### The fix
+
+Pick one definition and use it in both places. Either the web mirrors the guard's
+fallback, or `primaryTeamId` stops being accepted as team scope without a roster
+row. A cheap guard either way: fail loudly — or refuse to save — when an account
+is given a primary team it is not a member of, rather than letting it half-work.
 
 ## 4. What to verify
 
