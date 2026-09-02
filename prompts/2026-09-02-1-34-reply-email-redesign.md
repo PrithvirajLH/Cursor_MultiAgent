@@ -10,6 +10,9 @@ text. Its inbox preview contains no information at all.
 
 **Cost:** none. API only. **No schema, no migration, no Azure change, no dependency.**
 
+**Also carries one inherited task** — see §5 Task 0. Card 1.33's refusal-recording
+path shipped without a test, and this card is the next thing to touch that file.
+
 > **Sequencing: this must start after card 1.33 is committed.** 1.33 rewrites the
 > recipient model inside `messageAdded` and deletes the internal-note email path.
 > Both cards touch the same function, and 1.33 is the one with correctness at
@@ -105,6 +108,28 @@ inbox preview is the question. Nothing else is in the message.
 
 Kill stray node processes; Postgres up; no other test run active. **Confirm 1.33
 is committed first.**
+
+### Task 0 — Pin the refusal event (inherited from 1.33)
+
+**Files:** Modify `apps/api/test/integration/email-safety.spec.ts`
+
+Card 1.33 moved the domain check to compose time, so an out-of-domain address now
+drops out of the `Cc` and the email still goes to everyone else — correct. It then
+records an `EMAIL_RECIPIENT_REFUSED` ticket event, which is **the only way an
+agent ever learns somebody did not receive their message.**
+
+**That path has no test.** `EMAIL_RECIPIENT_REFUSED` appears in exactly one place
+in the repo: `notifications.service.ts:593`. And the write is wrapped in a
+`.catch()` that only logs — so if it fails, nothing surfaces on the ticket and
+nothing looks wrong. Untested plus silently-swallowed is how an agent waits three
+days for a reply from someone who was never contacted.
+
+- [ ] Queue a public reply where one recipient is outside
+      `EMAIL_ALLOWED_DOMAINS`. Assert **(a)** the email is still queued for the
+      allowed recipients, and **(b)** a `EMAIL_RECIPIENT_REFUSED` event exists on
+      the ticket with the refused address in its payload.
+- [ ] Do this **first**. It is inherited work, it is five lines, and it is the
+      weakest link in an otherwise solid card.
 
 ### Task 1 — The HTML body
 
