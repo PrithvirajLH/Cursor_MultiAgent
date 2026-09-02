@@ -194,7 +194,10 @@ describe('the reply email body', () => {
         .split('\n')
         .find((row) => row.includes('text-transform:uppercase')) as string;
       expect(line.match(/<div/g)).toHaveLength(1);
-      expect(line).toContain('&middot;');
+      // No `&middot;` any more: the label is the name alone. The owner removed
+      // the timestamp because every client already shows when the message
+      // arrived, in the reader's own zone - ours restated it in UTC, worse.
+      expect(line).not.toContain('&middot;');
     });
   });
 
@@ -202,7 +205,7 @@ describe('the reply email body', () => {
     it('has the same parts in the same order', () => {
       const rendered = text(MESSAGE);
       const lines = rendered.split('\n');
-      expect(lines[0]).toBe('Vi Le · Sep 2, 15:02 UTC');
+      expect(lines[0]).toBe('Vi Le');
       expect(rendered.indexOf(MESSAGE)).toBeGreaterThan(0);
       expect(rendered.indexOf('Reply to this email')).toBeGreaterThan(
         rendered.indexOf(MESSAGE),
@@ -238,9 +241,16 @@ describe('the reply email body', () => {
     expect(bodyOnly.split('corrected timesheet').length - 1).toBe(1);
   });
 
-  it('labels the time with its zone, since the reader/s zone is unknown', () => {
-    expect(html(MESSAGE)).toContain('Sep 2, 15:02 UTC');
-    expect(text(MESSAGE)).toContain('Sep 2, 15:02 UTC');
+  // REPLACED. This used to assert `Sep 2, 15:02 UTC` in both halves. The owner
+  // removed the timestamp entirely on 2026-09-02: every mail client already
+  // shows the arrival time in the reader's own zone, so a second one in UTC was
+  // both redundant and visibly wrong (17:07 UTC on an email received at noon).
+  // Removing it also deleted a timezone setting nobody had to configure.
+  it('carries no timestamp of its own, in either half', () => {
+    for (const rendered of [html(MESSAGE), text(MESSAGE)]) {
+      expect(rendered).not.toMatch(/UTC/);
+      expect(rendered).not.toMatch(/\d{1,2}:\d{2}/);
+    }
   });
 
   it('quotes the font family so strict clients keep the stack', () => {

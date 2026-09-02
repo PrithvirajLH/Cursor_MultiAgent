@@ -32,7 +32,6 @@ const PREHEADER_MAX_LENGTH = 90;
  * wrong times in a requester's inbox, so the zone is stated instead. Give the
  * organisation a display-timezone setting and this becomes `SEP 2, 10:02`.
  */
-const QUOTE_LABEL_TIME_ZONE = 'UTC';
 
 type RecipientOptions = {
   includeRequester?: boolean;
@@ -578,12 +577,7 @@ export class NotificationsService {
     await this.createAndEnqueueEmail(toCandidate.address, toCandidate.userId, {
       eventType: 'MESSAGE_ADDED',
       subject: emailContext.subject,
-      body: this.buildPublicReplyTextBody(
-        ticket,
-        actor,
-        message.body,
-        message.createdAt,
-      ),
+      body: this.buildPublicReplyTextBody(ticket, actor, message.body),
       ticketId: ticket.id,
       payload: {
         messageId: message.id,
@@ -594,12 +588,7 @@ export class NotificationsService {
       },
       emailMetadata: { ...emailContext.emailMetadata, cc },
       emailContent: {
-        html: this.buildPublicReplyHtmlBody(
-          ticket,
-          actor,
-          message.body,
-          message.createdAt,
-        ),
+        html: this.buildPublicReplyHtmlBody(ticket, actor, message.body),
       },
     });
   }
@@ -718,10 +707,9 @@ export class NotificationsService {
     },
     actor: AuthUser,
     messageBody: string,
-    sentAt?: Date,
   ) {
     return [
-      `${actor.displayName || actor.email} \u00b7 ${this.formatQuoteLabelTime(sentAt)}`,
+      actor.displayName || actor.email,
       '',
       messageBody,
       '',
@@ -759,10 +747,8 @@ export class NotificationsService {
     },
     actor: AuthUser,
     messageBody: string,
-    sentAt?: Date,
   ) {
     const actorName = this.escapeHtml(actor.displayName || actor.email);
-    const quoteLabelTime = this.escapeHtml(this.formatQuoteLabelTime(sentAt));
     const escapedMessage = this.escapeHtml(messageBody).replace(
       /\n/g,
       '<br />',
@@ -792,7 +778,7 @@ export class NotificationsService {
       '                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">',
       '                  <tr>',
       '                    <td style="border-left:4px solid #2563eb;padding:2px 0 2px 16px;">',
-      `                      <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;">${actorName} &middot; ${quoteLabelTime}</div>`,
+      `                      <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;">${actorName}</div>`,
       `                      <div style="font-size:16px;line-height:1.7;color:#111827;">${escapedMessage}</div>`,
       '                    </td>',
       '                  </tr>',
@@ -829,22 +815,6 @@ export class NotificationsService {
     return `${onWordBoundary.trimEnd()}\u2026`;
   }
 
-  /** `SEP 2, 15:02 UTC` - see QUOTE_LABEL_TIME_ZONE for why the zone is shown. */
-  private formatQuoteLabelTime(sentAt?: Date) {
-    const when = sentAt ?? new Date();
-    const date = new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      timeZone: QUOTE_LABEL_TIME_ZONE,
-    }).format(when);
-    const time = new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: QUOTE_LABEL_TIME_ZONE,
-    }).format(when);
-    return `${date}, ${time} ${QUOTE_LABEL_TIME_ZONE}`;
-  }
 
   private buildInboundAcknowledgementTextBody(details: {
     ticketId: string;
