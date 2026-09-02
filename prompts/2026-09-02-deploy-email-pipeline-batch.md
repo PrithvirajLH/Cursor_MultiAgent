@@ -1,10 +1,16 @@
-# Deploy Handoff — email pipeline batch (1.31, 1.32, 1.33, 1.34)
+# Deploy Handoff — email pipeline batch (1.31, 1.32, 1.33, 1.34, **1.35**)
 
 **Date:** 2026-09-02
 **For:** the deploy-agent session
 **Repo:** `Ticketing System Quality Review`, branch `ui-redesign-and-api-hardening`
-**Ship:** branch **HEAD**. Last shippable commit is **`4f38dfe`**; anything after
-it is documentation.
+**Ship:** branch **HEAD**. Last shippable commit is **`9638a64`** (card 1.35);
+anything after it is documentation.
+
+> **Updated 2026-09-02 15:30.** This handoff first said `4f38dfe` and covered four
+> cards. **Card 1.35 has since been committed (`9638a64`) and verified GREEN**, so it
+> ships too. If you built a zip before 14:31 it does **not** contain 1.35 — rebuild
+> from a checkout of `9638a64`. Changed below: the title, §2's table, §3's unit count,
+> §5 check 5 and §6's first bullet.
 **Production is currently on:** `61a6853` (deployed 2026-09-02 14:06 UTC, deployment `590e9d03`)
 
 **Planner verdict: GREEN on all four cards**, each verified by re-running the
@@ -33,6 +39,7 @@ way through this deploy.**
 | **1.31** | The From line names the agent — `Vi Le (CSNHC Helpdesk) <helpdesk@csnhc.com>` — except for teams listed in `EMAIL_GENERIC_IDENTITY_TEAMS` (default `hr,payroll`), which keep the generic identity. |
 | **1.33** | **One ticket, one email conversation.** A public reply is now **one** email — `To:` requester, `Cc:` everyone else — and every message on a ticket carries a stable root so it threads for all of them. **An internal note now sends no email at all.** |
 | **1.34** | The reply email rewritten: a quoted block with the writer's name, one line — "Reply to this email" — and a `view online` link. Plus a hidden preheader so the inbox preview carries the question. The status enum, the heading, the filler line, the details block and the sign-off are gone. |
+| **1.35** | **The reply-above marker moved inside the document**, after the hidden preheader. It used to be prepended to the whole document, producing `<p>marker</p><!DOCTYPE html>` — an invalid page that drops clients into quirks mode, with the marker eating ~33 of the ~90 preview characters. The **inbox preview now opens with the agent's question.** |
 | — | The label's timestamp removed (`4f38dfe`): it read `17:07 UTC` on an email received at noon in Texas, and every client already shows the arrival time in the reader's own zone. |
 
 ### No new routes, no new settings required
@@ -47,7 +54,7 @@ either in this deploy**: `EMAIL_GENERIC_IDENTITY_TEAMS` (defaults to
 | Check | Result |
 |---|---|
 | `apps/api` `tsc --noEmit` | exit 0 |
-| `apps/api` unit | **405 passed, 43 suites** |
+| `apps/api` unit | **416 passed, 43 suites** (405 before 1.35) |
 | Full integration | **457 passed + 1 skipped, 52 of 53 suites** |
 | `apps/web` `tsc --noEmit` | exit 0 |
 | `apps/web` vitest | **70 passed, 18 files** |
@@ -104,9 +111,10 @@ Azure needs a Conditional Access token and the failure does not say so.
    - The body is a quoted block with the writer's **name and no timestamp**, then
      "Reply to this email", then `view online`. **No** status, heading, details
      block or sign-off.
-   - The inbox **preview** shows the start of the message. It will still be
-     preceded by the reply-above marker — that is **card 1.35**, known and not a
-     fault here.
+   - The inbox **preview** shows the start of the message **and no longer leads with
+     the reply-above marker** — card 1.35 is in this deploy. If the preview still
+     opens with `----- Reply above this line -----`, 1.35 did not ship: you built the
+     zip from a pre-14:31 checkout. Rebuild from `9638a64`.
 6. **Post a second public reply on the same ticket.** It must arrive **in the
    same conversation** as the first. This is the whole of card 1.33 and the one
    check worth doing carefully.
@@ -121,12 +129,14 @@ Azure needs a Conditional Access token and the failure does not say so.
    no error from the new sweeper.
 
 **Leave `EMAIL_TEST_RECIPIENTS` set.** Clearing it is a separate, deliberate step
-and the owner should do it only after reading a real email and after card 1.35.
+and the owner should do it only after reading a real email. (Card 1.35 is no longer a
+precondition — it ships here.)
 
 ## 6. Known and deliberate — do not "fix" these
 
-- **The reply-above marker leads the inbox preview**, and the sent HTML puts
-  content before `<!DOCTYPE>`. Pre-existing (card 1.22), now **card 1.35**.
+- ~~The reply-above marker leads the inbox preview~~ — **fixed by card 1.35, in this
+  deploy.** The marker is still present and must stay: `stripQuotedReply` matches on
+  it. It now sits *after* the opening `<body>` and *below* the preheader.
 - **The agent cannot see who a reply will reach.** 1.33 made it a `Cc` list and
   1.34 removed "Also copied" from the body, so the audience is currently visible
   nowhere. That is **card 1.28**, next after this deploy.
