@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from './access-control.service';
@@ -56,6 +57,35 @@ describe('AccessControlService', () => {
     it('falls back to the resolved session teamId when no memberships', () => {
       const u = user({ role: UserRole.AGENT, memberTeamIds: [], teamId: 'T9' });
       expect(svc.operationalTeamIds(u)).toEqual(['T9']);
+    });
+
+    it('warns when it falls back, naming the user and the team', () => {
+      // Fault C: an account can hold team scope with no TeamMember row, while
+      // the web renders its controls from roster rows alone. The behaviour is
+      // deliberately unchanged - it just stops being silent, so the next
+      // account in this state is a log line rather than a lost day.
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      svc.operationalTeamIds(
+        user({ id: 'u-odd', role: UserRole.AGENT, memberTeamIds: [], teamId: 'T9' }),
+      );
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain('u-odd');
+      expect(message).toContain('T9');
+      warn.mockRestore();
+    });
+
+    it('stays quiet when roster rows answer the question', () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      svc.operationalTeamIds(
+        user({ role: UserRole.AGENT, memberTeamIds: ['T1'], teamId: 'T9' }),
+      );
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it('returns empty when neither is present', () => {
@@ -120,6 +150,40 @@ describe('AccessControlService', () => {
       const a = agent([], 'a1');
       expect(svc.canViewTicket(a, ticket({ requesterId: 'a1' }))).toBe(true);
       expect(svc.canViewTicket(a, ticket({ requesterId: 'other' }))).toBe(false);
+    });
+
+    it('anyone can view a ticket they raised themselves, whatever their team', () => {
+      // roleFilter and roleConditionSql both carry this clause; canViewTicket
+      // is the third writing of the same rule and gates the single-ticket GET.
+      // Missing it made the list show a ticket that then 403'd on open.
+      expect(
+        svc.canViewTicket(
+          lead(['T1'], 'l1'),
+          ticket({ requesterId: 'l1', assignedTeamId: 'T-other' }),
+        ),
+      ).toBe(true);
+      expect(
+        svc.canViewTicket(
+          teamAdmin('T1', 'ta1'),
+          ticket({ requesterId: 'ta1', assignedTeamId: 'T-other' }),
+        ),
+      ).toBe(true);
+      expect(
+        svc.canViewTicket(
+          agent(['T1'], 'a1'),
+          ticket({ requesterId: 'a1', assignedTeamId: 'T-other' }),
+        ),
+      ).toBe(true);
+    });
+
+    it('does not let the requester clause resurrect a deleted ticket', () => {
+      // The soft-delete gate runs first and must keep running first.
+      expect(
+        svc.canViewTicket(lead(['T1'], 'l1'), {
+          ...ticket({ requesterId: 'l1' }),
+          deletedAt: new Date(),
+        }),
+      ).toBe(false);
     });
 
     it('TEAM_ADMIN without a primary team gets no admin-level access', () => {
@@ -283,7 +347,11 @@ describe('AccessControlService', () => {
       });
     });
 
-    it('TEAM_ADMIN -> team OR access-grant', () => {
+    // These two used to assert team clauses ONLY. That was the bug: a
+    // TEAM_ADMIN or LEAD who raised a ticket to a team they are not on could
+    // not see their own ticket anywhere - no list, no URL, no reply, no
+    // resolution notice. Rank still governs everything else.
+    it('TEAM_ADMIN -> team OR access-grant OR their own ticket', () => {
       expect(svc.buildTicketAccessFilter(teamAdmin('T1'))).toEqual({
         AND: [
           notDeleted,
@@ -291,13 +359,14 @@ describe('AccessControlService', () => {
             OR: [
               { assignedTeamId: 'T1' },
               { accessGrants: { some: { teamId: 'T1' } } },
+              { requesterId: 'ta' },
             ],
           },
         ],
       });
     });
 
-    it('LEAD -> one OR pair per team', () => {
+    it('LEAD -> one OR pair per team, plus their own ticket', () => {
       expect(svc.buildTicketAccessFilter(lead(['T1', 'T2']))).toEqual({
         AND: [
           notDeleted,
@@ -307,9 +376,47 @@ describe('AccessControlService', () => {
               { accessGrants: { some: { teamId: 'T1' } } },
               { assignedTeamId: 'T2' },
               { accessGrants: { some: { teamId: 'T2' } } },
+              { requesterId: 'lead' },
             ],
           },
         ],
+      });
+    });
+
+    it('AGENT -> team clauses plus their own ticket', () => {
+      expect(svc.buildTicketAccessFilter(agent(['T1'], 'a1'))).toEqual({
+        AND: [
+          notDeleted,
+          {
+            OR: [
+              { assignedTeamId: 'T1' },
+              { accessGrants: { some: { teamId: 'T1' } } },
+              { requesterId: 'a1' },
+            ],
+          },
+        ],
+      });
+    });
+
+    it('OWNER and EMPLOYEE are untouched by the requester clause', () => {
+      // OWNER already sees everything, so adding a clause would be noise;
+      // EMPLOYEE is already requester-only, so it would be a tautology.
+      expect(svc.buildTicketAccessFilter(owner())).toEqual({
+        AND: [notDeleted, {}],
+      });
+      expect(svc.buildTicketAccessFilter(employee('e1'))).toEqual({
+        AND: [notDeleted, { requesterId: 'e1' }],
+      });
+    });
+
+    it('the no-team fallback stays exactly requester-scoped', () => {
+      // Not `OR: [{requesterId}]` - the shape matters, because a stray OR with
+      // one arm is how a "temporarily empty" team scope turns into a leak.
+      expect(svc.buildTicketAccessFilter(lead([], 'l1'))).toEqual({
+        AND: [notDeleted, { requesterId: 'l1' }],
+      });
+      expect(svc.buildTicketAccessFilter(teamAdmin(null, 'ta1'))).toEqual({
+        AND: [notDeleted, { requesterId: 'ta1' }],
       });
     });
 
@@ -351,6 +458,18 @@ describe('AccessControlService', () => {
     it('binds the user id as a parameter (not string-interpolated)', () => {
       const sql = svc.accessConditionSql(employee('e1'), 't');
       expect(sql.values).toContain('e1');
+    });
+
+    it('carries the requester clause for every team-scoped role', () => {
+      // roleConditionSql backs the counts and reports; roleFilter backs the
+      // lists. If only one gained the clause, the sidebar badge would disagree
+      // with the list beside it. access-control.parity.spec is the integration
+      // half of this guarantee.
+      for (const u of [teamAdmin('T1', 'ta1'), lead(['T1'], 'l1'), agent(['T1'], 'a1')]) {
+        const sql = svc.accessConditionSql(u, 't');
+        expect(sql.sql).toContain('"requesterId"');
+        expect(sql.values).toContain(u.id);
+      }
     });
   });
 

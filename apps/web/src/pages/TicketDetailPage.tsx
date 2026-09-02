@@ -330,10 +330,31 @@ export function TicketDetailPage({
     [events],
   );
   const isFollowing = followers.some((f) => f.user.email === currentEmail);
-  const isCurrentUserOnAssignedTeam = useMemo(
-    () => teamMembers.some((m) => m.user.email === currentEmail),
-    [teamMembers, currentEmail],
-  );
+  /**
+   * Mirrors AccessControlService.operationalTeamIds, which is THE definition.
+   *
+   * This used to read roster rows only, while the API accepts a three-tier
+   * fallback (roster rows -> the session's resolved teamId -> primaryTeamId).
+   * On 2026-09-02 an account sat in the gap: primaryTeamId = payroll with no
+   * TeamMember row. The API would have allowed the assignment; the web never
+   * rendered the control, so no request was ever made and nothing anywhere
+   * said no. It looked like a permissions bug and was a disagreement about
+   * what "on the team" means.
+   *
+   * The API now logs a warning whenever it takes that fallback, so the next
+   * account in this state is a log line rather than a lost day. This is the
+   * other half: the web stops having a second opinion.
+   */
+  const sessionTeamId =
+    headerCtx?.currentUser?.teamId ??
+    headerCtx?.currentUser?.primaryTeamId ??
+    null;
+  const isCurrentUserOnAssignedTeam = useMemo(() => {
+    if (teamMembers.some((m) => m.user.email === currentEmail)) return true;
+    return (
+      Boolean(sessionTeamId) && ticket?.assignedTeam?.id === sessionTeamId
+    );
+  }, [teamMembers, currentEmail, sessionTeamId, ticket?.assignedTeam?.id]);
 
   const canManage = useMemo(() => {
     if (!ticket) return false;

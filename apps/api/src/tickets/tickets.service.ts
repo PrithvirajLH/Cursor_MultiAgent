@@ -1008,7 +1008,10 @@ export class TicketsService {
           includeDeleted: true,
         }),
       },
-      select: { id: true },
+      // requesterId comes back with it: the message filter below needs to know
+      // whether this reader is the person who raised the ticket, and the card
+      // is explicit that it must be that id and nothing looser.
+      select: { id: true, requesterId: true },
     });
 
     if (!accessibleTicket) {
@@ -1021,9 +1024,19 @@ export class TicketsService {
     }
 
     const limit = Math.max(1, Math.min(100, take));
+    // Rank decided this on its own, so any non-EMPLOYEE who could open a ticket
+    // read every internal note on it - INCLUDING a ticket they raised
+    // themselves. Payroll is the only department operationally taking tickets,
+    // so a payroll lead with a problem about her own pay has nowhere else to
+    // file it, and "staff will not raise tickets to their own department" is
+    // not a mitigation that exists. Relationship now beats rank, the same way
+    // card 1.22's guard works on the send path.
+    const isRequester = accessibleTicket.requesterId === user.id;
     const where: Prisma.TicketMessageWhereInput = {
       ticketId,
-      ...(user.role === UserRole.EMPLOYEE ? { type: MessageType.PUBLIC } : {}),
+      ...(user.role === UserRole.EMPLOYEE || isRequester
+        ? { type: MessageType.PUBLIC }
+        : {}),
     };
 
     const messages = await this.prisma.ticketMessage.findMany({

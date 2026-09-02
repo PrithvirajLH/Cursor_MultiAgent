@@ -6,6 +6,7 @@ import {
   fixtureTeamIds,
   fixtureUserIds,
 } from '../utils/fixtures';
+import { disconnectPrisma, getPrisma } from '../utils/prisma';
 import { resetTestDb } from '../utils/reset-test-db';
 import { createTestApp } from '../utils/test-app';
 
@@ -41,6 +42,7 @@ describe('Ticket access control', () => {
 
   afterAll(async () => {
     await app.close();
+    await disconnectPrisma();
   });
 
   it('limits requesters to their own tickets', async () => {
@@ -234,5 +236,164 @@ describe('Ticket access control', () => {
         type: 'PUBLIC',
       })
       .expect(403);
+  });
+  /**
+   * Card 1.36. Before this, ticket visibility was decided by rank alone: a
+   * LEAD or TEAM_ADMIN saw their team's tickets and nothing else, so a ticket
+   * they raised THEMSELVES to another team was invisible to them - not in a
+   * list, not by URL, no reply, no notice that it had been resolved. And the
+   * message filter cut on role alone, so any non-EMPLOYEE who could open a
+   * ticket read every internal note on it, including on their own ticket.
+   *
+   * The two faults had to be fixed together: fixing visibility alone would
+   * have let a staff requester reach their own ticket AND read the internal
+   * notes staff wrote about them.
+   */
+  describe('a staff member who raised their own ticket', () => {
+    const prisma = getPrisma();
+    let ownTicketId: string;
+    let colleagueTicketId: string;
+    let ownerTicketId: string;
+
+    beforeAll(async () => {
+      // The LEAD is on IT (per the seed); this goes to HR, where they are not
+      // a member. That is the real shape: payroll and HR take tickets, and
+      // staff on other teams raise them.
+      const own = await prisma.ticket.create({
+        data: {
+          requesterId: fixtureUserIds.lead,
+          subject: '1.36 — my own pay query',
+          description: 'Raised by the IT lead, to HR.',
+          assignedTeamId: fixtureTeamIds.hr,
+        },
+        select: { id: true },
+      });
+      ownTicketId = own.id;
+
+      // A colleague's ticket on the lead's OWN team. Internal notes here must
+      // still be readable - this fix must not cost a lead their team's notes.
+      const colleague = await prisma.ticket.create({
+        data: {
+          requesterId: fixtureUserIds.requester,
+          subject: '1.36 — a colleague ticket on IT',
+          description: 'Raised by someone else, to the lead\'s team.',
+          assignedTeamId: fixtureTeamIds.it,
+        },
+        select: { id: true },
+      });
+      colleagueTicketId = colleague.id;
+
+      // Rank must not beat relationship even at the top: OWNER's role filter
+      // is `{}`, so nothing about team scope would have stopped this one.
+      const ownerTicket = await prisma.ticket.create({
+        data: {
+          requesterId: fixtureUserIds.owner,
+          subject: '1.36 — the owner raises one too',
+          description: 'Raised by the owner, to HR.',
+          assignedTeamId: fixtureTeamIds.hr,
+        },
+        select: { id: true },
+      });
+      ownerTicketId = ownerTicket.id;
+
+      await prisma.ticketMessage.createMany({
+        data: [ownTicketId, colleagueTicketId, ownerTicketId].flatMap(
+          (ticketId) => [
+            {
+              ticketId,
+              authorId: fixtureUserIds.admin,
+              body: 'PUBLIC-BODY Looking into this now.',
+              type: 'PUBLIC' as const,
+            },
+            {
+              ticketId,
+              authorId: fixtureUserIds.admin,
+              body: 'INTERNAL-BODY Check the prior grievance before replying.',
+              type: 'INTERNAL' as const,
+            },
+          ],
+        ),
+      });
+    });
+
+    async function messageBodies(
+      ticketId: string,
+      email: string,
+    ): Promise<string[]> {
+      const res = await request(server)
+        .get(`/api/tickets/${ticketId}/messages`)
+        .set(authHeader(email))
+        .expect(200);
+      const body = res.body as { data: { body: string }[] };
+      return body.data.map((message) => message.body);
+    }
+
+    it('can list a ticket they raised to a team they are not on', async () => {
+      const res = await request(server)
+        .get('/api/tickets')
+        .set(authHeader(fixtureEmails.lead))
+        .expect(200);
+      const body = res.body as TicketListResponse;
+      expect(body.data.map((ticket) => ticket.id)).toContain(ownTicketId);
+    });
+
+    it('can open it directly', async () => {
+      await request(server)
+        .get(`/api/tickets/${ownTicketId}`)
+        .set(authHeader(fixtureEmails.lead))
+        .expect(200);
+    });
+
+    it('is counted in "created by me", which runs the raw-SQL sibling', async () => {
+      // getCountsUncached computes createdByMeOpen as `requesterId = :me`
+      // INSIDE `WHERE <accessCondition>`, so before this fix the outer
+      // condition filtered the ticket away before the inner clause could count
+      // it: a lead's "Created by me" was structurally incapable of counting a
+      // ticket they raised outside their own team. Asserting it here is what
+      // proves roleConditionSql got the clause too, not just roleFilter.
+      const res = await request(server)
+        .get('/api/tickets/counts')
+        .set(authHeader(fixtureEmails.lead))
+        .expect(200);
+      const counts = res.body as { createdByMeOpen: number };
+      expect(typeof counts.createdByMeOpen).toBe('number');
+      expect(counts.createdByMeOpen).toBeGreaterThanOrEqual(1);
+    });
+
+    it('sees ONLY public messages on their own ticket', async () => {
+      const bodies = await messageBodies(ownTicketId, fixtureEmails.lead);
+      expect(bodies.some((body) => body.startsWith('PUBLIC-BODY'))).toBe(true);
+      expect(bodies.some((body) => body.startsWith('INTERNAL-BODY'))).toBe(
+        false,
+      );
+    });
+
+    it('still sees internal notes on a colleague ticket in their team', async () => {
+      const bodies = await messageBodies(
+        colleagueTicketId,
+        fixtureEmails.lead,
+      );
+      expect(bodies.some((body) => body.startsWith('INTERNAL-BODY'))).toBe(
+        true,
+      );
+    });
+
+    it('applies to an OWNER on their own ticket as well', async () => {
+      const bodies = await messageBodies(ownerTicketId, fixtureEmails.owner);
+      expect(bodies.some((body) => body.startsWith('PUBLIC-BODY'))).toBe(true);
+      expect(bodies.some((body) => body.startsWith('INTERNAL-BODY'))).toBe(
+        false,
+      );
+    });
+
+    it('leaves the OWNER every internal note on everyone else tickets', async () => {
+      const bodies = await messageBodies(
+        colleagueTicketId,
+        fixtureEmails.owner,
+      );
+      expect(bodies.some((body) => body.startsWith('INTERNAL-BODY'))).toBe(
+        true,
+      );
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import type { AccessOptions } from './access-options.type';
@@ -9,15 +9,37 @@ import type { AccessOptions } from './access-options.type';
  */
 @Injectable()
 export class AccessControlService {
+  private readonly logger = new Logger(AccessControlService.name);
+
   /**
-   * Teams used for AGENT/LEAD ticket visibility: all memberships, falling back to resolved session teamId.
+   * THE definition of "on a team", for every caller.
+   *
+   * Roster rows first. `teamId` is the session value the auth guard resolved,
+   * which itself falls back to `primaryTeamId` when there is no roster row -
+   * so an account can hold team scope on the server while having no membership
+   * anyone can see. That mismatch cost a day on 2026-09-02: `phulgur@` had
+   * `primaryTeamId = payroll` and no `TeamMember` row, the web (which reads
+   * roster rows only) never rendered the assign control, and no request ever
+   * reached the server to be refused. Nothing was wrong; nothing said so.
+   *
+   * The behaviour is deliberately unchanged - narrowing a permissions
+   * chokepoint on a live system would silently lock out any other account in
+   * the same state, which is the failure mode this is trying to end. Instead
+   * it now says so, loudly, the first time such an account is used.
    */
   operationalTeamIds(user: AuthUser): string[] {
     const fromRows = user.memberTeamIds?.filter(Boolean) ?? [];
     if (fromRows.length > 0) {
       return fromRows;
     }
-    return user.teamId ? [user.teamId] : [];
+    if (user.teamId) {
+      this.logger.warn(
+        `User ${user.id} has team scope on team ${user.teamId} with no TeamMember row. ` +
+          'The web reads roster rows only, so its controls will disagree with the API. Add the roster row.',
+      );
+      return [user.teamId];
+    }
+    return [];
   }
 
   /**
@@ -47,6 +69,11 @@ export class AccessControlService {
         OR: [
           { assignedTeamId: user.primaryTeamId },
           { accessGrants: { some: { teamId: user.primaryTeamId } } },
+          // ...or I raised it. Staff filing a ticket to a team they are not on
+          // could not see their own ticket at all: not in a list, not by URL,
+          // no reply, no confirmation it was resolved. Rank still governs
+          // everything else; this only adds back the person's own ticket.
+          { requesterId: user.id },
         ],
       };
     }
@@ -62,20 +89,26 @@ export class AccessControlService {
 
     if (user.role === UserRole.LEAD) {
       return {
-        OR: teamScope.flatMap((teamId) => [
-          { assignedTeamId: teamId },
-          { accessGrants: { some: { teamId } } },
-        ]),
+        OR: [
+          ...teamScope.flatMap((teamId) => [
+            { assignedTeamId: teamId },
+            { accessGrants: { some: { teamId } } },
+          ]),
+          { requesterId: user.id },
+        ],
       };
     }
 
     // AGENT: can VIEW any ticket assigned to their team (read access for peers).
     // Edit-permission is enforced separately by canEditTicket.
     return {
-      OR: teamScope.flatMap((teamId) => [
-        { assignedTeamId: teamId },
-        { accessGrants: { some: { teamId } } },
-      ]),
+      OR: [
+        ...teamScope.flatMap((teamId) => [
+          { assignedTeamId: teamId },
+          { accessGrants: { some: { teamId } } },
+        ]),
+        { requesterId: user.id },
+      ],
     };
   }
 
@@ -111,8 +144,12 @@ export class AccessControlService {
       return Prisma.sql`TRUE`;
     }
 
+    // Every branch below mirrors roleFilter, requester clause included. It has
+    // to: this fragment backs the counts and report queries while roleFilter
+    // backs the lists, so a ticket visible in one and not the other would make
+    // the sidebar badge disagree with the list beside it.
     if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
-      return Prisma.sql`(${col('assignedTeamId')} = ${user.primaryTeamId} OR ${accessGrant(user.primaryTeamId)})`;
+      return Prisma.sql`(${col('assignedTeamId')} = ${user.primaryTeamId} OR ${accessGrant(user.primaryTeamId)} OR ${col('requesterId')} = ${user.id})`;
     }
 
     if (user.role === UserRole.EMPLOYEE) {
@@ -129,6 +166,7 @@ export class AccessControlService {
         (teamId) =>
           Prisma.sql`(${col('assignedTeamId')} = ${teamId} OR ${accessGrant(teamId)})`,
       );
+      parts.push(Prisma.sql`(${col('requesterId')} = ${user.id})`);
       return Prisma.join(parts, ' OR ');
     }
 
@@ -139,6 +177,7 @@ export class AccessControlService {
       (teamId) =>
         Prisma.sql`(${col('assignedTeamId')} = ${teamId} OR ${accessGrant(teamId)})`,
     );
+    agentParts.push(Prisma.sql`(${col('requesterId')} = ${user.id})`);
     return Prisma.join(agentParts, ' OR ');
   }
 
@@ -160,6 +199,15 @@ export class AccessControlService {
       return false;
     }
     if (user.role === UserRole.OWNER) {
+      return true;
+    }
+
+    // The same requester clause the list filters carry. This is the THIRD
+    // place the visibility rule is written (roleFilter, roleConditionSql, and
+    // here) and it is the one the card did not name: without it the list
+    // returned the ticket and opening it answered 403, which is worse than not
+    // showing it at all. Caught by the integration test, not by reading.
+    if (ticket.requesterId === user.id) {
       return true;
     }
 
