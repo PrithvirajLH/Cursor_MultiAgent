@@ -14,6 +14,7 @@ import {
   AccessLevel,
   MessageType,
   NotificationType,
+  OutboxStatus,
   Prisma,
   TagSource,
   TeamAssignmentStrategy,
@@ -30,6 +31,7 @@ import { AiObservabilityService } from '../common/ai-observability.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { MessageRecipientsPreview } from '../notifications/message-recipients-preview.type';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
@@ -991,6 +993,39 @@ export class TicketsService {
    * List messages for a ticket. Access check and data query are combined
    * into a single query using buildTicketAccessFilter to eliminate an N+1 round trip.
    */
+  /**
+   * Who the message being composed would reach (card 1.28).
+   *
+   * Gated by the same `canPostMessage` that gates actually posting one: if you
+   * cannot write here, you have no business reading the ticket's audience.
+   * Since card 1.36 a staff requester CAN reach their own ticket, so this gate
+   * is the thing that still keeps them out - `canPostMessage` is unchanged by
+   * that card.
+   */
+  async previewMessageRecipients(
+    ticketId: string,
+    type: MessageType,
+    user: AuthUser,
+  ): Promise<MessageRecipientsPreview> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        requesterId: true,
+        assignedTeamId: true,
+        assigneeId: true,
+        deletedAt: true,
+      },
+    });
+    if (!ticket || (ticket.deletedAt && user.role !== UserRole.OWNER)) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!this.accessControl.canPostMessage(user, ticket)) {
+      throw new ForbiddenException('No write access to this ticket');
+    }
+    return this.notifications.previewMessageRecipients(ticketId, type, user);
+  }
+
   async listMessages(
     ticketId: string,
     user: AuthUser,
@@ -1050,11 +1085,68 @@ export class TicketsService {
     const hasMore = messages.length > limit;
     const page = hasMore ? messages.slice(0, limit) : messages;
     const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null;
+    const delivery = await this.messageDeliveryLabels(ticketId);
 
     return {
-      data: page.reverse(),
+      data: page.reverse().map((message) => ({
+        ...message,
+        delivery: {
+          ...(delivery.get(message.id) ?? { emailed: 0, refused: 0 }),
+          internal: message.type === MessageType.INTERNAL,
+        },
+      })),
       nextCursor,
     };
+  }
+
+  /**
+   * What actually happened to each message's email, per ticket (card 1.28, 6c).
+   *
+   * ONE query for the whole ticket, grouped in memory. Since card 1.33 a public
+   * message produces a single outbox row carrying `to` and `cc`, so the number
+   * of people reached is `1 + cc.length` on that row.
+   *
+   * Reports the OUTBOX, not the intent. A label reading "emailed to 3" when the
+   * send failed is worse than no label at all, because the agent stops
+   * chasing - so only a SENT row counts as emailed, and a FAILED one counts as
+   * refused. A row still PENDING contributes to neither and the message carries
+   * no label yet, which is honest: with Redis off in production the processor
+   * runs at queue time, so PENDING is momentary.
+   *
+   * Recipients the outbound guard refused BEFORE composing (out-of-domain,
+   * suppressed, no-reply) never produce a row here at all; they are recorded on
+   * the ticket as an EMAIL_RECIPIENT_REFUSED event, which now carries the
+   * messageId so they can be attributed. The compose-screen preview runs that
+   * guard live, so an agent sees those before sending rather than after.
+   */
+  private async messageDeliveryLabels(
+    ticketId: string,
+  ): Promise<Map<string, { emailed: number; refused: number }>> {
+    const rows = await this.prisma.notificationOutbox.findMany({
+      where: { ticketId, eventType: 'MESSAGE_ADDED' },
+      select: { status: true, payload: true },
+    });
+    const labels = new Map<string, { emailed: number; refused: number }>();
+    for (const row of rows) {
+      const envelope = (row.payload ?? {}) as {
+        event?: { messageId?: unknown };
+        email?: { cc?: unknown };
+      };
+      const messageId = envelope.event?.messageId;
+      if (typeof messageId !== 'string' || messageId === '') {
+        continue;
+      }
+      const cc = envelope.email?.cc;
+      const reached = 1 + (Array.isArray(cc) ? cc.length : 0);
+      const label = labels.get(messageId) ?? { emailed: 0, refused: 0 };
+      if (row.status === OutboxStatus.SENT) {
+        label.emailed += reached;
+      } else if (row.status === OutboxStatus.FAILED) {
+        label.refused += reached;
+      }
+      labels.set(messageId, label);
+    }
+    return labels;
   }
 
   /**
@@ -1537,9 +1629,20 @@ export class TicketsService {
     // We override silently regardless of what the client sent — the UI also
     // hides the toggle, but defense-in-depth.
     const isPeerAgent = this.accessControl.isPeerAgent(user, ticket);
+    // Someone here purely because they raised the ticket replies in public,
+    // whatever their rank. Card 1.36 stopped a staff requester reading the
+    // internal notes on their own ticket; letting them WRITE one would leave a
+    // note they cannot see, emailed to nobody, sitting where they expect their
+    // reply to be.
+    const isRequesterOnly =
+      ticket.requesterId === user.id &&
+      !this.accessControl.canWriteTicket(user, ticket) &&
+      !isPeerAgent;
     const effectiveType: MessageType = isPeerAgent
       ? MessageType.INTERNAL
-      : (payload.type ?? MessageType.PUBLIC);
+      : isRequesterOnly
+        ? MessageType.PUBLIC
+        : (payload.type ?? MessageType.PUBLIC);
 
     const shouldSetFirstResponse =
       user.role !== UserRole.EMPLOYEE && effectiveType === MessageType.PUBLIC;

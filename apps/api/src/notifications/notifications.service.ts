@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
 import { resolveOutboundRecipients } from './outbound-recipients.util';
+import type { MessageRecipientsPreview } from './message-recipients-preview.type';
 import { InAppNotificationsService } from './in-app-notifications.service';
 import {
   type EmailOutboxContent,
@@ -148,13 +149,10 @@ export class NotificationsService {
       fullTicket.assignedTeam?.slug,
       actor,
     );
-    const recipients = this.buildRecipients(fullTicket, {
-      includeRequester: true,
-      includeAssignee: true,
-      includeFollowers: true,
-      excludeUserId: actor.id,
-      excludeEmployees: isInternal,
-    });
+    const recipients = this.buildRecipients(
+      fullTicket,
+      this.messageAudienceOptions(actor.id, isInternal),
+    );
 
     // An INTERNAL note sends no email, to anybody (card 1.33 section 4.0b).
     // Staff see it in the ticket conversation and get the in-app notification
@@ -453,6 +451,153 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * The audience of a ticket message: requester, assignee and followers, minus
+   * the person writing it.
+   *
+   * Extracted so `messageAdded` and `previewMessageRecipients` cannot drift.
+   * A compose-screen preview that disagrees with the send is worse than no
+   * preview, because an agent writes something candid on the strength of it.
+   *
+   * `excludeEmployees` for an internal note is what makes it staff-only - but
+   * it is a ROLE test, and the requester of a ticket is not always an EMPLOYEE.
+   * A payroll lead raising a ticket about her own pay is staff, so the role
+   * test alone keeps her in the audience for internal notes written about her.
+   * The requester is dropped explicitly below for exactly that reason.
+   */
+  private messageAudienceOptions(
+    actorId: string,
+    isInternal: boolean,
+  ): RecipientOptions {
+    return {
+      includeRequester: !isInternal,
+      includeAssignee: true,
+      includeFollowers: true,
+      excludeUserId: actorId,
+      excludeEmployees: isInternal,
+    };
+  }
+
+  /**
+   * Who a message is about to reach, for the compose screen (card 1.28).
+   *
+   * Runs the same audience calculation as the send, then the same outbound
+   * guard, so what an agent reads above the box is what will actually happen.
+   *
+   * Addresses are never returned for the audience itself - this renders on a
+   * screen a requester may be reading over a shoulder, and names read better
+   * anyway. `refused` carries addresses because a refusal is an operator
+   * problem an agent may have to report; the UI shows the count and the reason,
+   * not the address.
+   */
+  async previewMessageRecipients(
+    ticketId: string,
+    type: MessageType,
+    actor: AuthUser,
+  ): Promise<MessageRecipientsPreview> {
+    const ticket = await this.loadTicket(ticketId);
+    if (!ticket) {
+      return { to: null, cc: [], refused: [], emails: false };
+    }
+    const isInternal = type === MessageType.INTERNAL;
+    const audience = this.buildRecipients(
+      ticket,
+      this.messageAudienceOptions(actor.id, isInternal),
+    );
+    const requesterId = ticket.requester?.id ?? null;
+    const assigneeId = ticket.assignee?.id ?? null;
+    const followerIds = new Set(ticket.followers.map((row) => row.userId));
+    const nameOf = (user: User) =>
+      user.displayName?.trim() || user.email?.trim() || 'Unknown';
+    /**
+     * Removal unfollows from the ticket, and TicketsService.unfollowTicket
+     * lets only OWNER, TEAM_ADMIN and LEAD remove somebody else - an AGENT may
+     * only remove themselves. Offering the control to an agent produced a
+     * confirm dialog followed by a silent 403, caught in the browser rather
+     * than by any test. The actor is never in their own audience
+     * (excludeUserId), so "or it is me" cannot arise here.
+     *
+     * The endpoint keeps applying its own rules; this only stops us promising
+     * an action it will refuse.
+     */
+    const canManageFollowers =
+      actor.role === UserRole.OWNER ||
+      actor.role === UserRole.TEAM_ADMIN ||
+      actor.role === UserRole.LEAD;
+    const isRemovable = (userId: string) =>
+      canManageFollowers &&
+      followerIds.has(userId) &&
+      userId !== requesterId &&
+      userId !== assigneeId;
+
+    // An internal note sends no email at all (card 1.33), so there is no
+    // outbound resolution to run and nothing that could be refused. Running it
+    // anyway would also throw: resolveOutboundRecipients refuses outright to
+    // build an INTERNAL email addressed to the requester, by design.
+    if (isInternal) {
+      return {
+        to: null,
+        cc: audience.map((user) => ({
+          id: user.id,
+          name: nameOf(user),
+          removable: isRemovable(user.id),
+        })),
+        refused: [],
+        emails: false,
+      };
+    }
+
+    const candidates = audience
+      .map((user) => ({
+        user,
+        address: user.email?.trim() ?? '',
+        isRequester: requesterId != null && user.id === requesterId,
+      }))
+      .filter((candidate) => candidate.address !== '');
+    const suppressed: string[] = [];
+    for (const candidate of candidates) {
+      if (await this.emailSuppression.isSuppressed(candidate.address)) {
+        suppressed.push(candidate.address);
+      }
+    }
+    const { allowed, refused } = resolveOutboundRecipients({
+      recipients: candidates.map((candidate) => ({
+        address: candidate.address,
+        isRequester: candidate.isRequester,
+      })),
+      messageType: type,
+      suppressed,
+    });
+    const allowedLower = new Set(
+      allowed.map((address) => address.toLowerCase()),
+    );
+    const survives = candidates.filter((candidate) =>
+      allowedLower.has(candidate.address.toLowerCase()),
+    );
+    // Mirrors queuePublicReplyEmail: the requester takes To, and with no
+    // requester the first surviving recipient is promoted rather than sending
+    // a message with an empty To.
+    const toCandidate =
+      survives.find((candidate) => candidate.isRequester) ?? survives[0] ?? null;
+    return {
+      to: toCandidate
+        ? { id: toCandidate.user.id, name: nameOf(toCandidate.user) }
+        : null,
+      cc: survives
+        .filter((candidate) => candidate !== toCandidate)
+        .map((candidate) => ({
+          id: candidate.user.id,
+          name: nameOf(candidate.user),
+          // Only for someone who is on the ticket BECAUSE they follow it:
+          // unfollowing the assignee would not stop them receiving it, and the
+          // requester cannot be removed at all.
+          removable: isRemovable(candidate.user.id),
+        })),
+      refused,
+      emails: true,
+    };
+  }
+
   private buildRecipients(
     ticket: {
       requester?: User | null;
@@ -548,7 +693,7 @@ export class NotificationsService {
       suppressed,
     });
     if (refused.length > 0) {
-      await this.recordRefusedRecipients(ticket.id, refused);
+      await this.recordRefusedRecipients(ticket.id, refused, message.id);
     }
     if (allowed.length === 0) {
       return;
@@ -603,13 +748,17 @@ export class NotificationsService {
   private async recordRefusedRecipients(
     ticketId: string,
     refused: { address: string; reason: string }[],
+    messageId: string,
   ) {
     await this.prisma.ticketEvent
       .create({
         data: {
           ticketId,
           type: 'EMAIL_RECIPIENT_REFUSED',
-          payload: { refused },
+          // messageId so a refusal can be attributed to the message that
+          // caused it. Without it the event says only that somebody on this
+          // ticket was unreachable at some point, which an agent cannot act on.
+          payload: { refused, messageId },
           createdById: null,
         },
       })

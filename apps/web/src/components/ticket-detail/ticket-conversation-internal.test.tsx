@@ -237,6 +237,70 @@ describe("1.38 — the bubble reflects what the server stored", () => {
   });
 });
 
+describe("1.28 6c — what actually happened, per message", () => {
+  it("reports how many people an email reached", () => {
+    const html = render({
+      messages: [
+        message({
+          id: "e",
+          type: "PUBLIC",
+          delivery: { emailed: 3, refused: 0, internal: false },
+        }),
+      ],
+    });
+    expect(html).toContain("emailed to 3");
+  });
+
+  it("reports refusals alongside the sends", () => {
+    const html = render({
+      messages: [
+        message({
+          id: "r",
+          type: "PUBLIC",
+          delivery: { emailed: 2, refused: 1, internal: false },
+        }),
+      ],
+    });
+    expect(html).toContain("emailed to 2 · 1 refused");
+  });
+
+  it("says nothing at all while the outbox has nothing to report", () => {
+    // Reports the outbox, not the intent. "emailed to 0" would be a lie in
+    // the window before the processor runs, and a label claiming a send that
+    // was refused is worse than none, because the agent stops chasing.
+    const html = render({
+      messages: [
+        message({
+          id: "p",
+          type: "PUBLIC",
+          delivery: { emailed: 0, refused: 0, internal: false },
+        }),
+      ],
+    });
+    expect(html).not.toContain("data-delivery-label");
+  });
+
+  it("leaves an internal note to its own marker, not two warnings", () => {
+    // Coexisting with 1.37: the amber marker already says it was not sent.
+    const html = render({
+      messages: [
+        message({
+          id: "i",
+          type: "INTERNAL",
+          delivery: { emailed: 0, refused: 0, internal: true },
+        }),
+      ],
+    });
+    expect(html).toContain('data-internal-marker="true"');
+    expect(html).not.toContain("data-delivery-label");
+  });
+
+  it("renders no label for a message the server said nothing about", () => {
+    const html = render({ messages: [message({ id: "n", type: "PUBLIC" })] });
+    expect(html).not.toContain("data-delivery-label");
+  });
+});
+
 describe("the stale reference is gone", () => {
   it("no longer mentions ConversationPane, a file that does not exist", async () => {
     const source = await import("fs/promises").then((fs) =>

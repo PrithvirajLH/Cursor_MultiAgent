@@ -33,7 +33,9 @@ import { DeleteTicketDto } from './dto/delete-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
 import { ListTicketEventsDto } from './dto/list-ticket-events.dto';
+import { MessageType } from '@prisma/client';
 import { ListTicketMessagesDto } from './dto/list-ticket-messages.dto';
+import { MessageRecipientsDto } from './dto/message-recipients.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
@@ -203,6 +205,26 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.listMessages(id, user, query.take, query.cursor);
+  }
+
+  /**
+   * Who the message being composed would reach (card 1.28).
+   *
+   * Read-only and cheap, but gated by canPostMessage rather than mere read
+   * access: the ticket's audience is not something a requester should be able
+   * to enumerate on their own ticket.
+   */
+  @Get(':id/message-recipients')
+  async previewMessageRecipients(
+    @Param('id') id: string,
+    @Query() query: MessageRecipientsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.previewMessageRecipients(
+      id,
+      query.type ?? MessageType.PUBLIC,
+      user,
+    );
   }
 
   @Post(':id/messages')

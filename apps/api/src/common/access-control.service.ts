@@ -284,6 +284,14 @@ export class AccessControlService {
   ): boolean {
     if (ticket.deletedAt) return false;
     if (this.canWriteTicket(user, ticket)) return true;
+    // I can always answer my own ticket. Card 1.36's Fault B names "no reply"
+    // as part of the fault, and fixing only visibility left a staff requester
+    // able to read their own off-team ticket and unable to say anything on it -
+    // an EMPLOYEE requester could, because canWriteTicket already grants them
+    // their own ticket. What they may post is narrowed in
+    // TicketsService.addMessage: someone here purely as the requester gets
+    // PUBLIC only.
+    if (ticket.requesterId === user.id) return true;
     return this.isPeerAgent(user, ticket);
   }
 

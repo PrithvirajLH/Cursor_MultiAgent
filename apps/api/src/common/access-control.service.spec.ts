@@ -319,6 +319,37 @@ describe('AccessControlService', () => {
       expect(svc.canPostMessage(a, t)).toBe(true);
     });
 
+    it('lets anyone answer a ticket they raised themselves', () => {
+      // Card 1.36's Fault B names "no reply" as part of the fault. Fixing only
+      // visibility left a staff requester able to read their own off-team
+      // ticket and unable to say anything on it, while an EMPLOYEE requester
+      // could - canWriteTicket already grants an employee their own ticket.
+      const l = lead(['T1'], 'l1');
+      const own = ticket({ requesterId: 'l1', assignedTeamId: 'T-other' });
+      expect(svc.canWriteTicket(l, own)).toBe(false);
+      expect(svc.canPostMessage(l, own)).toBe(true);
+    });
+
+    it('still refuses someone with no claim on the ticket at all', () => {
+      // The persona the 403 integration test uses: an EMPLOYEE who is not the
+      // requester has no relationship and no team scope.
+      expect(
+        svc.canPostMessage(
+          employee('nobody'),
+          ticket({ requesterId: 'someone-else', assignedTeamId: 'T1' }),
+        ),
+      ).toBe(false);
+    });
+
+    it('does not let the requester clause reopen a deleted ticket', () => {
+      expect(
+        svc.canPostMessage(lead(['T1'], 'l1'), {
+          ...ticket({ requesterId: 'l1' }),
+          deletedAt: new Date(),
+        }),
+      ).toBe(false);
+    });
+
     it('denies an agent who is not on the ticket team', () => {
       const a = agent(['T2'], 'a1');
       expect(

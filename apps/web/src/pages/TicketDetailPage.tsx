@@ -19,6 +19,7 @@ import {
   bulkPriorityTickets,
   downloadAttachment,
   fetchCategories,
+  fetchMessageAudience,
   followTicket,
   fetchTeamMembers,
   fetchTicketById,
@@ -45,6 +46,7 @@ import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LinkifiedText } from "../components/LinkifiedText";
+import { MessageAudience } from "../components/ticket-detail/MessageAudience";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
 import { messageSentToast } from "../components/ticket-detail/message-sent-toast";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
@@ -425,6 +427,16 @@ export function TicketDetailPage({
   const canUpload = ticket
     ? role !== "EMPLOYEE" || ticket.requester?.email === currentEmail
     : false;
+
+  /**
+   * Mirrors AccessControlService.canPostMessage: anyone who can manage the
+   * ticket, a peer agent, or the person who raised it. Card 1.36 added that
+   * last clause - a staff requester can now answer their own off-team ticket.
+   */
+  const canPostMessage =
+    canManage ||
+    isPeerAgent ||
+    (!!ticket && ticket.requester?.email === currentEmail);
 
   const availableTransitions = useMemo(
     () => ticket?.allowedTransitions ?? [],
@@ -1458,6 +1470,54 @@ export function TicketDetailPage({
     stopTyping();
   }, [stopTyping]);
 
+  /**
+   * Who a message would reach (card 1.28).
+   *
+   * BOTH types are fetched once and swapped locally rather than refetched when
+   * the composer's toggle flips. Refetching would put a network round trip in
+   * the middle of composing, and the loading state renders NOTHING - so the
+   * line would blink out and briefly read as "nobody", which is the one wrong
+   * answer this feature can give.
+   */
+  const audienceQuery = useQuery({
+    queryKey: ["message-audience", ticket?.id],
+    queryFn: async () => {
+      const [publicAudience, internalAudience] = await Promise.all([
+        fetchMessageAudience(ticket!.id, "PUBLIC"),
+        fetchMessageAudience(ticket!.id, "INTERNAL"),
+      ]);
+      return { publicAudience, internalAudience };
+    },
+    // Only someone who can post has an audience to be shown, and the endpoint
+    // 403s for anyone else - asking would turn a permission into an error line.
+    enabled: !!ticket?.id && canPostMessage,
+    staleTime: 30_000,
+  });
+
+  const handleRemoveFromAudience = useCallback(
+    async (userId: string, name: string) => {
+      if (!ticket) return;
+      try {
+        await unfollowTicket(ticket.id, userId);
+        setCopyToast({
+          message: `${name} no longer follows this ticket.`,
+          type: "success",
+        });
+        // The ticket carries the follower list, so both have to come back.
+        await Promise.all([
+          audienceQuery.refetch(),
+          refreshAfterMutation(ticket.id),
+        ]);
+      } catch {
+        setCopyToast({
+          message: `Unable to stop ${name} following this ticket.`,
+          type: "error",
+        });
+      }
+    },
+    [ticket, audienceQuery, refreshAfterMutation],
+  );
+
   const handleReply = useCallback(async () => {
     const body = (messageInputRef.current?.getValue() ?? messageBody).trim();
     if (!ticketId || !ticket || !body) return;
@@ -2442,6 +2502,21 @@ export function TicketDetailPage({
                         canManage={canManage && !isDeleted}
                         isPeerAgent={isPeerAgent && !isDeleted}
                         isUnassigned={!ticket.assignee}
+                        audienceSlot={
+                          canPostMessage && !isDeleted ? (
+                            <MessageAudience
+                              publicAudience={
+                                audienceQuery.data?.publicAudience ?? null
+                              }
+                              internalAudience={
+                                audienceQuery.data?.internalAudience ?? null
+                              }
+                              messageType={messageType}
+                              error={audienceQuery.isError}
+                              onRemove={handleRemoveFromAudience}
+                            />
+                          ) : null
+                        }
                         readOnly={isDeleted}
                         canUpload={canUpload}
                         onReply={() => void handleReply()}

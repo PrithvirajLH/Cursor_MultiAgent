@@ -1,6 +1,7 @@
 import {
   memo,
   type ChangeEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { Loader2, Paperclip, Send, Shield } from "lucide-react";
@@ -58,6 +59,25 @@ function formatConversationDay(iso: string) {
 }
 
 /**
+ * What happened to a message's email, in a few muted words (card 1.28, 6c).
+ *
+ * Null for an internal note: the amber marker card 1.37 puts on every internal
+ * bubble already says it is not sent, and two notices side by side read as two
+ * competing warnings. Null too when the outbox has nothing to report yet — with
+ * Redis off the processor runs at queue time, so that window is momentary, and
+ * saying nothing beats guessing.
+ */
+function deliveryLabel(
+  delivery: { emailed: number; refused: number; internal: boolean } | undefined,
+): string | null {
+  if (!delivery || delivery.internal) return null;
+  const parts: string[] = [];
+  if (delivery.emailed > 0) parts.push(`emailed to ${delivery.emailed}`);
+  if (delivery.refused > 0) parts.push(`${delivery.refused} refused`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/**
  * True when a message body contains only attachment image(s) and no real text —
  * used to render the message without the colored chat bubble (image is the bubble).
  */
@@ -97,6 +117,12 @@ export type TicketConversationProps = {
    * recomputed here so this component keeps knowing nothing about ticket state.
    */
   isUnassigned?: boolean;
+  /**
+   * The "who does this reach" line (card 1.28), rendered directly above the
+   * compose box. A slot rather than the data itself: this component has no
+   * business knowing about outbox rows or followers.
+   */
+  audienceSlot?: ReactNode;
   /** Hide the composer entirely (e.g. a soft-deleted ticket viewed by an owner). */
   readOnly?: boolean;
   canUpload: boolean;
@@ -142,6 +168,7 @@ export const TicketConversation = memo(function TicketConversation({
   canManage,
   isPeerAgent = false,
   isUnassigned = false,
+  audienceSlot = null,
   readOnly = false,
   canUpload,
   onReply,
@@ -396,6 +423,14 @@ export const TicketConversation = memo(function TicketConversation({
                         />
                       )}
                     </div>
+                    {deliveryLabel(message.delivery) ? (
+                      <div
+                        data-delivery-label="true"
+                        className={`mt-0.5 text-[10px] text-muted-foreground ${isCurrentUser ? "text-right" : "text-left"}`}
+                      >
+                        {deliveryLabel(message.delivery)}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -432,6 +467,13 @@ export const TicketConversation = memo(function TicketConversation({
       {readOnly ? null : (
       <div className="shrink-0 border-t border-border bg-background px-4 py-2 sm:px-6 sm:py-2.5">
         <div className="mx-auto w-full max-w-4xl">
+          {/*
+            Height is reserved so the line appearing after its fetch does not
+            resize the composer under the agent's cursor. The footer is
+            bottom-anchored, so growing it moves the message list rather than
+            the box being typed in.
+          */}
+          <div className="min-h-[20px]">{audienceSlot}</div>
           <div
             className="w-full overflow-hidden rounded-xl border border-border focus-within:border-primary/50"
             onBlur={onMessageInputBlur}

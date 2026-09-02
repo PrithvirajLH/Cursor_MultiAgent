@@ -281,6 +281,12 @@ export type TicketMessage = {
   type: string;
   createdAt: string;
   author: UserRef;
+  /**
+   * What actually happened to this message's email (card 1.28, 6c). Reports
+   * the outbox, not the intent: a label reading "emailed to 3" when the send
+   * failed is worse than no label, because the agent stops chasing.
+   */
+  delivery?: { emailed: number; refused: number; internal: boolean };
 };
 
 export type TicketEvent = {
@@ -1044,6 +1050,32 @@ export function fetchTicketEvents(
   if (params?.take) query.set("take", String(params.take));
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiFetch<TicketEventPage>(`/tickets/${id}/events${suffix}`);
+}
+
+/** Who a message would reach, as the compose screen shows it (card 1.28). */
+export type MessageAudience = {
+  to: { id: string; name: string } | null;
+  cc: { id: string; name: string; removable: boolean }[];
+  refused: { address: string; reason: string }[];
+  emails: boolean;
+};
+
+/**
+ * Ask who a message of `type` would reach.
+ *
+ * `no-store` deliberately: the audience changes the moment someone is
+ * unfollowed, and the 15s hot GET cache would otherwise keep showing a person
+ * who has just been removed - the same cache that defeated card 1.26's
+ * reconnect refetch.
+ */
+export function fetchMessageAudience(
+  id: string,
+  type: "PUBLIC" | "INTERNAL",
+) {
+  return apiFetch<MessageAudience>(
+    `/tickets/${id}/message-recipients?type=${type}`,
+    { cache: "no-store" },
+  );
 }
 
 export function fetchTicketFollowers(id: string) {
