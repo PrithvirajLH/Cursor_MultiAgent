@@ -133,8 +133,12 @@ and the pilot list is empty:
 ### Then verify, in this order
 
 1. `/api/health/ready` → `smtp: "configured"`.
-2. **On a real ticket, post a public reply as an agent.** Expect **exactly one
-   email, in the owner's inbox, and nowhere else.** Check:
+2. **On a real ticket, post a public reply as an agent.** Expect **one email per
+   non-author recipient** — requester, assignee and followers, minus whoever
+   wrote it — **all of them redirected to the owner's inbox and nowhere else.**
+   A ticket with three followers authored by one of them produces **two**. (An
+   earlier version of this file said "exactly one", which would have had the
+   deploy agent reporting a false fault.) Check:
    - the body begins with the `----- Reply above this line -----` marker;
    - `Reply-To` is `helpdesk+ticket-<token>@…`, not the bare desk address;
    - the From line reads `CSNHC Helpdesk <…>`. **The agent's name will *not*

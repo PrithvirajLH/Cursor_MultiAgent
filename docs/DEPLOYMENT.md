@@ -235,6 +235,26 @@ shipped. Nothing above proves the app *works*, only that the right bytes landed.
 
 ## ⚠ Gotchas (the part that actually cost time)
 
+### 0. Writing to Azure needs a Conditional Access auth-context token
+
+**A plain `az login` is not enough to change App Service configuration.** The
+tenant requires an auth context (`acrs: p1`) for write operations, and the
+failure does not say so clearly — it reads like a permissions or transient error.
+It cost the 1.23 deploy agent three failed attempts on 2026-09-02.
+
+Acquire a token that carries the claim, then retry:
+
+```bash
+az login --scope https://management.core.windows.net//.default   --claims-challenge <the challenge from the failed response> --use-device-code
+```
+
+Device code is needed because the interactive browser flow does not carry the
+claims challenge through. Reads (`az webapp config appsettings list`,
+`az webapp show`) work without it — it is **writes** that are gated, which is why
+this only bites at the settings step and not during a read-only pre-flight.
+
+---
+
 ### 1. `deploy-to-azure.ps1` cannot deploy this package
 
 It does a **synchronous** `Invoke-RestMethod` POST to Kudu `zipdeploy`. At
