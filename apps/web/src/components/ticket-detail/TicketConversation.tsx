@@ -89,6 +89,14 @@ export type TicketConversationProps = {
   onMessageInputBlur: () => void;
   canManage: boolean;
   isPeerAgent?: boolean;
+  /**
+   * True when the peer-agent restriction is in force because nobody is
+   * assigned, rather than because a teammate is. The two need different
+   * wording: "assigned to a teammate" is simply false on an unassigned ticket,
+   * and the way out is the Me button beside Assignee. Passed in rather than
+   * recomputed here so this component keeps knowing nothing about ticket state.
+   */
+  isUnassigned?: boolean;
   /** Hide the composer entirely (e.g. a soft-deleted ticket viewed by an owner). */
   readOnly?: boolean;
   canUpload: boolean;
@@ -133,6 +141,7 @@ export const TicketConversation = memo(function TicketConversation({
   onMessageInputBlur,
   canManage,
   isPeerAgent = false,
+  isUnassigned = false,
   readOnly = false,
   canUpload,
   onReply,
@@ -234,7 +243,7 @@ export const TicketConversation = memo(function TicketConversation({
             // email verbatim, but server-sourced messages (e.g. attachment
             // uploads, which re-fetch rather than echo) may differ only in
             // letter case. A strict === would mis-flag the user's own image
-            // as someone else's and left-align it. Mirrors ConversationPane.
+            // as someone else's and left-align it.
             const isCurrentUser =
               !!message.author?.email &&
               !!currentEmail &&
@@ -295,6 +304,22 @@ export const TicketConversation = memo(function TicketConversation({
                   <div
                     className={`max-w-[82%] sm:max-w-[70%] min-w-0 ${isCurrentUser ? "text-right" : "text-left"}`}
                   >
+                    {/*
+                      The badge below sits inside the isGroupStart header, so a
+                      run of six internal notes carried exactly one marker.
+                      Grouping requires previousMessage.type === message.type,
+                      so a group is never mixed and a per-message marker is
+                      always accurate.
+                    */}
+                    {isInternal ? (
+                      <div
+                        data-internal-marker="true"
+                        className={`mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 ${isCurrentUser ? "justify-end" : "justify-start"}`}
+                      >
+                        <Shield className="h-3 w-3" />
+                        <span>Internal — not sent to the requester</span>
+                      </div>
+                    ) : null}
                     {isGroupStart ? (
                       <div
                         className={`mb-1 flex items-center gap-2 ${isCurrentUser ? "justify-end" : "justify-start"}`}
@@ -339,7 +364,16 @@ export const TicketConversation = memo(function TicketConversation({
                             `max-w-full ${isCurrentUser ? "[&_img]:ml-auto" : "[&_img]:mr-auto"}`
                           : `inline-flex min-h-[32px] items-center max-w-full break-words whitespace-pre-wrap border px-4 py-2.5 text-left text-sm leading-relaxed shadow-sm ${
                               isCurrentUser
-                                ? "border-primary bg-primary text-primary-foreground"
+                                ? isInternal
+                                  ? // Your own internal note. The amber ring
+                                    // rides on the sent bubble rather than
+                                    // replacing it: reordering this ternary
+                                    // instead would make your own notes look
+                                    // like someone else's and cost the
+                                    // left/right sent-received distinction the
+                                    // whole layout depends on.
+                                    "border-amber-400 bg-primary text-primary-foreground ring-1 ring-amber-400"
+                                  : "border-primary bg-primary text-primary-foreground"
                                 : isInternal
                                   ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
                                   : "border-border bg-card text-foreground"
@@ -416,7 +450,11 @@ export const TicketConversation = memo(function TicketConversation({
               {isPeerAgent ? (
                 <span
                   className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/50 dark:bg-amber-500/10 dark:text-amber-400"
-                  title="You can only leave internal notes on tickets assigned to a teammate. The requester will not see this message."
+                  title={
+                    isUnassigned
+                      ? "Assign this ticket to yourself to reply to the requester. Until then anything you write is an internal note."
+                      : "You can only leave internal notes on tickets assigned to a teammate. The requester will not see this message."
+                  }
                 >
                   <Shield className="h-3.5 w-3.5" />
                   <span>Internal note only</span>

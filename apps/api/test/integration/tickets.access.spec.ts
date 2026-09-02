@@ -396,4 +396,80 @@ describe('Ticket access control', () => {
       );
     });
   });
+  /**
+   * Card 1.38. The API rewrites an AGENT's PUBLIC message to INTERNAL on any
+   * ticket they are not the assignee of - and an UNASSIGNED ticket counts,
+   * because isPeerAgent's `assigneeId === user.id` test is false when
+   * assigneeId is null. That override has run unobserved: proven in the
+   * browser on 2026-09-02, four messages posted through the composer with the
+   * toggle plainly reading `Public`, all four stored INTERNAL with zero outbox
+   * rows and no warning anywhere.
+   *
+   * The owner ruled the API is right - an agent assigns the ticket to
+   * themselves before replying to the requester - so the web stops offering
+   * `Public` and this pins the server behaviour as intended rather than
+   * accidental.
+   */
+  describe('an AGENT posting to an unassigned ticket on their team', () => {
+    const prisma = getPrisma();
+
+    it('stores the message INTERNAL even when PUBLIC was asked for, and emails nobody', async () => {
+      const ticket = await prisma.ticket.create({
+        data: {
+          requesterId: fixtureUserIds.requester,
+          subject: '1.38 — unassigned, on the agent team',
+          description: 'Nobody is assigned to this one.',
+          assignedTeamId: fixtureTeamIds.it,
+          assigneeId: null,
+        },
+        select: { id: true },
+      });
+
+      const res = await request(server)
+        .post(`/api/tickets/${ticket.id}/messages`)
+        .set(authHeader(fixtureEmails.agent))
+        .send({ body: 'Calling the requester back shortly.', type: 'PUBLIC' })
+        .expect(201);
+
+      const created = res.body as { id: string; type: string };
+      expect(created.type).toBe('INTERNAL');
+
+      // The stored row, not just what the response claimed.
+      const stored = await prisma.ticketMessage.findUnique({
+        where: { id: created.id },
+        select: { type: true },
+      });
+      expect(stored?.type).toBe('INTERNAL');
+
+      // An internal note raises no outbound email. If this ever starts
+      // failing, the requester is being emailed staff-only content.
+      const outbox = await prisma.notificationOutbox.count({
+        where: { ticketId: ticket.id },
+      });
+      expect(outbox).toBe(0);
+    });
+
+    it('leaves a LEAD on the same ticket free to reply publicly', async () => {
+      // The rule is scoped to AGENT. isPeerAgent returns false for every other
+      // role, and widening it would silently stop leads and admins replying.
+      const ticket = await prisma.ticket.create({
+        data: {
+          requesterId: fixtureUserIds.requester,
+          subject: '1.38 — unassigned, a lead replies',
+          description: 'Nobody is assigned to this one either.',
+          assignedTeamId: fixtureTeamIds.it,
+          assigneeId: null,
+        },
+        select: { id: true },
+      });
+
+      const res = await request(server)
+        .post(`/api/tickets/${ticket.id}/messages`)
+        .set(authHeader(fixtureEmails.lead))
+        .send({ body: 'Looking at this now.', type: 'PUBLIC' })
+        .expect(201);
+
+      expect((res.body as { type: string }).type).toBe('PUBLIC');
+    });
+  });
 });

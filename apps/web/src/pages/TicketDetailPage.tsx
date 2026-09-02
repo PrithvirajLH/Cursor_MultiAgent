@@ -46,6 +46,7 @@ import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LinkifiedText } from "../components/LinkifiedText";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
+import { messageSentToast } from "../components/ticket-detail/message-sent-toast";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
 import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
 import {
@@ -396,13 +397,29 @@ export function TicketDetailPage({
     trimmedEditDescription.length >= 1 &&
     trimmedEditDescription.length <= TICKET_DESCRIPTION_MAX;
 
-  // Peer agent: same team, not the assignee. Can read + post INTERNAL notes only.
+  /**
+   * Peer agent: an AGENT on the team who is not the assignee. Read + INTERNAL
+   * notes only.
+   *
+   * Mirrors AccessControlService.isPeerAgent exactly, unassigned tickets
+   * included. The web used to exempt them ("unassigned tickets are open to any
+   * agent"), but the API never agreed: with assigneeId null its
+   * `assigneeId === user.id` test is false, so an unassigned ticket IS a
+   * peer-agent ticket and every message on it is stored INTERNAL. The
+   * disagreement was proven in the browser on 2026-09-02 - four messages
+   * posted through the composer with the toggle plainly reading `Public`, all
+   * four stored INTERNAL, zero outbox rows, no warning. The owner ruled the
+   * API is right: an agent assigns the ticket to themselves before replying to
+   * the requester. So the toggle goes, rather than the override.
+   *
+   * Scoped to AGENT only. LEAD, TEAM_ADMIN and OWNER keep replying publicly on
+   * unassigned tickets.
+   */
   const isPeerAgent = useMemo(() => {
     if (!ticket) return false;
     if (role !== "AGENT") return false;
     if (!isCurrentUserOnAssignedTeam) return false;
-    if (!ticket.assignee) return false; // unassigned tickets are open to any agent
-    return ticket.assignee.email !== currentEmail;
+    return ticket.assignee?.email !== currentEmail;
   }, [currentEmail, isCurrentUserOnAssignedTeam, role, ticket]);
 
   const canUpload = ticket
@@ -1469,9 +1486,16 @@ export function TicketDetailPage({
         body,
         type: messageType,
       });
+      // Adopt the server's type, not the one we asked for. The API silently
+      // rewrites PUBLIC to INTERNAL for a peer agent, and 5b cannot catch every
+      // case: an agent can open an assigned ticket, start a public reply, and
+      // have it reassigned before they press send. This is the only thing that
+      // catches that one.
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === optimisticId ? { ...m, localStatus: "sent" } : m,
+          m.id === optimisticId
+            ? { ...m, localStatus: "sent", type: serverMessage.type }
+            : m,
         ),
       );
       appendRealtimeEvent({
@@ -1485,8 +1509,16 @@ export function TicketDetailPage({
         createdBy: serverMessage.author,
       });
       setCopyToast({
-        message:
-          messageType === "INTERNAL" ? "Internal note added" : "Reply sent",
+        // Keyed off what the server stored, not what we asked for. Still
+        // "success" - the note really was saved; the wording carries the part
+        // the agent needs, and the toast has only these two variants.
+        // serverMessage.type is a plain string on the client; narrow it here
+        // rather than casting, so an unexpected value reads as PUBLIC and the
+        // toast never claims an email was withheld when it was not.
+        message: messageSentToast(
+          messageType,
+          serverMessage.type === "INTERNAL" ? "INTERNAL" : "PUBLIC",
+        ),
         type: "success",
       });
     } catch {
@@ -2409,6 +2441,7 @@ export function TicketDetailPage({
                         onMessageInputBlur={handleMessageInputBlur}
                         canManage={canManage && !isDeleted}
                         isPeerAgent={isPeerAgent && !isDeleted}
+                        isUnassigned={!ticket.assignee}
                         readOnly={isDeleted}
                         canUpload={canUpload}
                         onReply={() => void handleReply()}
