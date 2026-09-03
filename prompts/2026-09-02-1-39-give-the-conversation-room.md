@@ -56,6 +56,30 @@ Three always-on pieces:
 
 So ≈154px is reserved before anyone types a character.
 
+### Re-measure before you start — the four-card batch changed these numbers
+
+The table above was measured **before** 1.28/1.37/1.38 landed (commits `48d9874`,
+`e6cbf7f`, `c2b8584`, 2026-09-02). Two of them added furniture in this exact
+region, so **1.39 is now worth more, not less** — but take your own before/after
+numbers rather than quoting mine:
+
+- **1.28 added the audience line directly above the composer** — roughly +20px
+  collapsed ("Goes to Requestor One · …"), and around +90px expanded into the
+  removable list. That is deliberate and must stay: it is the safety control that
+  card's whole purpose.
+- **1.37 added a per-message caption** — `INTERNAL — NOT SENT TO THE REQUESTER`
+  above **every** internal bubble. Correct and unmissable, but in a long internal
+  run it repeats once per message and eats real height.
+
+**A refinement worth considering while you are in here, and only if it costs
+nothing:** the amber **ring** now on every internal bubble already carries the
+per-message signal, so the full-width caption could appear once per *run* while
+every bubble keeps its ring. **That is not a return to the 1.37 bug** — 1.37's
+fault was that messages after the first carried **no** signal at all; the ring is
+a per-message signal. If that distinction feels at all thin when you look at it,
+**leave it alone and say so** — a slightly heavy screen is much cheaper than
+re-opening a safety fix that took a browser pass to find.
+
 ## 2. The prize
 
 Clamping the description to three lines returns ≈175px; collapsing the idle

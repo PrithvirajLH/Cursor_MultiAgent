@@ -197,6 +197,27 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
 # then Stop-Process -Id <each> -Force
 ```
 
+**This filter silently misses a process started with a relative path.** A dev
+server launched from inside the repo as `node dist/src/main.js` has exactly that
+as its `CommandLine` — the repo path never appears in it, so the filter returns
+nothing and the process looks absent while it still holds the Prisma engine DLL
+and the port. It cost an implementer a chase on 2026-09-02. **Kill by listening
+port when you know the port**, and treat an empty result from the filter above as
+"maybe", never as "clear":
+
+```powershell
+# What is actually holding the port, regardless of how it was launched
+foreach ($p in 3000, 3077, 5173) {
+  Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue |
+    ForEach-Object { Get-Process -Id $_.OwningProcess } |
+    Select-Object Id, ProcessName, Path
+}
+```
+
+The inverse mistake is worse: a **broad** `node.exe` filter with no scoping took
+down an unrelated dev server on 2026-09-02. Scope by port, or by the repo path
+*and* the port — never by `node.exe` alone.
+
 To tell a live run from an orphan, compare CPU-seconds a few seconds apart: a
 real run burns CPU, an orphan is flat.
 
