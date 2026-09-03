@@ -209,6 +209,24 @@ a status transition attempted **before** the message is stored turns into:
 3. the retry hits the identical state and throws again - forever,
 4. **the requester's reply is never stored.** Lost mail, not delayed mail.
 
+**A second way the same shape bites, found 2026-09-03.** `TicketsService.addMessage`
+**refuses a reply from anyone who is not the ticket's requester**, and an inbound
+sender is provisioned as an `EMPLOYEE` — so a looped-in third party's reply
+answers **403**. With a status transition running *before* `addMessage`, that 403
+left the ticket already moved on the strength of a message that was then thrown
+away: the queue said somebody had answered when the answer had been refused. The
+`REOPENED` path had the same shape before card 1.29 existed, so a refused reply to
+a `RESOLVED` ticket reopened it and then failed.
+
+**Store the message first, then derive status from it.** A status derived from a
+message must not outlive the message.
+
+**And note where the safety net sits.** `persistedMutation` is assigned *after*
+the transition block and after `recordInboundSuppression`, not immediately after
+`addMessage`. So a throw in either still releases the idempotency reservation
+while the message is already stored — and the retry adds a **duplicate** copy.
+If you touch this path, set `persistedMutation` the moment the message is durable.
+
 **Rules.** Attempt a status transition in the inbound path only after checking the
 target is legal for that ticket's shape, and prefer **skipping the transition and
 keeping the message** over attempting it. Derive queue signals from **messages**
