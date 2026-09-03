@@ -22,14 +22,21 @@
 **ten** email types. Most of them should not exist. **Deleting an email beats
 redesigning it.**
 
-The planner argued for **one carve-out** and the owner kept it: **SLA alerts stay
-email.** The reasoning is worth keeping, because it is the principle that decides
-future cases:
+**Then the owner went further, and overruled the planner's carve-out:**
 
-> **An alert that only reaches someone already watching is not an alert.** The
-> point of "this is about to breach" is to reach a lead who is *not* in the app —
-> in a meeting, off the floor, 4pm on a Friday. In-app-only, the only person who
-> sees it is the one who did not need telling.
+> *"I don't want any emails to agent or lead, not even the breach email. We can
+> all track that on the platform."*
+
+**So SLA emails go too. No email reaches a member of staff, for any reason.** The
+planner's argument was that an alert only reaching someone already watching is not
+an alert. The owner's answer is that nobody acts on a payroll ticket at 2am anyway,
+and card 1.16's digest covers what breached yesterday. **That is accepted and is
+not to be re-argued** — recorded here so the reasoning is visible, not reopened.
+
+**The consequence, stated once:** a breach is now seen when somebody next opens the
+app. **It costs the metrics nothing** — `agent-performance`, `sla-compliance`,
+`sla-breaches` and `reopen-rate` all read timers and timestamps, never the emails.
+The emails were never the record.
 
 The owner also asked that the **resolved** email keep going to the requester
 **and carry the satisfaction rating**, which is card 1.14 folded in. That was
@@ -47,12 +54,31 @@ it, so a separate survey email would have been a second email for the same momen
 | **Status changed → RESOLVED** | **requester only** | **Yes**, carrying confirm / reopen / **rate** (§4) |
 | Status changed → any other status | — | **No** |
 | Assigned · Transferred | — | **No** |
-| **SLA at risk · SLA breached** | team leads + on-call addresses | **Yes** — the carve-out |
-| **Automation "notify" action** | whoever the rule names | **Yes** — an admin typed that address in deliberately |
+| SLA at risk · SLA breached | — | **No.** Owner's decision, overruling the planner |
+| **Automation "notify" action** | **non-staff addresses only** | **Yes, restricted** — see §1b |
 | Internal note · mentions | — | Already no email |
 
-**Ten types become five.** Every one that survives is either **to someone outside
-the system** or **an escalation whose job is to reach someone not looking**.
+**Ten types become four, and every survivor goes to somebody outside the system.**
+That is now the whole rule, and it is simple enough to hold in your head:
+
+> **Email leaves this system only for the requester and the people CC'd with them.
+> Staff use the app.**
+
+### 1b. The one edge — the automation "notify" action
+
+An automation rule's notify action can name **a user** or **a raw address**
+(`rule-engine.service.ts:885` and `:888`). Naming a user could email an agent,
+which contradicts the rule above; naming an outside address — a vendor, a
+distribution list — is legitimately outside the system.
+
+- [ ] **Restrict it to addresses outside the staff group**, so the policy holds
+      without removing the escape hatch. Reuse the domain/staff test already used
+      by card 1.23's `resolveOutboundRecipients` rather than writing a second one.
+- [ ] If a rule names a staff user, **the in-app notification still fires** — only
+      the email is dropped. Assert that.
+- [ ] The owner may prefer this stay fully open as a deliberate admin override.
+      **Implement the restriction, and say in the report that it is reversible in
+      one place** if they choose otherwise.
 
 ## 2. What this depends on — say it out loud
 
@@ -111,9 +137,9 @@ one trigger.
 - [ ] Do not send a separate survey email. **Card 1.14 is closed by this card** —
       say so in the report.
 
-## 5. The shape of the five survivors
+## 5. The shape of the four survivors
 
-The five that remain still carry the old body: `buildDefaultNotificationHtmlBody`
+The four that remain still carry the old body: `buildDefaultNotificationHtmlBody`
 (`:1064`) has the **"View Ticket" hero button** (`:1095`) and the **"Best regards"
 sign-off** (`:1099`), and `buildInboundAcknowledgementHtmlBody` (`:998`) has the
 same (`:1050`, `:1052`). Neither has a preheader, so the inbox preview is
@@ -142,7 +168,7 @@ Apply card 1.34's treatment, which the owner reviewed and chose:
 2. **The inbound acknowledgement** — the requester's first impression, and fix the
    §3 duplicate while you are there.
 3. **The resolved email** — the confirm/reopen/rate one.
-4. **Ticket-created → requester**, and the two SLA emails, and the automation one.
+4. **Ticket-created → requester**, and the automation one (restricted per §1b).
 
 ## 7. Tests
 
@@ -155,12 +181,14 @@ Apply card 1.34's treatment, which the owner reviewed and chose:
 - [ ] Status change **to RESOLVED** still emails the requester, and **only** the
       requester.
 - [ ] An inbound email produces **exactly one** email back, not two (§3).
-- [ ] For each surviving type: no "View Ticket" markup, no "Best regards", no raw
-      `TicketStatus`, and a preheader asserted on its style attribute.
+- [ ] For each of the four surviving types: no "View Ticket" markup, no "Best
+      regards", no raw `TicketStatus`, and a preheader asserted on its style
+      attribute.
 - [ ] A malicious subject or display name is escaped in every body **and every
       preheader**.
-- [ ] SLA at-risk and breached still reach leads and on-call addresses. **The
-      carve-out must be pinned by a test**, or the next tidy-up removes it.
+- [ ] **SLA at-risk and breached send NO email** — assert zero outbox rows — while
+      their **in-app notifications still fire**. Both halves, or a future tidy-up
+      restores the emails or deletes the alerts entirely.
 - [ ] Targeted, then the **full** suite. **Do not edit source while it runs.**
 
 ## 8. Verification
@@ -187,15 +215,15 @@ a browser.
 
 ## 9. Acceptance criteria
 
-1. Only the five types in §1 can send email. Everything else sends none.
+1. Only the four types in §1 can send email, and every one goes to somebody outside the system. Everything else sends none.
 2. **In-app notifications are unchanged for every event whose email was removed.**
 3. An inbound email produces exactly one email back.
 4. The resolved email reaches the requester and asks them to confirm, reopen, or
    rate — and card 1.14 is closed by it.
 5. **No public one-click rating endpoint was added.**
-6. All five survivors are in card 1.34's shape, with no raw status enum reachable
+6. All four survivors are in card 1.34's shape, with no raw status enum reachable
    by a requester.
-7. SLA alerts still go out, pinned by a test.
+7. SLA alerts send no email, and their in-app notifications still fire.
 8. Both `tsc` clean; unit, integration and vitest at or above §8.
 
 ## 10. What to report back
