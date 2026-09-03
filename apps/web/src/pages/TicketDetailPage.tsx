@@ -2545,6 +2545,22 @@ export function TicketDetailPage({
                               messageType={messageType}
                               error={audienceQuery.isError}
                               onRemove={handleRemoveFromAudience}
+                              // Card 1.41: say the way out where it can be read.
+                              // isPeerAgent is AGENT-only, so a LEAD writing an
+                              // internal note by choice sees none of this.
+                              blockedReason={
+                                isPeerAgent
+                                  ? ticket.assignee
+                                    ? "assigned-to-teammate"
+                                    : "unassigned"
+                                  : null
+                              }
+                              onAssignSelf={
+                                isPeerAgent && !ticket.assignee
+                                  ? () => void handleAssignSelf()
+                                  : undefined
+                              }
+                              assigning={actionLoading}
                             />
                           ) : null
                         }

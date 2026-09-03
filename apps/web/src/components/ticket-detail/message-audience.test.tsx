@@ -56,6 +56,68 @@ describe("MessageAudience", () => {
     expect(render()).not.toContain("@");
   });
 
+  describe("card 1.41 — the way out is readable without hovering", () => {
+    /** Everything outside a title= attribute, i.e. what a person can actually read. */
+    function visibleText(html: string): string {
+      return html.replace(/title="[^"]*"/g, "");
+    }
+
+    it("names the way out as TEXT on an unassigned ticket, not only in a title", () => {
+      const html = render({
+        messageType: "INTERNAL",
+        blockedReason: "unassigned",
+      });
+      expect(visibleText(html)).toContain("Assign this ticket to yourself");
+      expect(visibleText(html)).toContain("until then anything you write is an");
+    });
+
+    it("makes the action a real focusable control, not a span", () => {
+      // The original lived in a title on a <span>, which cannot take focus, so
+      // a keyboard user could never reach it.
+      const html = render({
+        messageType: "INTERNAL",
+        blockedReason: "unassigned",
+        onAssignSelf: () => {},
+      });
+      expect(html).toMatch(/<button[^>]*>Assign this ticket to yourself<\/button>/);
+    });
+
+    it("falls back to prose when there is no assign action to offer", () => {
+      const html = render({
+        messageType: "INTERNAL",
+        blockedReason: "unassigned",
+      });
+      expect(visibleText(html)).toContain("Assign this ticket to yourself");
+      expect(html).not.toContain("<button");
+    });
+
+    it("keeps the assigned-to-a-teammate case distinguishable", () => {
+      const html = render({
+        messageType: "INTERNAL",
+        blockedReason: "assigned-to-teammate",
+      });
+      expect(visibleText(html)).toContain("assigned to a teammate");
+      expect(visibleText(html)).not.toContain("Assign this ticket to yourself");
+    });
+
+    it("says nothing extra when the agent is not blocked", () => {
+      // A LEAD choosing an internal note deliberately. Card 1.38's rule is
+      // AGENT-only and this wording must not widen it.
+      const html = render({ messageType: "INTERNAL" });
+      expect(visibleText(html)).toContain("Internal note — staff only");
+      expect(visibleText(html)).not.toContain("Assign this ticket to yourself");
+      expect(visibleText(html)).not.toContain("assigned to a teammate");
+    });
+
+    it("still shows the at-a-glance internal line in every blocked case", () => {
+      for (const reason of ["unassigned", "assigned-to-teammate"] as const) {
+        expect(
+          visibleText(render({ messageType: "INTERNAL", blockedReason: reason })),
+        ).toContain("Internal note — staff only, no email sent.");
+      }
+    });
+  });
+
   it("swaps wholly for the internal wording, naming no audience", () => {
     const html = render({ messageType: "INTERNAL" });
     expect(html).toContain("Internal note — staff only, no email sent.");

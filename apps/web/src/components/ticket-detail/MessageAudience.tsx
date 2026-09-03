@@ -14,6 +14,18 @@ export type MessageAudienceProps = {
   error: boolean;
   /** Unfollow someone from the ticket. Resolves once the audience is refreshed. */
   onRemove: (userId: string, name: string) => Promise<void>;
+  /**
+   * Why this agent cannot reply publicly, when they cannot (card 1.41).
+   *
+   * Null for everyone who is not blocked - including a LEAD who has simply
+   * chosen to write an internal note, who must see none of this. Card 1.38's
+   * rule is AGENT-only and this wording must not widen it.
+   */
+  blockedReason?: "unassigned" | "assigned-to-teammate" | null;
+  /** Assign the ticket to the current user. Present only when that is the way out. */
+  onAssignSelf?: () => void;
+  /** True while that assignment is in flight. */
+  assigning?: boolean;
 };
 
 /**
@@ -37,6 +49,9 @@ export function MessageAudience({
   messageType,
   error,
   onRemove,
+  blockedReason = null,
+  onAssignSelf,
+  assigning = false,
 }: MessageAudienceProps) {
   const [expanded, setExpanded] = useState(false);
   const [pending, setPending] = useState<{ id: string; name: string } | null>(
@@ -60,9 +75,49 @@ export function MessageAudience({
 
   if (!audience.emails) {
     return (
-      <p className="px-3 pt-2 text-[11px] text-muted-foreground">
-        Internal note — staff only, no email sent.
-      </p>
+      <div className="px-3 pt-2 text-[11px] text-muted-foreground">
+        <p>Internal note — staff only, no email sent.</p>
+        {/*
+          Card 1.41. Card 1.38 stops an agent sending a public reply that would
+          be silently stored as private, then explained the way out in a `title`
+          on a <span> - hover-only, and a span cannot take focus, so a keyboard
+          user could never reach it at all. The sentence lives here instead:
+          already visible, already directly above the box they are about to type
+          in, and no new layout. The chip stays as the at-a-glance marker.
+
+          The two blocked cases stay distinct, because card 1.38's owner ruling
+          turns on the difference.
+        */}
+        {blockedReason === "unassigned" ? (
+          <p className="mt-0.5">
+            {onAssignSelf ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onAssignSelf}
+                  disabled={assigning}
+                  className="rounded font-medium text-primary underline underline-offset-2 hover:no-underline focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-60"
+                >
+                  {assigning ? "Assigning…" : "Assign this ticket to yourself"}
+                </button>{" "}
+                to reply to the requester — until then anything you write is an
+                internal note.
+              </>
+            ) : (
+              <>
+                Assign this ticket to yourself to reply to the requester — until
+                then anything you write is an internal note.
+              </>
+            )}
+          </p>
+        ) : null}
+        {blockedReason === "assigned-to-teammate" ? (
+          <p className="mt-0.5">
+            This ticket is assigned to a teammate, so you can only leave internal
+            notes on it.
+          </p>
+        ) : null}
+      </div>
     );
   }
 
