@@ -185,6 +185,38 @@ lines inside functions). Monorepo: `apps/api` (NestJS + Prisma), `apps/web`
 
 ---
 
+## A status transition can lose inbound mail
+
+Found 2026-09-03 while building card 1.29, and it was in a planner handoff as an
+unconditional instruction.
+
+**`IN_PROGRESS` requires an assignee** (`transitionRequiresAssignee`, enforced at
+`tickets.service.ts:2607`) **and it is the only non-pause transition out of
+`WAITING_ON_REQUESTER`.** So a waiting ticket with no assignee has nowhere legal
+to go.
+
+That state is reachable, not theoretical: `normalizeStatusAfterTransfer` demotes
+**only** `ASSIGNED` and `IN_PROGRESS` when a team transfer clears the assignee, so
+**transferring a waiting ticket leaves it waiting *and* unassigned.**
+
+The trap is what a throw costs in the inbound path. `InboundEmailService` sets
+`persistedMutation` only once `addMessage` has run; before that, its `catch` calls
+`releaseInboundEmailReceipt` and rethrows (`inbound-email.service.ts:338-348`). So
+a status transition attempted **before** the message is stored turns into:
+
+1. `BadRequestException` -> 5xx to the sender,
+2. the idempotency reservation **released**, so the retry is treated as fresh,
+3. the retry hits the identical state and throws again - forever,
+4. **the requester's reply is never stored.** Lost mail, not delayed mail.
+
+**Rules.** Attempt a status transition in the inbound path only after checking the
+target is legal for that ticket's shape, and prefer **skipping the transition and
+keeping the message** over attempting it. Derive queue signals from **messages**
+rather than status where you can - card 1.29's "awaiting reply" marker is derived
+exactly so that it stays truthful on the tickets whose status cannot move.
+
+---
+
 ## Windows process hygiene
 
 Orphaned `node` processes from this repo have broken builds and test runs
