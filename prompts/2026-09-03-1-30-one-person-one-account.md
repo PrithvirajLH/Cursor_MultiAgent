@@ -97,6 +97,16 @@ The directory decides who a person is. The app stops deciding.
 > anyone who has ever signed in. Task 2 is still worth having for robustness, but
 > it is not what produced the duplicate we actually have.
 
+> **Owner said build it, 2026-09-03. One migration, carrying both.** Tasks 1 and 3
+> each need storage, and a migration against this production has no staging behind
+> it — so do **not** ship two. Migration **53** adds the `entraObjectId` column
+> **and** the alias storage together, hand-written, additive, dev Supabase first.
+>
+> **The alias store needs a unique constraint on the address.** If two users could
+> both claim the same alternate address, resolution becomes ambiguous and intake
+> would silently pick one. That is why this is a table with `@unique`, not a key
+> in `User.graphProfile` — JSON cannot carry the constraint that makes it safe.
+
 ### Task 1 — Store the identifier
 
 **Files:** `apps/api/prisma/schema.prisma` + a hand-written migration, or
