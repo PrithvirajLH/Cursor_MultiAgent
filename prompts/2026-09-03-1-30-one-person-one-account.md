@@ -76,6 +76,27 @@ The directory decides who a person is. The app stops deciding.
 
 ## 4. PREVENT — key on the directory object (the remaining work)
 
+> **Evidence from the production dry run, 2026-09-03 — do Task 3 first.** The real
+> duplicate is an **empty shell**: `prithviraj_hulgur@` has 0 tickets, 0 messages,
+> no team, and **nothing in the database references it**.
+>
+> **It was not created by a login.** The only login path that provisions is the
+> Azure branch, and it resolves
+> `firstStringClaim(claims, ['preferred_username','upn','email'])` — so it picks the
+> **UPN** and lands on the right row. The other branch reads `['email']` but has
+> `provisionIfMissing: false`, so it cannot create anyone. (The planner's first
+> reading of this was wrong and is corrected here.)
+>
+> So the twin came from **intake or inbound email**, which take whatever address
+> arrives — and `Prithviraj_Hulgur@csnhc.com` is the Entra **`mail`** attribute,
+> which is the address on a sent email or a Power Automate form response.
+>
+> **Therefore Task 3 is the load-bearing part of this card**, and it needs no Graph
+> permission and no directory call: the Entra token already hands us both
+> addresses, so recording them at login gives intake and inbound the mapping for
+> anyone who has ever signed in. Task 2 is still worth having for robustness, but
+> it is not what produced the duplicate we actually have.
+
 ### Task 1 — Store the identifier
 
 **Files:** `apps/api/prisma/schema.prisma` + a hand-written migration, or
