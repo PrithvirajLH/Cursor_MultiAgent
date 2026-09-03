@@ -402,7 +402,17 @@ column under a unique index is right: Postgres permits many NULLs there, which i
 with the reasoning that otherwise "the merge is undone the next time that address arrives at intake or by email — which is exactly how the duplicate was made in the first
 place." That closes a loop I had left open, and it handles the unique-constraint collision properly (`findUnique`, then create or reassign).
 
-**⚠️ One thing is confirmed only indirectly, and they said so rather than glossing it.** They could not decode a live token, so **`oid`'s presence in production tokens is
+**✅ CLOSED 2026-09-03 — `oid` is confirmed present in production, from a real signed-in session.** The owner opened `/.auth/me` and the **id_token** carries all three claims the mechanism needs, in short form:
+
+- **`oid`** = the same GUID as the Object ID in the Entra record — so `firstStringClaim(claims, ['oid'])` resolves.
+- **`preferred_username`** = the **short** form, which is why the login path already lands on the correct (AGENT) row.
+- **`email`** = the **long** form — the twin's address. **So PREVENT's alias recording captures it on the owner's next login, and the duplicate can never re-form.**
+
+**Two details worth keeping, because both could have broken it silently.** First, Easy Auth's `/.auth/me` `user_claims` array names these claims with **long XMLSOAP URIs** (`http://schemas.microsoft.com/identity/claims/objectidentifier`), under which a literal `'oid'` lookup finds **nothing** — but that is harmless here because **nothing in the app reads those claims**: `verifyAzureJwt` verifies the raw JWT, where the names are short. Second, the session also issues a Microsoft **Graph** access token whose claims include `oid` and `upn` but **no `email` at all** — so alias capture would have been incomplete had the API accepted it. It does not: `jwtVerify` pins `audience: AZURE_CLIENT_ID` and the v2.0 tenant issuer, which the Graph token fails on both counts. **The API accepts only the id_token, which is precisely the one carrying all three claims.**
+
+**⚠️ Handling note:** the owner pasted the raw `access_token` and `id_token` into the session to establish this. Those are bearer credentials; they were short-lived (expiry ~20:04Z the same day) and are **not recorded anywhere in this repo**. For any future check the `user_claims` array alone is sufficient — the token strings are never needed.
+
+**(Superseded note, kept for the record:)** They could not decode a live token, so **`oid`'s presence in production tokens is
 unverified**. Their evidence is a stored Graph profile carrying a GUID plus `mail` ≠ `userPrincipalName` — the right shape, but not a token. **The owner should open
 `/.auth/me` on the production host in a signed-in browser and look for `oid`.** Not blocking: a token without `oid` falls back to today's behaviour, which the card
 required and a test pins. But the mechanism should not be trusted in production until somebody has seen the claim.
