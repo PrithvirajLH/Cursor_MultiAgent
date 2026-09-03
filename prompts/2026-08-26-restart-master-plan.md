@@ -451,6 +451,8 @@ suite, plus a browser pass covering all four automated-header shapes — but not
 checks move into card 1.24's rollout**, where real mail exercises them for free. Recorded there so they are not lost. Injecting fake mail into production to verify a
 feature that no real mail can yet reach would buy very little and leave probe tickets behind, which the owner is already cleaning up from earlier rounds.
 
+**Four-card batch handed off 2026-09-03** — 1.41, 1.9, 1.10, 1.40 as `prompts/2026-09-03-1-41-1-9-1-10-1-40-combined.md`, four commits in that order. **Not combined because they collide** (unlike the 1.36-1.28 batch); they are together because the implementer was free and each is small. Ordered 1.41 first as the shortest path to fixing something live, then 1.9 which clones the existing typing plumbing, then 1.10 which carries **the only migration (54)**, then 1.40 last because it is the only one that stays latent until card 1.24 ships. **Gotchas recorded in the handoff:** 1.9's realtime audience is a security boundary and must reuse `ticket.typing`'s exactly, or presence tells people a ticket exists that they cannot open; 1.10's new `NotificationType` value has a one-line precedent at `20260828120000_ticket_channel_api`, and **Postgres will not let a newly added enum value be used in the same transaction that adds it**, so the migration may only add it; and 1.40's four §4 decisions are settled in the handoff as the planner's calls rather than the owner's, with §4.3 flagged as the one genuinely wanting the owner's opinion.
+
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
 *Blocking other work:*
