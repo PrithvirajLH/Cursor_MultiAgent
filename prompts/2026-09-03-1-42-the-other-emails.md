@@ -5,7 +5,7 @@
 **Cards:** 1.42, and it **absorbs card 1.14** (satisfaction survey)
 **Baseline:** production runs **`1e24dd6`** at schema **53**.
 
-**Cost:** none. API only. **No schema, no migration.** Size **M**.
+**Cost:** none. API + one line of web. **One additive migration** (§2a). Size **M**.
 
 > **This is what stands between the owner and clearing `EMAIL_TEST_RECIPIENTS`.**
 > Every email is redirected to the owner's inbox today. Nothing below reaches a
@@ -112,7 +112,52 @@ distribution list — is legitimately outside the system.
       **Implement the restriction, and say in the report that it is reversible in
       one place** if they choose otherwise.
 
-## 2. What this depends on — say it out loud
+## 2a. ⚠️ BUILD THIS FIRST — two of the emails being deleted are the ONLY notification
+
+**Verified 2026-09-03 by reading every notification method.** "Delete the email,
+they see it in the app" is true for assigned, transferred and messages. **It is
+false here:**
+
+| Event | In-app notification today |
+|---|---|
+| **Ticket created** | **NONE.** `ticketCreated` (`:70`) calls `queueEmails` and **never** touches `InAppNotificationsService`. |
+| Status changed | Bell fires **only** for `RESOLVED` or `CLOSED` (`:369-372`). Every other status is email-only. |
+
+**So deleting the created-email removes the only signal that work has arrived.**
+Staff would find out by opening the queue and looking. **Build the bell before you
+delete the email**, or the two changes must land in the same commit.
+
+Status changes other than RESOLVED need **no** bell: an agent usually made the
+change themselves, and it is visible on the ticket and in the queue. **Do not add
+one** — say so if you disagree rather than adding it.
+
+### The work, and it is not free
+
+- [ ] **A new `NotificationType` value: `TICKET_CREATED`.** Reusing `TICKET_UPDATED`
+      is tempting and wrong — it is already used by the automation engine
+      (`rule-engine.service.ts:610`), and the notification centre maps **type →
+      icon**, so a new ticket would show the wrong thing or nothing.
+- [ ] **Migration: one line**, precedent at
+      `20260828120000_ticket_channel_api/migration.sql`. Hand-written, **0 DROPs**,
+      the twelve drift statements removed and documented, **dev Supabase first**.
+      ⚠️ **A newly added enum value cannot be USED in the same transaction that
+      adds it** — add it and nothing else.
+- [ ] ⚠️ **Numbering:** card **1.10** in the other batch also adds a
+      `NotificationType` value and also claims **migration 54**. Whichever lands
+      second takes **55**. Check `prisma/migrations` before you name the folder.
+- [ ] **Add the icon entry** in `apps/web/src/components/NotificationCenter.tsx`, or
+      it renders iconless. While there: **`TICKET_UPDATED` is already missing from
+      that map** — a pre-existing gap, one line, fix it.
+- [ ] ⚠️ **Who gets the bell: the assigned team.** `buildRecipients` offers
+      `includeRequester` / `includeAssignee` / `includeFollowers` and **has no
+      notion of "the team"** — and a brand-new ticket usually has no assignee, so
+      the existing options would notify almost nobody. **This needs a team lookup
+      that does not exist yet.** Say how you did it.
+- [ ] The **requester must not** get the bell for their own ticket. They are the
+      actor on the intake and portal paths, so the existing `excludeUserId` covers
+      it — confirm rather than assume.
+
+## 2b. What this depends on — say it out loud
 
 **"They see it on the platform" assumes they are in the platform.** Payroll is the
 only operating department; if a lead opens the app twice a day, an in-app-only
