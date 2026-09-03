@@ -449,7 +449,14 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 
 ## Phase 1 — Agent basics: parity with Zendesk (4–6 weeks)
 
-### 1.1 Edit a ticket's title and description — **Ready** · S
+> **The status table at the top of this file is the only authority on what is
+> done.** These section headings carry the *scope and size* of each card, not its
+> state — nine of them said "Ready" for work that had already shipped, because
+> status was being written in two places and only one was kept up. Tidied
+> 2026-09-03. If you are about to update a heading's status, update the table
+> instead.
+
+### 1.1 Edit a ticket's title and description — **Done — status in the table above** · S
 
 **What we are doing.** Titles and descriptions are permanent after creation. Email subjects like "Re: Re: help" become useless. Add an edit.
 
@@ -457,7 +464,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.1–0.3.
 **Done when.** Integration tests in `test/integration/tickets.lifecycle.spec.ts`: 403 for a different requester, 200 for the assignee, event row written, realtime event emitted; UI edit round-trips.
 
-### 1.2 Requester can confirm, reopen — and maybe cancel — **Needs brainstorming (cancel only)** · S
+### 1.2 Requester can confirm, reopen — and maybe cancel — **Done — status in the table above** · S
 
 **What we are doing.** `tickets.service.ts:1992` forbids every status change for the `EMPLOYEE` role. Requesters should be able to say "yes, it's fixed" and "no, it isn't".
 
@@ -466,7 +473,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.1.
 **Done when.** Requester confirm/reopen tested in `tickets.workflow.spec.ts`; agents' transitions unchanged; e2e `lifecycle.spec.ts` gains a requester-confirm case.
 
-### 1.3 Timed automations (auto-close, reminders, escalate-if-idle) — **Ready** · M
+### 1.3 Timed automations (auto-close, reminders, escalate-if-idle) — **Done — status in the table above** · M
 
 **What we are doing.** Rules only react to events. Add rules that run on a clock: close N days after RESOLVED; remind the requester after N days WAITING_ON_REQUESTER; alert the lead when a ticket is unassigned for N hours; stop re-opening after K reopens.
 
@@ -474,7 +481,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.2 (closeReason).
 **Done when.** `automation.spec.ts` covers each trigger with a time-travelled fixture; a resolved ticket in staging closes itself after the configured window.
 
-### 1.4 More automation actions — **Ready** · S
+### 1.4 More automation actions — **Done — status in the table above** · S
 
 **What we are doing.** Rules can only assign, set priority/status, notify a lead, or add a note. Add the rest agents expect.
 
@@ -482,7 +489,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.3 (for the scheduler-fired rules to be useful), 1.7 for `apply_macro`.
 **Done when.** Each action has a unit test in `rule-engine.service.spec.ts` and one integration case.
 
-### 1.5 Merge duplicate tickets — **Needs brainstorming** · M
+### 1.5 Merge duplicate tickets — **On hold by the owner (2026-08-28)** · M
 
 **What we are doing.** Email intake guarantees duplicates. Agents need "merge these into that one".
 
@@ -507,7 +514,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.4 (shared action executor).
 **Done when.** A "Password reset done" macro pastes a personalised reply, sets RESOLVED and adds tag `password` in one click.
 
-### 1.8 Requester history panel — **Ready** · S
+### 1.8 Requester history panel — **Done — status in the table above** · S
 
 **What we are doing.** Agents cannot see what else this person has asked. It is the first thing they check before replying.
 
@@ -557,7 +564,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.7 for macro.
 **Done when.** e2e `sprint3.spec.ts` bulk test extended with tags.
 
-### 1.13 CSV export for the ticket list and every report — **Ready** · S
+### 1.13 CSV export for the ticket list and every report — **Done — status in the table above** · S
 
 **What we are doing.** Excel is the real BI tool. The Export button today is a picture.
 
@@ -617,7 +624,7 @@ above. Threading, third-party replies, auto-reopen, attachment ingest, duplicate
 suppression and reply-address tokens are **already implemented**. These four
 cards are the gaps, nothing more.
 
-### 1.22 Email safety rails — **Ready** · M
+### 1.22 Email safety rails — **Done — status in the table above** · M
 
 **What we are doing.** Four guards, none of which exist today, plus one switch
 copied from the LMS.
@@ -648,7 +655,7 @@ the pilot switch is proven by a test to make real recipients unreachable.
 
 ---
 
-### 1.23 Switch on outbound email (SocketLabs) — **Ready** · S
+### 1.23 Switch on outbound email (SocketLabs) — **Done — status in the table above** · S
 
 **What we are doing.** Copy the seven `SMTP_*` values from
 `learningms/apps/lms/.env` into the `TicketTicket` app settings and rename
@@ -668,7 +675,7 @@ No new Azure spend, no tenant policy change, no Graph app permission.
 
 ---
 
-### 1.24 Inbound mailbox worker (Graph delta polling) — **Ready** · L
+### 1.24 Inbound mailbox worker (Graph delta polling) — **Ready, but blocked on the Graph permission (owner to-do #1)** · L
 
 **What we are doing.** A background worker polls one shared mailbox every ~30 s
 with a Microsoft Graph **delta query** and feeds each new message straight into
@@ -739,7 +746,7 @@ ticket message.
 
 ---
 
-### 1.25 Helpdesk mailbox + threading proof — **Ready** · S
+### 1.25 Helpdesk mailbox + threading proof — **Ready, but needs the mailbox to exist first** · S
 
 **What we are doing.** Owner/M365 setup, then verification. Create the shared
 mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…` must
@@ -762,7 +769,7 @@ the reply token doing its job).
 
 ---
 
-### 1.26 The ticket list must not lie about how fresh it is — **Ready** · S–M
+### 1.26 The ticket list must not lie about how fresh it is — **Done — status in the table above** · S–M
 
 **What we are doing.** Three related fixes so an agent can trust what is on screen.
 
