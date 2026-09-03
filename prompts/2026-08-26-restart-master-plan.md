@@ -698,7 +698,24 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.3 (for the scheduler-fired rules to be useful), 1.7 for `apply_macro`.
 **Done when.** Each action has a unit test in `rule-engine.service.spec.ts` and one integration case.
 
-### 1.5 Merge duplicate tickets — **On hold by the owner (2026-08-28)** · M
+### 1.5 Merge duplicate tickets — **STILL NOT READY — the planner recommends keeping it on hold** · M
+
+> `prompts/2026-09-03-1-6-and-1-5-links-then-merge.md` — Part B, which is a **decision pass, not a coding task**.
+>
+> **The design in this section is materially incomplete.** It says to re-point `TicketMessage`, `Attachment`, `TicketFollower` and `TicketTag` — **four of the sixteen
+> things that point at a ticket.** Verified: thirteen relations, plus **three plain `String` columns with no relation at all** (`AiInferenceLog.ticketId`,
+> `RoutingDecisionLog.ticketId`, `CorrectionLog.ticketId`) — the same trap card 1.30 hit, where counting relations rather than columns missed three.
+>
+> **And three unique constraints will throw on merge**, of which the design names one: `TicketFollower(ticketId, userId)`, `CustomFieldValue(ticketId, customFieldId)`,
+> `TicketAccess(ticketId, teamId)`. Dedupe then re-point — `merge-duplicate-user.mjs` already solves this shape.
+>
+> ⚠️ **The reason to wait is `TicketEmailThread`.** Email threading shipped **2026-09-03**, after this design was written. Each ticket has a stable root that a
+> requester's mail client replies into; merge two and there are two roots. **Where does a reply to the merged-away ticket land?** Unanswered, and getting it wrong
+> loses a reply — the exact failure this project hit twice on 2026-09-03. `SlaInstance` has a smaller version of the same problem: two timers, and the card's own
+> "done when" requires reports to count one ticket.
+>
+> **Recommendation: ship 1.6, then leave 1.5 until cards 1.24/1.25 settle**, because the email answer depends on how inbound threading behaves once real mail flows.
+> Also needs a `MERGED` value on `TicketCloseReason` (verified absent), so a further migration.
 
 **What we are doing.** Email intake guarantees duplicates. Agents need "merge these into that one".
 
@@ -707,7 +724,12 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.2 (closeReason), 1.6 (a "duplicate-of" link is the lightweight alternative when merge is inappropriate).
 **Done when.** Merge in staging leaves one ticket with all messages, source shows a banner and link, reports count one ticket.
 
-### 1.6 Link related tickets — **Ready** · M
+### 1.6 Link related tickets — **Handoff written 2026-09-03**, build-ready · M
+
+> `prompts/2026-09-03-1-6-and-1-5-links-then-merge.md` — Part A. Needs **migration 55** (new `TicketLink` table + `TicketLinkType` enum); check the folder
+> number first, HEAD already has 54 from card 1.10. The master plan's model is sound and should be used as written — it is the one part of 1.5/1.6 needing no rework.
+> **The security-relevant decision is that you must be able to see BOTH tickets:** listing a linked ticket's subject from a ticket you can open would leak the subject
+> of one you cannot, and HR and payroll subjects carry names. An unreadable target degrades to a bare reference rather than disappearing.
 
 **What we are doing.** No way to say "these two are related" or "this is the parent". Needed before problem/major-incident handling.
 
