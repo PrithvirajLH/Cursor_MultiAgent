@@ -1754,6 +1754,34 @@ export function TicketDetailPage({
     stopTyping,
   ]);
 
+  /**
+   * Set or clear "remind me Friday" (card 1.10).
+   *
+   * Goes through the existing PATCH, so it inherits the same access control as
+   * any other edit rather than needing an endpoint of its own.
+   */
+  const handleFollowUpChange = useCallback(
+    async (followUpAt: string | null) => {
+      if (!ticket) return;
+      setActionError(null);
+      setActionLoading(true);
+      try {
+        const updated = await updateTicket(ticket.id, { followUpAt });
+        setTicket((prev) => (prev ? { ...prev, ...updated } : prev));
+        setCopyToast({
+          message: followUpAt ? "Follow-up set." : "Follow-up cleared.",
+          type: "success",
+        });
+        notifyTicketAggregatesChanged();
+      } catch {
+        setActionError("Unable to update the follow-up date.");
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [ticket],
+  );
+
   const handleAssignSelf = useCallback(async () => {
     if (!ticket) return;
     setActionError(null);
@@ -2861,6 +2889,7 @@ export function TicketDetailPage({
                 onTransfer={() => void handleTransfer()}
                 categories={categories}
                 onPriorityChange={(p) => void changePriority(p)}
+                onFollowUpChange={(at) => void handleFollowUpChange(at)}
                 onCategoryChange={(c) => void changeCategory(c)}
                 expandedSections={expandedSections}
                 toggleSection={toggleSection}

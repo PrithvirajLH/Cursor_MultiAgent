@@ -8,7 +8,26 @@ import {
   useLayoutEffect,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Check, UserPlus, UserMinus, Clock } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Clock,
+  UserMinus,
+  UserPlus,
+  X,
+} from "lucide-react";
+/**
+ * An ISO instant as `datetime-local` wants it: local wall-clock, no zone.
+ * Returns "" for null so the input renders empty rather than Invalid Date.
+ */
+function toLocalInputValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}`;
+}
+
 import { AiSummaryPanel } from "./AiSummaryPanel";
 import { CsatWidget } from "./CsatWidget";
 import { RequesterHistoryPanel } from "./RequesterHistoryPanel";
@@ -160,6 +179,8 @@ export type TicketSidebarProps = {
   onTransfer: () => void;
   categories: CategoryRef[];
   onPriorityChange: (priority: string) => void;
+  /** "Remind me Friday" (card 1.10). Null clears it. */
+  onFollowUpChange: (followUpAt: string | null) => void;
   onCategoryChange: (categoryId: string | null) => void;
   expandedSections: ExpandedSections;
   toggleSection: (section: keyof ExpandedSections) => void;
@@ -205,6 +226,7 @@ export function TicketSidebar(props: TicketSidebarProps) {
     onTransfer,
     categories,
     onPriorityChange,
+    onFollowUpChange,
     onCategoryChange,
     followers,
     isFollowing,
@@ -568,6 +590,46 @@ export function TicketSidebar(props: TicketSidebarProps) {
               </span>
             )}
           </PropertyRow>
+
+          {/*
+            Card 1.10: "remind me Friday". Only for people who can manage the
+            ticket - it is the assignee's own reminder, and the API refuses it
+            from a requester. A datetime-local input rather than a component,
+            because the browser's own picker is keyboard- and
+            screen-reader-accessible for free.
+          */}
+          {canManage ? (
+            <PropertyRow label="Follow-up">
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="datetime-local"
+                  aria-label="Follow-up date"
+                  value={toLocalInputValue(ticket.followUpAt)}
+                  disabled={actionLoading}
+                  onChange={(event) =>
+                    onFollowUpChange(
+                      event.target.value
+                        ? new Date(event.target.value).toISOString()
+                        : null,
+                    )
+                  }
+                  className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-60"
+                />
+                {ticket.followUpAt ? (
+                  <button
+                    type="button"
+                    onClick={() => onFollowUpChange(null)}
+                    disabled={actionLoading}
+                    aria-label="Clear the follow-up date"
+                    title="Clear the follow-up date"
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                ) : null}
+              </div>
+            </PropertyRow>
+          ) : null}
 
           <PropertyRow label="Category">
             {canManage ? (

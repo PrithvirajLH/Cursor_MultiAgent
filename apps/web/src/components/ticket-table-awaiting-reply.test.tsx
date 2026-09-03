@@ -52,6 +52,40 @@ function render(tickets: TicketRecord[]): string {
 
 const MARKER = 'data-awaiting-agent-reply="true"';
 
+describe("card 1.10 — the overdue follow-up badge", () => {
+  const BADGE = 'data-follow-up-due="true"';
+
+  it("shows when the follow-up has come due", () => {
+    const html = render([
+      ticket({ followUpAt: new Date(Date.now() - 60_000).toISOString() }),
+    ]);
+    expect(html).toContain(BADGE);
+    expect(html).toContain("Follow-up");
+  });
+
+  it("does not show for one still in the future", () => {
+    expect(
+      render([
+        ticket({ followUpAt: new Date(Date.now() + 86_400_000).toISOString() }),
+      ]),
+    ).not.toContain(BADGE);
+  });
+
+  it("does not show when there is no follow-up at all", () => {
+    expect(render([ticket()])).not.toContain(BADGE);
+  });
+
+  it("comes off the row, so it survives a reload", () => {
+    // Same reasoning as the replied marker: computed on the server row, not
+    // from client state, so a refresh does not lose it.
+    const html = render([
+      ticket({ followUpAt: new Date(Date.now() - 60_000).toISOString() }),
+    ]);
+    expect(html).toContain("truncate");
+    expect(html.split(BADGE)).toHaveLength(2);
+  });
+});
+
 describe("the awaiting-reply row marker", () => {
   it("renders when the server says the requester spoke last", () => {
     const html = render([ticket({ awaitingAgentReply: true })]);

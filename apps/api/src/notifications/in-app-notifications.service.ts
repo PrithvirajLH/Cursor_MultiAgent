@@ -276,6 +276,25 @@ export class InAppNotificationsService {
     });
   }
 
+  /**
+   * "Remind me Friday" has arrived (card 1.10).
+   *
+   * Goes to the assignee, who is the person who asked to be reminded. No actor:
+   * the scheduler raised it, not a person, so there is nobody to exclude.
+   */
+  async notifyFollowUpDue(
+    ticketId: string,
+    assigneeId: string,
+    ticketSubject: string,
+  ) {
+    return this.createMany([assigneeId], {
+      type: NotificationType.FOLLOW_UP_DUE,
+      title: 'Follow-up due',
+      body: ticketSubject,
+      ticketId,
+    });
+  }
+
   async notifyTicketTransferred(
     ticketId: string,
     recipientIds: string[],

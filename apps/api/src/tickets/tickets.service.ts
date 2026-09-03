@@ -60,9 +60,9 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 
 /** One field changed by PATCH /tickets/:id, recorded in the TICKET_EDITED event. */
 type TicketEditChange = {
-  field: 'subject' | 'description';
-  from: string;
-  to: string;
+  field: 'subject' | 'description' | 'followUpAt';
+  from: string | null;
+  to: string | null;
 };
 
 export type StatusTransitionTicketSnapshot = {
@@ -405,6 +405,17 @@ export class TicketsService {
           notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED],
         },
       });
+    } else if (query.scope === 'followups') {
+      // "Follow-ups due today" (card 1.10). Everything already due, plus the
+      // rest of today, so the view is useful first thing in the morning rather
+      // than only at the moment a reminder fires. Scoped to the user's own
+      // tickets: a follow-up is the assignee's reminder, not a team-wide queue.
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      filters.push({
+        assigneeId: user.id,
+        followUpAt: { not: null, lte: endOfToday },
+      });
     } else if (query.scope === 'mentions') {
       // Only tickets with an UNREAD mention notification for this user.
       // Marking the notification read drops the ticket from the list.
@@ -577,6 +588,7 @@ export class TicketsService {
           closeReason: true,
           completedAt: true,
           dueAt: true,
+          followUpAt: true,
           firstResponseDueAt: true,
           firstResponseAt: true,
           slaPausedAt: true,
@@ -2199,8 +2211,14 @@ export class TicketsService {
    * open screens with reason 'edited'. Returns the same shape as getById.
    */
   async update(ticketId: string, payload: UpdateTicketDto, user: AuthUser) {
-    if (payload.subject === undefined && payload.description === undefined) {
-      throw new BadRequestException('Provide subject and/or description');
+    if (
+      payload.subject === undefined &&
+      payload.description === undefined &&
+      payload.followUpAt === undefined
+    ) {
+      throw new BadRequestException(
+        'Provide subject, description and/or followUpAt',
+      );
     }
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -2215,6 +2233,11 @@ export class TicketsService {
       throw new ForbiddenException(
         'Requesters can edit a ticket only while it is new — add a reply instead',
       );
+    }
+    // A follow-up is an agent's own reminder about a ticket they are working.
+    // A requester has no use for one and should not be able to set the field.
+    if (payload.followUpAt !== undefined && user.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('Requesters cannot set a follow-up date');
     }
     const subject = payload.subject?.trim();
     const description = payload.description?.trim();
@@ -2232,12 +2255,31 @@ export class TicketsService {
         to: description,
       });
     }
+    if (payload.followUpAt !== undefined) {
+      const nextFollowUp = payload.followUpAt
+        ? new Date(payload.followUpAt).toISOString()
+        : null;
+      const currentFollowUp = ticket.followUpAt?.toISOString() ?? null;
+      if (nextFollowUp !== currentFollowUp) {
+        changes.push({
+          field: 'followUpAt',
+          from: currentFollowUp,
+          to: nextFollowUp,
+        });
+      }
+    }
     if (changes.length === 0) {
       return this.getById(ticketId, user);
     }
     const data: Prisma.TicketUpdateInput = {};
     for (const change of changes) {
-      data[change.field] = change.to;
+      if (change.field === 'followUpAt') {
+        data.followUpAt = change.to ? new Date(change.to) : null;
+        continue;
+      }
+      // Narrowed by the branch above: only the two text fields remain, and
+      // both are non-null whenever they appear in `changes`.
+      data[change.field] = change.to as string;
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.ticket.update({ where: { id: ticketId }, data });

@@ -23,6 +23,8 @@ const SCOPES = [
   'created',
   'watching',
   'mentions',
+  // Card 1.10: the saved-view preset behind "Follow-ups due today".
+  'followups',
 ] as const;
 const SLA_STATUSES = ['on_track', 'at_risk', 'breached'] as const;
 

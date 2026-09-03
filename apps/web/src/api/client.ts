@@ -267,6 +267,11 @@ export type TicketRecord = {
   assignedTeam?: TeamRef | null;
   category?: CategoryRef | null;
   dueAt?: string | null;
+  /**
+   * "Remind me Friday" (card 1.10). Comes off the row, so the overdue badge
+   * survives a reload; the scheduler clears it when the reminder fires.
+   */
+  followUpAt?: string | null;
   firstResponseDueAt?: string | null;
   firstResponseAt?: string | null;
   slaPausedAt?: string | null;
@@ -1253,7 +1258,12 @@ export function setTicketCategory(
 /** Edit a ticket's subject and/or description (PATCH). Returns the full detail. */
 export function updateTicket(
   ticketId: string,
-  payload: { subject?: string; description?: string },
+  // followUpAt: card 1.10's "remind me Friday". Null clears it.
+  payload: {
+    subject?: string;
+    description?: string;
+    followUpAt?: string | null;
+  },
 ) {
   return apiFetch<TicketDetail>(`/tickets/${ticketId}`, {
     method: "PATCH",

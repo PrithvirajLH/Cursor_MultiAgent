@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, TicketStatus } from '@prisma/client';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { parsePositiveInt } from '../common/config.utils';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AutomationTrigger } from './rule-engine.service';
 import type { SchedulerPolicy } from './scheduler-policy.type';
@@ -70,6 +71,7 @@ export class AutomationSchedulerService
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly automationQueue: AutomationQueueService,
+    private readonly inAppNotifications: InAppNotificationsService,
   ) {
     this.policy = AutomationSchedulerService.readPolicy(config);
   }
@@ -225,6 +227,59 @@ export class AutomationSchedulerService
    * tick is already running here. Public so tests and a future admin endpoint
    * can trigger it.
    */
+  /**
+   * Take the follow-ups that have come due, and clear them (card 1.10).
+   *
+   * CLEARING IS THE CLAIM. `updateMany` with `followUpAt: { lte: now }` in the
+   * filter is what makes a reminder fire exactly once: a second scheduler tick,
+   * or a second instance, finds nothing left to take. The notification is
+   * raised afterwards and its failure is logged rather than retried, because a
+   * reminder that arrives twice is worse than one that is missed once and still
+   * visible in the "Follow-ups due today" view.
+   *
+   * A DUE FOLLOW-UP ON AN UNASSIGNED TICKET IS LEFT ALONE. There is nobody to
+   * tell - the reminder belongs to whoever owns the ticket - and clearing it
+   * would silently throw the reminder away. Left set, it keeps showing up in
+   * the saved view until somebody picks the ticket up, and it is logged so an
+   * operator can see it happening.
+   */
+  private async claimDueFollowUps(
+    now: Date,
+  ): Promise<{ id: string; subject: string; assigneeId: string }[]> {
+    const due = await this.prisma.ticket.findMany({
+      where: { followUpAt: { lte: now }, deletedAt: null },
+      select: { id: true, subject: true, assigneeId: true },
+      take: this.policy.batchSize,
+    });
+    if (due.length === 0) return [];
+
+    const orphaned = due.filter((ticket) => ticket.assigneeId === null);
+    if (orphaned.length > 0) {
+      this.logger.warn(
+        `${orphaned.length} follow-up(s) are due on unassigned tickets and have nobody to notify; leaving them set: ${orphaned
+          .map((ticket) => ticket.id)
+          .join(', ')}`,
+      );
+    }
+
+    const claimable = due.filter(
+      (ticket): ticket is { id: string; subject: string; assigneeId: string } =>
+        ticket.assigneeId !== null,
+    );
+    if (claimable.length === 0) return [];
+
+    await this.prisma.ticket.updateMany({
+      where: {
+        id: { in: claimable.map((ticket) => ticket.id) },
+        // Re-checked in the write: another instance may have taken it between
+        // the read above and here.
+        followUpAt: { lte: now },
+      },
+      data: { followUpAt: null },
+    });
+    return claimable;
+  }
+
   async runOnce(): Promise<SchedulerRunSummary | null> {
     if (this.running) return null;
     this.running = true;
@@ -293,6 +348,20 @@ export class AutomationSchedulerService
         { timeout: 60_000, maxWait: 10_000 },
       );
       if (!plan) return null;
+      // Follow-ups are swept in their own short transaction, after the
+      // automation plan and before the queue, so a slow notification cannot
+      // hold the scheduler's advisory lock open.
+      const followUps = await this.claimDueFollowUps(now);
+      for (const followUp of followUps) {
+        await this.inAppNotifications
+          .notifyFollowUpDue(followUp.id, followUp.assigneeId, followUp.subject)
+          .catch((error: unknown) =>
+            this.logger.error(
+              `Failed to raise the follow-up notification for ticket ${followUp.id}`,
+              (error as Error).stack,
+            ),
+          );
+      }
       // After commit: the queue runs the engine inline when Redis is off.
       for (const pair of plan.pairs) {
         await this.automationQueue.enqueue(pair.ticketId, pair.trigger);

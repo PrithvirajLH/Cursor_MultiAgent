@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { AtSign, Eye, X } from "lucide-react";
+import { AtSign, CalendarClock, Eye, X } from "lucide-react";
 import {
   deleteSavedView,
   fetchSavedViews,
@@ -166,6 +166,15 @@ export function SidebarTicketsSavedViews({
       icon: AtSign,
       query: "?scope=mentions",
       params: { scope: "mentions" } as Record<string, string>,
+    },
+    {
+      // Card 1.10. Everything already due plus the rest of today, so the view
+      // is useful first thing rather than only at the moment one fires.
+      id: "followups" as const,
+      label: "Follow-ups due today",
+      icon: CalendarClock,
+      query: "?scope=followups",
+      params: { scope: "followups" } as Record<string, string>,
     },
   ];
   const systemCounts = useViewCounts(

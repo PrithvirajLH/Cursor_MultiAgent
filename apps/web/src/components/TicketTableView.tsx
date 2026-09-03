@@ -243,6 +243,21 @@ export function TicketTableView({
                       is already two lines tall, so the SEV / reference /
                       status cells beside it do not move.
                     */}
+                    {/*
+                      Card 1.10: a follow-up that has come due and not yet been
+                      cleared by the scheduler. Same quiet treatment as the
+                      replied marker, in the same cell, so no column moves.
+                    */}
+                    {ticket.followUpAt &&
+                    new Date(ticket.followUpAt).getTime() <= Date.now() ? (
+                      <span
+                        data-follow-up-due="true"
+                        title={`Follow-up was due ${new Date(ticket.followUpAt).toLocaleString()}`}
+                        className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                      >
+                        Follow-up
+                      </span>
+                    ) : null}
                     {ticket.awaitingAgentReply ? (
                       <span
                         data-awaiting-agent-reply="true"

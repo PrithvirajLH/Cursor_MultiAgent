@@ -112,6 +112,7 @@ enum NotificationType {
   SLA_BREACHED
   TICKET_RESOLVED
   TICKET_TRANSFERRED
+  FOLLOW_UP_DUE
 }
 
 enum SlaNotifyRole {
@@ -294,6 +295,9 @@ model Ticket {
   assigneeId         String?
   categoryId         String?
   dueAt              DateTime?
+  /// "Remind me Friday" (card 1.10). Cleared by the scheduler when it fires, so
+  /// a reminder cannot arrive twice.
+  followUpAt         DateTime?
   firstResponseDueAt DateTime?
   firstResponseAt    DateTime?
   slaPausedAt        DateTime?
@@ -324,6 +328,8 @@ model Ticket {
   automationExecutions AutomationExecution[]
   tags                 TicketTag[]
 
+  /// The scheduler sweeps for due follow-ups on every tick (card 1.10).
+  @@index([followUpAt])
   @@index([status, updatedAt])
   @@index([assignedTeamId, status, updatedAt])
   @@index([assigneeId, status, updatedAt])
