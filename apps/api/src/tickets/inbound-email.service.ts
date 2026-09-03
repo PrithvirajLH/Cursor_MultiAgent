@@ -25,6 +25,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { isAutomatedEmail } from './auto-reply.util';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
 import { DuplicateAccountService } from '../common/duplicate-account.service';
+import { UserIdentityService } from '../common/user-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
@@ -82,6 +83,7 @@ export class InboundEmailService {
     private readonly attachmentService: TicketAttachmentService,
     private readonly ticketRealtime: TicketRealtimeService,
     private readonly duplicateAccounts: DuplicateAccountService,
+    private readonly userIdentity: UserIdentityService,
     private readonly notifications: NotificationsService,
     private readonly ticketEmailThreads: TicketEmailThreadService,
     @Inject(forwardRef(() => TicketsService))
@@ -679,6 +681,34 @@ export class InboundEmailService {
     });
     if (existing) {
       return existing;
+    }
+
+    // Card 1.30: before creating anyone, ask whether the directory has told us
+    // this address belongs to a human we already have. Entra hands out a UPN
+    // and a `mail` that routinely differ, and this path only ever sees the
+    // second one - which is how the duplicate account was made.
+    //
+    // The mapping was GIVEN to us at login, never inferred: nothing here
+    // compares the shape of two addresses. An unrecognised address simply falls
+    // through and provisions as before, because resolution must never be able
+    // to block provisioning.
+    const aliasUserId = await this.userIdentity.findUserIdByAlias(
+      normalizedEmail,
+    );
+    if (aliasUserId) {
+      const byAlias = await this.prisma.user.findUnique({
+        where: { id: aliasUserId },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          role: true,
+          primaryTeamId: true,
+        },
+      });
+      if (byAlias) {
+        return byAlias;
+      }
     }
 
     const fallbackDisplayName =

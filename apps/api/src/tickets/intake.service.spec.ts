@@ -88,6 +88,8 @@ function makeService(
     new ConfigService(env),
     { create } as never,
     { flag } as never,
+    // Card 1.30: no recorded aliases in these unit tests.
+    { findUserIdByAlias: jest.fn().mockResolvedValue(null) } as never,
   );
   return { service, prisma, create, flag };
 }

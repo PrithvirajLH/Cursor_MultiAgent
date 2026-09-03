@@ -9,6 +9,7 @@ import { TicketChannel, TicketPriority, UserRole } from '@prisma/client';
 import { timingSafeEqual } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { DuplicateAccountService } from '../common/duplicate-account.service';
+import { UserIdentityService } from '../common/user-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateIntakeTicketDto } from './dto/create-intake-ticket.dto';
 import type { IntakeTicketResponse } from './intake-ticket-response.type';
@@ -48,6 +49,7 @@ export class IntakeService {
     private readonly config: ConfigService,
     private readonly ticketsService: TicketsService,
     private readonly duplicateAccounts: DuplicateAccountService,
+    private readonly userIdentity: UserIdentityService,
   ) {}
 
   /**
@@ -227,6 +229,28 @@ export class IntakeService {
     });
     if (existing) {
       return existing;
+    }
+
+    // Card 1.30: before creating anyone, ask whether the directory has told us
+    // this address belongs to a human we already have. Entra hands out a UPN
+    // and a `mail` that routinely differ, and this path only ever sees the
+    // second one - which is how the duplicate account was made.
+    //
+    // The mapping was GIVEN to us at login, never inferred: nothing here
+    // compares the shape of two addresses. An unrecognised address simply falls
+    // through and provisions as before, because resolution must never be able
+    // to block provisioning.
+    const aliasUserId = await this.userIdentity.findUserIdByAlias(
+      normalizedEmail,
+    );
+    if (aliasUserId) {
+      const byAlias = await this.prisma.user.findUnique({
+        where: { id: aliasUserId },
+        select: REQUESTER_SELECT,
+      });
+      if (byAlias) {
+        return byAlias;
+      }
     }
     try {
       const created = await this.prisma.user.create({

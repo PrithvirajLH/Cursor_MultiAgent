@@ -9,6 +9,7 @@ import {
   PROBABLE_DUPLICATE_ACCOUNT_EVENT,
 } from '../../src/common/duplicate-account.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { UserIdentityService } from '../../src/common/user-identity.service';
 import { fixtureTeamIds } from '../utils/fixtures';
 import { disconnectPrisma, getPrisma } from '../utils/prisma';
 import { resetTestDb } from '../utils/reset-test-db';
@@ -52,23 +53,26 @@ describe('Probable duplicate accounts', () => {
    * this drives the guard's own method with the app's real dependencies, which
    * is the same code a token would reach.
    */
-  async function provisionByLogin(email: string, displayName: string) {
+  async function provisionByLogin(
+    email: string,
+    displayName: string,
+    extra?: {
+      entraObjectId?: string | null;
+      directoryAddresses?: { email: string; source: string }[];
+    },
+  ) {
     const guard = new AuthGuard(
       app.get(PrismaService),
       new Reflector(),
       app.get(ConfigService),
       app.get(DuplicateAccountService),
+      app.get(UserIdentityService),
     );
     return (
       guard as unknown as {
-        findOrProvisionUser(identity: {
-          userId: string | null;
-          email: string;
-          displayName: string | null;
-          department: string | null;
-          location: string | null;
-          provisionIfMissing: boolean;
-        }): Promise<{ id: string; email: string }>;
+        findOrProvisionUser(
+          identity: Record<string, unknown>,
+        ): Promise<{ id: string; email: string }>;
       }
     ).findOrProvisionUser({
       userId: null,
@@ -77,6 +81,7 @@ describe('Probable duplicate accounts', () => {
       department: null,
       location: null,
       provisionIfMissing: true,
+      ...(extra ?? {}),
     });
   }
 
@@ -299,5 +304,210 @@ describe('Probable duplicate accounts', () => {
       where: { id: { in: [fixtureTeamIds.it, fixtureTeamIds.hr] } },
     });
     expect(teams).toBe(2);
+  });
+  /**
+   * Card 1.30, PREVENT. The real duplicate was NOT made by a login: Entra gives
+   * this tenant `userPrincipalName = phulgur@` and `mail = Prithviraj_Hulgur@`,
+   * and the login resolves the UPN, so it lands on the right row. The twin came
+   * from intake or inbound email, which only ever see the `mail` form.
+   *
+   * Confirmed against real stored Graph profiles in the dev database on
+   * 2026-09-03: one account has mail !== userPrincipalName, and a GUID object id.
+   */
+  describe('PREVENT - keying on the directory object', () => {
+    const OID = () => `oid-${unique()}`;
+
+    it('stamps an existing email-matched row instead of creating a second one', async () => {
+      const address = `stamp${unique()}@company.com`;
+      const before = await prisma.user.create({
+        data: { email: address, displayName: 'Already Here', role: 'EMPLOYEE' },
+      });
+      expect(before.entraObjectId).toBeNull();
+
+      const oid = OID();
+      await provisionByLogin(address, 'Already Here', {
+        entraObjectId: oid,
+        directoryAddresses: [{ email: address, source: 'preferred_username' }],
+      });
+
+      const after = await prisma.user.findUniqueOrThrow({
+        where: { email: address },
+      });
+      expect(after.id).toBe(before.id);
+      expect(after.entraObjectId).toBe(oid);
+      expect(await prisma.user.count({ where: { entraObjectId: oid } })).toBe(1);
+    });
+
+    it('resolves the SAME row when the next token carries a different address', async () => {
+      // The case that produced the production duplicate, arriving by login.
+      const upn = `upn${unique()}@company.com`;
+      const mail = `long_form${unique()}@company.com`;
+      const oid = OID();
+
+      const first = await provisionByLogin(upn, 'Two Addresses', {
+        entraObjectId: oid,
+        directoryAddresses: [{ email: upn, source: 'preferred_username' }],
+      });
+      const usersBefore = await prisma.user.count();
+
+      const second = await provisionByLogin(mail, 'Two Addresses', {
+        entraObjectId: oid,
+        directoryAddresses: [
+          { email: mail, source: 'email' },
+          { email: upn, source: 'upn' },
+        ],
+      });
+
+      expect(second.id).toBe(first.id);
+      expect(await prisma.user.count()).toBe(usersBefore);
+      // The stored address is NOT overwritten - the row is the human, the
+      // address is one of their labels.
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { id: first.id },
+      });
+      expect(row.email).toBe(upn);
+    });
+
+    it('behaves exactly as before for a token with no oid', async () => {
+      const address = `nooid${unique()}@company.com`;
+      const created = await provisionByLogin(address, 'No Oid');
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { email: address },
+      });
+      expect(row.id).toBe(created.id);
+      expect(row.entraObjectId).toBeNull();
+      // A second login still resolves by address, creating nothing.
+      const again = await provisionByLogin(address, 'No Oid');
+      expect(again.id).toBe(created.id);
+    });
+
+    it('records every address the token presented, deduplicated', async () => {
+      const upn = `rec${unique()}@company.com`;
+      const mail = `rec_long${unique()}@company.com`;
+      const user = await provisionByLogin(upn, 'Recorded', {
+        entraObjectId: OID(),
+        directoryAddresses: [
+          { email: upn, source: 'preferred_username' },
+          { email: upn, source: 'upn' },
+          { email: mail, source: 'email' },
+        ],
+      });
+      const aliases = await prisma.userEmailAlias.findMany({
+        where: { userId: user.id },
+        select: { email: true },
+      });
+      expect(aliases.map((a) => a.email).sort()).toEqual([mail, upn].sort());
+    });
+
+    it('does not steal an address already recorded against someone else', async () => {
+      const shared = `shared${unique()}@company.com`;
+      const first = await provisionByLogin(`one${unique()}@company.com`, 'One', {
+        entraObjectId: OID(),
+        directoryAddresses: [{ email: shared, source: 'email' }],
+      });
+      await provisionByLogin(`two${unique()}@company.com`, 'Two', {
+        entraObjectId: OID(),
+        directoryAddresses: [{ email: shared, source: 'email' }],
+      });
+      const owner = await prisma.userEmailAlias.findUniqueOrThrow({
+        where: { email: shared },
+      });
+      expect(owner.userId).toBe(first.id);
+    });
+  });
+
+  describe('PREVENT - the other two paths resolve by a recorded address', () => {
+    /** A human who has logged in, with a second address the directory gave us. */
+    async function humanWithAlias() {
+      const upn = `staff${unique()}@company.com`;
+      const mail = `staff_long${unique()}@company.com`;
+      const user = await provisionByLogin(upn, 'Staff Member', {
+        entraObjectId: `oid-${unique()}`,
+        directoryAddresses: [
+          { email: upn, source: 'preferred_username' },
+          { email: mail, source: 'email' },
+        ],
+      });
+      return { userId: user.id, upn, mail };
+    }
+
+    it('inbound email lands on the existing human, not a new account', async () => {
+      const { userId, mail } = await humanWithAlias();
+      const usersBefore = await prisma.user.count();
+
+      const res = await request(server)
+        .post('/api/tickets/inbound-email')
+        .set(inboundSecretHeader)
+        .send({
+          fromEmail: mail,
+          fromName: 'Staff Member',
+          subject: `Alias resolve ${unique()}`,
+          body: 'RESOLVED BY ALIAS.',
+          messageId: `alias-${unique()}@mail.example`,
+        })
+        .expect(201);
+
+      const ticketId = (res.body as { ticket: { id: string } }).ticket.id;
+      const ticket = await prisma.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        select: { requesterId: true, description: true },
+      });
+      expect(ticket.requesterId).toBe(userId);
+      expect(ticket.description).toContain('RESOLVED BY ALIAS.');
+      expect(await prisma.user.count()).toBe(usersBefore);
+    });
+
+    it('intake lands on the existing human too', async () => {
+      const { userId, mail } = await humanWithAlias();
+      const usersBefore = await prisma.user.count();
+
+      const res = await request(server)
+        .post('/api/tickets/intake')
+        .set(intakeSecretHeader)
+        .set({ 'Idempotency-Key': `alias-intake-${unique()}` })
+        .send({
+          requesterEmail: mail,
+          requesterName: 'Staff Member',
+          subject: `Alias intake ${unique()}`,
+          description: 'Submitted with the mail form of the address.',
+        })
+        .expect(201);
+
+      const body = res.body as { id?: string; ticket?: { id: string } };
+      const ticketId = body.id ?? body.ticket!.id;
+      const ticket = await prisma.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        select: { requesterId: true },
+      });
+      expect(ticket.requesterId).toBe(userId);
+      expect(await prisma.user.count()).toBe(usersBefore);
+    });
+
+    it('an unrecognised address still provisions and still lands the message', async () => {
+      // Resolution must never be able to block provisioning. Asserting the
+      // stored body, not just the response - card 1.29's test asserted the
+      // wrong thing and passed on a real bug.
+      const stranger = `unknown${unique()}@company.com`;
+      const res = await request(server)
+        .post('/api/tickets/inbound-email')
+        .set(inboundSecretHeader)
+        .send({
+          fromEmail: stranger,
+          fromName: 'Stranger',
+          subject: `Unrecognised ${unique()}`,
+          body: 'STILL LANDS.',
+          messageId: `unknown-${unique()}@mail.example`,
+        })
+        .expect(201);
+      const ticketId = (res.body as { ticket: { id: string } }).ticket.id;
+      const ticket = await prisma.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        select: { description: true },
+      });
+      expect(ticket.description).toContain('STILL LANDS.');
+      expect(
+        await prisma.user.findUnique({ where: { email: stranger } }),
+      ).not.toBeNull();
+    });
   });
 });

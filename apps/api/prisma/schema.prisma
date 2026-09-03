@@ -8,8 +8,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -122,38 +122,44 @@ enum SlaNotifyRole {
 }
 
 model User {
-  id                 String        @id @default(uuid())
-  email              String        @unique
-  displayName        String
-  department         String?
-  location           String?
-  graphProfile       Json?
-  role               UserRole      @default(EMPLOYEE)
-  primaryTeamId      String?       // for TEAM_ADMIN: the team they administer
-  isActive           Boolean       @default(true)
-  deactivatedAt      DateTime?
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id            String    @id @default(uuid())
+  email         String    @unique
+  /// The Entra directory object id (the `oid` token claim), when we have seen a
+  /// token for this human. Nullable: every pre-existing row starts without one,
+  /// and an inbound-only requester who never signs in never gets one. Unique so
+  /// two rows cannot claim the same directory object.
+  entraObjectId String?   @unique
+  displayName   String
+  department    String?
+  location      String?
+  graphProfile  Json?
+  role          UserRole  @default(EMPLOYEE)
+  primaryTeamId String? // for TEAM_ADMIN: the team they administer
+  isActive      Boolean   @default(true)
+  deactivatedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  teamMemberships    TeamMember[]
-  primaryTeam        Team?         @relation("UserPrimaryTeam", fields: [primaryTeamId], references: [id])
-  requestedTickets   Ticket[]      @relation("TicketRequester")
-  assignedTickets    Ticket[]      @relation("TicketAssignee")
-  messages           TicketMessage[]
-  events             TicketEvent[]
-  ticketFollows      TicketFollower[]
-  notificationOutbox NotificationOutbox[]
-  attachments        Attachment[]
-  lastAssignedTeams  Team[]        @relation("TeamLastAssigned")
-  notifications      Notification[]
-  actedNotifications Notification[] @relation("NotificationActor")
-  savedViews         SavedView[]
-  cannedResponses    CannedResponse[]
-  automationRulesCreated AutomationRule[]
-  routingRulesAssigned RoutingRule[] @relation("RoutingRuleAssignee")
-  slaPolicyConfigsCreated SlaPolicyConfig[] @relation("SlaPolicyConfigCreatedBy")
-  adminAuditEvents AdminAuditEvent[] @relation("AdminAuditEventCreatedBy")
-  kbArticles KbArticle[] @relation("KbArticleAuthor")
+  teamMemberships         TeamMember[]
+  primaryTeam             Team?                @relation("UserPrimaryTeam", fields: [primaryTeamId], references: [id])
+  requestedTickets        Ticket[]             @relation("TicketRequester")
+  assignedTickets         Ticket[]             @relation("TicketAssignee")
+  messages                TicketMessage[]
+  events                  TicketEvent[]
+  ticketFollows           TicketFollower[]
+  notificationOutbox      NotificationOutbox[]
+  attachments             Attachment[]
+  lastAssignedTeams       Team[]               @relation("TeamLastAssigned")
+  notifications           Notification[]
+  actedNotifications      Notification[]       @relation("NotificationActor")
+  savedViews              SavedView[]
+  cannedResponses         CannedResponse[]
+  automationRulesCreated  AutomationRule[]
+  routingRulesAssigned    RoutingRule[]        @relation("RoutingRuleAssignee")
+  slaPolicyConfigsCreated SlaPolicyConfig[]    @relation("SlaPolicyConfigCreatedBy")
+  adminAuditEvents        AdminAuditEvent[]    @relation("AdminAuditEventCreatedBy")
+  kbArticles              KbArticle[]          @relation("KbArticleAuthor")
+  emailAliases            UserEmailAlias[]
 
   // TEAM_ADMIN user listings filter users by primaryTeamId
   // (users.service.ts getUserListScope) — index avoids a full User scan.
@@ -165,52 +171,52 @@ model User {
 }
 
 model Team {
-  id          String       @id @default(uuid())
-  name        String
-  slug        String       @unique
-  description String?
-  assignmentStrategy TeamAssignmentStrategy @default(QUEUE_ONLY)
-  lastAssignedUserId String?
-  isActive    Boolean      @default(true)
+  id                  String                 @id @default(uuid())
+  name                String
+  slug                String                 @unique
+  description         String?
+  assignmentStrategy  TeamAssignmentStrategy @default(QUEUE_ONLY)
+  lastAssignedUserId  String?
+  isActive            Boolean                @default(true)
   /// Departments handling PHI or otherwise sensitive traffic. Drives the higher
   /// AI confidence bar before a ticket is auto-routed here instead of going to
   /// human triage. Configuration, not code — see AGENTS.md §10.
-  isSensitive Boolean      @default(false)
+  isSensitive         Boolean                @default(false)
   /// Per-department override of the AI auto-routing confidence threshold (0-1).
   /// Null falls back to AI_SENSITIVE_DEPT_THRESHOLD when isSensitive, else
   /// AI_CONFIDENCE_THRESHOLD.
   confidenceThreshold Float?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
-  members     TeamMember[]
-  primaryTeamUsers User[]  @relation("UserPrimaryTeam")
-  tickets     Ticket[]
-  ticketAccess TicketAccess[]
-  routingRules RoutingRule[]
+  members              TeamMember[]
+  primaryTeamUsers     User[]                   @relation("UserPrimaryTeam")
+  tickets              Ticket[]
+  ticketAccess         TicketAccess[]
+  routingRules         RoutingRule[]
   slaPolicyAssignments SlaPolicyAssignment[]
   businessHoursSetting SlaBusinessHoursSetting?
-  lastAssignedUser User?   @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
-  savedViews   SavedView[]
-  cannedResponses CannedResponse[]
-  customFields CustomField[]
-  automationRules AutomationRule[]
-  adminAuditEvents AdminAuditEvent[] @relation("AdminAuditEventTeam")
+  lastAssignedUser     User?                    @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
+  savedViews           SavedView[]
+  cannedResponses      CannedResponse[]
+  customFields         CustomField[]
+  automationRules      AutomationRule[]
+  adminAuditEvents     AdminAuditEvent[]        @relation("AdminAuditEventTeam")
 }
 
 model Category {
-  id          String     @id @default(uuid())
+  id          String   @id @default(uuid())
   name        String
-  slug        String     @unique
+  slug        String   @unique
   description String?
-  isActive    Boolean    @default(true)
+  isActive    Boolean  @default(true)
   parentId    String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  parent      Category?  @relation("CategoryParent", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryParent")
-  tickets     Ticket[]
+  parent       Category?     @relation("CategoryParent", fields: [parentId], references: [id])
+  children     Category[]    @relation("CategoryParent")
+  tickets      Ticket[]
   customFields CustomField[]
 
   @@index([parentId])
@@ -222,37 +228,37 @@ enum KbArticleStatus {
 }
 
 model KbCategory {
-  id          String      @id @default(uuid())
+  id          String   @id @default(uuid())
   name        String
-  slug        String      @unique
+  slug        String   @unique
   description String?
-  sortOrder   Int         @default(0)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  articles    KbArticle[]
+  articles KbArticle[]
 
   @@index([slug])
 }
 
 model KbArticle {
-  id          String          @id @default(uuid())
-  title       String          @db.VarChar(255)
-  slug        String          @unique
-  summary     String?         @db.VarChar(500)
-  content     String          @db.Text
-  status      KbArticleStatus @default(DRAFT)
-  isInternal  Boolean         @default(false)
-  viewCount   Int             @default(0)
-  deletedAt   DateTime?
-  categoryId  String?
-  authorId    String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id         String          @id @default(uuid())
+  title      String          @db.VarChar(255)
+  slug       String          @unique
+  summary    String?         @db.VarChar(500)
+  content    String          @db.Text
+  status     KbArticleStatus @default(DRAFT)
+  isInternal Boolean         @default(false)
+  viewCount  Int             @default(0)
+  deletedAt  DateTime?
+  categoryId String?
+  authorId   String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
-  category    KbCategory?     @relation(fields: [categoryId], references: [id])
-  author      User?           @relation("KbArticleAuthor", fields: [authorId], references: [id])
+  category KbCategory? @relation(fields: [categoryId], references: [id])
+  author   User?       @relation("KbArticleAuthor", fields: [authorId], references: [id])
 
   @@index([categoryId])
   @@index([status])
@@ -261,62 +267,62 @@ model KbArticle {
 }
 
 model TeamMember {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   teamId    String
   userId    String
-  role      TeamRole  @default(AGENT)
-  createdAt DateTime  @default(now())
+  role      TeamRole @default(AGENT)
+  createdAt DateTime @default(now())
 
-  team      Team      @relation(fields: [teamId], references: [id])
-  user      User      @relation(fields: [userId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([teamId, userId])
   @@index([userId])
 }
 
 model Ticket {
-  id             String         @id @default(uuid())
-  number         Int            @unique @default(autoincrement())
-  displayId      String?        @unique
-  subject        String         @db.VarChar(200)
-  description    String         @db.Text
-  status         TicketStatus   @default(NEW)
-  priority       TicketPriority @default(SEV3)
-  channel        TicketChannel  @default(PORTAL)
-  requesterId    String
-  assignedTeamId String?
-  assigneeId     String?
-  categoryId     String?
-  dueAt          DateTime?
+  id                 String             @id @default(uuid())
+  number             Int                @unique @default(autoincrement())
+  displayId          String?            @unique
+  subject            String             @db.VarChar(200)
+  description        String             @db.Text
+  status             TicketStatus       @default(NEW)
+  priority           TicketPriority     @default(SEV3)
+  channel            TicketChannel      @default(PORTAL)
+  requesterId        String
+  assignedTeamId     String?
+  assigneeId         String?
+  categoryId         String?
+  dueAt              DateTime?
   firstResponseDueAt DateTime?
-  firstResponseAt DateTime?
-  slaPausedAt    DateTime?
-  resolvedAt     DateTime?
-  closedAt       DateTime?
-  closeReason    TicketCloseReason?
-  completedAt    DateTime?
-  deletedAt      DateTime?
-  deletedById    String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  firstResponseAt    DateTime?
+  slaPausedAt        DateTime?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  closeReason        TicketCloseReason?
+  completedAt        DateTime?
+  deletedAt          DateTime?
+  deletedById        String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  requester      User           @relation("TicketRequester", fields: [requesterId], references: [id])
-  assignedTeam   Team?          @relation(fields: [assignedTeamId], references: [id], onDelete: Restrict)
-  assignee       User?          @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  category       Category?      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  messages       TicketMessage[]
-  events         TicketEvent[]
-  accessGrants   TicketAccess[]
-  followers      TicketFollower[]
-  attachments    Attachment[]
+  requester            User                  @relation("TicketRequester", fields: [requesterId], references: [id])
+  assignedTeam         Team?                 @relation(fields: [assignedTeamId], references: [id], onDelete: Restrict)
+  assignee             User?                 @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  category             Category?             @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  messages             TicketMessage[]
+  events               TicketEvent[]
+  accessGrants         TicketAccess[]
+  followers            TicketFollower[]
+  attachments          Attachment[]
   inboundEmailReceipts InboundEmailReceipt[]
-  emailThread     TicketEmailThread?
-  notificationOutbox NotificationOutbox[]
-  slaInstance    SlaInstance?
-  notifications  Notification[]
-  customFieldValues CustomFieldValue[]
+  emailThread          TicketEmailThread?
+  notificationOutbox   NotificationOutbox[]
+  slaInstance          SlaInstance?
+  notifications        Notification[]
+  customFieldValues    CustomFieldValue[]
   automationExecutions AutomationExecution[]
-  tags           TicketTag[]
+  tags                 TicketTag[]
 
   @@index([status, updatedAt])
   @@index([assignedTeamId, status, updatedAt])
@@ -332,19 +338,19 @@ model Ticket {
 }
 
 model TicketEmailThread {
-  id                    String   @id @default(uuid())
-  ticketId              String   @unique
-  replyToken            String   @unique @db.VarChar(128)
-  canonicalSubject      String   @db.VarChar(200)
-  rootInboundMessageId  String?  @db.VarChar(255)
-  lastInboundMessageId  String?  @db.VarChar(255)
+  id                    String    @id @default(uuid())
+  ticketId              String    @unique
+  replyToken            String    @unique @db.VarChar(128)
+  canonicalSubject      String    @db.VarChar(200)
+  rootInboundMessageId  String?   @db.VarChar(255)
+  lastInboundMessageId  String?   @db.VarChar(255)
   lastInboundAt         DateTime?
-  lastOutboundMessageId String?  @db.VarChar(255)
+  lastOutboundMessageId String?   @db.VarChar(255)
   lastOutboundAt        DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  ticket                Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([replyToken])
   @@index([lastInboundAt])
@@ -352,36 +358,36 @@ model TicketEmailThread {
 }
 
 model InboundEmailReceipt {
-  id         String   @id @default(uuid())
-  messageId  String   @unique
-  fromEmail  String
-  subject    String
-  ticketId   String?
-  threaded   Boolean?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(uuid())
+  messageId String   @unique
+  fromEmail String
+  subject   String
+  ticketId  String?
+  threaded  Boolean?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  ticket     Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
 
   @@index([ticketId])
   @@index([createdAt])
 }
 
 model CustomField {
-  id          String   @id @default(uuid())
-  name        String
-  fieldType   String   // TEXT, TEXTAREA, NUMBER, DROPDOWN, MULTISELECT, DATE, CHECKBOX, USER
-  options     Json?    // For dropdown/multiselect: [{value, label}]
-  isRequired  Boolean  @default(false)
-  teamId      String?
-  team        Team?    @relation(fields: [teamId], references: [id])
-  categoryId  String?
-  category    Category? @relation(fields: [categoryId], references: [id])
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(uuid())
+  name       String
+  fieldType  String // TEXT, TEXTAREA, NUMBER, DROPDOWN, MULTISELECT, DATE, CHECKBOX, USER
+  options    Json? // For dropdown/multiselect: [{value, label}]
+  isRequired Boolean   @default(false)
+  teamId     String?
+  team       Team?     @relation(fields: [teamId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  sortOrder  Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  values      CustomFieldValue[]
+  values CustomFieldValue[]
 
   @@index([teamId])
   @@index([categoryId])
@@ -410,8 +416,8 @@ model TicketMessage {
   body      String      @db.Text
   createdAt DateTime    @default(now())
 
-  ticket    Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  author    User        @relation(fields: [authorId], references: [id])
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
 
   @@index([ticketId, createdAt])
   @@index([authorId])
@@ -425,8 +431,8 @@ model TicketEvent {
   createdAt   DateTime @default(now())
   createdById String?
 
-  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  createdBy   User?    @relation(fields: [createdById], references: [id])
+  ticket    Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation(fields: [createdById], references: [id])
 
   @@index([ticketId, createdAt])
   @@index([type])
@@ -445,8 +451,8 @@ model AdminAuditEvent {
   teamName    String?
   createdAt   DateTime @default(now())
 
-  team        Team?    @relation("AdminAuditEventTeam", fields: [teamId], references: [id], onDelete: SetNull)
-  createdBy   User?    @relation("AdminAuditEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  team      Team? @relation("AdminAuditEventTeam", fields: [teamId], references: [id], onDelete: SetNull)
+  createdBy User? @relation("AdminAuditEventCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
   @@index([type])
@@ -461,53 +467,53 @@ model TicketAccess {
   accessLevel AccessLevel @default(READ)
   createdAt   DateTime    @default(now())
 
-  ticket      Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  team        Team        @relation(fields: [teamId], references: [id])
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id])
 
   @@unique([ticketId, teamId])
 }
 
 model RoutingRule {
-  id        String   @id @default(uuid())
-  name      String
-  keywords  String[]
-  teamId    String
+  id         String   @id @default(uuid())
+  name       String
+  keywords   String[]
+  teamId     String
   assigneeId String?
-  priority  Int      @default(100)
-  isActive  Boolean  @default(true)
+  priority   Int      @default(100)
+  isActive   Boolean  @default(true)
   // Expanded rule engine. `keywords`/`teamId`/`assigneeId` are kept in sync
   // (mirrored from conditions/actions) so the legacy executor stays valid.
-  matchType  String  @default("ALL") // "ALL" (AND) | "ANY" (OR)
-  conditions Json    @default("[]")  // [{ field, op, value }]
-  actions    Json    @default("[]")  // [{ type, value }]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  matchType  String   @default("ALL") // "ALL" (AND) | "ANY" (OR)
+  conditions Json     @default("[]") // [{ field, op, value }]
+  actions    Json     @default("[]") // [{ type, value }]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  team      Team     @relation(fields: [teamId], references: [id])
-  assignee  User?    @relation("RoutingRuleAssignee", fields: [assigneeId], references: [id])
+  team     Team  @relation(fields: [teamId], references: [id])
+  assignee User? @relation("RoutingRuleAssignee", fields: [assigneeId], references: [id])
 
   @@index([teamId])
   @@index([assigneeId])
 }
 
 model SlaPolicyConfig {
-  id                     String                 @id @default(uuid())
+  id                     String          @id @default(uuid())
   name                   String
   description            String?
-  isDefault              Boolean                @default(false)
-  enabled                Boolean                @default(true)
-  businessHoursOnly      Boolean                @default(true)
-  escalationEnabled      Boolean                @default(true)
-  escalationAfterPercent Int                    @default(80)
-  breachNotifyRoles      SlaNotifyRole[]         @default([AGENT, LEAD])
+  isDefault              Boolean         @default(false)
+  enabled                Boolean         @default(true)
+  businessHoursOnly      Boolean         @default(true)
+  escalationEnabled      Boolean         @default(true)
+  escalationAfterPercent Int             @default(80)
+  breachNotifyRoles      SlaNotifyRole[] @default([AGENT, LEAD])
   createdById            String?
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
-  createdBy              User?                  @relation("SlaPolicyConfigCreatedBy", fields: [createdById], references: [id])
-  targets                SlaPolicyConfigTarget[]
-  assignments            SlaPolicyAssignment[]
-  instances              SlaInstance[]          @relation("SlaInstancePolicyConfig")
+  createdBy   User?                   @relation("SlaPolicyConfigCreatedBy", fields: [createdById], references: [id])
+  targets     SlaPolicyConfigTarget[]
+  assignments SlaPolicyAssignment[]
+  instances   SlaInstance[]           @relation("SlaInstancePolicyConfig")
 
   @@index([isDefault])
   @@index([enabled])
@@ -522,20 +528,20 @@ model SlaPolicyConfigTarget {
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
 
-  policy             SlaPolicyConfig @relation(fields: [policyConfigId], references: [id], onDelete: Cascade)
+  policy SlaPolicyConfig @relation(fields: [policyConfigId], references: [id], onDelete: Cascade)
 
   @@unique([policyConfigId, priority])
 }
 
 model SlaPolicyAssignment {
-  id             String         @id @default(uuid())
+  id             String   @id @default(uuid())
   policyConfigId String
   teamId         String
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  policy         SlaPolicyConfig @relation(fields: [policyConfigId], references: [id], onDelete: Cascade)
-  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  policy SlaPolicyConfig @relation(fields: [policyConfigId], references: [id], onDelete: Cascade)
+  team   Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@unique([teamId])
   @@unique([policyConfigId, teamId])
@@ -552,27 +558,27 @@ model SlaBusinessHoursSetting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  team      Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
 
 model SlaInstance {
-  id                    String         @id @default(uuid())
-  ticketId              String         @unique
-  policyConfigId        String?
-  priority              TicketPriority
-  firstResponseDueAt    DateTime?
-  resolutionDueAt       DateTime?
-  pausedAt              DateTime?
-  nextDueAt             DateTime?
+  id                            String         @id @default(uuid())
+  ticketId                      String         @unique
+  policyConfigId                String?
+  priority                      TicketPriority
+  firstResponseDueAt            DateTime?
+  resolutionDueAt               DateTime?
+  pausedAt                      DateTime?
+  nextDueAt                     DateTime?
   firstResponseAtRiskNotifiedAt DateTime?
-  resolutionAtRiskNotifiedAt  DateTime?
-  firstResponseBreachedAt DateTime?
-  resolutionBreachedAt  DateTime?
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
+  resolutionAtRiskNotifiedAt    DateTime?
+  firstResponseBreachedAt       DateTime?
+  resolutionBreachedAt          DateTime?
+  createdAt                     DateTime       @default(now())
+  updatedAt                     DateTime       @updatedAt
 
-  ticket                Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  policyConfig          SlaPolicyConfig? @relation("SlaInstancePolicyConfig", fields: [policyConfigId], references: [id])
+  ticket       Ticket           @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  policyConfig SlaPolicyConfig? @relation("SlaInstancePolicyConfig", fields: [policyConfigId], references: [id])
 
   @@index([nextDueAt])
   @@index([policyConfigId])
@@ -585,8 +591,8 @@ model TicketFollower {
   userId    String
   createdAt DateTime @default(now())
 
-  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
 
   @@unique([ticketId, userId])
   @@index([ticketId])
@@ -594,10 +600,10 @@ model TicketFollower {
 }
 
 model Tag {
-  id         String      @id @default(uuid())
-  name       String      @unique             // normalized: trim + lowercase
-  color      String?
-  createdAt  DateTime    @default(now())
+  id          String   @id @default(uuid())
+  name        String   @unique // normalized: trim + lowercase
+  color       String?
+  createdAt   DateTime @default(now())
   createdById String?
 
   ticketTags TicketTag[]
@@ -608,12 +614,12 @@ model Tag {
 model TicketTag {
   ticketId    String
   tagId       String
-  source      TagSource  @default(MANUAL)
-  createdAt   DateTime   @default(now())
+  source      TagSource @default(MANUAL)
+  createdAt   DateTime  @default(now())
   createdById String?
 
-  ticket      Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  tag         Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([ticketId, tagId])
   @@index([tagId])
@@ -621,9 +627,9 @@ model TicketTag {
 }
 
 model NotificationOutbox {
-  id        String             @id @default(uuid())
+  id        String              @id @default(uuid())
   channel   NotificationChannel @default(EMAIL)
-  status    OutboxStatus       @default(PENDING)
+  status    OutboxStatus        @default(PENDING)
   eventType String
   toEmail   String
   toUserId  String?
@@ -631,14 +637,14 @@ model NotificationOutbox {
   subject   String
   body      String
   payload   Json?
-  attempts  Int                @default(0)
+  attempts  Int                 @default(0)
   lastError String?
   sentAt    DateTime?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 
-  toUser    User?              @relation(fields: [toUserId], references: [id])
-  ticket    Ticket?            @relation(fields: [ticketId], references: [id])
+  toUser User?   @relation(fields: [toUserId], references: [id])
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
 
   @@index([status, createdAt])
   @@index([toEmail])
@@ -667,20 +673,20 @@ model EmailSuppression {
 }
 
 model Attachment {
-  id           String               @id @default(uuid())
-  ticketId     String
-  uploadedById String
-  fileName     String
-  contentType  String
-  sizeBytes    Int
-  storageKey   String
-  scanStatus   AttachmentScanStatus @default(PENDING)
+  id            String               @id @default(uuid())
+  ticketId      String
+  uploadedById  String
+  fileName      String
+  contentType   String
+  sizeBytes     Int
+  storageKey    String
+  scanStatus    AttachmentScanStatus @default(PENDING)
   scanCheckedAt DateTime?
-  scanError    String?
-  createdAt    DateTime             @default(now())
+  scanError     String?
+  createdAt     DateTime             @default(now())
 
-  ticket       Ticket               @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy User   @relation(fields: [uploadedById], references: [id])
 
   @@index([ticketId])
   @@index([ticketId, createdAt])
@@ -700,9 +706,9 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime         @default(now())
 
-  user      User             @relation(fields: [userId], references: [id])
-  ticket    Ticket?          @relation(fields: [ticketId], references: [id])
-  actor     User?            @relation("NotificationActor", fields: [actorId], references: [id])
+  user   User    @relation(fields: [userId], references: [id])
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+  actor  User?   @relation("NotificationActor", fields: [actorId], references: [id])
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
@@ -763,11 +769,11 @@ model AutomationRule {
   id          String   @id @default(uuid())
   name        String
   description String?
-  trigger     String   // TICKET_CREATED, STATUS_CHANGED, SLA_APPROACHING, SLA_BREACHED
-  conditions  Json     // Array of condition objects: { field, operator, value } or { and/or: [...] }
-  actions     Json     // Array of action objects: { type, ...params }
+  trigger     String // TICKET_CREATED, STATUS_CHANGED, SLA_APPROACHING, SLA_BREACHED
+  conditions  Json // Array of condition objects: { field, operator, value } or { and/or: [...] }
+  actions     Json // Array of action objects: { type, ...params }
   isActive    Boolean  @default(true)
-  priority    Int      @default(0)  // Lower = run first
+  priority    Int      @default(0) // Lower = run first
   teamId      String?
   team        Team?    @relation(fields: [teamId], references: [id])
   createdById String
@@ -775,7 +781,7 @@ model AutomationRule {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  executions  AutomationExecution[]
+  executions AutomationExecution[]
 
   @@index([trigger])
   @@index([teamId])
@@ -783,15 +789,15 @@ model AutomationRule {
 }
 
 model AutomationExecution {
-  id         String   @id @default(uuid())
+  id         String         @id @default(uuid())
   ruleId     String
   rule       AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   ticketId   String
-  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  trigger    String   // TICKET_CREATED, STATUS_CHANGED, SLA_APPROACHING, SLA_BREACHED — used for de-dupe
+  ticket     Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  trigger    String // TICKET_CREATED, STATUS_CHANGED, SLA_APPROACHING, SLA_BREACHED — used for de-dupe
   success    Boolean
-  error      String?  @db.Text
-  executedAt DateTime @default(now())
+  error      String?        @db.Text
+  executedAt DateTime       @default(now())
 
   @@index([ruleId])
   @@index([ticketId])
@@ -864,15 +870,39 @@ model RoutingDecisionLog {
 /// Agent overrides of an AI decision — the training signal for the reviewed
 /// promotion lifecycle. Append-only.
 model CorrectionLog {
-  id              String   @id @default(uuid())
-  ticketId        String
-  field           String
-  fromValue       String?
-  toValue         String?
-  correctedById   String
-  reason          String?  @db.Text
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid())
+  ticketId      String
+  field         String
+  fromValue     String?
+  toValue       String?
+  correctedById String
+  reason        String?  @db.Text
+  createdAt     DateTime @default(now())
 
   @@index([ticketId])
   @@index([field, createdAt])
+}
+
+/// Every address the directory has told us belongs to one human.
+///
+/// Recorded from the token at login - `preferred_username`, `upn` and `email` -
+/// so it is GIVEN to us, never inferred. Nothing in this table comes from
+/// comparing the shape of two addresses; that is the duplicate DETECTION path
+/// and it is for suspicion only.
+///
+/// `email` is unique across the whole table on purpose: if two humans could both
+/// claim the same alternate address, resolution becomes ambiguous and the intake
+/// path would silently pick one. A key inside `User.graphProfile` could not carry
+/// that constraint, which is why this is a table.
+model UserEmailAlias {
+  id        String   @id @default(uuid())
+  userId    String
+  email     String   @unique
+  /// Which claim it arrived on, kept so a bad mapping can be traced back.
+  source    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

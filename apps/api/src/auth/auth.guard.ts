@@ -2,20 +2,34 @@ import {
   CanActivate,
   ExecutionContext,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { TeamRole, UserRole } from '@prisma/client';
+import { TeamRole, UserRole, type User } from '@prisma/client';
 import { Reflector } from '@nestjs/core';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { DuplicateAccountService } from '../common/duplicate-account.service';
+import {
+  UserIdentityService,
+  type DirectoryAddress,
+} from '../common/user-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { AuthRequest } from './current-user.decorator';
 
 type JwtClaims = {
   sub?: string;
+  /**
+   * The Entra directory object id: tenant-wide and stable for a human.
+   *
+   * NOT `sub`. `sub` is a pairwise subject, scoped per application, so the same
+   * person arriving through a different client presents a different value - it
+   * would look like it worked and quietly fail to match. `oid` is the id in the
+   * directory, and the same value Graph returns as `/me.id`.
+   */
+  oid?: string;
   email?: string;
   preferred_username?: string;
   upn?: string;
@@ -36,10 +50,15 @@ type AuthIdentity = {
   department: string | null;
   location: string | null;
   provisionIfMissing: boolean;
+  /** The `oid` claim, when the token carried one. Null everywhere else. */
+  entraObjectId?: string | null;
+  /** Every address the token presented, for UserIdentityService to record. */
+  directoryAddresses?: DirectoryAddress[];
 };
 
 @Injectable()
 export class AuthGuard implements CanActivate {
+  private readonly logger = new Logger(AuthGuard.name);
   private azureJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
   private azureJwksIssuer: string | null = null;
   private bootstrapOwnerEmails: Set<string> | null = null;
@@ -49,6 +68,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly config: ConfigService,
     private readonly duplicateAccounts: DuplicateAccountService,
+    private readonly userIdentity: UserIdentityService,
   ) {}
 
   async canActivate(context: ExecutionContext) {
@@ -217,6 +237,15 @@ export class AuthGuard implements CanActivate {
     }
 
     const claims = await this.verifyAzureJwt(token);
+    // Every address form the token presented, kept rather than thrown away.
+    // Entra gives a UPN and a `mail` that routinely differ, and the second one
+    // is what appears on a sent email or a Power Automate form response - which
+    // is where the duplicate account came from.
+    const directoryAddresses: DirectoryAddress[] = [];
+    for (const source of ['preferred_username', 'upn', 'email'] as const) {
+      const value = this.normalizeEmail(this.firstStringClaim(claims, [source]));
+      if (value) directoryAddresses.push({ email: value, source });
+    }
     return {
       userId: null,
       email: this.normalizeEmail(
@@ -226,6 +255,8 @@ export class AuthGuard implements CanActivate {
       department: this.firstStringClaim(claims, ['department']),
       location: this.firstStringClaim(claims, ['office_location']),
       provisionIfMissing: true,
+      entraObjectId: this.firstStringClaim(claims, ['oid']),
+      directoryAddresses,
     };
   }
 
@@ -274,6 +305,25 @@ export class AuthGuard implements CanActivate {
     }
 
     const shouldBootstrapOwner = this.shouldBootstrapOwner(email);
+    const entraObjectId = identity.entraObjectId?.trim() || null;
+
+    // The directory object first, because it is the thing that does not change.
+    // A token with no `oid` skips straight to the address lookup and behaves
+    // exactly as it did before this card - Easy Auth and the dev header path
+    // must not regress.
+    const byObject = entraObjectId
+      ? await this.prisma.user.findUnique({ where: { entraObjectId } })
+      : null;
+    if (byObject) {
+      // The address on this token may differ from the one stored. It is NOT
+      // overwritten and no second row is made: the row is the human, and the
+      // address is one of their labels. The alternate form is recorded below
+      // instead, which is what teaches intake and inbound email about it.
+      await this.recordDirectoryAddresses(byObject.id, identity);
+      return this.applyProfileUpdates(byObject, identity, email, {
+        stampObjectId: null,
+      });
+    }
 
     const existing = await this.prisma.user.findUnique({
       where: { email },
@@ -291,8 +341,10 @@ export class AuthGuard implements CanActivate {
           role: provisionedRole,
           department: identity.department,
           location: identity.location,
+          entraObjectId,
         },
       });
+      await this.recordDirectoryAddresses(created.id, identity);
       // Card 1.30: say so if this looks like a second account for somebody we
       // already have. After the create, never before - flagging must not be
       // able to stop a user being provisioned.
@@ -300,36 +352,83 @@ export class AuthGuard implements CanActivate {
       return created;
     }
 
+    // Matched on the address. If the token brought a directory id and this row
+    // has none, stamp it - that is how the existing accounts acquire their
+    // identity, quietly, as people log in. No manual step and no backfill.
+    await this.recordDirectoryAddresses(existing.id, identity);
+    return this.applyProfileUpdates(existing, identity, email, {
+      stampObjectId: existing.entraObjectId ? null : entraObjectId,
+    });
+  }
+
+  /**
+   * The profile fields a token may refresh, plus an optional identity stamp.
+   *
+   * `email` is deliberately NOT among them. A human resolved by directory
+   * object can present a different address form on any given token - Entra
+   * hands out a UPN and a `mail` that routinely differ - and overwriting the
+   * stored address on each login would make the row flap between the two. The
+   * alternate form is recorded as an alias instead.
+   */
+  private async applyProfileUpdates(
+    user: User,
+    identity: AuthIdentity,
+    email: string,
+    options: { stampObjectId: string | null },
+  ) {
+    const displayName = identity.displayName?.trim() || email;
     const updateData: {
       displayName?: string;
       department?: string | null;
       location?: string | null;
       role?: UserRole;
+      entraObjectId?: string;
     } = {};
-    if (existing.displayName !== displayName) {
+    if (user.displayName !== displayName) {
       updateData.displayName = displayName;
     }
-    if (
-      identity.department !== null &&
-      existing.department !== identity.department
-    ) {
+    if (identity.department !== null && user.department !== identity.department) {
       updateData.department = identity.department;
     }
-    if (identity.location !== null && existing.location !== identity.location) {
+    if (identity.location !== null && user.location !== identity.location) {
       updateData.location = identity.location;
     }
-    if (shouldBootstrapOwner && existing.role !== UserRole.OWNER) {
+    if (this.shouldBootstrapOwner(email) && user.role !== UserRole.OWNER) {
       updateData.role = UserRole.OWNER;
+    }
+    if (options.stampObjectId) {
+      updateData.entraObjectId = options.stampObjectId;
     }
 
     if (Object.keys(updateData).length === 0) {
-      return existing;
+      return user;
     }
 
-    return this.prisma.user.update({
-      where: { id: existing.id },
-      data: updateData,
-    });
+    return this.prisma.user
+      .update({ where: { id: user.id }, data: updateData })
+      .catch((error) => {
+        // The only field here that can collide is entraObjectId, and only if
+        // another row already claims it. A login must not fail over a stamp.
+        this.logger.warn(
+          `Could not update user ${user.id} from the token: ${(error as Error).message}`,
+        );
+        return user;
+      });
+  }
+
+  /**
+   * Hand the token's addresses to UserIdentityService.
+   *
+   * Best-effort and awaited: it never throws, and a login must not fail because
+   * a convenience mapping could not be written.
+   */
+  private async recordDirectoryAddresses(
+    userId: string,
+    identity: AuthIdentity,
+  ) {
+    const addresses = identity.directoryAddresses ?? [];
+    if (addresses.length === 0) return;
+    await this.userIdentity.recordAddresses(userId, addresses);
   }
 
   private shouldBootstrapOwner(email: string) {

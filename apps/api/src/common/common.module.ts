@@ -7,6 +7,7 @@ import { AiObservabilityService } from './ai-observability.service';
 import { AutomationQueueService } from './automation-queue.service';
 import { DuplicateAccountService } from './duplicate-account.service';
 import { IdempotencyService } from './idempotency.service';
+import { UserIdentityService } from './user-identity.service';
 
 @Global()
 @Module({
@@ -17,6 +18,7 @@ import { IdempotencyService } from './idempotency.service';
     AutomationQueueService,
     DuplicateAccountService,
     IdempotencyService,
+    UserIdentityService,
   ],
   exports: [
     AccessControlService,
@@ -24,6 +26,7 @@ import { IdempotencyService } from './idempotency.service';
     AutomationQueueService,
     DuplicateAccountService,
     IdempotencyService,
+    UserIdentityService,
   ],
 })
 export class CommonModule {}

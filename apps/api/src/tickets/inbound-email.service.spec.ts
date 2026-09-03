@@ -9,6 +9,7 @@ import {
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DuplicateAccountService } from '../common/duplicate-account.service';
+import { UserIdentityService } from '../common/user-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { InboundEmailService } from './inbound-email.service';
@@ -153,6 +154,12 @@ describe('InboundEmailService', () => {
       // Card 1.30: flagging a probable duplicate must never affect ingestion,
       // so a no-op stand-in is the honest mock here.
       { flag: jest.fn() } as unknown as DuplicateAccountService,
+      // Card 1.30: no recorded aliases, so resolution falls through to the
+      // create path exactly as it did before.
+      {
+        findUserIdByAlias: jest.fn().mockResolvedValue(null),
+        recordAddresses: jest.fn(),
+      } as unknown as UserIdentityService,
       notifications as unknown as NotificationsService,
       ticketEmailThreads as unknown as TicketEmailThreadService,
       ticketsService as unknown as TicketsService,

@@ -169,6 +169,7 @@ async function main() {
       console.log(`   role          ${user.role}`);
       console.log(`   isActive      ${user.isActive}`);
       console.log(`   primaryTeamId ${user.primaryTeamId ?? '(none)'}`);
+      console.log(`   entraObjectId ${user.entraObjectId ?? '(none)'}`);
       console.log(
         `   teams         ${
           info.memberships.length === 0
@@ -242,6 +243,9 @@ async function main() {
     console.log(
       `The loser row is deactivated (isActive: false), never deleted, so audit rows that name it keep resolving.`,
     );
+    console.log(
+      `Its address ${loser.email} is recorded as an alias of the keeper, so the pair cannot re-form.`,
+    );
     blank();
 
     if (!APPLY) {
@@ -280,9 +284,42 @@ async function main() {
         });
       }
 
+      // Card 1.30 PREVENT: make the loser's address resolve to the keeper, so
+      // the pair cannot re-form. Without this the merge is undone the next time
+      // that address arrives at intake or by email - which is exactly how the
+      // duplicate was made in the first place.
+      const existingAlias = await tx.userEmailAlias.findUnique({
+        where: { email: loser.email },
+        select: { userId: true },
+      });
+      if (!existingAlias) {
+        await tx.userEmailAlias.create({
+          data: { userId: keeper.id, email: loser.email, source: 'merge' },
+        });
+      } else if (existingAlias.userId !== keeper.id) {
+        await tx.userEmailAlias.update({
+          where: { email: loser.email },
+          data: { userId: keeper.id },
+        });
+      }
+
+      // And the directory identity, if the loser carried one and the keeper
+      // does not. Never overwrite the keeper's own.
+      if (loser.entraObjectId && !keeper.entraObjectId) {
+        await tx.user.update({
+          where: { id: keeper.id },
+          data: { entraObjectId: loser.entraObjectId },
+        });
+      }
+
       await tx.user.update({
         where: { id: loser.id },
-        data: { isActive: false, deactivatedAt: new Date() },
+        data: {
+          isActive: false,
+          deactivatedAt: new Date(),
+          // Released so the keeper can hold it and the unique cannot collide.
+          entraObjectId: null,
+        },
       });
     });
 
