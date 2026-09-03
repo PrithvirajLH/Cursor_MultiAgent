@@ -56,10 +56,14 @@ Three always-on pieces:
 | Piece | Where | Height |
 |---|---|---|
 | Formatting toolbar, always rendered | `RichTextEditor.tsx:614` | ≈34px |
-| Editable area | `RichTextEditor.tsx:753` — `min-h-[80px] max-h-[288px]` | **80px empty** |
+| Editable area | `RichTextEditor.tsx:753` — `min-h-[80px] max-h-[288px]` | ~~80px empty~~ **48px** — see below |
 | Footer row (type toggle, attach, send) | `TicketConversation.tsx:415` | ≈40px |
 
-So ≈154px is reserved before anyone types a character.
+So ≈122px is reserved before anyone types a character.
+
+> **⚠️ Corrected 2026-09-03 by the implementer: `min-h-[80px]` is dead code.** Two lines below it, `style={{ minHeight: `${minRows * 24}px` }}` with `minRows = 2`
+> overrides the class, so the resting height was **48px**, not 80. I read the class and stopped. The real saving on the editable area is therefore **≈24px**, not ≈56px,
+> and §2's ≈110px composer figure is overstated by the same amount. The misleading class has been removed and the height driven from named constants.
 
 ### Re-measure before you start — the four-card batch changed these numbers
 
@@ -111,8 +115,11 @@ about to shrink. If you find yourself reaching for any of those, stop and report
 
 **Files:** `apps/web/src/pages/TicketDetailPage.tsx`
 
-- [ ] Clamp the description paragraph to **3 lines** (`line-clamp-3`) with a
-      **"Show more" / "Show less"** toggle beneath it.
+- [ ] Clamp the description paragraph to **3 lines** with a **"Show more" / "Show less"** toggle beneath it.
+      > **⚠️ Do NOT use `line-clamp-${N}`, and this card originally set that trap.** It said `line-clamp-3` *and* "keep it a single constant" — which together push
+      > straight into a dynamic class. Tailwind only emits classes it finds as **literal text**, so `line-clamp-${N}` works today purely because `TicketCreated.tsx`
+      > happens to use `line-clamp-3` literally; the built CSS contains `line-clamp-1/2/3` and **no `line-clamp-4`**. Change the knob to 4 and clamping stops with no
+      > error. Verified 2026-09-03. The clamp is now an inline `-webkit-line-clamp` built from the one constant.
 - [ ] **Only render the toggle when the text actually overflows.** A two-line
       description must not grow a pointless control. Measure
       (`scrollHeight > clientHeight`) rather than guessing from character count —

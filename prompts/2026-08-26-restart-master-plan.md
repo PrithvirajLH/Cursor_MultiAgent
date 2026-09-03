@@ -62,7 +62,7 @@ Also from this card: the standing Prisma drift is **twelve** statements, not the
 
 **Not yet in production.** Committed after the deploy zip was built — I checked the 13:53 package for `insertIntoBody` and it is absent, so the batch could not have been contaminated. Ships with the next deploy. Until then the live preview still leads with the marker; that is expected, not a regression. | `EmailService.decorateHtmlBody` prepends `<p>marker</p>` to the **entire document**, producing `<p>…</p><!DOCTYPE html><html>…`. Two faults: the document is **malformed** — content before the doctype drops clients into quirks mode and leaves the marker outside `<html>`, where Outlook's rendering is least predictable — and **the marker leads the inbox preview instead of the preheader**, which is confirmed rather than theoretical (the pre-1.34 preview read "----- Reply above this line ----- Update on your request Hello…"). Card 1.34 made the preview carry the agent's question, but the marker still takes ~33 of the ~90 characters that decide whether the email is opened at all. **The fix:** insert the marker **after the opening `<body>` tag** rather than before the doctype — valid document, preheader first. **The wrinkle to think about before coding:** the preheader would then sit *above* the marker, and `stripQuotedReply` cuts at the marker — so a hidden div could survive trimming and land in the agent's view of the requester's reply. Check what the trimmer actually leaves behind; the answer may be to put the preheader below the marker instead, which costs nothing since both are at the top. Pre-existing (1.22's prepending), API only, no migration. Size S. |
 | Deploy — email pipeline batch | **Ready**, handoff written; **two of its post-deploy web checks now pre-verified locally** | `prompts/2026-09-02-deploy-email-pipeline-batch.md` | Ran the browser pass the deploy was missing (Playwright MCP had been offline; it reconnected 2026-09-02). Against a local dev stack on the current tree: **§5 check 3** — the `EMAIL OUTBOX` counts block renders (waiting / in flight / sent / given up); **§5 check 4** — `Admin → Operations` shows a **fourth** scheduled job, **"Email outbox sweeper", On, every 1 min, result "Nothing to do"**, which is exactly the success signal the handoff predicted for an empty queue. Both were verified on batch + 1.35, and 1.35 touches only the reply body, so neither is affected. **Still to do after the deploy:** checks 1, 2, 5, 6, 7, 8 — the real-send checks and the schema/index confirmation, which need production. **A rebuild must check out the batch SHA**, not the tree: the tree now carries 1.35 (`9638a64`) and three doc commits. |
-| 1.39 Give the conversation room to work | **Handoff written** (2026-09-02, owner request from a production screenshot) — independent of the four-card batch | `prompts/2026-09-02-1-39-give-the-conversation-room.md` | **The conversation panel shows three messages out of ten**, because the description gets more vertical space than the conversation does. Measured off the owner's production screen (≈827px): header **≈355px** (description alone ≈240px of it), conversation **≈275px**, composer ≈150px at rest.
+| 1.39 Give the conversation room to work | **GREEN** — verified 2026-09-03; **uncommitted by design**, awaiting the owner | `prompts/2026-09-02-1-39-give-the-conversation-room.md` | **The conversation panel shows three messages out of ten**, because the description gets more vertical space than the conversation does. Measured off the owner's production screen (≈827px): header **≈355px** (description alone ≈240px of it), conversation **≈275px**, composer ≈150px at rest.
 
 **The layout is not broken and must not be restructured.** `TicketConversation.tsx:198` already gives the message list `flex-1 overflow-y-auto`, so it scrolls independently and takes what is left — two siblings simply take too much first. **Cause A:** `TicketDetailPage.tsx:2162` renders the description as a plain `<p>` with `whitespace-pre-wrap` and **no clamp, no collapse, no max height**, so all eleven PAF lines land. **Cause B:** the composer reserves ≈154px empty — an always-rendered toolbar (`RichTextEditor.tsx:614`), `min-h-[80px]` on the editable area (`:753`), and the footer row. **Fix:** clamp the description to three lines with *Show more*, and let the idle composer rest at one line with the toolbar appearing on focus. Together ≈285px back — **3 visible messages to 7 or 8**, no behaviour change.
 
@@ -239,6 +239,45 @@ which is the half a careless implementation would have broken.
    prove the mechanism.
 
 **`CLAUDE.md` baselines were not updated** — my Task 5 asked for it and the report did not mention it. I updated them myself: **443/44, 475+1, 100/21**.
+
+**1.39 — GREEN, 2026-09-03, and it caught more of my errors than any card so far.** Re-ran everything: web `tsc` 0, **vitest 117/23**, api `tsc` 0, api unit **443/44**
+unchanged. `git status` confirms **`apps/api` is untouched**, so skipping the integration suite was correct rather than a shortcut. Measured **111px → 334px** of conversation
+(3.0×) and **1 → 4** visible messages, clearing criterion 1.
+
+**Four corrections, two of them mine and one a trap I built:**
+
+- **`min-h-[80px]` is dead code.** Two lines below it an inline `style={{ minHeight: minRows * 24 }}` with `minRows = 2` overrides the class, so the resting height was
+  **48px, not 80px**. I read the class and stopped reading. My ≈154px and ≈110px figures were overstated by ≈32px. Corrected in the card.
+- **My card set a silent Tailwind trap.** It specified `line-clamp-3` *and* "keep it a single constant", which together push an implementer straight into
+  `line-clamp-${N}`. Tailwind only emits classes it finds as **literal text** — I verified the built CSS contains `line-clamp-1/2/3` and **no `line-clamp-4`**, and that
+  `line-clamp-3` exists only because `TicketCreated.tsx` uses it literally. Change the knob to 4 and clamping would stop working **with no error**. They used an inline
+  `-webkit-line-clamp` from the constant instead. This is the best catch of the day: a latent trap that would have surfaced months later as "the clamp mysteriously
+  stopped".
+- **My §2 prize was overstated for this ticket** — 3→7/8 projected, 1→4 actual, because 8 of 9 messages here are internal notes at ≈99px each. The changes did not
+  underperform; my per-message height assumption did.
+- **A discoverability change my card did not mention:** canned responses live in the formatting toolbar, so hiding it while idle puts them behind a click. Minor, but real.
+
+**The bug their own Case 4 found is the interesting one.** A 375-character description with **no newlines** rendered unclamped at 159px with no toggle — precisely what my
+card asked them to catch, and their first implementation could not, because `scrollHeight > clientHeight` is **circular**: the element is only clamped once you already
+believe it overflows, so a "not overflowing" seed confirms itself forever. Fixed by comparing against the clamp's **target** height (`line-height × CLAMP_LINES`), which
+is state-independent. I read the fix: correct, with a `ResizeObserver` they added unprompted for the case my card missed entirely — text that fits on a wide window wraps
+past the clamp on a narrow one.
+
+**They declined the §1 refinement, and were right to.** Measured it first: 8 captions × 15px = 120px, ~36% of the conversation, worth roughly one more message. They
+judged the amber ring too subtle to carry the signal alone for a scanning reader, and would not re-open a safety fix for one message. That is exactly the instruction the
+card gave, and they showed the numbers so the owner can overrule it.
+
+**Test discipline worth copying:** boundary pairs on the off-by-one (exactly-the-clamp vs one-line-more), an assertion that the **whole** original text stays in the
+document while clamped, and **both files end with an explicit note on what they cannot cover and why** — including "if you touch that measurement, check a newline-free
+description in a real browser, no test here can see it". `apps/web` has no jsdom and no `@testing-library`, only `renderToStaticMarkup`, so focus states are genuinely
+untestable there; they said so instead of faking it.
+
+**Deploy safety, checked:** the package built at **08:41** predates 1.39's first edit at **08:46**, and I confirmed it by reading the archive — **no "Show more"/"Show
+less" in the bundle**, while all three four-card strings are present. So the in-flight deploy is clean. **If that deploy needs a retry, re-push the same zip — do not
+rebuild**, because 1.39 now sits in the working tree.
+
+**Dev data note:** dev ticket `IS_20260609_002` keeps an eleven-line synthetic description (fake employee, not the real PAF record) so the screenshots reproduce;
+`IS_20260609_001` was restored.
 
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
