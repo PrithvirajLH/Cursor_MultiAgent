@@ -459,6 +459,35 @@ feature that no real mail can yet reach would buy very little and leave probe ti
 
 **Four-card batch handed off 2026-09-03** — 1.41, 1.9, 1.10, 1.40 as `prompts/2026-09-03-1-41-1-9-1-10-1-40-combined.md`, four commits in that order. **Not combined because they collide** (unlike the 1.36-1.28 batch); they are together because the implementer was free and each is small. Ordered 1.41 first as the shortest path to fixing something live, then 1.9 which clones the existing typing plumbing, then 1.10 which carries **the only migration (54)**, then 1.40 last because it is the only one that stays latent until card 1.24 ships. **Gotchas recorded in the handoff:** 1.9's realtime audience is a security boundary and must reuse `ticket.typing`'s exactly, or presence tells people a ticket exists that they cannot open; 1.10's new `NotificationType` value has a one-line precedent at `20260828120000_ticket_channel_api`, and **Postgres will not let a newly added enum value be used in the same transaction that adds it**, so the migration may only add it; and 1.40's four §4 decisions are settled in the handoff as the planner's calls rather than the owner's, with §4.3 flagged as the one genuinely wanting the owner's opinion.
 
+**Four-card batch GREEN, 2026-09-03** — 1.41 `753fd45`, 1.9 `9fb8951`, 1.10 `b1c1fe8`, 1.40 `2c76697`. Re-ran everything: api `tsc` 0, unit **468/47** unchanged,
+integration **542 + 1 skipped, 58 of 59**, web `tsc` 0, vitest **133/24**. **Migration 54** added — 0 DROPs by hand check, the twelve drift statements enumerated and
+removed, and it documents the enum-in-transaction trap the handoff warned about.
+
+**Two deviations from my handoff, both improvements.**
+
+**1.9's gate had to differ from the clone I asked for.** I said clone the typing plumbing; `setTyping` gates on `canWriteTicket`. They used **`canViewTicket`**, because a
+peer agent opening a teammate's ticket **cannot write it** — and that is precisely the collision this feature exists to prevent. **A faithful clone would have excluded
+the main case.** I checked the audience separately rather than trusting the comment: `publishTicketViewingForTicket` omits `extraTeamIds`/`extraUserIds`, and **no caller
+anywhere passes those**, so the audiences are identical today and the omission is in the safe direction. Worth a note in the code so a future use of the extras does not
+silently diverge.
+
+**1.41 did the optional half.** I said prose naming the **Me** button would be enough; they made *"Assign this ticket to yourself"* a real link. Screenshot confirms
+visible text, no hover, chip intact.
+
+**They superseded two of card 1.29's tests, and I diffed it rather than taking the word:** the status code moved 403 → 201 for the new contract, the **status assertion
+is untouched**, and they **added** a message-count assertion to the RESOLVED case that was not there before. It got **stronger**, and the comment preserves why assertion
+order matters. That is the third time in three cards that assertion order was the difference between catching and blessing a defect.
+
+**§4.3, their call and I would keep it:** a stranger's inbound reply gets **201**, the attempt recorded as an event, the body discarded. The 201 is the part I would have
+got wrong — an error code makes the sender's mail server retry forever. Owner can have the body stored instead; they say it is a one-line change.
+
+**One finding of theirs worth keeping:** **a looped-in EMPLOYEE cannot open the ticket at all** (403), because card 1.36 grants an EMPLOYEE only tickets they requested
+and following does not change that. So a loop-in is an **email-only participant** — they may reply, they may not browse. Coherent, but nobody had stated it.
+
+**Answers to the two questions the handoff asked:** 1.10 with **no assignee** leaves the follow-up set and notifies nobody, with a warning logged — clearing it would
+throw the reminder away silently, whereas left set it keeps surfacing in "Follow-ups due today". **1.9 presence**: 30s heartbeat, viewer dropped after **90s** (three
+missed beats), with unmount announcing `false` so the normal case is immediate.
+
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
 *Blocking other work:*

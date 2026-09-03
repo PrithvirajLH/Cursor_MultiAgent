@@ -27,16 +27,16 @@ functions. There is no AGENTS.md here; `.cursorrules` is it.
 
 ## Baseline — do not regress these
 
-**468 unit tests (47 suites), 512 integration + 1 skipped, 123 web unit tests (24 files)**, both typechecks clean.
+**468 unit tests (47 suites), 542 integration + 1 skipped, 133 web unit tests (24 files)**, both typechecks clean.
 
 ```bash
 cd apps/api && npx tsc --noEmit
 cd apps/web && npx tsc --noEmit
 cd apps/api && npx jest                       # 468, 47 suites
-cd apps/web && npx vitest run                 # 123, 24 files
+cd apps/web && npx vitest run                 # 133, 24 files
 
 export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
-cd apps/api && npm run test:integration       # 512 + 1 skipped, takes ~6-10 min
+cd apps/api && npm run test:integration       # 542 + 1 skipped, takes ~6-10 min
 ```
 
 The consent variable is mandatory — every integration suite resets the database
@@ -71,7 +71,7 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
   deploy target), plus two **public** GitHub remotes.
 - Production App Service `TicketTicket` runs commit `d8811a7` (deployed
   2026-08-29 02:48 UTC, deployment `5d0d116a`; previous `2df679d` 08-28, `d1d57bc` 08-27,
-  `c2ff777` 08-26, `458543a` before that). Schema is up to date at **53**
+  `c2ff777` 08-26, `458543a` before that). Schema is up to date at **54**
   migrations; the six trigram indexes are intact. `main` and
   `ui-redesign-and-api-hardening` are both at `d8811a7` — exactly what shipped. Live since this deploy: ticket editing, requester
   confirm/reopen/cancel, timed automations (scheduler on, no timed rules yet),
