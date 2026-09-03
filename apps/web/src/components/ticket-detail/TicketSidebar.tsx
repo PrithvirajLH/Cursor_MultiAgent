@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  CalendarClock,
   Check,
   ChevronDown,
   Clock,
@@ -16,6 +17,58 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+/**
+ * The follow-up choices, in the language people actually use (card 1.10).
+ *
+ * "Remind me Friday" is a relative thought, not a calendar operation, so the
+ * common cases are one click and an exact datetime hides behind "Pick a date".
+ * Built on the sidebar's own InlineSelect so this row looks and behaves exactly
+ * like Priority and Category beside it - a bare `datetime-local` renders the
+ * browser's own control, which does not match anything else on the screen and
+ * cannot be styled to.
+ */
+const FOLLOW_UP_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "No follow-up" },
+  { value: "tomorrow", label: "Tomorrow morning" },
+  { value: "in3days", label: "In 3 days" },
+  { value: "nextweek", label: "Next week" },
+  { value: "custom", label: "Pick a date and time" },
+];
+
+/** 9am local, `days` from now - a reminder should land inside work hours. */
+function morningIn(days: number): string {
+  const at = new Date();
+  at.setDate(at.getDate() + days);
+  at.setHours(9, 0, 0, 0);
+  return at.toISOString();
+}
+
+function followUpValueToIso(value: string): string | null {
+  switch (value) {
+    case "tomorrow":
+      return morningIn(1);
+    case "in3days":
+      return morningIn(3);
+    case "nextweek":
+      return morningIn(7);
+    default:
+      return null;
+  }
+}
+
+/** The set date, short enough for a sidebar row. */
+function formatFollowUp(iso: string | null | undefined): string {
+  if (!iso) return "No follow-up";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "No follow-up";
+  return at.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 /**
  * An ISO instant as `datetime-local` wants it: local wall-clock, no zone.
  * Returns "" for null so the input renders empty rather than Invalid Date.
@@ -246,6 +299,9 @@ export function TicketSidebar(props: TicketSidebarProps) {
     requesterAction = null,
     onRequesterActionConsumed,
   } = props;
+
+  // Card 1.10: the exact-datetime control is revealed only on request.
+  const [pickingFollowUp, setPickingFollowUp] = useState(false);
 
   const isRequester =
     !!currentEmail && ticket.requester?.email === currentEmail;
@@ -600,32 +656,65 @@ export function TicketSidebar(props: TicketSidebarProps) {
           */}
           {canManage ? (
             <PropertyRow label="Follow-up">
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="datetime-local"
-                  aria-label="Follow-up date"
-                  value={toLocalInputValue(ticket.followUpAt)}
-                  disabled={actionLoading}
-                  onChange={(event) =>
-                    onFollowUpChange(
-                      event.target.value
-                        ? new Date(event.target.value).toISOString()
-                        : null,
-                    )
-                  }
-                  className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-60"
-                />
-                {ticket.followUpAt ? (
-                  <button
-                    type="button"
-                    onClick={() => onFollowUpChange(null)}
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <InlineSelect
+                    ariaLabel="Follow-up"
+                    value={ticket.followUpAt ? "custom" : "none"}
+                    options={FOLLOW_UP_OPTIONS}
                     disabled={actionLoading}
-                    aria-label="Clear the follow-up date"
-                    title="Clear the follow-up date"
-                    className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                    onChange={(val) => {
+                      if (val === "custom") {
+                        setPickingFollowUp(true);
+                        return;
+                      }
+                      setPickingFollowUp(false);
+                      onFollowUpChange(followUpValueToIso(val));
+                    }}
+                    renderValue={() => (
+                      <span className="inline-flex items-center gap-1.5">
+                        <CalendarClock className="h-3 w-3 text-muted-foreground" />
+                        {formatFollowUp(ticket.followUpAt)}
+                      </span>
+                    )}
+                  />
+                  {ticket.followUpAt ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPickingFollowUp(false);
+                        onFollowUpChange(null);
+                      }}
+                      disabled={actionLoading}
+                      aria-label="Clear the follow-up date"
+                      title="Clear the follow-up date"
+                      className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  ) : null}
+                </div>
+                {/*
+                  The exact-datetime control appears only when somebody asks
+                  for it. The presets above cover "remind me Friday", which is
+                  what this field is actually for.
+                */}
+                {pickingFollowUp ? (
+                  <input
+                    type="datetime-local"
+                    autoFocus
+                    aria-label="Follow-up date and time"
+                    value={toLocalInputValue(ticket.followUpAt)}
+                    disabled={actionLoading}
+                    onChange={(event) =>
+                      onFollowUpChange(
+                        event.target.value
+                          ? new Date(event.target.value).toISOString()
+                          : null,
+                      )
+                    }
+                    className="rounded-md border border-border bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:opacity-60"
+                  />
                 ) : null}
               </div>
             </PropertyRow>
