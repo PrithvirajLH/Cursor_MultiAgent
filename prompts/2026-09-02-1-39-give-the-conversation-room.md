@@ -17,8 +17,7 @@ actual conversation.
 
 This card touches the description block and the composer's *height*. The batch
 that just landed owns the composer's *controls* and the message bubbles — keep off
-those, per the notes in
-`TicketConversation.tsx` — see §5.
+those, per the notes in §5.
 
 ---
 
@@ -65,7 +64,7 @@ So ≈154px is reserved before anyone types a character.
 ### Re-measure before you start — the four-card batch changed these numbers
 
 The table above was measured **before** 1.28/1.37/1.38 landed (commits `48d9874`,
-`e6cbf7f`, `c2b8584`, 2026-09-02). Two of them added furniture in this exact
+`e6cbf7f`, `c2b8584`, 2026-09-02, GREEN 2026-09-03). Two added furniture in this exact
 region, so **1.39 is now worth more, not less** — but take your own before/after
 numbers rather than quoting mine:
 
