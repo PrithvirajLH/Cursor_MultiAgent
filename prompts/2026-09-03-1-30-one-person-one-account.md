@@ -15,7 +15,22 @@ exact string.
 
 ---
 
-## 0. This card was rewritten, and the first version was worse
+## 0. READ THIS FIRST — what is already built, and what is not
+
+> **DETECT and REPAIR are built and GREEN** (`50fe7dc`, 2026-09-03): a shape
+> comparison used **for suspicion only**, flagged into `AdminAuditEvent`, plus
+> `apps/api/merge-duplicate-user.mjs` for the owner to run. **Do not rebuild
+> them.**
+>
+> **PREVENT — §4, the directory work — is NOT built.** `entraObjectId` does not
+> exist and the `oid` claim is read nowhere. That is the remaining work, and it
+> is what this card is now for.
+>
+> The phases are **named, not numbered**, on purpose: this card was rewritten
+> mid-flight, "Stage 1" meant different things in the two versions, and the
+> planner mislabelled a verdict as a result.
+
+## 0b. This card was rewritten, and the first version was worse
 
 The first version had the app work out for itself whether two addresses were the
 same human, by comparing their shapes, and it spent most of its length warning
@@ -59,7 +74,7 @@ notes on it — turns on `requesterId` being one of those rows and not the other
 
 The directory decides who a person is. The app stops deciding.
 
-## 4. Stage 1 — key on the directory object (the whole of the login problem)
+## 4. PREVENT — key on the directory object (the remaining work)
 
 ### Task 1 — Store the identifier
 
@@ -129,7 +144,7 @@ ships as a script **the owner runs**, shaped like `agent-role-check.mjs`.
 - [ ] Stamp the keeper with the `entraObjectId` and both addresses, so the pair
       cannot re-form.
 
-## 5. What this does *not* solve, stated plainly
+## 5. What PREVENT does *not* solve, stated plainly
 
 1. **Someone who has never logged in has no directory identity here.** Floor staff
    submit through Power Automate and may never sign in, so the intake path can
