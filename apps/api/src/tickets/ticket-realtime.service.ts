@@ -233,6 +233,38 @@ export class TicketRealtimeService {
     return this.realtime.isEnabled();
   }
 
+  /**
+   * Announce that somebody has a ticket open (card 1.9).
+   *
+   * The audience is resolveAuthorizedUserIds, exactly as for typing. That is a
+   * security boundary rather than a convenience: it is the same set of people
+   * who may open the ticket.
+   */
+  async publishTicketViewingForTicket(params: {
+    ticket: TicketRealtimeAudienceTicket;
+    actor: Pick<AuthUser, 'id' | 'email' | 'displayName'>;
+    isViewing: boolean;
+  }) {
+    if (!this.realtime.isEnabled()) {
+      return;
+    }
+
+    const userIds = await this.resolveAuthorizedUserIds(params.ticket, {
+      actorId: params.actor.id,
+    });
+
+    await this.realtime.publishTicketViewing(
+      {
+        ticketId: params.ticket.id,
+        actorId: params.actor.id,
+        actorDisplayName: params.actor.displayName,
+        actorEmail: params.actor.email,
+        isViewing: params.isViewing,
+      },
+      { userIds },
+    );
+  }
+
   private async resolveAuthorizedUserIds(
     ticket: TicketRealtimeAudienceTicket,
     params: {

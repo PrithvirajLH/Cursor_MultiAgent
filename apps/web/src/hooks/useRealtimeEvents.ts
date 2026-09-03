@@ -4,6 +4,7 @@ import type {
   RealtimeAdminChangedEventPayload,
   RealtimeTicketChangedEventPayload,
   RealtimeTicketTypingEventPayload,
+  RealtimeTicketViewingEventPayload,
 } from "../realtime/events";
 import { REALTIME_ADMIN_CHANGED_EVENT } from "../realtime/events";
 
@@ -15,6 +16,7 @@ type RealtimeNotificationPayload = {
 };
 
 type RealtimeTicketTypingPayload = RealtimeTicketTypingEventPayload;
+type RealtimeTicketViewingPayload = RealtimeTicketViewingEventPayload;
 type RealtimeAdminPayload = RealtimeAdminChangedEventPayload;
 
 type RealtimeEnvelope = {
@@ -28,6 +30,7 @@ type UseRealtimeEventsOptions = {
   userKey?: string;
   onTicketChanged?: (payload: RealtimeTicketPayload) => void;
   onTicketTyping?: (payload: RealtimeTicketTypingPayload) => void;
+  onTicketViewing?: (payload: RealtimeTicketViewingPayload) => void;
   onAdminChanged?: (payload: RealtimeAdminPayload) => void;
   onNotificationsUpdated?: (payload: RealtimeNotificationPayload) => void;
   onAvailabilityChange?: (available: boolean) => void;
@@ -81,6 +84,13 @@ function toTicketTypingPayload(payload: unknown): RealtimeTicketTypingPayload {
   return payload as RealtimeTicketTypingPayload;
 }
 
+function toTicketViewingPayload(payload: unknown): RealtimeTicketViewingPayload {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+  return payload as RealtimeTicketViewingPayload;
+}
+
 function toAdminPayload(payload: unknown): RealtimeAdminPayload {
   if (!payload || typeof payload !== "object") {
     return {};
@@ -92,6 +102,7 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
   const { enabled = true, userKey } = options;
   const ticketCallbackRef = useRef(options.onTicketChanged);
   const ticketTypingCallbackRef = useRef(options.onTicketTyping);
+  const ticketViewingCallbackRef = useRef(options.onTicketViewing);
   const adminCallbackRef = useRef(options.onAdminChanged);
   const notificationCallbackRef = useRef(options.onNotificationsUpdated);
   const availabilityCallbackRef = useRef(options.onAvailabilityChange);
@@ -107,6 +118,10 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
   useEffect(() => {
     ticketTypingCallbackRef.current = options.onTicketTyping;
   }, [options.onTicketTyping]);
+
+  useEffect(() => {
+    ticketViewingCallbackRef.current = options.onTicketViewing;
+  }, [options.onTicketViewing]);
 
   useEffect(() => {
     adminCallbackRef.current = options.onAdminChanged;
@@ -158,6 +173,14 @@ export function useRealtimeEvents(options: UseRealtimeEventsOptions) {
       if (envelope.event === "ticket.typing") {
         ticketTypingCallbackRef.current?.({
           ...toTicketTypingPayload(envelope.payload),
+          occurredAt: envelope.occurredAt,
+        });
+        return;
+      }
+
+      if (envelope.event === "ticket.viewing") {
+        ticketViewingCallbackRef.current?.({
+          ...toTicketViewingPayload(envelope.payload),
           occurredAt: envelope.occurredAt,
         });
         return;

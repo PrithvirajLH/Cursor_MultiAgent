@@ -1087,6 +1087,19 @@ export function fetchMessageAudience(
   );
 }
 
+/**
+ * Tell the server this ticket is open in front of us (card 1.9).
+ *
+ * Best-effort presence: a failure here must never surface to the agent, who is
+ * only reading a ticket.
+ */
+export function setTicketViewing(id: string, isViewing: boolean) {
+  return apiFetch<{ ok: boolean }>(`/tickets/${id}/viewing`, {
+    method: "POST",
+    body: JSON.stringify({ isViewing }),
+  });
+}
+
 export function fetchTicketFollowers(id: string) {
   return apiFetch<{ data: TicketFollower[] }>(`/tickets/${id}/followers`);
 }

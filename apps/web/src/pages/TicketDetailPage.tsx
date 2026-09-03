@@ -10,7 +10,15 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Clock3, Copy, Pencil, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Clock3,
+  Copy,
+  Eye,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import {
   addTicketMessage,
   deleteTicket,
@@ -30,6 +38,7 @@ import {
   transitionTicket,
   updateTicket,
   transferTicket,
+  setTicketViewing,
   unfollowTicket,
   uploadTicketAttachment,
   type CategoryRef,
@@ -88,7 +97,9 @@ import {
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   REALTIME_TICKET_TYPING_EVENT,
+  REALTIME_TICKET_VIEWING_EVENT,
   type RealtimeTicketChangedEventPayload,
+  type RealtimeTicketViewingEventPayload,
   type RealtimeTicketTypingEventPayload,
   type RealtimeTicketMessagePayload,
 } from "../realtime/events";
@@ -130,6 +141,16 @@ type TypingUserEntry = {
 };
 
 // Mirror of UpdateTicketDto's limits (apps/api/src/tickets/dto/update-ticket.dto.ts).
+/** How often a viewer re-announces itself (card 1.9). */
+const VIEWING_HEARTBEAT_MS = 30_000;
+/**
+ * How long a viewer survives without a beat. Three missed heartbeats: long
+ * enough to ride out a slow tab or a brief disconnect, short enough that a
+ * closed laptop clears within a couple of minutes rather than leaving a phantom
+ * viewer on the ticket forever.
+ */
+const VIEWING_TIMEOUT_MS = 90_000;
+
 const TICKET_SUBJECT_MAX = 200;
 const TICKET_DESCRIPTION_MAX = 5000;
 
@@ -248,6 +269,12 @@ export function TicketDetailPage({
     requesterHistory: false,
   });
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [viewersById, setViewersById] = useState<
+    Record<
+      string,
+      { id: string; displayName: string; email: string; lastSeen: number }
+    >
+  >({});
   const [typingUsersById, setTypingUsersById] = useState<
     Record<string, TypingUserEntry>
   >({});
@@ -451,6 +478,24 @@ export function TicketDetailPage({
     if (availableTransitions.includes("TRIAGED")) return "TRIAGED";
     return null;
   }, [availableTransitions]);
+  /**
+   * Everybody else with this ticket open (card 1.9).
+   *
+   * Never includes the current user - being told you are looking at the ticket
+   * you are looking at is noise - and never includes a viewer whose last
+   * heartbeat has aged out.
+   */
+  const viewers = useMemo(
+    () =>
+      Object.values(viewersById)
+        .filter(
+          (viewer) =>
+            viewer.email.toLowerCase() !== currentEmail.toLowerCase(),
+        )
+        .sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [viewersById, currentEmail],
+  );
+
   const typingUsers = useMemo(
     () =>
       Object.values(typingUsersById)
@@ -1189,6 +1234,89 @@ export function TicketDetailPage({
         REALTIME_TICKET_TYPING_EVENT,
         handleRealtimeTicketTyping as EventListener,
       );
+    };
+  }, [ticketId, currentUserId]);
+
+  /**
+   * Card 1.9: announce that this ticket is open, and listen for others.
+   *
+   * Presence is best-effort throughout. Every call is swallowed: an agent is
+   * only reading a ticket, and a failed heartbeat must never surface to them.
+   */
+  useEffect(() => {
+    if (!ticketId) return;
+    let cancelled = false;
+    const announce = (isViewing: boolean) => {
+      void setTicketViewing(ticketId, isViewing).catch(() => {
+        // best-effort: presence is a convenience, never a blocker
+      });
+    };
+    announce(true);
+    const beat = window.setInterval(() => {
+      if (!cancelled) announce(true);
+    }, VIEWING_HEARTBEAT_MS);
+
+    // Drop viewers who have stopped beating. This is what stops a closed
+    // laptop leaving somebody on the ticket forever.
+    const sweep = window.setInterval(() => {
+      const cutoff = Date.now() - VIEWING_TIMEOUT_MS;
+      setViewersById((prev) => {
+        const next: typeof prev = {};
+        let changed = false;
+        for (const [id, viewer] of Object.entries(prev)) {
+          if (viewer.lastSeen >= cutoff) next[id] = viewer;
+          else changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, VIEWING_HEARTBEAT_MS);
+
+    const handleRealtimeTicketViewing = (event: Event) => {
+      const payload = (event as CustomEvent<RealtimeTicketViewingEventPayload>)
+        .detail;
+      if (!payload || payload.ticketId !== ticketId) return;
+      const actorId = payload.actorId ?? null;
+      if (!actorId || actorId === currentUserId) return;
+
+      setViewersById((prev) => {
+        if (!payload.isViewing) {
+          if (!prev[actorId]) return prev;
+          const next = { ...prev };
+          delete next[actorId];
+          return next;
+        }
+        return {
+          ...prev,
+          [actorId]: {
+            id: actorId,
+            displayName:
+              payload.actorDisplayName ||
+              payload.actorEmail ||
+              prev[actorId]?.displayName ||
+              "Someone",
+            email: payload.actorEmail || prev[actorId]?.email || "",
+            lastSeen: Date.now(),
+          },
+        };
+      });
+    };
+
+    window.addEventListener(
+      REALTIME_TICKET_VIEWING_EVENT,
+      handleRealtimeTicketViewing as EventListener,
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(beat);
+      window.clearInterval(sweep);
+      window.removeEventListener(
+        REALTIME_TICKET_VIEWING_EVENT,
+        handleRealtimeTicketViewing as EventListener,
+      );
+      // Tell everyone we have gone, rather than waiting for the timeout.
+      announce(false);
+      setViewersById({});
     };
   }, [ticketId, currentUserId]);
 
@@ -2518,6 +2646,28 @@ export function TicketDetailPage({
                         activeTab,
                       )}
                     >
+                      {/*
+                        Card 1.9: two agents answering the same requester is the
+                        classic embarrassment. Quiet, above the thread, and only
+                        ever names people who may see this ticket - the event
+                        goes to the ticket.typing audience, which is the set who
+                        may open it.
+                      */}
+                      {viewers.length > 0 ? (
+                        <div
+                          data-ticket-viewers="true"
+                          className="mx-4 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-800 sm:mx-6 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                        >
+                          <Eye className="h-3.5 w-3.5 shrink-0" />
+                          <span>
+                            {viewers.length === 1
+                              ? `${viewers[0].displayName} also has this ticket open.`
+                              : `${viewers
+                                  .map((viewer) => viewer.displayName)
+                                  .join(', ')} also have this ticket open.`}
+                          </span>
+                        </div>
+                      ) : null}
                       <TicketConversation
                         ticket={ticket}
                         messages={messages}

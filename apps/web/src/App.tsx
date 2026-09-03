@@ -64,6 +64,8 @@ import {
   type RealtimeTicketChangedEventPayload,
   REALTIME_TICKET_TYPING_EVENT,
   type RealtimeTicketTypingEventPayload,
+  REALTIME_TICKET_VIEWING_EVENT,
+  type RealtimeTicketViewingEventPayload,
 } from "./realtime/events";
 import { guardRoute } from "./route-access";
 import { getSidebarBadge, getSidebarChildBadge } from "./sidebar-badges";
@@ -593,11 +595,27 @@ function AuthenticatedShell({
     [],
   );
 
+  /** Card 1.9, cloned from the typing forwarder above. */
+  const handleRealtimeTicketViewing = useCallback(
+    (payload: RealtimeTicketViewingEventPayload) => {
+      window.dispatchEvent(
+        new CustomEvent<RealtimeTicketViewingEventPayload>(
+          REALTIME_TICKET_VIEWING_EVENT,
+          {
+            detail: payload,
+          },
+        ),
+      );
+    },
+    [],
+  );
+
   useRealtimeEvents({
     enabled: true,
     userKey: currentEmail,
     onTicketChanged: handleRealtimeTicketChange,
     onTicketTyping: handleRealtimeTicketTyping,
+    onTicketViewing: handleRealtimeTicketViewing,
     onNotificationsUpdated: handleRealtimeNotificationsUpdated,
     onAvailabilityChange: setRealtimeAvailable,
   });

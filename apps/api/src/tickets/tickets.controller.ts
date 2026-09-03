@@ -40,6 +40,7 @@ import { ListTicketsDto } from './dto/list-tickets.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TicketTypingDto } from './dto/ticket-typing.dto';
+import { TicketViewingDto } from './dto/ticket-viewing.dto';
 import { TransitionTicketDto } from './dto/transition-ticket.dto';
 import { TransferTicketDto } from './dto/transfer-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -235,6 +236,16 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.addMessage(id, payload, user);
+  }
+
+  /** Presence, so two agents do not answer the same requester (card 1.9). */
+  @Post(':id/viewing')
+  async setViewing(
+    @Param('id') id: string,
+    @Body() payload: TicketViewingDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.setViewing(id, payload, user);
   }
 
   @Post(':id/typing')

@@ -1860,6 +1860,58 @@ export class TicketsService {
     return message;
   }
 
+  /**
+   * Record that this user has the ticket open, so their colleagues can see it
+   * (card 1.9). Cloned from setTyping, with one deliberate difference.
+   *
+   * THE GATE IS canViewTicket, NOT canWriteTicket. Announcing "I am reading
+   * this" requires only that you may read it, and the people this feature
+   * exists for are precisely those who cannot write: a peer agent opening a
+   * teammate's ticket is the collision worth preventing, and canWriteTicket
+   * would have excluded exactly them. The AUDIENCE is unchanged - it is still
+   * the ticket.typing audience, the set of people who may open the ticket.
+   */
+  async setViewing(
+    ticketId: string,
+    payload: { isViewing: boolean },
+    user: AuthUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        requesterId: true,
+        assigneeId: true,
+        assignedTeamId: true,
+        deletedAt: true,
+        followers: {
+          select: { userId: true },
+        },
+        accessGrants: {
+          select: { teamId: true },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    if (!this.accessControl.canViewTicket(user, ticket)) {
+      throw new ForbiddenException('No access to this ticket');
+    }
+
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.publishTicketViewingForTicket({
+        ticket,
+        actor: user,
+        isViewing: payload.isViewing,
+      }),
+    );
+
+    return { ok: true };
+  }
+
   async setTyping(
     ticketId: string,
     payload: { isTyping: boolean },

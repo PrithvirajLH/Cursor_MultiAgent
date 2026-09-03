@@ -1,5 +1,6 @@
 export const REALTIME_TICKET_CHANGED_EVENT = "ticketing:ticket-changed";
 export const REALTIME_TICKET_TYPING_EVENT = "ticketing:ticket-typing";
+export const REALTIME_TICKET_VIEWING_EVENT = "ticketing:ticket-viewing";
 export const REALTIME_ADMIN_CHANGED_EVENT = "ticketing:admin-changed";
 
 export type RealtimeTicketMessagePayload = {
@@ -72,6 +73,16 @@ export type RealtimeTicketTypingEventPayload = {
   actorDisplayName?: string;
   actorEmail?: string;
   isTyping?: boolean;
+};
+
+/** Cloned from the typing payload (card 1.9): same shape, same audience. */
+export type RealtimeTicketViewingEventPayload = {
+  occurredAt?: string;
+  ticketId?: string;
+  actorId?: string | null;
+  actorDisplayName?: string;
+  actorEmail?: string;
+  isViewing?: boolean;
 };
 
 export type RealtimeAdminChangedEventPayload = {

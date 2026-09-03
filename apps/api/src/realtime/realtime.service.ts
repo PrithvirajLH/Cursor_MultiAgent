@@ -64,6 +64,15 @@ export type TicketTypingPayload = {
   isTyping: boolean;
 };
 
+/** Cloned from TicketTypingPayload: same shape, same audience rules. */
+export type TicketViewingPayload = {
+  ticketId: string;
+  actorId: string;
+  actorDisplayName: string;
+  actorEmail: string;
+  isViewing: boolean;
+};
+
 export type AdminChangedPayload = {
   scope: string;
   action: string;
@@ -188,6 +197,22 @@ export class RealtimeService {
     audience: TicketChangedAudience,
   ) {
     await this.publishTicketEventToAudience('ticket.typing', payload, audience);
+  }
+
+  /**
+   * "Someone is already on this" (card 1.9).
+   *
+   * Deliberately identical to publishTicketTyping, including the audience type:
+   * the set of people who may be told that a ticket is being looked at is
+   * exactly the set who may open it. A broader audience would tell somebody a
+   * ticket exists - and who is reading it - when they cannot see the ticket
+   * itself, which is cards 1.36 and 1.38 in another form.
+   */
+  async publishTicketViewing(
+    payload: TicketViewingPayload,
+    audience: TicketChangedAudience,
+  ) {
+    await this.publishTicketEventToAudience('ticket.viewing', payload, audience);
   }
 
   async publishAdminChanged(
