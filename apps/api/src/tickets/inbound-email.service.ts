@@ -156,24 +156,42 @@ export class InboundEmailService {
           const rateLimited =
             recentFromSender >= InboundEmailService.INBOUND_RATE_LIMIT;
           const suppressNotifications = automated || rateLimited;
+          // One transition per inbound message. The two cases are mutually
+          // exclusive by status, so `else if` is honest rather than lazy.
           if (
             existing.status === TicketStatus.RESOLVED ||
             existing.status === TicketStatus.CLOSED
           ) {
-            await this.prisma.$transaction(async (tx) => {
-              await this.ticketsService.applyStatusTransitionInTx(
-                tx,
-                existing,
-                TicketStatus.REOPENED,
-                requester.id,
-              );
-            });
-            await this.ticketRealtime.safeRealtime(() =>
-              this.ticketRealtime.emitTicketRealtimeEvent({
-                ticketId: existing.id,
-                reason: 'status_changed',
-                actorId: requester.id,
-              }),
+            await this.applyInboundStatusTransition(
+              existing,
+              TicketStatus.REOPENED,
+              requester.id,
+            );
+          } else if (
+            existing.status === TicketStatus.WAITING_ON_REQUESTER &&
+            !automated &&
+            // IN_PROGRESS requires an assignee, and it is the ONLY non-pause
+            // transition out of WAITING_ON_REQUESTER - so an unassigned ticket
+            // has nowhere legal to go. See the method below for why skipping
+            // beats attempting it.
+            existing.assigneeId
+          ) {
+            // Card 1.29 Gap A: somebody answered, so the ball is back with us.
+            // The queue said "Waiting on requester" until an agent noticed by
+            // hand, which is exactly how a ticket sits in "Awaiting reply
+            // > 24h" while the requester waits on US.
+            //
+            // Gated on `!automated` deliberately. An out-of-office answering
+            // our acknowledgement is not the requester answering our question,
+            // and flipping the queue on it would make the board lie in the
+            // more dangerous direction: it would look like progress.
+            //
+            // WAITING_ON_VENDOR is untouched - a requester replying tells you
+            // nothing about the vendor.
+            await this.applyInboundStatusTransition(
+              existing,
+              TicketStatus.IN_PROGRESS,
+              requester.id,
             );
           }
 
@@ -329,6 +347,42 @@ export class InboundEmailService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Move a ticket's status because of something that arrived by email.
+   *
+   * Always through `applyStatusTransitionInTx`, never a direct
+   * `ticket.update({ status })`: the function owns the SLA pause/resume
+   * accounting, the status-history row and the realtime emit, and a raw write
+   * would skip all three while looking correct until somebody read an SLA
+   * report.
+   *
+   * NOTE FOR THE READER: leaving WAITING_ON_REQUESTER counts as leaving a
+   * paused state, so this RESUMES the resolution clock and pushes `dueAt` out
+   * by however long the ticket sat parked. That is right - the ball is with us
+   * again - but it means timers start moving on tickets that were still.
+   */
+  private async applyInboundStatusTransition(
+    ticket: Parameters<TicketsService['applyStatusTransitionInTx']>[1],
+    newStatus: TicketStatus,
+    actorId: string,
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      await this.ticketsService.applyStatusTransitionInTx(
+        tx,
+        ticket,
+        newStatus,
+        actorId,
+      );
+    });
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId: ticket.id,
+        reason: 'status_changed',
+        actorId,
+      }),
+    );
   }
 
   async attachInboundEmailAttachments(

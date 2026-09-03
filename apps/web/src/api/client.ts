@@ -273,6 +273,15 @@ export type TicketRecord = {
   /** Set when the ticket is soft-deleted; only OWNER ever receives such a record. */
   deletedAt?: string | null;
   allowedTransitions?: string[];
+  /**
+   * True when the last PUBLIC message on the ticket came from the requester,
+   * so the next move is ours (card 1.29).
+   *
+   * Computed on the server, per row, from the actual messages — not from the
+   * status, and not in the browser. A badge derived client-side would not
+   * survive a reload, which is the entire point of showing it.
+   */
+  awaitingAgentReply?: boolean;
 };
 
 export type TicketMessage = {

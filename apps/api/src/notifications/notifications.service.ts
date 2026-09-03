@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
 import { resolveOutboundRecipients } from './outbound-recipients.util';
+import { canManageOtherFollowers } from '../common/can-manage-followers.util';
 import type { MessageRecipientsPreview } from './message-recipients-preview.type';
 import { InAppNotificationsService } from './in-app-notifications.service';
 import {
@@ -520,10 +521,7 @@ export class NotificationsService {
      * The endpoint keeps applying its own rules; this only stops us promising
      * an action it will refuse.
      */
-    const canManageFollowers =
-      actor.role === UserRole.OWNER ||
-      actor.role === UserRole.TEAM_ADMIN ||
-      actor.role === UserRole.LEAD;
+    const canManageFollowers = canManageOtherFollowers(actor.role);
     const isRemovable = (userId: string) =>
       canManageFollowers &&
       followerIds.has(userId) &&

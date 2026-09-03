@@ -27,6 +27,7 @@ import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
 import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
+import { canManageOtherFollowers } from '../common/can-manage-followers.util';
 import { AiObservabilityService } from '../common/ai-observability.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
@@ -603,6 +604,7 @@ export class TicketsService {
       }),
     ]);
     const totalPages = includeTotal ? Math.ceil(total / pageSize) : 0;
+    const awaitingAgentReply = await this.awaitingAgentReplyByTicket(data);
 
     return {
       data: data.map((ticket) => ({
@@ -611,6 +613,7 @@ export class TicketsService {
           ticket.status,
           ticket.assignee?.id ?? null,
         ),
+        awaitingAgentReply: awaitingAgentReply.get(ticket.id) ?? false,
       })),
       meta: {
         page,
@@ -619,6 +622,56 @@ export class TicketsService {
         totalPages,
       },
     };
+  }
+
+  /**
+   * Which of these tickets are waiting on US, because the requester spoke last
+   * (card 1.29 Gap B).
+   *
+   * ONE query for the whole page. `DISTINCT ON` gives exactly one row per
+   * ticket - the newest public message - so this is a single round trip
+   * whatever the page size, and it rides the existing
+   * `TicketMessage(ticketId, createdAt)` index. A per-row subquery would have
+   * been 20 extra queries per page for a badge.
+   *
+   * Only PUBLIC messages count. An agent's internal note is not a reply to the
+   * requester, so writing one must not clear the flag - otherwise the marker
+   * would vanish the moment somebody made a private observation.
+   *
+   * Deliberately derived rather than stored. The status is the wrong place to
+   * read this from: Gap A cannot move an unassigned ticket out of
+   * WAITING_ON_REQUESTER (IN_PROGRESS needs an assignee), so on exactly those
+   * tickets the status stays stale while this stays truthful.
+   */
+  private async awaitingAgentReplyByTicket(
+    tickets: { id: string; requester?: { id: string } | null }[],
+  ): Promise<Map<string, boolean>> {
+    const result = new Map<string, boolean>();
+    const ids = tickets.map((ticket) => ticket.id);
+    if (ids.length === 0) {
+      return result;
+    }
+    const rows = await this.prisma.$queryRaw<
+      { ticketId: string; authorId: string }[]
+    >`
+      SELECT DISTINCT ON (m."ticketId") m."ticketId", m."authorId"
+      FROM "TicketMessage" m
+      WHERE m."ticketId" IN (${Prisma.join(ids)})
+        AND (m."type")::text = ${MessageType.PUBLIC}
+      ORDER BY m."ticketId", m."createdAt" DESC
+    `;
+    const lastPublicAuthor = new Map(
+      rows.map((row) => [row.ticketId, row.authorId]),
+    );
+    for (const ticket of tickets) {
+      const requesterId = ticket.requester?.id ?? null;
+      const authorId = lastPublicAuthor.get(ticket.id) ?? null;
+      result.set(
+        ticket.id,
+        requesterId !== null && authorId !== null && authorId === requesterId,
+      );
+    }
+    return result;
   }
 
   /** Returns ticket counts for the user; result is cached briefly (PERF-02, see CACHE_SUMMARY_TTL_MS). */
@@ -1720,7 +1773,19 @@ export class TicketsService {
           })),
         };
         for (const u of mentionedUsers) {
-          if (isInternalMessage && u.role === UserRole.EMPLOYEE) {
+          // An internal note reaches staff only, and that is decided by
+          // RELATIONSHIP as well as rank. The role test alone let a STAFF
+          // requester through: card 1.36 made canViewTicket return true for a
+          // ticket's own requester and stopped them reading its internal
+          // notes, so a mentioned payroll lead was notified about a note on
+          // her own ticket that she then could not open. Not a leak - the
+          // notification carries only the subject, never the body - but a
+          // dead end, and it also stopped them being added as a follower for
+          // it, which is right.
+          if (
+            isInternalMessage &&
+            (u.role === UserRole.EMPLOYEE || u.id === fullTicket.requesterId)
+          ) {
             continue;
           }
           const teamIds = u.teamMemberships.map((m) => m.teamId);
@@ -2842,10 +2907,7 @@ export class TicketsService {
     user: AuthUser,
   ) {
     const targetUserId = payload.userId ?? user.id;
-    const canManageFollowers =
-      user.role === UserRole.OWNER ||
-      user.role === UserRole.TEAM_ADMIN ||
-      user.role === UserRole.LEAD;
+    const canManageFollowers = canManageOtherFollowers(user.role);
 
     if (targetUserId !== user.id && !canManageFollowers) {
       throw new ForbiddenException('Not allowed to follow for others');
@@ -2878,10 +2940,7 @@ export class TicketsService {
 
   async unfollowTicket(ticketId: string, userId: string, user: AuthUser) {
     const targetUserId = userId === 'me' ? user.id : userId;
-    const canManageFollowers =
-      user.role === UserRole.OWNER ||
-      user.role === UserRole.TEAM_ADMIN ||
-      user.role === UserRole.LEAD;
+    const canManageFollowers = canManageOtherFollowers(user.role);
 
     if (targetUserId !== user.id && !canManageFollowers) {
       throw new ForbiddenException('Not allowed to remove other followers');

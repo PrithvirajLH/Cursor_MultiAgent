@@ -234,9 +234,28 @@ export function TicketTableView({
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <p className="max-w-lg truncate text-sm font-semibold text-foreground leading-tight">
-                    {ticket.subject}
-                  </p>
+                  <div className="flex max-w-lg items-center gap-2">
+                    {/*
+                      Card 1.29: the requester spoke last, so the next move is
+                      ours. Quiet enough to scan a column for, not a klaxon —
+                      and it comes off the row from the server, so it is still
+                      here after a reload. Sits inside the subject cell, which
+                      is already two lines tall, so the SEV / reference /
+                      status cells beside it do not move.
+                    */}
+                    {ticket.awaitingAgentReply ? (
+                      <span
+                        data-awaiting-agent-reply="true"
+                        title="The requester replied — this one is waiting on us"
+                        className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
+                      >
+                        Replied
+                      </span>
+                    ) : null}
+                    <p className="truncate text-sm font-semibold text-foreground leading-tight">
+                      {ticket.subject}
+                    </p>
+                  </div>
                   <p className="max-w-lg truncate text-sm text-muted-foreground mt-0.5">
                     {snippet}
                   </p>
