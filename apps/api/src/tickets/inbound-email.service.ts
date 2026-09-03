@@ -24,6 +24,7 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { isAutomatedEmail } from './auto-reply.util';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
+import { DuplicateAccountService } from '../common/duplicate-account.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
@@ -80,6 +81,7 @@ export class InboundEmailService {
     private readonly config: ConfigService,
     private readonly attachmentService: TicketAttachmentService,
     private readonly ticketRealtime: TicketRealtimeService,
+    private readonly duplicateAccounts: DuplicateAccountService,
     private readonly notifications: NotificationsService,
     private readonly ticketEmailThreads: TicketEmailThreadService,
     @Inject(forwardRef(() => TicketsService))
@@ -682,7 +684,7 @@ export class InboundEmailService {
     const fallbackDisplayName =
       name?.trim() || normalizedEmail.split('@')[0] || 'Requester';
     try {
-      return await this.prisma.user.create({
+      const created = await this.prisma.user.create({
         data: {
           email: normalizedEmail,
           displayName: fallbackDisplayName,
@@ -696,6 +698,12 @@ export class InboundEmailService {
           primaryTeamId: true,
         },
       });
+      // Card 1.30: say so if this looks like a second account for somebody we
+      // already have. After the create, never before - flagging must not be
+      // able to stop a user being provisioned. Dropping mail is the one
+      // outcome worse than a duplicate row.
+      await this.duplicateAccounts.flag(created.email, created.role);
+      return created;
     } catch {
       const concurrentCreate = await this.prisma.user.findUnique({
         where: { email: normalizedEmail },

@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AccessControlService } from './access-control.service';
 import { AiObservabilityService } from './ai-observability.service';
 import { AutomationQueueService } from './automation-queue.service';
+import { DuplicateAccountService } from './duplicate-account.service';
 import { IdempotencyService } from './idempotency.service';
 
 @Global()
@@ -14,12 +15,14 @@ import { IdempotencyService } from './idempotency.service';
     AccessControlService,
     AiObservabilityService,
     AutomationQueueService,
+    DuplicateAccountService,
     IdempotencyService,
   ],
   exports: [
     AccessControlService,
     AiObservabilityService,
     AutomationQueueService,
+    DuplicateAccountService,
     IdempotencyService,
   ],
 })

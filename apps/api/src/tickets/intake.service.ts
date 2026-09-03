@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { TicketChannel, TicketPriority, UserRole } from '@prisma/client';
 import { timingSafeEqual } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
+import { DuplicateAccountService } from '../common/duplicate-account.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateIntakeTicketDto } from './dto/create-intake-ticket.dto';
 import type { IntakeTicketResponse } from './intake-ticket-response.type';
@@ -46,6 +47,7 @@ export class IntakeService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly ticketsService: TicketsService,
+    private readonly duplicateAccounts: DuplicateAccountService,
   ) {}
 
   /**
@@ -227,7 +229,7 @@ export class IntakeService {
       return existing;
     }
     try {
-      return await this.prisma.user.create({
+      const created = await this.prisma.user.create({
         data: {
           email: normalizedEmail,
           displayName: name?.trim() || normalizedEmail,
@@ -235,6 +237,12 @@ export class IntakeService {
         },
         select: REQUESTER_SELECT,
       });
+      // Card 1.30: say so if this looks like a second account for somebody we
+      // already have. After the create, never before - flagging must not be
+      // able to stop a user being provisioned. Rejecting an intake form
+      // would be the same failure by another route.
+      await this.duplicateAccounts.flag(created.email, created.role);
+      return created;
     } catch {
       const concurrentCreate = await this.prisma.user.findUnique({
         where: { email: normalizedEmail },

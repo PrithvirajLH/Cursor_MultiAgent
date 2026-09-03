@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { DuplicateAccountService } from '../common/duplicate-account.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { InboundEmailService } from './inbound-email.service';
@@ -149,6 +150,9 @@ describe('InboundEmailService', () => {
       config as unknown as ConfigService,
       attachmentService as unknown as TicketAttachmentService,
       ticketRealtime as unknown as TicketRealtimeService,
+      // Card 1.30: flagging a probable duplicate must never affect ingestion,
+      // so a no-op stand-in is the honest mock here.
+      { flag: jest.fn() } as unknown as DuplicateAccountService,
       notifications as unknown as NotificationsService,
       ticketEmailThreads as unknown as TicketEmailThreadService,
       ticketsService as unknown as TicketsService,

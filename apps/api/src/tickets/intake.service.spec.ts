@@ -80,10 +80,16 @@ function makeService(
 ) {
   const prisma = makePrisma();
   const create = jest.fn().mockResolvedValue({ id: 'ticket-1' });
-  const service = new IntakeService(prisma as never, new ConfigService(env), {
-    create,
-  } as never);
-  return { service, prisma, create };
+  // Card 1.30: a no-op duplicate flagger. Flagging must never change what
+  // intake does, so the stand-in records nothing and returns.
+  const flag = jest.fn().mockResolvedValue(undefined);
+  const service = new IntakeService(
+    prisma as never,
+    new ConfigService(env),
+    { create } as never,
+    { flag } as never,
+  );
+  return { service, prisma, create, flag };
 }
 
 const BASE_PAYLOAD: CreateIntakeTicketDto = {

@@ -9,6 +9,7 @@ import { TeamRole, UserRole } from '@prisma/client';
 import { Reflector } from '@nestjs/core';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { DuplicateAccountService } from '../common/duplicate-account.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { AuthRequest } from './current-user.decorator';
@@ -47,6 +48,7 @@ export class AuthGuard implements CanActivate {
     private readonly prisma: PrismaService,
     private readonly reflector: Reflector,
     private readonly config: ConfigService,
+    private readonly duplicateAccounts: DuplicateAccountService,
   ) {}
 
   async canActivate(context: ExecutionContext) {
@@ -282,7 +284,7 @@ export class AuthGuard implements CanActivate {
       : UserRole.EMPLOYEE;
 
     if (!existing) {
-      return this.prisma.user.create({
+      const created = await this.prisma.user.create({
         data: {
           email,
           displayName,
@@ -291,6 +293,11 @@ export class AuthGuard implements CanActivate {
           location: identity.location,
         },
       });
+      // Card 1.30: say so if this looks like a second account for somebody we
+      // already have. After the create, never before - flagging must not be
+      // able to stop a user being provisioned.
+      await this.duplicateAccounts.flag(created.email, created.role);
+      return created;
     }
 
     const updateData: {
