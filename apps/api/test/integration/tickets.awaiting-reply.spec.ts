@@ -244,20 +244,50 @@ describe('Awaiting reply — who owes the next move', () => {
   });
 
   describe('Gap A — a looped-in third party (§4.4)', () => {
-    it('clears the wait when somebody other than the requester answers', async () => {
-      // DECISION: any human inbound reply clears it. The ball is with us
-      // either way, and the alternative leaves a ticket parked in "Awaiting
-      // reply" because the wrong person answered — which is the exact bug this
-      // card exists to fix, just with an extra step. The inbound path already
-      // treats every sender as a requester-shaped actor, so this is also what
-      // the code does naturally rather than a special case bolted on.
+    it('refuses the reply outright, and leaves the status alone', async () => {
+      // §4.4 ASKS THE WRONG QUESTION, and my first answer to it was wrong.
+      //
+      // The card supposes "a reply may come from someone CC'd instead" and
+      // asks what such a reply should do. This system cannot accept one at
+      // all: an inbound sender is provisioned as an EMPLOYEE, and
+      // TicketsService.addMessage refuses a reply from an EMPLOYEE who is not
+      // the ticket's requester. So the answer is 403 and no message, which is
+      // pre-existing behaviour this card does not change.
+      //
+      // What this card DID briefly change was worse than the question. With
+      // the transition running before addMessage, the 403 left the ticket
+      // already moved out of WAITING_ON_REQUESTER on the strength of a message
+      // that was then thrown away - the queue claimed somebody had answered
+      // when the answer had been refused. Caught by driving the live API, not
+      // by this suite: the first version of this test asserted only the stored
+      // status, which is exactly the broken behaviour, so it PASSED on the bug.
+      // Hence the response assertion first.
       const ticket = await makeTicket({
         status: TicketStatus.WAITING_ON_REQUESTER,
       });
-      await inboundReply(ticket.displayId, {
+      const res = await inboundReply(ticket.displayId, {
         fromEmail: `looped.in.${Date.now()}@example.com`,
       });
-      expect(await storedStatus(ticket.id)).toBe(TicketStatus.IN_PROGRESS);
+      expect(res.status).toBe(403);
+      expect(await storedStatus(ticket.id)).toBe(
+        TicketStatus.WAITING_ON_REQUESTER,
+      );
+      const messages = await prisma.ticketMessage.count({
+        where: { ticketId: ticket.id },
+      });
+      expect(messages).toBe(0);
+    });
+
+    it('does not reopen a RESOLVED ticket on a refused reply either', async () => {
+      // The REOPENED path had the same shape before this card, and the
+      // reordering fixes both: a status derived from a message must not
+      // outlive the message.
+      const ticket = await makeTicket({ status: TicketStatus.RESOLVED });
+      const res = await inboundReply(ticket.displayId, {
+        fromEmail: `looped.in.${Date.now()}@example.com`,
+      });
+      expect(res.status).toBe(403);
+      expect(await storedStatus(ticket.id)).toBe(TicketStatus.RESOLVED);
     });
   });
 

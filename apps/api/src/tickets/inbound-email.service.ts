@@ -156,6 +156,26 @@ export class InboundEmailService {
           const rateLimited =
             recentFromSender >= InboundEmailService.INBOUND_RATE_LIMIT;
           const suppressNotifications = automated || rateLimited;
+          // The message first, and only then the status.
+          //
+          // This ordering is load-bearing. addMessage REFUSES a reply from
+          // anyone who is not the ticket's requester - an inbound sender is
+          // provisioned as an EMPLOYEE, and EMPLOYEEs may only reply to their
+          // own tickets - so a looped-in third party's reply answers 403. With
+          // the transition running first, that 403 left the ticket already
+          // moved on the strength of a message that was then thrown away: the
+          // queue said somebody had answered while the answer did not exist.
+          // Verified live on 2026-09-03, and the REOPENED case had the same
+          // shape before this card touched it.
+          //
+          // A status derived from a message must not outlive the message.
+          await this.ticketsService.addMessage(
+            existing.id,
+            { body: payload.body, type: MessageType.PUBLIC },
+            requesterAuth,
+            { suppressNotifications },
+          );
+
           // One transition per inbound message. The two cases are mutually
           // exclusive by status, so `else if` is honest rather than lazy.
           if (
@@ -195,12 +215,6 @@ export class InboundEmailService {
             );
           }
 
-          await this.ticketsService.addMessage(
-            existing.id,
-            { body: payload.body, type: MessageType.PUBLIC },
-            requesterAuth,
-            { suppressNotifications },
-          );
           if (suppressNotifications) {
             await this.recordInboundSuppression({
               ticketId: existing.id,
