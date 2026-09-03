@@ -146,6 +146,9 @@ export class InboundEmailService {
             resolvedAt: true,
             closedAt: true,
             completedAt: true,
+            // Card 1.40: the ticket's email audience - who we actually wrote to.
+            requesterId: true,
+            followers: { select: { userId: true } },
           },
         });
 
@@ -160,6 +163,57 @@ export class InboundEmailService {
           const rateLimited =
             recentFromSender >= InboundEmailService.INBOUND_RATE_LIMIT;
           const suppressNotifications = automated || rateLimited;
+          // Card 1.40: may this sender's reply go on this ticket?
+          //
+          // Everyone we emailed may answer: the requester, the assignee and the
+          // followers - exactly the Cc list card 1.33 sends to. Until now only
+          // the requester could, so a colleague we deliberately looped in got a
+          // 403 and their reply was dropped on the floor with nobody told.
+          //
+          // The reply token in the address is NOT what authorises this. It is a
+          // bearer token every participant can forward, so it only says which
+          // ticket; the SENDER is what is matched.
+          const mayReply = this.ticketsService.canReplyByEmailToTicket(
+            requester.id,
+            existing,
+          );
+
+          if (!mayReply) {
+            // A sender in no relationship to the ticket. Their message is NOT
+            // stored: silently ingesting mail from anyone who can guess a reply
+            // address is how a stranger gets a foothold in a conversation. But
+            // an agent should be able to see that somebody tried, so it is
+            // recorded as an event carrying the address and the subject - never
+            // the body.
+            await this.recordUnknownSenderReply(existing.id, requester, payload);
+            persistedMutation = { ticketId: existing.id, threaded: true };
+            await this.completeInboundEmailReceipt(
+              reservation.id,
+              existing.id,
+              true,
+            );
+            // 201, not an error: the mail HAS been handled, and a failure code
+            // would only make the sender's server retry it forever.
+            return {
+              threaded: true,
+              ticket: await this.getTicketForMutationResponse(existing.id),
+            };
+          }
+
+          // Replying makes you a participant, so you get the rest of the
+          // thread - and card 1.28's audience line then shows you to the agent.
+          // Done before the message so the notification for it includes them.
+          if (requester.id !== existing.requesterId) {
+            await this.ticketsService
+              .ensureTicketFollower(existing.id, requester.id)
+              .catch((error: unknown) =>
+                this.logger.error(
+                  `Failed to add ${requester.id} as a follower of ${existing.id}`,
+                  (error as Error).stack,
+                ),
+              );
+          }
+
           // The message first, and only then the status.
           //
           // This ordering is load-bearing. addMessage REFUSES a reply from
@@ -177,7 +231,11 @@ export class InboundEmailService {
             existing.id,
             { body: payload.body, type: MessageType.PUBLIC },
             requesterAuth,
-            { suppressNotifications },
+            // fromEmailAudience: the check above has already decided this
+            // sender may reply. It stays PUBLIC, and card 1.36's read filter
+            // still governs what they can see - a third party gains no sight of
+            // internal notes by replying.
+            { suppressNotifications, fromEmailAudience: true },
           );
 
           // One transition per inbound message. The two cases are mutually
@@ -401,6 +459,38 @@ export class InboundEmailService {
         actorId,
       }),
     );
+  }
+
+  /**
+   * Say on the ticket that somebody outside the conversation replied to it.
+   *
+   * The body is deliberately NOT stored. An agent learning "a stranger replied"
+   * is useful; ingesting the content of mail from anyone who can guess a reply
+   * address is not, and the address is a forwardable bearer token.
+   */
+  private async recordUnknownSenderReply(
+    ticketId: string,
+    sender: { id: string; email: string },
+    payload: IngestInboundEmailDto,
+  ) {
+    await this.prisma.ticketEvent
+      .create({
+        data: {
+          ticketId,
+          type: 'INBOUND_REPLY_FROM_UNKNOWN_SENDER',
+          payload: {
+            fromEmail: sender.email,
+            subject: payload.subject,
+          },
+          createdById: null,
+        },
+      })
+      .catch((error: unknown) =>
+        this.logger.error(
+          `Failed to record an unknown-sender reply on ticket ${ticketId}`,
+          (error as Error).stack,
+        ),
+      );
   }
 
   async attachInboundEmailAttachments(

@@ -244,49 +244,52 @@ describe('Awaiting reply — who owes the next move', () => {
   });
 
   describe('Gap A — a looped-in third party (§4.4)', () => {
-    it('refuses the reply outright, and leaves the status alone', async () => {
-      // §4.4 ASKS THE WRONG QUESTION, and my first answer to it was wrong.
+    it('stores nothing for a stranger, and leaves the status alone', async () => {
+      // SUPERSEDED BY CARD 1.40, and the change is deliberate.
       //
-      // The card supposes "a reply may come from someone CC'd instead" and
-      // asks what such a reply should do. This system cannot accept one at
-      // all: an inbound sender is provisioned as an EMPLOYEE, and
-      // TicketsService.addMessage refuses a reply from an EMPLOYEE who is not
-      // the ticket's requester. So the answer is 403 and no message, which is
-      // pre-existing behaviour this card does not change.
+      // This used to assert 403. Card 1.40 answered §4.4 properly: anyone we
+      // actually EMAILED - the requester, the assignee, the followers - may now
+      // reply, and a sender in no relationship to the ticket gets 201 with the
+      // attempt recorded as an event and their body discarded. 201 rather than
+      // an error because the mail HAS been handled and a failure code would
+      // only make the sender's server retry it forever.
       //
-      // What this card DID briefly change was worse than the question. With
-      // the transition running before addMessage, the 403 left the ticket
-      // already moved out of WAITING_ON_REQUESTER on the strength of a message
-      // that was then thrown away - the queue claimed somebody had answered
-      // when the answer had been refused. Caught by driving the live API, not
-      // by this suite: the first version of this test asserted only the stored
-      // status, which is exactly the broken behaviour, so it PASSED on the bug.
-      // Hence the response assertion first.
+      // What has NOT changed, and is what these assertions are really for: a
+      // stranger still cannot put a message on the ticket, and a refused reply
+      // still moves no status. That second half is card 1.29's own fix - with
+      // the transition running before addMessage, a refusal left the ticket
+      // already moved on the strength of a message that was thrown away. It was
+      // caught by driving the live API, because the first version of this test
+      // asserted only the stored status and therefore passed on the bug. Hence
+      // the response and the row count come first.
       const ticket = await makeTicket({
         status: TicketStatus.WAITING_ON_REQUESTER,
       });
       const res = await inboundReply(ticket.displayId, {
         fromEmail: `looped.in.${Date.now()}@example.com`,
       });
-      expect(res.status).toBe(403);
-      expect(await storedStatus(ticket.id)).toBe(
-        TicketStatus.WAITING_ON_REQUESTER,
-      );
+      expect(res.status).toBe(201);
       const messages = await prisma.ticketMessage.count({
         where: { ticketId: ticket.id },
       });
       expect(messages).toBe(0);
+      expect(await storedStatus(ticket.id)).toBe(
+        TicketStatus.WAITING_ON_REQUESTER,
+      );
     });
 
-    it('does not reopen a RESOLVED ticket on a refused reply either', async () => {
-      // The REOPENED path had the same shape before this card, and the
-      // reordering fixes both: a status derived from a message must not
-      // outlive the message.
+    it('does not reopen a RESOLVED ticket on a stranger reply either', async () => {
+      // Same supersession as above: 201 now, and still no message and no
+      // status move. A status derived from a message must not outlive the
+      // message.
       const ticket = await makeTicket({ status: TicketStatus.RESOLVED });
       const res = await inboundReply(ticket.displayId, {
         fromEmail: `looped.in.${Date.now()}@example.com`,
       });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(201);
+      expect(
+        await prisma.ticketMessage.count({ where: { ticketId: ticket.id } }),
+      ).toBe(0);
       expect(await storedStatus(ticket.id)).toBe(TicketStatus.RESOLVED);
     });
   });

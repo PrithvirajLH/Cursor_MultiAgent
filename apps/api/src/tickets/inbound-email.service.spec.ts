@@ -66,6 +66,9 @@ type MockTicketsService = {
   create: jest.Mock;
   addMessage: jest.Mock;
   applyStatusTransitionInTx: jest.Mock;
+  // Card 1.40: the inbound path asks who may reply, and promotes them.
+  canReplyByEmailToTicket: jest.Mock;
+  ensureTicketFollower: jest.Mock;
 };
 
 function buildRequester() {
@@ -144,6 +147,10 @@ describe('InboundEmailService', () => {
       create: jest.fn(),
       addMessage: jest.fn(),
       applyStatusTransitionInTx: jest.fn(),
+      // Card 1.40: this fixture's sender IS the requester, so the audience
+      // check passes and the test still exercises the path it was written for.
+      canReplyByEmailToTicket: jest.fn().mockReturnValue(true),
+      ensureTicketFollower: jest.fn().mockResolvedValue(undefined),
     };
 
     service = new InboundEmailService(
@@ -263,7 +270,9 @@ describe('InboundEmailService', () => {
       { body: payload.body, type: MessageType.PUBLIC },
       expect.objectContaining({ id: requester.id }),
       // Card 1.22: ordinary human mail is recorded AND announced.
-      { suppressNotifications: false },
+      // Card 1.40: and the inbound path has already decided this sender is in
+      // the ticket's email audience, so addMessage's own write gate is bypassed.
+      { suppressNotifications: false, fromEmailAudience: true },
     );
     expect(completeSpy).toHaveBeenCalledWith('receipt-1', 'ticket-1', true);
     expect(releaseSpy).not.toHaveBeenCalled();

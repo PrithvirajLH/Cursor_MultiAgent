@@ -1656,7 +1656,20 @@ export class TicketsService {
     // the ticket - an agent should see the out-of-office arrived - but must not
     // set any outbound mail going. Realtime is deliberately NOT suppressed: the
     // message still belongs on the screen.
-    options: { suppressNotifications?: boolean } = {},
+    options: {
+      suppressNotifications?: boolean;
+      /**
+       * Card 1.40: the caller has already checked this sender is in the
+       * ticket's EMAIL audience (AccessControlService.canReplyByEmail), so the
+       * normal write gate does not apply to them.
+       *
+       * Only the inbound email path may set this, and only after that check.
+       * It widens who may post BY EMAIL and changes nothing about the web: a
+       * follower using the UI still needs write access, which is intended.
+       * A sender admitted this way always posts PUBLIC - see below.
+       */
+      fromEmailAudience?: boolean;
+    } = {},
   ) {
     if (payload.authorId && payload.authorId !== user.id) {
       throw new ForbiddenException('Message author must match current user');
@@ -1675,7 +1688,7 @@ export class TicketsService {
       throw new NotFoundException('Ticket not found');
     }
 
-    if (user.role === UserRole.EMPLOYEE) {
+    if (user.role === UserRole.EMPLOYEE && !options.fromEmailAudience) {
       if (ticket.requesterId !== user.id) {
         throw new ForbiddenException(
           'Requesters can only reply to their own tickets',
@@ -1686,7 +1699,10 @@ export class TicketsService {
       }
     }
 
-    if (!this.accessControl.canPostMessage(user, ticket)) {
+    if (
+      !options.fromEmailAudience &&
+      !this.accessControl.canPostMessage(user, ticket)
+    ) {
       throw new ForbiddenException('No write access to this ticket');
     }
 
@@ -1700,7 +1716,7 @@ export class TicketsService {
     // note they cannot see, emailed to nobody, sitting where they expect their
     // reply to be.
     const isRequesterOnly =
-      ticket.requesterId === user.id &&
+      (ticket.requesterId === user.id || options.fromEmailAudience === true) &&
       !this.accessControl.canWriteTicket(user, ticket) &&
       !isPeerAgent;
     const effectiveType: MessageType = isPeerAgent
@@ -3242,6 +3258,29 @@ export class TicketsService {
     // Agents can assign within their own team only when the ticket is in their
     // direct write scope: unassigned or currently assigned to them.
     return ticket.assigneeId === null || ticket.assigneeId === user.id;
+  }
+
+  /**
+   * Card 1.40: may this sender's emailed reply go on this ticket?
+   *
+   * A thin pass-through to AccessControlService so the inbound service does not
+   * hold its own copy of the audience rule - a fourth copy in a different file
+   * is how card 1.36's Fault C and card 1.38 happened.
+   */
+  canReplyByEmailToTicket(
+    userId: string,
+    ticket: Parameters<AccessControlService['canReplyByEmail']>[1],
+  ): boolean {
+    return this.accessControl.canReplyByEmail(userId, ticket);
+  }
+
+  /**
+   * Card 1.40: replying makes you a participant, so you receive the rest of the
+   * thread. Public because the inbound path is the only caller that needs it
+   * without an HTTP request behind it.
+   */
+  async ensureTicketFollower(ticketId: string, userId: string) {
+    await this.ensureFollower(ticketId, userId);
   }
 
   private async ensureFollower(

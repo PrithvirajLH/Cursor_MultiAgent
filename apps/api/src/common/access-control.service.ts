@@ -273,6 +273,42 @@ export class AccessControlService {
    * Broader than canWriteTicket: peer agents (same team, not assignee) are
    * allowed to post — addMessage forces their type to INTERNAL.
    */
+  /**
+   * May this person's EMAILED reply go on this ticket? (card 1.40)
+   *
+   * The audience is everyone we actually emailed: the requester, the assignee,
+   * and the followers - which is exactly the Cc list card 1.33 sends to and
+   * card 1.28 displays. If we invited somebody into a conversation, their reply
+   * belongs in it.
+   *
+   * ⚠️ THE REPLY TOKEN IS NOT THE AUTHORISATION. The inbound address carries
+   * `+ticket-<id>`, which is a bearer token every participant can read and
+   * forward. It says WHICH TICKET. It must never say WHO MAY WRITE - otherwise
+   * forwarding one email hands a stranger the ability to post. So the SENDER is
+   * matched against the audience here, and the token only routes.
+   *
+   * Deliberately not "any EMPLOYEE": that would let anyone who can guess a
+   * reply address post to any ticket.
+   *
+   * This lives here, beside roleFilter, roleConditionSql and canViewTicket,
+   * because a fourth copy of the audience rule in a different file is exactly
+   * how card 1.36's Fault C and card 1.38 happened.
+   */
+  canReplyByEmail(
+    userId: string,
+    ticket: {
+      requesterId: string;
+      assigneeId: string | null;
+      followers: { userId: string }[];
+      deletedAt?: Date | null;
+    },
+  ): boolean {
+    if (ticket.deletedAt) return false;
+    if (ticket.requesterId === userId) return true;
+    if (ticket.assigneeId === userId) return true;
+    return ticket.followers.some((follower) => follower.userId === userId);
+  }
+
   canPostMessage(
     user: AuthUser,
     ticket: {
