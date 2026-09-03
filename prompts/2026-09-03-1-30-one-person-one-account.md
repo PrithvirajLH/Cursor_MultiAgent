@@ -67,7 +67,7 @@ notes on it — turns on `requesterId` being one of those rows and not the other
 | **Three** paths create users: `auth.guard.ts:285` (login), `inbound-email.service.ts:685`, `intake.service.ts:230`. All three do `findUnique({ email })` then `create`, with no normalisation beyond `trim().toLowerCase()`. | Only the login path has a token. The other two have an address and nothing else — see §5. |
 | **No Graph user-lookup service exists.** `src/auth` only receives a profile the client pushes (`sync-profile.dto.ts`). | Directory lookup for someone who has never logged in needs a new permission — §5.2. |
 | `User.email` is `@unique`; there is no alias table and no directory-id column. `User.graphProfile` is an existing `Json?`. | One additive migration, or a key in the existing JSON. §4.1 decides. |
-| **~20 relations point at `User`.** | A merge is a 20-table reassignment, not one column. |
+| **18 declared FK relations point at `User`, PLUS three columns that hold a user id as a plain `String` with no relation at all** — `Tag.createdById`, `TicketTag.createdById`, `IdempotencyRequest.actorId`. Corrected 2026-09-03 by the implementer; this card originally said "~20 relations" and told them to enumerate **relations**, which misses all three. | Count FK **columns**, not relations. No foreign key and no cascade protects those three, so nothing catches a missed one. |
 | ⚠️ **Two composite uniques include `userId`: `TeamMember(teamId, userId)` at `:273`, `TicketFollower(ticketId, userId)` at `:591`.** | **A naive `UPDATE … SET userId = keeper` violates both** whenever the two accounts share a team or follow the same ticket. Dedupe first, then reassign. This is the most likely way to break the repair. |
 
 ## 3. Goal
@@ -122,7 +122,20 @@ The directory decides who a person is. The app stops deciding.
       creates a user, as today — refusing would drop an inbound email or reject an
       intake form, which is a worse failure than a duplicate.
 
-### Task 4 — Repair the known pair
+### ~~Task 4 — Repair the known pair~~ — **BUILT, do not rebuild**
+
+> Delivered in `50fe7dc` as `apps/api/merge-duplicate-user.mjs`, verified against a
+> throwaway pair seeded with collisions on both composite uniques, and audited
+> against the schema: **20 of the 21 user-id columns covered**, with
+> `IdempotencyRequest.actorId` skipped for good reason (short-lived, and `actorId`
+> sits inside its own composite unique) and `User.primaryTeamId` skipped correctly
+> because it is a setting **on** the user, not a reference **to** one.
+>
+> **Still to run against production**, by the owner: `phulgur@` as keeper,
+> `prithviraj_hulgur@` as loser, **dry run first**. Agent sessions are
+> classifier-blocked from production writes.
+>
+> The requirements below are kept only as the record of what it had to do.
 
 **Files:** `apps/api/merge-duplicate-user.mjs` (new, alongside the existing
 operator scripts)
