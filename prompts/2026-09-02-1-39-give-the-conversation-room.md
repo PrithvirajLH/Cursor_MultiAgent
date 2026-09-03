@@ -9,9 +9,15 @@ actual conversation.
 
 **Cost:** none. **Web only.** No API, no schema, no migration. Size **S**.
 
-**Independent of everything in flight.** It touches the description block and the
-composer's *height*; the four-card batch (1.36/1.38/1.37/1.28) touches the
-composer's *controls* and the message bubbles. Coordinate on
+> **Handed over 2026-09-03. The collision is gone.** The four-card batch
+> (1.36/1.38/1.37/1.28) landed and is GREEN — commits `48d9874`, `e6cbf7f`,
+> `c2b8584` — and is deploying now. `TicketConversation.tsx` is yours. Baselines
+> and measurements below were refreshed against it; **§1's table was measured
+> before it and is superseded by §1's re-measure note.**
+
+This card touches the description block and the composer's *height*. The batch
+that just landed owns the composer's *controls* and the message bubbles — keep off
+those, per the notes in
 `TicketConversation.tsx` — see §5.
 
 ---
@@ -130,10 +136,13 @@ about to shrink. If you find yourself reaching for any of those, stop and report
 **Files:** `apps/web/src/components/RichTextEditor.tsx`,
 `apps/web/src/components/ticket-detail/TicketConversation.tsx`
 
-> ⚠️ **The four-card batch is editing `TicketConversation.tsx` right now** —
-> specifically the footer row at `:415-450` (the Public/Internal control) and the
-> bubbles at `:298`/`:341`. **Land that batch first, or coordinate**, and keep this
-> task to *heights*: do not touch the type toggle, the chip, or the bubbles.
+> ⚠️ **Do not touch what the four-card batch just built here.** That batch is
+> landed and GREEN, so there is no conflict — but this region is now load-bearing
+> for two safety fixes. Keep this task to *heights* and leave alone: the
+> Public/Internal control and the "Internal note only" chip in the footer row
+> (cards 1.38/1.37), the amber ring and per-message internal marker on the bubbles
+> (card 1.37), and the audience line above the composer (card 1.28). **Line numbers
+> in this card predate those commits — re-locate by reading, not by line.**
 
 - [ ] Collapse the idle editable area from `min-h-[80px]` to roughly **one line**
       (≈40px), expanding to the current height on focus or as soon as there is
@@ -179,9 +188,10 @@ The API is untouched, so the integration suite is not required for this card
 **unless** it is committed together with the four-card batch — then run it once
 for the pair.
 
-**Baselines** (current as of 1.35; older documents in this repo are stale):
-API `tsc` 0, unit **416 / 43 suites**, integration **457 + 1 skipped**, web `tsc`
-0, vitest **70 / 18 files**.
+**Baselines** (verified 2026-09-03 after the four-card batch; older documents in
+this repo, `CLAUDE.md` included until today, were stale):
+API `tsc` 0, unit **443 / 44 suites**, integration **475 + 1 skipped, 53 of 54**,
+web `tsc` 0, vitest **100 / 21 files**.
 
 ## 8. Acceptance criteria
 
