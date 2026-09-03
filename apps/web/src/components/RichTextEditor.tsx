@@ -137,6 +137,12 @@ function createRange(
 
 const EMPTY_HTML = "<br>";
 
+/** One line of the editable area, matching its text-sm line height. */
+const ROW_HEIGHT_PX = 24;
+
+/** Rows the editable area occupies at rest, with no focus and no content. */
+const IDLE_ROWS = 1;
+
 type RichTextEditorProps = {
   value: string;
   onChange: (value: string) => void;
@@ -602,15 +608,36 @@ export const RichTextEditor = forwardRef<
   const [localEmpty, setLocalEmpty] = useState(
     value.trim() === "" || value === "<br>",
   );
+  const [focused, setFocused] = useState(false);
   // Sync when parent clears the value (e.g. after send)
   useEffect(() => {
     const empty = value.trim() === "" || value === "<br>";
     if (empty) setLocalEmpty(true);
   }, [value]);
   const isEmpty = localEmpty;
+  /**
+   * Card 1.39: the composer rests at one line and opens when it is in use.
+   *
+   * "In use" is focus OR content OR an open popup. Content matters because a
+   * restored draft must be visible without the agent doing anything - a draft
+   * hidden inside a collapsed box is worse than the wasted space it saved.
+   * `localEmpty` is seeded from `value` at mount, so a draft opens the editor
+   * on its first render.
+   *
+   * The popups matter because clicking a mention or a canned response moves
+   * focus out of the editable div; collapsing underneath an open list would
+   * pull the ground out from under the thing being clicked.
+   */
+  const expanded = focused || !isEmpty || showMentions || showCanned;
 
   return (
     <div className={`relative ${className}`}>
+      {/*
+        Seven formatting buttons an agent does not need while reading. Hidden
+        until the composer is in use; the editable div below takes the top
+        border back when it is, so the box keeps its outline either way.
+      */}
+      {expanded ? (
       <div className="flex items-center gap-1 border-b border-border bg-muted/80 px-2 py-1">
         <button
           type="button"
@@ -734,7 +761,11 @@ export const RichTextEditor = forwardRef<
         </button>
       </div>
 
-      <div className="relative border border-t-0 border-border bg-card">
+      ) : null}
+
+      <div
+        className={`relative border border-border bg-card ${expanded ? "border-t-0" : ""}`}
+      >
         {isEmpty && (
           <div
             className="pointer-events-none absolute left-3 top-3 text-sm text-muted-foreground"
@@ -750,15 +781,21 @@ export const RichTextEditor = forwardRef<
           role="textbox"
           aria-multiline="true"
           aria-label="Message body"
-          className="min-h-[80px] max-h-[288px] overflow-y-auto p-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-inset"
+          className="max-h-[288px] overflow-y-auto p-3 text-sm text-foreground transition-[min-height] duration-100 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:ring-inset"
           style={{
-            minHeight: `${minRows * 24}px`,
-            maxHeight: `${maxRows * 24}px`,
+            // The inline value is what actually governs the height - it always
+            // beat the `min-h-[80px]` class this element used to carry, so the
+            // real resting height was minRows (2 rows, 48px) and never 80px.
+            // The class is gone rather than left to mislead the next reader.
+            minHeight: `${(expanded ? minRows : IDLE_ROWS) * ROW_HEIGHT_PX}px`,
+            maxHeight: `${maxRows * ROW_HEIGHT_PX}px`,
           }}
           data-placeholder={placeholder}
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
         />
       </div>
 

@@ -45,8 +45,8 @@ import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { LinkifiedText } from "../components/LinkifiedText";
 import { MessageAudience } from "../components/ticket-detail/MessageAudience";
+import { TicketDescription } from "../components/ticket-detail/TicketDescription";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
 import { messageSentToast } from "../components/ticket-detail/message-sent-toast";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
@@ -272,6 +272,8 @@ export function TicketDetailPage({
   const messageInputRef = useRef<RichTextEditorRef | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const conversationListRef = useRef<HTMLDivElement | null>(null);
+  // Starts true: a freshly opened conversation is scrolled to the newest message.
+  const wasNearBottomRef = useRef(true);
   const statusSelectRef = useRef<HTMLButtonElement | null>(null);
   const activeTicketIdRef = useRef<string | null>(null);
   const detailRequestSeqRef = useRef(0);
@@ -1210,13 +1212,41 @@ export function TicketDetailPage({
     if (activeTab !== "conversation") return;
     const el = conversationListRef.current;
     if (!el) return;
-    const onScroll = () =>
-      setShowJumpToLatest(
-        el.scrollHeight - el.scrollTop - el.clientHeight > 250,
-      );
+    const onScroll = () => {
+      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowJumpToLatest(distance > 250);
+      // Remembered for the resize handler below, which runs after layout and
+      // so cannot ask where we were before it.
+      wasNearBottomRef.current = distance <= 180;
+    };
     el.addEventListener("scroll", onScroll);
     onScroll();
     return () => el.removeEventListener("scroll", onScroll);
+  }, [activeTab, ticket?.id]);
+
+  /**
+   * Keep the newest message in view when the composer grows or shrinks.
+   *
+   * Card 1.39 lets the composer rest at one line and open on focus. The list is
+   * `flex-1 overflow-y-auto`, so the composer growing SHORTENS the list while
+   * the browser preserves scrollTop - which silently drifts the view up off the
+   * newest message just as the agent starts typing. Card 1.28's audience line
+   * expanding does the same thing.
+   *
+   * Only re-pins when the agent was already near the bottom, using the same
+   * 180px threshold as the message and typing effects above. Someone reading
+   * mid-history keeps their place, which is the half that would be infuriating
+   * to get wrong.
+   */
+  useEffect(() => {
+    if (activeTab !== "conversation") return;
+    const el = conversationListRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (wasNearBottomRef.current) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [activeTab, ticket?.id]);
 
   useEffect(() => {
@@ -2273,15 +2303,16 @@ export function TicketDetailPage({
                               )}
                             </div>
                             {ticket.description ? (
-                              <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                                <LinkifiedText
-                                  text={
-                                    extractOriginalMessage(
-                                      ticket.description,
-                                    ) || "No description provided."
-                                  }
-                                />
-                              </p>
+                              // Clamped to a few lines with a toggle (card
+                              // 1.39). Only in this branch: the edit block
+                              // above shows the whole thing, because clamping
+                              // what someone is editing would be absurd.
+                              <TicketDescription
+                                text={
+                                  extractOriginalMessage(ticket.description) ||
+                                  "No description provided."
+                                }
+                              />
                             ) : (
                               <p className="mt-2 text-[14px] leading-relaxed italic text-muted-foreground">
                                 No description provided.
