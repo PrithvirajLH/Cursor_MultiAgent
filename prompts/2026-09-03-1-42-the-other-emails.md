@@ -47,9 +47,9 @@ it, so a separate survey email would have been a second email for the same momen
 
 | Email | Who | Keep? |
 |---|---|---|
-| **Public reply** | requester on `To`, assignee + followers on `Cc` | **Yes** — this is the whole point |
+| **Public message** | **the external people only** — requester on `To`, CC'd people on `Cc`. **Staff get no email even here** — see §1c | **Yes** — this is the whole point |
 | **Inbound acknowledgement** | the sender | **Yes** — a requester's first impression |
-| **Ticket created** | **requester only** | **Yes**, and **must not double up** with the acknowledgement (§3) |
+| **Ticket created** | **requester only** | **Yes**, and **must not double up** with the acknowledgement (§3). Staff already excluded. |
 | Ticket created → assignee, followers | — | **No** |
 | **Status changed → RESOLVED** | **requester only** | **Yes**, carrying confirm / reopen / **rate** (§4) |
 | Status changed → any other status | — | **No** |
@@ -63,6 +63,38 @@ That is now the whole rule, and it is simple enough to hold in your head:
 
 > **Email leaves this system only for the requester and the people CC'd with them.
 > Staff use the app.**
+
+### 1c. This changes the public-reply email too — the owner caught it
+
+The planner's first write-up of this policy still had the assignee and followers on
+`Cc` for every public message. **That is wrong under the rule above**, and the owner
+spotted it:
+
+> *"Vi should get an email about the message because that would eventually be
+> pulled to the platform, correct?"* — answered: **no**. The reply arrives by
+> email, is pulled onto the ticket, and the assignee sees it there with a bell.
+> The email would be telling her something already on her screen.
+
+**So a public message emails the external people only, whoever wrote it:**
+
+| Who writes it | Who is emailed |
+|---|---|
+| **An agent** | the requester (`To`) + CC'd people (`Cc`) |
+| **The requester**, or a CC'd person | the **other** external people (`Cc`). **No staff recipient.** |
+
+- [ ] Change `messageAudienceOptions` accordingly: a public message's **email**
+      audience is the requester plus followers **who are not staff**. Card 1.36's
+      work already gives you the notion of relationship rather than rank — do not
+      re-derive it from the domain.
+- [ ] **The in-app audience does NOT change.** The assignee and followers must still
+      get the bell for every public message. Only the email list narrows. Assert
+      both halves.
+- [ ] ⚠️ **Do not break card 1.33.** One public message must still produce **one**
+      outbox row, with `To` and `Cc` on it — not one per person. And the threading
+      root must stay stable, or a requester's next reply lands on nothing.
+- [ ] If narrowing this empties the recipient list entirely — an internal-only
+      thread where the requester is somehow excluded — queue **nothing** rather than
+      an email with no `To`.
 
 ### 1b. The one edge — the automation "notify" action
 
