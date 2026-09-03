@@ -426,6 +426,26 @@ required and a test pins. But the mechanism should not be trusted in production 
 And **§5.1 remains open**: somebody who has never signed in has no directory identity, so intake can still meet an unseen address. PREVENT shrinks the problem to first
 contact; closing it needs a **directory-read** scope, which is a **different permission from card 1.24's `Mail.ReadWrite`** — **ask IT for both in one request.**
 
+**DEPLOYED 2026-09-03 19:29:32Z — `1e24dd6`, deployment `325dcf30`, from `8511152`. Schema **52 → 53**, six trigram indexes intact.** So **1.39, 1.29 and 1.30 are all
+live**, along with migration 53. Six of eight post-deploy checks passed; two could not be run — see below.
+
+**⚠️ Two defects in my deploy handoff, both fair.**
+
+**1. I wrote "nobody knows what production is running" as though it were unknowable.** It was answerable with one `az` command — which **I ran myself twenty minutes later**
+and got `8511152` from immediately. Worse, the deploy agent reports their four-card deploy **did** report back in full (deployment `f846f8ca`, ended 13:43:37Z). So I
+turned "I have not seen the report" into a stated fact about the world, and built a handoff step on it. **State what I do not know as what I do not know.**
+
+**2. Checks 5 and 6 asked for something with no reasonable path, and I knew it.** Both need a reply arriving into a ticket **by email**, which needs the mailbox worker —
+**card 1.24, not built** — as my own board says in several places. Being precise about the correction: a path does technically exist, since `POST /api/tickets/inbound-email`
+is `@Public()`, takes an `x-inbound-email-secret`, and the Operations page reports that secret **is** configured in production. So it is not impossible — it is
+**fabricating a synthetic inbound webhook call against production**, which writes a real ticket and message that somebody then has to delete, and needs a secret the
+deploy agent may not hold. **Declining was the right call.** The handoff should have either said exactly that and asked for cleanup, or not asked at all.
+
+**Consequence, stated rather than glossed: 1.29 is live and UNVERIFIED IN PRODUCTION.** Its REPLIED marker and its out-of-office guard were verified locally — the full
+suite, plus a browser pass covering all four automated-header shapes — but nothing has confirmed them against production. **The fix is sequencing, not a probe: those two
+checks move into card 1.24's rollout**, where real mail exercises them for free. Recorded there so they are not lost. Injecting fake mail into production to verify a
+feature that no real mail can yet reach would buy very little and leave probe tickets behind, which the owner is already cleaning up from earlier rounds.
+
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
 *Blocking other work:*
@@ -823,6 +843,14 @@ No new Azure spend, no tenant policy change, no Graph app permission.
 ---
 
 ### 1.24 Inbound mailbox worker (Graph delta polling) — **Ready, but blocked on the Graph permission (owner to-do #1)** · L
+
+> **Carries two checks inherited from card 1.29, 2026-09-03.** 1.29 shipped live but could not be verified in production, because both of its checks need a reply
+> arriving by email and nothing feeds the webhook yet. **When this card rolls out, verify them for real:**
+> 1. A genuine requester reply clears **Waiting on requester**, the ticket leaves "Awaiting reply", and a **REPLIED** marker appears in the list and survives a reload.
+> 2. An **out-of-office** auto-reply does **not** move the status. This is the one that matters most: that failure looks like progress, so the ticket quietly leaves the
+>    chase list and nobody looks at it again.
+>
+> Also verify card **1.40** at the same time if it has shipped by then — a looped-in third party's reply is the other thing only real mail can exercise.
 
 **What we are doing.** A background worker polls one shared mailbox every ~30 s
 with a Microsoft Graph **delta query** and feeds each new message straight into
