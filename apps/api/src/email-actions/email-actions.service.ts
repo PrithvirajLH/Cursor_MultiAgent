@@ -19,6 +19,7 @@ export type EmailActionOutcome =
   | 'reopen'
   | 'rate'
   | 'alreadyDone'
+  | 'noLongerPossible'
   | 'expired'
   | 'invalid'
   | 'failed';
@@ -89,25 +90,26 @@ export class EmailActionsService {
       teamId: null,
       primaryTeamId: null,
     } as AuthUser;
-    try {
-      if (action === 'rate') {
-        return await this.rate(ticketId, value ?? 0, actor);
-      }
-      return await this.move(ticket, action, actor);
-    } catch (error) {
-      // The three actions all REFUSE a repeat rather than performing it twice
-      // (see the tests), so a second click lands here with a 4xx from the
-      // service. That is a harmless outcome, not a failure to report as one.
-      this.logger.log(
-        `Email action ${action} on ${ticketId} was refused: ${
-          error instanceof Error ? error.message : 'unknown'
-        }`,
-      );
-      return 'alreadyDone';
+    if (action === 'rate') {
+      return this.rate(ticketId, value ?? 0, actor);
     }
+    return this.move(ticket, action, actor);
   }
 
-  /** Confirm or reopen, through card 1.2's requester transitions. */
+  /**
+   * Confirm or reopen, through card 1.2's requester transitions.
+   *
+   * ⚠️ Two different unhappy endings, and they must not be conflated.
+   *
+   *  - The ticket is ALREADY where the link would put it: a second click on the
+   *    same link. `alreadyDone`, and nothing happens.
+   *  - The move is no longer legal FROM WHERE THE TICKET IS NOW: reopen it, and
+   *    then click "Yes, close it" in the same email. REOPENED -> CLOSED is not
+   *    a move a requester may make, so it is refused. This used to answer
+   *    "that is already done" while the ticket sat open - found by clicking the
+   *    links in order during the browser pass, and not by any test, because
+   *    every test clicked one link on a fresh ticket.
+   */
   private async move(
     ticket: { id: string; status: TicketStatus },
     action: 'confirm' | 'reopen',
@@ -119,18 +121,42 @@ export class EmailActionsService {
       // Already there. Not an error, and not worth a second event.
       return 'alreadyDone';
     }
-    await this.tickets.transition(ticket.id, { status: target }, actor);
+    try {
+      await this.tickets.transition(ticket.id, { status: target }, actor);
+    } catch (error) {
+      this.logger.log(
+        `Email action ${action} on ${ticket.id} was refused from ${
+          ticket.status
+        }: ${error instanceof Error ? error.message : 'unknown'}`,
+      );
+      return 'noLongerPossible';
+    }
     await this.recordProvenance(ticket.id, action, actor.id);
     return action;
   }
 
-  /** One rating, through the same service the signed-in widget uses. */
+  /**
+   * One rating, through the same service the signed-in widget uses.
+   *
+   * A second rating - by any route, including the signed-in widget - is refused
+   * by CsatService, and that IS `alreadyDone`: the thing the link asked for has
+   * happened, just not by this click.
+   */
   private async rate(
     ticketId: string,
     rating: number,
     actor: AuthUser,
   ): Promise<EmailActionOutcome> {
-    await this.csat.submit({ ticketId, rating }, actor);
+    try {
+      await this.csat.submit({ ticketId, rating }, actor);
+    } catch (error) {
+      this.logger.log(
+        `Email rating on ${ticketId} was refused: ${
+          error instanceof Error ? error.message : 'unknown'
+        }`,
+      );
+      return 'alreadyDone';
+    }
     await this.recordProvenance(ticketId, 'rate', actor.id, rating);
     return 'rate';
   }

@@ -83,6 +83,14 @@ export const EMAIL_ACTION_MESSAGES = {
   reopen: 'Thanks — we have reopened this and someone will pick it up.',
   rate: 'Thanks for the rating.',
   alreadyDone: 'That is already done — no need to do anything else.',
+  // ⚠️ NOT the same as alreadyDone, and the browser pass is what showed why.
+  // Reopen a ticket and then click "Yes, close it" in the same email: closing
+  // is not a move a requester may make from REOPENED, so the action is refused
+  // - and the page used to answer "that is already done" while the ticket sat
+  // open. Telling somebody their request is handled when it is not is the one
+  // thing this page must never do.
+  noLongerPossible:
+    'This one has moved on since that email was sent. Reply to the email if you still need something.',
   expired: 'This link has expired. You can still reply to the email.',
   invalid: 'This link is not valid. You can still reply to the email.',
   failed: 'Something went wrong. You can still reply to the email.',

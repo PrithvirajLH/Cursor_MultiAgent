@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
+import { buildEmailActionScript } from '../../src/email-actions/email-action-page.util';
 import { signEmailActionToken } from '../../src/email-actions/email-action-token.util';
 import { fixtureEmails, fixtureUserIds } from '../utils/fixtures';
 import { disconnectPrisma, getPrisma } from '../utils/prisma';
@@ -272,6 +273,22 @@ describe('One-click email actions (card 1.44)', () => {
       expect((events[0].payload as { rating: number }).rating).toBe(5);
     });
 
+    it('⚠️ does NOT say "already done" when the move is simply no longer possible', async () => {
+      // Found by clicking the links in order during the browser pass, and by
+      // nothing else: every test above clicks one link on a fresh ticket.
+      //
+      // Reopen, then click "Yes, close it" in the same email. REOPENED ->
+      // CLOSED is not a move a requester may make, so the transition is
+      // refused - and the page used to answer "that is already done" while the
+      // ticket sat open. Telling somebody their request is handled when it is
+      // not is the one thing this page must never do.
+      const ticket = await plantResolvedTicket();
+      await post(tokenFor(ticket.id, 'reopen')).expect(201);
+      const res = await post(tokenFor(ticket.id, 'confirm')).expect(201);
+      expect(res.body).toEqual({ outcome: 'noLongerPossible' });
+      expect(await statusOf(ticket.id)).toBe('REOPENED');
+    });
+
     it('reopening an already reopened ticket is harmless', async () => {
       const ticket = await plantResolvedTicket();
       const token = tokenFor(ticket.id, 'reopen');
@@ -315,6 +332,54 @@ describe('One-click email actions (card 1.44)', () => {
         .expect(200);
       expect(res.headers['content-type']).toContain('javascript');
       expect(res.text).toContain("method: 'POST'");
+      // ⚠️ Not cached. The script carries the outcome sentences and the server
+      // sends the KEY, so the two must stay in step; a long cache leaves every
+      // browser holding a script that cannot name a newly added outcome, and
+      // the page then says "Something went wrong" about a perfectly good
+      // answer. Observed in the browser pass, not imagined.
+      expect(res.headers['cache-control']).toBe('no-cache');
+    });
+
+    it('knows every outcome the server can send', () => {
+      // The other half of the same problem: if a key is added to the service
+      // without a sentence, the page falls back to "Something went wrong".
+      const script = buildEmailActionScript();
+      for (const key of [
+        'confirm',
+        'reopen',
+        'rate',
+        'alreadyDone',
+        'noLongerPossible',
+        'expired',
+        'invalid',
+        'failed',
+      ]) {
+        expect(script).toContain(`"${key}"`);
+      }
+    });
+
+    it('⚠️ the page src RESOLVES to that route', async () => {
+      // The test that was missing, and the defect it would have caught: the
+      // src was `../action.js`, which a browser resolves against
+      // `/api/email-actions/<token>` to `/api/action.js` - a 404. The script
+      // never loaded, the page sat on "One moment…", and every link in every
+      // email did nothing at all. Everything above still passed, because it
+      // asserted the script route works rather than that the page reaches it.
+      //
+      // Resolving with URL() is exactly what the browser does, so this cannot
+      // drift from real behaviour.
+      const ticket = await plantResolvedTicket();
+      const token = tokenFor(ticket.id, 'confirm');
+      const page = await get(token).expect(200);
+      const src = /<script src="([^"]+)"><\/script>/.exec(page.text)?.[1];
+      expect(src).toBeTruthy();
+      const resolved = new URL(
+        src as string,
+        `http://localhost/api/email-actions/${token}`,
+      );
+      expect(resolved.pathname).toBe('/api/email-actions/action.js');
+      // And that path really answers, from this same app.
+      await request(server).get(resolved.pathname).expect(200);
     });
   });
 });

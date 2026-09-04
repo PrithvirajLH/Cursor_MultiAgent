@@ -46,7 +46,14 @@ export class EmailActionsController {
   @Get(EMAIL_ACTION_SCRIPT_PATH)
   @Public()
   @Header('Content-Type', 'application/javascript; charset=utf-8')
-  @Header('Cache-Control', 'public, max-age=300')
+  // ⚠️ NOT cached. This was `public, max-age=300`, and the browser pass showed
+  // what that costs: the script carries the outcome sentences, the server sends
+  // the outcome KEY, and the two must stay in step. Adding a key and deploying
+  // left every browser holding the old script for five minutes, turning a
+  // perfectly good answer into "Something went wrong". I watched it happen.
+  // The file is about a kilobyte and is fetched once per click, so revalidating
+  // costs nothing worth having.
+  @Header('Cache-Control', 'no-cache')
   getScript(): string {
     return buildEmailActionScript();
   }
@@ -59,9 +66,19 @@ export class EmailActionsController {
   @Header('Cache-Control', 'no-store')
   @Header('Referrer-Policy', 'no-referrer')
   getPage(): string {
-    // A relative URL, so it works whatever host the link was opened on and
-    // needs no configuration to match.
-    return buildEmailActionPage(`../${EMAIL_ACTION_SCRIPT_PATH}`);
+    // ⚠️ ABSOLUTE PATH, and it has to be.
+    //
+    // This was `../action.js`, which the browser resolves against
+    // `/api/email-actions/<token>` - whose directory is `/api/email-actions/` -
+    // giving `/api/action.js`. That 404s, the script never loads, and the page
+    // sits on "One moment…" forever: every link in every email would have done
+    // NOTHING. The whole integration suite passed, because it checked that the
+    // script route serves JavaScript and never that the page's src reaches it.
+    // A browser click found it in one go.
+    //
+    // Host-relative rather than a full URL, so it works on whatever host the
+    // link was opened on and needs no configuration to match.
+    return buildEmailActionPage(`/api/email-actions/${EMAIL_ACTION_SCRIPT_PATH}`);
   }
 
   /** The write. One action, one ticket, and nothing about it in the answer. */
