@@ -115,6 +115,22 @@ export class IntakeService {
         customFieldValues,
       },
       this.toIntakeRequesterAuthUser(requester),
+      // The integration already told the submitter their form went through, so
+      // a second "we have logged your request" from us is noise at best.
+      //
+      // At worst it is confusing: a PAF ticket is created when the flow
+      // COMPLETES, which is the approval date, not the submission date — every
+      // ticket carries an `Approval Date` custom field equal to its creation
+      // day. When an approver is away, the submitter fills a form and then
+      // hears "We have logged your request" days or weeks later, in the present
+      // tense, with nothing but a reference number to connect it to what they
+      // did. Observed in production 2026-09-04 on PA_20260904_165.
+      //
+      // Same reasoning as the inbound-email path, which has always suppressed
+      // this. If an acknowledgement is wanted, it belongs to the integration at
+      // submission time — the moment the person is actually waiting to hear
+      // something — not to us at approval time.
+      { suppressCreatedEmail: true },
     );
     await this.recordIntakeEvent(created.id, payload, requester.id);
     return this.buildIntakeResponse(created.id);
