@@ -87,5 +87,11 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
   manual step.
 - `docs/security-audit-2026-08.md` describes live weaknesses in a running system,
   and two remotes are public. Think before pushing it outward.
-- `e2e/` contains an accessibility spec that is uncommitted on purpose.
+- `e2e/` holds **eight** Playwright specs (~82 KB, oldest March 2026, newest
+  touched 2026-09-03 by card 1.9) that are **untracked**, so they exist only on
+  this machine. Note `.gitignore:49-51` says the opposite — *"# Keep Playwright
+  specs"* with two negation rules — so the intent recorded there is that they
+  **should** be tracked. Owner reviewed 2026-09-04 and chose to leave both as
+  they are. Scanned for credentials: clean, bar a local dev fallback in
+  `e2e/auth.ts`. **Leave them out of any deploy package.**
 - `.claude/` is gitignored, so the `atm-*` skills there are local-only.
