@@ -273,6 +273,34 @@ real run burns CPU, an orphan is flat.
 
 ---
 
+## Running the stack by hand for a browser pass
+
+Both of these cost an implementer time on 2026-09-03, and neither is guessable.
+
+- **The API needs `AUTH_ALLOW_INSECURE_HEADERS=true`** or every request answers
+  **401 `Bearer token is required`**. The dev persona works by sending
+  `x-user-email` (`apps/web/src/api/client.ts:558`), and the guard refuses that
+  header unless this is set. Nothing in the failure names the missing variable.
+
+- **Vite may not pick `VITE_E2E_MODE` up from the shell.** It was passed as
+  `VITE_E2E_MODE=true npx vite` and did not reach `import.meta.env`; an
+  `apps/web/.env.local` worked. Vite normally does expose `VITE_`-prefixed process
+  env, so the likely culprit is the npx shim under Git Bash on Windows rather than
+  Vite itself — but the fix is the file. **`apps/web/.env.local` is gitignored**
+  (`apps/web/.gitignore:13`, `*.local`), so it is safe to create and easy to leave
+  behind. Delete it when you are done.
+
+  Note the persona itself does **not** need E2E mode: `localStorage.demoUserEmail`
+  plus the `x-user-email` header is enough for most passes, which is why this can
+  go unnoticed until something reads `import.meta.env.VITE_E2E_MODE`.
+
+- **Setting `localStorage.demoUserEmail` directly bypasses `setDemoUserEmail`**,
+  which is what clears the API GET cache and the search cache on a persona change
+  (`client.ts:487-494`). Set it, then **reload** — otherwise the page serves the
+  previous persona's data and you chase a bug that is not there.
+
+---
+
 ## The API runs from `dist`, the web runs from source
 
 **A manual pass can verify code that is not running.** Found by the 1.27
