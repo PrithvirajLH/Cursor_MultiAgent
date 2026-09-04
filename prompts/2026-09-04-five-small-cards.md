@@ -1,18 +1,18 @@
-# Implementation Prompt — six small cards, in order
+# Implementation Prompt — five small cards, in order
 
 **Date:** 2026-09-04
 **Repo:** `Ticketing System Quality Review` (branch `ui-redesign-and-api-hardening`)
-**Cards:** 1.43, 1.18, 1.17, 1.12, 1.11, 1.15 — **in that order**
+**Cards:** 1.43, 1.18, 1.17, 1.12, 1.11 — **in that order**
 **Baseline:** production `1b5e8f5` at schema **54**; branch HEAD is verified GREEN
 with migrations **55–57 undeployed**.
 
-**One commit per card. Six commits.**
+**One commit per card. Five commits.**
 
 ---
 
 ## 0. How to work through this
 
-**Work straight through all six. Do not check in between cards, and do not ask
+**Work straight through all five. Do not check in between cards, and do not ask
 permission to proceed** — the owner has asked for one uninterrupted pass.
 
 **But finish each card completely before starting the next**, which means:
@@ -26,16 +26,25 @@ Run the **full integration suite** after each card that touches the API. It cost
 six minutes and it is the only thing that catches a card breaking an earlier one —
 which has happened on this project.
 
-**Then, at the end, one Playwright pass over all six**, per §7.
+**Then, at the end, one Playwright pass over all five**, per §6.
 
 **"Stop and report" still applies** to the specific hazards each card names below.
 That is not asking permission — it is telling the owner you found something. The
 difference matters: proceed through the work, but if you hit one of the named
 conditions, say so in the report rather than improvising around it.
 
-> ⚠️ **Card 1.6 was on the owner's list and is NOT in this handoff — it is already
-> done.** GREEN as `68c476e` + `d0ff232`, sitting in the pending deploy with
-> migration 55. Do not rebuild it.
+> ## Two cards the owner removed from this batch
+>
+> ⚠️ **1.6 is NOT here — it is already done.** GREEN as `68c476e` + `d0ff232`,
+> sitting in the pending deploy with migration 55. **Do not rebuild it.**
+>
+> ⚠️ **1.15 is NOT here — its premise no longer exists.** It was written to fix
+> *"email fatigue"* by letting people switch off emails. **Card 1.42 removed staff
+> email entirely**, and the four surviving emails all go to requesters, where
+> switching off *"resolved"* would break the confirm / reopen / rate loop that
+> email exists to start. Owner dropped it 2026-09-04. **Do not build it, and do not
+> add a `NotificationPreference` model** — if you find yourself wanting one, that
+> is a new conversation.
 
 ---
 
@@ -54,8 +63,8 @@ and use it for both.
 
 ## 2 — Card 1.18: draft autosave (XS, no migration)
 
-**The card says "verify, probably done". It is not done, and here is the answer so
-you do not have to rediscover it.**
+**The card says "verify, probably done". The planner has now verified it. It is
+not done, and here is exactly what is missing so you do not rediscover it.**
 
 `apps/web/src/utils/messageDraft.ts` stores exactly:
 
@@ -63,26 +72,35 @@ you do not have to rediscover it.**
 interface StoredDraft { body: string; updatedAt: number }
 ```
 
-Its own comment says *"today we just read the body."* So:
+Its own comment says *"today we just read the body."* The three things the card
+asks about:
 
-| The card asks | Reality |
+| The card asks | Verified answer |
 |---|---|
-| Body survives a reload | **Yes** |
-| Inline pasted images survive | **Yes, incidentally** — they live in the body HTML as data URIs. Confirm, do not assume |
-| The public/internal toggle survives | **No.** It is not stored at all |
+| Body survives a reload | **Yes.** |
+| Inline pasted images survive | **Yes — once their upload has resolved.** An image is inserted as `<img data-temp-id>`, and `resolveUploadingImage(tempId, attachmentId)` stamps `data-attachment-id` when the upload lands. The body getter **deliberately strips any `img` without an attachment id** so a blank image is never sent, so an image pasted and reloaded **mid-upload is dropped from the draft** — the file itself survives on the ticket's Attachments tab. **That behaviour is correct; leave it.** |
+| The public/internal toggle survives | **No. It is not stored at all.** This is the whole of the work. |
 
-- [ ] Add the message type to `StoredDraft` and restore it on load.
-- [ ] ⚠️ **Restoring the toggle must not fight card 1.38.** On a ticket where an
-      agent may only write internally, a restored `PUBLIC` draft must **not** flip
-      the composer back to Public. The server would refuse it anyway, but the
-      screen would be lying — which is the exact defect card 1.37 existed to fix.
-      **The ticket's rules win over the stored draft.**
-- [ ] Handle a stored draft written by the old code with no type — treat a missing
-      type as the composer's normal default, never as a crash.
-- [ ] Card 1.39 requires a **restored draft to open the composer expanded**. That
-      still has to hold.
+### The change
 
----
+- [ ] Add the message type to `StoredDraft`, and restore it on load.
+- [ ] The write site is **`TicketDetailPage.tsx:1614`** — `writeMessageDraft(ticketId, nextBody)`.
+      `messageType` is state on that same component (`:182`), so it is already in
+      scope. **Nothing needs lifting.**
+- [ ] The read sites are **`:211` and `:217`**, both calling
+      `readMessageDraft(ticketId)`, which returns a bare `string`. Either widen the
+      return and update both, or add a second reader beside it. **Either is fine —
+      say which you chose.**
+- [ ] ⚠️ **The ticket's rules beat the stored draft.** On a ticket where card 1.38
+      allows only internal notes, a restored `PUBLIC` type must **not** flip the
+      composer to Public. The server would refuse the send anyway, but the screen
+      would be lying — the exact defect card 1.37 existed to fix. Clamp the
+      restored value to what the composer is currently allowed to be.
+- [ ] A draft written by the old code has **no** type. Treat a missing type as the
+      composer's normal default, never as a crash — and note `readMessageDraft`
+      already swallows a `JSON.parse` failure, so follow that tolerance.
+- [ ] Card 1.39 requires a **restored draft to open the composer expanded.** That
+      must still hold.
 
 ## 3 — Card 1.17: the missing desk metrics (S, no migration)
 
@@ -187,47 +205,9 @@ store raw PHI."*
 
 ---
 
-## 6 — Card 1.15: notification preferences (S — **and its premise is gone**)
+## 6 — The final Playwright pass
 
-⚠️ **Read this before writing anything. This card was written for a world that no
-longer exists.**
-
-Its stated purpose is *"email fatigue makes people ignore the alerts that
-matter"*, and its stated implementation point is filtering inside
-`NotificationsService.buildRecipients`.
-
-**Card 1.42 removed staff email entirely.** Four email types survive and every one
-goes to a requester or a CC'd person. So:
-
-- **Email preferences for staff:** there is nothing left to switch off.
-- **Email preferences for requesters:** the surviving emails are the
-  acknowledgement, the reply, ticket-created and resolved. **Turning off "resolved"
-  would break the confirm / reopen / rate loop** — that email is the only thing
-  that asks.
-
-**So build it as in-app notification preferences only** — which bell types a
-person wants. That is smaller than the card, and it is the part that still has a
-purpose now that staff live entirely on the bell.
-
-- [ ] `NotificationPreference { userId, eventType, inApp Boolean @default(true) }`,
-      unique per (user, eventType). **Include the `email` column too** if you want
-      the model to outlast this decision, but **do not wire an email path** — there
-      is nothing to gate.
-- [ ] Filter in **`InAppNotificationsService`**, not `buildRecipients`.
-- [ ] ⚠️ **Some notifications must not be switchable off.** A person turning off
-      *"ticket assigned"* stops being told work is theirs. Decide a small set that
-      is always on — assignment and mentions are my recommendation — and **say what
-      you chose.**
-- [ ] **Default everything to on.** A preference nobody has set must behave exactly
-      as today.
-- [ ] This one needs a migration if you add the table. **That would be 59**, after
-      1.11's 58.
-
----
-
-## 7 — The final Playwright pass
-
-After all six are committed and the full suite is green, **one browser pass over
+After all five are committed and the full suite is green, **one browser pass over
 everything**, against the live dev API.
 
 **Twice on the previous pair of cards the browser found what the suites could
@@ -256,9 +236,6 @@ Check, at minimum:
       readable by whoever §5 says may not read it.
 - [ ] **1.17** — load each of the three new reports as a LEAD and confirm the
       numbers are scoped to their team, not the whole desk.
-- [ ] **1.15** — turn a bell type off, cause that event, confirm no bell; turn it
-      back on, confirm it returns. And confirm an always-on type cannot be turned
-      off.
 - [ ] **1.43** cannot be browser-checked — no mailbox feeds the webhook. Say so
       rather than claiming it.
 
@@ -289,14 +266,13 @@ its numbers are not real; re-run it.
 
 ## What to report back
 
-1. **Six commit SHAs**, one per card, and `git diff --stat` for each.
+1. **Five commit SHAs**, one per card, and `git diff --stat` for each.
 2. Every `Tests:` line, both `tsc`, vitest, and the **migration DROP count** for
-   58 (and 59 if 1.15 added a table).
+   **58**, which is the only migration in this batch.
 3. **The decisions each card asked you to make and state:**
    - 1.12 — per-ticket versus all-or-nothing, and why
    - 1.11 — who may read the preserved original, and how you reconciled that with
      `AiInferenceLog`'s "never store raw PHI"
-   - 1.15 — which notification types you made always-on
    - 1.17 — whether the three reports went into the CSV export
 4. **The §7 browser results, control by control**, and screenshots of 1.11's
    already-sent-email caveat and 1.12's per-ticket outcome.
@@ -310,6 +286,5 @@ its numbers are not real; re-run it.
    **Say so plainly if this one is wrong too.**
 
 **Stop and report instead of improvising** if 1.11 appears to need the original
-body kept somewhere a LEAD can read it, if 1.12 appears to need bulk messaging, if
-1.15 appears to need an email path, or if `access-control.parity.spec.ts` goes red
-at any point.
+body kept somewhere a LEAD can read it, if 1.12 appears to need bulk messaging, or
+if `access-control.parity.spec.ts` goes red at any point.
