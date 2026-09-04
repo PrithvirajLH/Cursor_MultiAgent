@@ -240,8 +240,19 @@ describe('Inbound email ingestion', () => {
       'display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;',
     );
     expect(emailMetadata.replyTo).toMatch(expectedReplyToPattern());
-    expect(emailMetadata.inReplyTo).toBe(inboundMessageId);
-    expect(emailMetadata.references).toContain(inboundMessageId);
+    // UPDATED BY CARD 1.43, and the second of the two tests that pinned the
+    // unbracketed acknowledgement header. Both used to assert the BARE id;
+    // buildOutboundEmailContext now brackets `preferredInReplyTo` once and uses
+    // that for In-Reply-To and References alike, as RFC 5322 requires.
+    //
+    // References changed too, and it is worth being precise about why the old
+    // assertion passed: the bare id went in from preferredInReplyTo while the
+    // ancestry contributed the same id bracketed, so the header carried the
+    // pair. Now there is one entry, in the correct form.
+    const bracketedInbound = `<${inboundMessageId}>`;
+    expect(emailMetadata.inReplyTo).toBe(bracketedInbound);
+    expect(emailMetadata.references).toContain(bracketedInbound);
+    expect(emailMetadata.references).not.toContain(inboundMessageId);
 
     const thread = await prisma.ticketEmailThread.findUnique({
       where: { ticketId: body.ticket.id },
@@ -357,21 +368,18 @@ describe('Inbound email ingestion', () => {
     expect(replyMetadata.inReplyTo).toBe(bracketed);
     expect(replyMetadata.references).toContain(bracketed);
 
-    // ⚠️ A PRE-EXISTING DEFECT, FOUND BY WRITING THIS AND DELIBERATELY NOT
-    // FIXED HERE. The acknowledgement emits In-Reply-To BARE, not bracketed:
-    // buildOutboundEmailContext uses `params.preferredInReplyTo?.trim()` raw
-    // (ticket-email-thread.service.ts:51) while `normalizeMessageId` on line
-    // 126 exists to bracket exactly this. RFC 5322 requires
-    // `msg-id = "<" id-left "@" id-right ">"`, so a strict client may fail to
-    // match it - on the requester's very FIRST email, whose threading is the
-    // one that decides whether their reply lands on the ticket.
+    // FIXED BY CARD 1.43, and this assertion is the visible change.
     //
-    // Card 1.42 §5 says not to touch the threading headers and to stop and
-    // report instead. So this asserts what the code actually does, and the
-    // report names the one-line fix. The other emails were unaffected because
-    // theirs comes from pickInReplyTo, which is already bracketed - which is
-    // why no existing test caught it.
-    expect(ackMetadata.inReplyTo).toBe(inboundMessageId);
+    // It used to read `toBe(inboundMessageId)` - BARE - because card 1.42 found
+    // that the acknowledgement emitted In-Reply-To unbracketed and was told not
+    // to touch the threading headers, so it pinned the defect instead of
+    // hiding it. buildOutboundEmailContext now routes `preferredInReplyTo`
+    // through normalizeMessageId once and uses the result for both headers.
+    //
+    // Why it mattered: RFC 5322 requires the angle brackets, and this is the
+    // requester's FIRST email. Whether their reply threads onto this ticket or
+    // opens a new one is decided by whether their client matched this header.
+    expect(ackMetadata.inReplyTo).toBe(bracketed);
     expect(ackMetadata.references).toContain(bracketed);
 
     // Still anchored to the ORIGINAL inbound email after the transfer, which

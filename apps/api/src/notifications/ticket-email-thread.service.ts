@@ -47,23 +47,60 @@ export class TicketEmailThreadService {
     // the cap below can never be the thing that drops it.
     const root = buildTicketRootMessageId(thread.replyToken, replyTo);
     const ancestry = await this.rebuildAncestry(params.ticketId, replyTo);
-    const inReplyTo =
-      params.preferredInReplyTo?.trim() ||
-      this.pickInReplyTo(thread, root);
+    // Card 1.43: bracket ONCE, here, and use the result for BOTH headers below.
+    //
+    // `preferredInReplyTo` comes straight from the requester's own mail client
+    // (notifications.service.ts passes the inbound Message-ID through), and a
+    // client may send it bare. RFC 5322 requires the angle brackets, so a bare
+    // id emitted on the acknowledgement - the first thing an emailing requester
+    // ever receives - may fail a strict client's match, and their reply then
+    // arrives as a NEW ticket instead of threading onto this one.
+    //
+    // Normalising at the two use sites instead of here is precisely how the
+    // defect happened: the ancestry and the stored ids were normalised and this
+    // one value was missed. One call, two uses.
+    //
+    // Empty stays empty rather than becoming `<>`: normalizeMessageId returns
+    // '' for a blank, so the `||` below still falls through to pickInReplyTo.
+    // The unroutable filter further down still works on the bracketed form -
+    // isUnroutableMessageId matches /@localhost>?\s*$/, so it tolerates the
+    // trailing bracket and a bare `abc@localhost` is still dropped.
+    const preferredInReplyTo = this.normalizeMessageId(
+      params.preferredInReplyTo,
+    );
+    const inReplyTo = preferredInReplyTo || this.pickInReplyTo(thread, root);
+    // EVERY candidate is normalised, once, on the way in - not just the two
+    // the card named.
+    //
+    // The integration suite found why that matters. The acknowledgement passes
+    // the inbound id as preferredInReplyTo AND as an additional reference, and
+    // `recordInboundEmail` stores it raw in rootInboundMessageId and
+    // lastInboundMessageId, so four of the seven candidates below were the same
+    // message id in two different spellings. The Set could not collapse them
+    // because a bare id and a bracketed one are not the same string, and the
+    // header went out carrying the id twice - once malformed.
+    //
+    // Normalising here rather than at each use site is the whole lesson of this
+    // card: the previous code normalised some entries and missed others, which
+    // is exactly the shape of the defect. `normalizeMessageId` is idempotent,
+    // so the already-bracketed root and ancestry pass through untouched, and it
+    // returns '' for a blank, which the filter drops rather than emitting `<>`.
+    // The unroutable filter runs AFTER normalisation and still works:
+    // isUnroutableMessageId matches /@localhost>?\s*$/, so it tolerates the
+    // trailing bracket.
     const references = Array.from(
       new Set(
         [
           root,
           ...(params.additionalReferences ?? []),
           ...ancestry,
-          params.preferredInReplyTo ?? undefined,
+          preferredInReplyTo || undefined,
           thread.rootInboundMessageId ?? undefined,
           thread.lastInboundMessageId ?? undefined,
           thread.lastOutboundMessageId ?? undefined,
-        ].filter(
-          (value): value is string =>
-            Boolean(value?.trim()) && !isUnroutableMessageId(value),
-        ),
+        ]
+          .map((value) => this.normalizeMessageId(value))
+          .filter((value) => value !== '' && !isUnroutableMessageId(value)),
       ),
     ).slice(0, MAX_REFERENCES);
 
