@@ -10,6 +10,8 @@ import {
 import type { Prisma, User } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { isStaffRole } from '../notifications/is-staff-role.util';
+import type { ActionProvenance } from './action-provenance.type';
+import { MACRO_ALLOWED_ACTIONS } from './macro-allowed-actions.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { TagsService } from '../tags/tags.service';
@@ -256,14 +258,11 @@ export class RuleEngineService {
       try {
         let postCommit: PostCommitTask[] = [];
         await this.prisma.$transaction(async (tx) => {
-          const result = await this.executeActions(
-            tx,
-            ticketId,
-            actions,
-            ticket,
-            rule.id,
-            rule.createdById,
-          );
+          const result = await this.executeActions(tx, ticketId, actions, ticket, {
+            kind: 'rule',
+            ruleId: rule.id,
+            actorId: rule.createdById,
+          });
           postCommit = result.postCommit;
           await tx.ticketEvent.create({
             data: {
@@ -458,17 +457,118 @@ export class RuleEngineService {
     return null;
   }
 
+  /**
+   * Apply a MACRO's actions, on behalf of the person who clicked it (card 1.7).
+   *
+   * Shares one executor with the rule engine rather than copying the switch -
+   * a second copy is what caused the faults cards 1.36 and 1.38 had to fix. The
+   * difference is entirely in the provenance:
+   *
+   *   * NO `AutomationExecution` ROW IS WRITTEN. Those rows are per-rule and
+   *     drive automation reporting; a human's click is not a rule firing, and
+   *     recording one would have quietly corrupted that reporting.
+   *   * The ticket event is `MACRO_APPLIED`, attributed to the ACTOR, so the
+   *     audit trail says a person did this. `AUTOMATION_RULE_EXECUTED` is
+   *     never written here.
+   *   * Any action outside MACRO_ALLOWED_ACTIONS is skipped and reported on
+   *     that event rather than silently dropped.
+   *
+   * The transaction and the post-commit tasks are owned here, so a caller
+   * cannot half-apply a macro by forgetting to run them. Callers must do their
+   * own permission check first - this method deliberately makes no access
+   * decision, exactly like `runForTicket`.
+   */
+  async applyMacroActions(
+    ticketId: string,
+    actions: ActionNode[],
+    provenance: Extract<ActionProvenance, { kind: 'macro' }>,
+  ): Promise<{ applied: number; skipped: string[] }> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: {
+        requester: true,
+        assignee: true,
+        assignedTeam: { include: { members: true } },
+      },
+    });
+    if (!ticket || ticket.deletedAt) {
+      throw new Error('Ticket not found');
+    }
+    let postCommit: PostCommitTask[] = [];
+    let skipped: string[] = [];
+    await this.prisma.$transaction(async (tx) => {
+      const result = await this.executeActions(
+        tx,
+        ticketId,
+        actions,
+        await this.getTicketForActions(tx, ticketId),
+        provenance,
+      );
+      postCommit = result.postCommit;
+      skipped = result.skipped;
+      await tx.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'MACRO_APPLIED',
+          payload: {
+            cannedResponseId: provenance.cannedResponseId,
+            actionCount: actions.length - skipped.length,
+            ...(skipped.length > 0 ? { skippedActions: skipped } : {}),
+          },
+          createdById: provenance.actorId,
+        },
+      });
+    });
+    // External effects only after the commit, so a rolled-back macro does
+    // nothing outward - the same rule the rule engine follows.
+    await this.runPostCommit(postCommit, 'macro');
+    await this.ticketsService.publishAutomationRealtimeUpdate(
+      ticketId,
+      provenance.actorId,
+    );
+    return { applied: actions.length - skipped.length, skipped };
+  }
+
+  /**
+   * Run a list of actions inside a transaction (cards 1.4 and 1.7).
+   *
+   * ⚠️ THE `provenance` PARAMETER REPLACED `ruleId` + `actorId`, and
+   * that is the whole reason a macro can share this code. A macro run by a
+   * person is not a rule firing: passing a fabricated ruleId would have made a
+   * human's click look like automation, and `AutomationExecution` rows drive
+   * automation reporting. See action-provenance.type.ts.
+   *
+   * The caller owns the transaction AND must run the returned post-commit tasks
+   * after it commits - get that wrong and the work half-applies.
+   */
   private async executeActions(
     tx: Prisma.TransactionClient,
     ticketId: string,
     actions: ActionNode[],
     ticket: ActionTicket,
-    ruleId: string,
-    ruleCreatedById: string,
-  ): Promise<{ current: ActionTicket; postCommit: PostCommitTask[] }> {
+    provenance: ActionProvenance,
+  ): Promise<{
+    current: ActionTicket;
+    postCommit: PostCommitTask[];
+    skipped: string[];
+  }> {
     let current: ActionTicket = ticket;
     const postCommit: PostCommitTask[] = [];
+    const skipped: string[] = [];
+    const actorId = provenance.actorId;
     for (const action of actions) {
+      // Card 1.7 §2, enforced HERE as well as on save. A macro stored before
+      // the allowlist existed - or edited through a stale client - still must
+      // not be able to send email. Skipping rather than throwing keeps the
+      // useful half of such a macro working, and the skip is returned to the
+      // caller so it lands on the ticket event rather than vanishing.
+      if (
+        provenance.kind === 'macro' &&
+        !MACRO_ALLOWED_ACTIONS.includes(action.type)
+      ) {
+        skipped.push(action.type);
+        continue;
+      }
       switch (action.type) {
         case 'assign_team':
           if (action.teamId) {
@@ -487,7 +587,7 @@ export class RuleEngineService {
               {
                 newTeamId: action.teamId,
               },
-              ruleCreatedById,
+              actorId,
               { rejectSameTeam: false },
             );
             current = await this.getTicketForActions(tx, ticketId);
@@ -509,7 +609,7 @@ export class RuleEngineService {
                 assigneeId: current.assigneeId,
               },
               { assigneeId: action.userId },
-              ruleCreatedById,
+              actorId,
             );
             current = await this.getTicketForActions(tx, ticketId);
           }
@@ -561,7 +661,7 @@ export class RuleEngineService {
                 ticketId,
                 type: 'TICKET_PRIORITY_CHANGED',
                 payload: { from: fromPriority, to: action.priority },
-                createdById: ruleCreatedById,
+                createdById: actorId,
               },
             });
             await this.slaEngine.syncFromTicket(
@@ -580,7 +680,7 @@ export class RuleEngineService {
               ticketId,
               current,
               newStatus,
-              ruleCreatedById,
+              actorId,
             );
           }
           break;
@@ -617,7 +717,7 @@ export class RuleEngineService {
           break;
         case 'add_internal_note':
           if (action.body) {
-            let authorId = ruleCreatedById;
+            let authorId = actorId;
             const author = await tx.user.findUnique({
               where: { id: authorId },
               select: { id: true },
@@ -652,12 +752,12 @@ export class RuleEngineService {
             ticketId,
             names,
             TagSource.MANUAL,
-            ruleCreatedById,
+            actorId,
             tx,
           );
           const added = names.filter((name) => !existing.has(name));
           if (added.length > 0) {
-            await this.writeTagsEvent(tx, ticketId, added, [], ruleCreatedById);
+            await this.writeTagsEvent(tx, ticketId, added, [], actorId);
           }
           break;
         }
@@ -670,7 +770,7 @@ export class RuleEngineService {
           await tx.ticketTag.deleteMany({
             where: { ticketId, tag: { name: { in: removed } } },
           });
-          await this.writeTagsEvent(tx, ticketId, [], removed, ruleCreatedById);
+          await this.writeTagsEvent(tx, ticketId, [], removed, actorId);
           break;
         }
         case 'set_category': {
@@ -699,9 +799,10 @@ export class RuleEngineService {
               payload: {
                 from: current.categoryId,
                 to: category.id,
-                byAutomation: true,
+                // False when a person clicked a macro (card 1.7).
+                byAutomation: provenance.kind === 'rule',
               },
-              createdById: ruleCreatedById,
+              createdById: actorId,
             },
           });
           current = await this.getTicketForActions(tx, ticketId);
@@ -718,12 +819,17 @@ export class RuleEngineService {
           break;
         }
         case 'send_email': {
+          // Rules only. The allowlist above already drops this for a macro;
+          // this second check makes that structural rather than dependent on
+          // the loop staying correct, and it is what lets the ruleId be read
+          // off the provenance without a cast.
+          if (provenance.kind !== 'rule') break;
           const task = await this.buildSendEmailTask(
             tx,
             ticketId,
             current,
             action,
-            ruleId,
+            provenance.ruleId,
           );
           if (task) postCommit.push(task);
           break;
@@ -732,7 +838,7 @@ export class RuleEngineService {
           break;
       }
     }
-    return { current, postCommit };
+    return { current, postCommit, skipped };
   }
 
   private async getTicketForActions(

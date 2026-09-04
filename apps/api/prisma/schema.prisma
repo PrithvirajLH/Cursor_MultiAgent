@@ -804,6 +804,14 @@ model CannedResponse {
   id        String   @id @default(uuid())
   name      String
   content   String   @db.Text
+  /// What applying this template DOES, beyond pasting its text (card 1.7).
+  ///
+  /// Validated with AutomationActionDto - the same class the rule engine uses,
+  /// so there is one action shape - but a macro may only carry the subset in
+  /// MACRO_ALLOWED_ACTIONS. Notably NOT send_email, notify_requester or
+  /// notify_team_lead: card 1.42 deleted most email to stop noise, and a macro
+  /// that sends email would put it back through a side door.
+  actions   Json     @default("[]")
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   teamId    String?

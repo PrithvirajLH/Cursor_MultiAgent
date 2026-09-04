@@ -971,11 +971,66 @@ export type CannedResponseRecord = {
   id: string;
   name: string;
   content: string;
+  /** What applying this template does, beyond pasting its text (card 1.7). */
+  actions?: MacroAction[];
   userId: string | null;
   teamId: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+/**
+ * One macro action, as the server stores it (card 1.7).
+ *
+ * The same shape the automation rules use - deliberately, so a macro and a rule
+ * cannot drift into two action formats. The server refuses to save or run
+ * anything outside its allowlist, so `send_email` and the two notify actions
+ * never arrive here.
+ */
+export type MacroAction = {
+  type: string;
+  status?: string;
+  priority?: string;
+  tags?: string[];
+  categoryId?: string;
+  teamId?: string;
+  userId?: string;
+  target?: string;
+  body?: string;
+};
+
+/**
+ * What a macro WOULD say and do on this ticket, without doing any of it.
+ *
+ * Card 1.7's "show before you act". The substitution happens on the SERVER -
+ * this file used to carry its own copy in CannedResponsePicker, with different
+ * key names, and it was the copy whose output an agent sent to a requester.
+ */
+export type MacroPreview = {
+  id: string;
+  name: string;
+  content: string;
+  actions: MacroAction[];
+  skippedActions: string[];
+};
+
+export function renderCannedResponse(id: string, ticketId: string) {
+  return apiFetch<MacroPreview>(
+    `/canned-responses/${id}/render?ticketId=${encodeURIComponent(ticketId)}`,
+    { method: "POST" },
+  );
+}
+
+/** Runs the actions. The message itself is still sent by the composer. */
+export function applyCannedResponse(id: string, ticketId: string) {
+  return apiFetch<{
+    content: string;
+    applied: number;
+    skippedActions: string[];
+  }>(`/canned-responses/${id}/apply?ticketId=${encodeURIComponent(ticketId)}`, {
+    method: "POST",
+  });
+}
 
 export function fetchCannedResponses() {
   return apiFetch<

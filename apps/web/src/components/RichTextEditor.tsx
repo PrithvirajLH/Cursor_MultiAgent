@@ -149,11 +149,17 @@ type RichTextEditorProps = {
   onSubmit?: () => void;
   placeholder?: string;
   users: UserRef[];
-  cannedVariables: {
-    ticketId?: string;
-    ticketSubject?: string;
-    requesterName?: string;
-  };
+  /**
+   * The ticket a template is applied to (card 1.7).
+   *
+   * Just the id now. It used to carry `ticketSubject` and `requesterName` for
+   * CannedResponsePicker's own client-side substitution, which card 1.7 deleted
+   * because it had drifted from the server's key names - so those two fields
+   * had no reader left.
+   */
+  cannedVariables: { ticketId?: string };
+  /** Re-read the ticket after a macro's actions changed it. */
+  onMacroApplied?: () => void;
   minRows?: number;
   maxRows?: number;
   className?: string;
@@ -177,6 +183,7 @@ export const RichTextEditor = forwardRef<
     placeholder = "Write a reply…",
     users,
     cannedVariables,
+    onMacroApplied,
     minRows = 2,
     maxRows = 12,
     className = "",
@@ -810,7 +817,8 @@ export const RichTextEditor = forwardRef<
         open={showCanned}
         onClose={() => setShowCanned(false)}
         onSelect={handleCannedSelect}
-        variables={cannedVariables}
+        ticketId={cannedVariables.ticketId}
+        onApplied={onMacroApplied}
       />
     </div>
   );

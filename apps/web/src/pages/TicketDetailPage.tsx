@@ -2767,13 +2767,10 @@ export function TicketDetailPage({
                         attachmentInputRef={attachmentInputRef}
                         conversationListRef={conversationListRef}
                         users={teamMembers.map((m) => m.user)}
-                        cannedVariables={{
-                          ticketId: ticket.id,
-                          ticketSubject: ticket.subject,
-                          requesterName:
-                            ticket.requester?.displayName ??
-                            ticket.requester?.email,
-                        }}
+                        cannedVariables={{ ticketId: ticket.id }}
+                        onMacroApplied={() =>
+                          void loadTicketDetail(ticket.id)
+                        }
                       />
                     </div>
 

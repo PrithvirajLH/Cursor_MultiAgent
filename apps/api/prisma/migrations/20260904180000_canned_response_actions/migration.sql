@@ -1,0 +1,39 @@
+-- Macros: canned responses that do things (card 1.7). Additive only: one new
+-- JSONB column with a default, on one table. The 57th migration.
+--
+-- NOT NULL WITH A DEFAULT, so every existing row becomes an empty action list
+-- and every template already saved keeps working as plain text. Same shape as
+-- AutomationRule.actions, which is the precedent.
+--
+-- The column holds actions validated with AutomationActionDto - the very class
+-- the rule engine uses, so a macro and a rule cannot drift into two action
+-- shapes. A macro may only carry the SUBSET in MACRO_ALLOWED_ACTIONS
+-- (macro-allowed-actions.util.ts), enforced on save and again on execute.
+-- send_email, notify_requester and notify_team_lead are excluded: card 1.42
+-- deleted most email to stop noise, and a one-click macro that sends email puts
+-- it straight back through a side door.
+--
+-- Nothing is backfilled and no enum is touched, so this needs no second
+-- migration and carries none of the enum-in-transaction hazard that 54 and 56
+-- documented.
+--
+-- HAND-WRITTEN from `prisma migrate diff`, which additionally emitted the
+-- standing twelve destructive statements that are NOT part of this change.
+-- Every one was removed:
+--
+--   * six DROP INDEX for the trigram GIN indexes created by
+--     20260220150000_add_ticket_search_trigram_indexes and
+--     20260528_add_knowledge_base -- KbArticle_content/summary/title_trgm_idx
+--     and Ticket_description/displayId/subject_trgm_idx. Prisma cannot express
+--     `USING GIN (col gin_trgm_ops)` in schema.prisma, so it reads them as
+--     drift on every generate. Applying them would silently destroy ticket and
+--     KB search performance against the stated sub-500ms requirement.
+--   * six ALTER COLUMN ... DROP DEFAULT on AutomationExecution.trigger and the
+--     updatedAt columns of SlaBusinessHoursSetting, SlaPolicyAssignment,
+--     SlaPolicyConfig, SlaPolicyConfigTarget and TicketEmailThread -- the same
+--     standing drift, equally unrelated to this change.
+--
+-- Verified: grep -cE '^(DROP|ALTER TABLE .* DROP)' migration.sql  =>  0
+
+-- AlterTable
+ALTER TABLE "CannedResponse" ADD COLUMN "actions" JSONB NOT NULL DEFAULT '[]';

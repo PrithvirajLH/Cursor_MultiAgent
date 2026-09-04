@@ -146,11 +146,17 @@ export type TicketConversationProps = {
   attachmentInputRef: RefObject<HTMLInputElement | null>;
   conversationListRef: RefObject<HTMLDivElement | null>;
   users: UserRef[];
-  cannedVariables: {
-    ticketId?: string;
-    ticketSubject?: string;
-    requesterName?: string;
-  };
+  /**
+   * The ticket a template is applied to (card 1.7).
+   *
+   * Just the id now. It used to carry `ticketSubject` and `requesterName` for
+   * CannedResponsePicker's own client-side substitution, which card 1.7 deleted
+   * because it had drifted from the server's key names - so those two fields
+   * had no reader left.
+   */
+  cannedVariables: { ticketId?: string };
+  /** Re-read the ticket after a macro's actions changed it. */
+  onMacroApplied?: () => void;
 };
 
 export const TicketConversation = memo(function TicketConversation({
@@ -188,6 +194,7 @@ export const TicketConversation = memo(function TicketConversation({
   conversationListRef,
   users,
   cannedVariables,
+  onMacroApplied,
 }: TicketConversationProps) {
   void ticket;
   void onAttachmentDownload;
@@ -486,6 +493,7 @@ export const TicketConversation = memo(function TicketConversation({
               placeholder="Type a message… (use @ to mention someone)"
               users={users}
               cannedVariables={cannedVariables}
+              onMacroApplied={onMacroApplied}
               onPasteFiles={canUpload ? onPasteFiles : undefined}
             />
             <div className="flex items-center justify-end gap-1.5 border-t border-border bg-card px-3 py-2 text-muted-foreground">
