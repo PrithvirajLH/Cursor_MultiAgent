@@ -571,6 +571,45 @@ recorded rather than silent, since card 1.32 writes an `EMAIL_RECIPIENT_REFUSED`
 this board**. The owner asking whether the run had finished is what surfaced it. The board is meant to be the authority; a verdict that exists only in a chat message is
 not one.
 
+**1.7 — GREEN, 2026-09-04, commits `92a6737` + `b959e39`.** Re-ran everything: api `tsc` 0, unit **480/48**, integration **593 + 1 skipped, 61 of 62**, web `tsc` 0,
+vitest **150/26**. **Migration 57** is a single additive line, 0 DROPs by hand check. The allowlist is one constant enforced **three** times — throws on save, skips on
+render, skips on execute.
+
+**⚠️ THIS PASS FOUND A LIVE DEFECT I SHIPPED, AND IT IS BROKEN IN PRODUCTION NOW.** The **"Insert template" button is unclickable**. Card 1.39 made the toolbar render
+only while the editor has focus or content (`const expanded = focused || !isEmpty || …`); a **mousedown on a toolbar button blurs the editor**, so the toolbar unmounts
+before the click lands. I checked the history to be exact: **the missing `handleToolbarMouseDown` on that button was pre-existing** — 1.39 turned a harmless omission into
+a real breakage. Their report says the control was "added afterwards", which is not quite right, but the mechanism and the ownership are: **I GREENed 1.39, and no test
+clicks a real toolbar button.** 1.39 is live in `1b5e8f5`; the fix `b959e39` is **not deployed**, so the button has not worked since that deploy.
+
+**⚠️ And the second templating function my card warned about already existed AND had already drifted — worse than they described.** `CannedResponsePicker.tsx` carried
+its own `substituteVariables` handling `{{ticket.id}}` and `{{requester.name}}`, blanking everything else via a catch-all. **But the on-screen hints in three places
+document `{{ticket.displayId}}` and `{{requester.displayName}}`** — so **an agent following the instructions would have sent an email with blanks where the name should
+be.** Deleted; the picker now asks the server to render, with both old keys kept as documented aliases so existing templates do not silently empty, and `{{ticket.id}}`
+now resolving to the reference people actually quote rather than a raw UUID. **One bug hid the other:** nobody could reach the picker to notice, because the button was
+unclickable.
+
+**Their §3 analysis beat my card's.** I warned that reusing `executeActions` would corrupt automation reporting through a fabricated `ruleId`. **They found
+`AutomationExecution` rows are written by the caller (`applyRules`), not inside the executor**, so that risk was never in the shared code; and `ruleId` had exactly one
+consumer, `send_email`, which a macro is forbidden — so it is now guarded on `provenance.kind === 'rule'` and read off the union without a cast. They changed the
+signature to take an `ActionProvenance` and added a public `applyMacroActions`, rather than relocating five injected dependencies (two `forwardRef`'d) on live automation
+code. **No automation test edited; 33/33 pass.** That is the right reading of "stop if the tests cannot stay untouched".
+
+**`add_internal_note` allowed**, on the reasoning that card 1.42 established an internal note emails nobody and is staff-only in the app, so it adds none of the noise the
+allowlist exists to prevent. One entry to reverse.
+
+**The audit trail:** a `MACRO_APPLIED` ticket event with `createdById` = the actor and the `cannedResponseId` in the payload; **zero** `AutomationExecution` rows and zero
+`AUTOMATION_RULE_EXECUTED` events, verified as counts in both the spec and the browser; and the internal note is prefixed `[Template]`, not `[Automation]` — which was
+their second browser-only find, from a spec that asserted the note's **author** but not its **text**, the same gap class that let three earlier cards pass on a bug.
+
+**Two things worth keeping from their report.** A macro's status change goes through `applyStatusTransitionInTx`, so **it obeys the same transition table as a human**:
+`NEW → RESOLVED` is refused and the whole macro rolls back. And **applying a macro deliberately does not send** — the text returns to the composer and the agent posts it
+through the normal messages endpoint, the only path that applies cards 1.36, 1.38, 1.40 and 1.42. That is a stronger guarantee than my §4 asked for: the macro has no
+send path of its own to get wrong.
+
+**One correction back to them.** They reported `CLAUDE.md` as the stale one (468 / 542+1 / 133) and concluded that trusting it over the card would have misled them. **It
+read 470 / 576+1 / 143** — I updated it at 10:46 in `730acfa`; they committed at 11:27. It was stale when they **started**, not when they finished, so the rule stands:
+read `CLAUDE.md`, and if it looks wrong say so rather than working around it.
+
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
 *Blocking other work:*
@@ -820,7 +859,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.1 pattern.
 **Done when.** Links survive on both tickets, show in the timeline, and a parent's detail lists its children.
 
-### 1.7 Macros: canned responses with actions and placeholders — **Handoff written 2026-09-04** · M
+### 1.7 Macros: canned responses with actions and placeholders — **GREEN 2026-09-04** (`92a6737` + `b959e39`), migration 57, **not deployed** · M
 
 > `prompts/2026-09-04-1-7-macros.md`. **Most of this is already built and the card did not know it.** `fillTemplateVars`
 > (`src/automation/template-vars.util.ts`) already substitutes `{{key}}`, and its own comment reads *"Seed of the macro variables planned for card 1.7"* — unknown
