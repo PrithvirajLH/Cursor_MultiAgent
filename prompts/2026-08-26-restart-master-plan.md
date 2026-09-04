@@ -108,7 +108,7 @@ Also from this card: the standing Prisma drift is **twelve** statements, not the
 | 1.43 Bracket the inbound message id | **Handoff written** 2026-09-04 — **pre-existing**, found by 1.42's implementer who flagged rather than fixed | `prompts/2026-09-04-1-43-bracket-the-inbound-message-id.md` | **The acknowledgement — the first email a requester who writes in ever gets — can emit an unbracketed `In-Reply-To`, and RFC 5322 requires the angle brackets.** If a strict client fails to match it, **their reply arrives as a brand-new ticket instead of landing on this one**, which is the whole thing cards 1.33 and 1.35 exist to prevent. Verified end to end: `ticket-email-thread.service.ts` already has `normalizeMessageId` at `:126` — comment: *"Inbound ids arrive from other people's clients; bracket them if they are bare"* — applied at `:117` and `:330` but **not** to `preferredInReplyTo`, which is used raw at **`:51`** (`In-Reply-To`) **and `:58`** (`References`). The value comes straight from the requester's client via `notifications.service.ts:576`.
 
 **Their judgement was right and worth repeating:** card 1.42 §5 said do not touch the threading headers and stop and report, so they asserted the current behaviour and left it — which also means the fix will be a visible test change rather than a silent one. **Size XS**, one normalisation used twice; the card warns against normalising at both call sites, since missing one is exactly how this happened. |
-| 1.42 Email is for people outside the system | **Handoff rewritten** 2026-09-03 after the owner's decision — **absorbs card 1.14**; still what blocks clearing `EMAIL_TEST_RECIPIENTS` | `prompts/2026-09-03-1-42-the-other-emails.md` | **⚠️ REWRITTEN after the owner's decision, and it is now mostly deletion.** Owner: *"only keep communication sent to the requester and CC'd people — assignee, lead, owner all see it on the platform."* My first version was going to **redesign ten email types**; most should not exist. **Deleting an email beats redesigning it.** A requester now gets exactly three: **ticket created** (or the inbound acknowledgement, which is the same slot on that path, not a second email), **any public message**, and **resolved + confirm/reopen/rate**. Internal notes still send nothing.
+| 1.42 Email is for people outside the system | **GREEN** — verified 2026-09-04 against `a91f464`; **migration 56**, not deployed; **closes card 1.14** | `prompts/2026-09-03-1-42-the-other-emails.md` | **⚠️ REWRITTEN after the owner's decision, and it is now mostly deletion.** Owner: *"only keep communication sent to the requester and CC'd people — assignee, lead, owner all see it on the platform."* My first version was going to **redesign ten email types**; most should not exist. **Deleting an email beats redesigning it.** A requester now gets exactly three: **ticket created** (or the inbound acknowledgement, which is the same slot on that path, not a second email), **any public message**, and **resolved + confirm/reopen/rate**. Internal notes still send nothing.
 
 **One carve-out I argued for and the owner kept: SLA alerts stay email.** The principle is worth reusing — **an alert that only reaches someone already watching is not an alert.** The point of "about to breach" is to reach a lead who is *not* in the app. The automation *notify* action also stays, because an admin typed that address in deliberately. **Ten types become five.**
 
@@ -519,6 +519,57 @@ confirmation is welcome; the caveat was documented.
 culprit is the npx shim under Git Bash on Windows. I verified `apps/web/.env.local` is gitignored before recommending it.
 
 **Part B (card 1.5) not started, as instructed.** §B.4 is unanswered, and §B.3.1 — where a reply to a merged-away ticket lands — still needs the owner.
+
+**1.42 — GREEN, 2026-09-04, commit `a91f464`.** Re-ran everything: api `tsc` 0, unit **470/47**, integration **576 + 1 skipped, 60 of 61**, web `tsc` 0, vitest
+**143/25** held. **Migration 56** is a single additive line (`ALTER TYPE "NotificationType" ADD VALUE 'TICKET_CREATED'`), 0 DROPs by hand check.
+
+**The number worth keeping: a full ticket lifecycle — created, assigned, in progress, transferred, closed — now produces ONE email and SIX in-app notifications.**
+Before this it was six or seven emails, mostly to people looking at the screen.
+
+**Their best evidence came from an accident, and it is better than a positive assertion would have been.** The first audience preview came back empty; the refused list
+contained **only the two EMPLOYEEs**, with the AGENT assignee and LEAD follower **absent from it entirely** — because staff are filtered out *before* the email machinery
+runs, so they cannot be refused. **Absence from a refusal list proves the filtering happened upstream**, which a positive assertion cannot.
+
+**⚠️ Seven corrections to my card. Three were material:**
+
+- **§1b's premise was false.** I told them to reuse "the domain/staff test already used by card 1.23's `resolveOutboundRecipients`". **There is no staff test there** —
+  only `EMAIL_ALLOWED_DOMAINS`, an **allowed-domain** list defaulting to the organisation's own domain, which **everyone including requesters is on**. Using it as a
+  staff test **would have refused every email this card keeps.** They wrote a role-based test instead, which is right: staff-versus-not is a role question.
+- **§1b also assumed the automation `notify` action already rings a bell. It does not** — `send_email` was email-only, and the action that bells is the separate
+  `notify_requester`. **They built it**, because restricting the email without it would have silently swallowed a rule's message.
+- **§3 read literally would have broken §2a.** Suppressing `ticketCreated` on the inbound path also silences the **new bell** — on exactly the tickets nobody watches a
+  queue for. They made the option suppress the email only.
+
+The rest: **§6 contradicted §2a** on ordering (delete-first versus bell-first); **§8's baselines were stale**; **§2a's "renders iconless" was wrong** (there is a `Bell`
+fallback, and **two** types were missing an entry, not one — `FOLLOW_UP_DUE` as well as `TICKET_UPDATED`); and line numbers were off by roughly the size of card 1.6.
+
+**Eight test files rewritten from "sends an email" to "sends none", each with its reasoning — and the sharpest is worth repeating.** The recipient-preview specs asserted
+that **staff appear in the Cc preview**; as they put it, *"listing a colleague who won't be emailed is the same lie it was built to remove."* Two others replaced outbox
+growth as a **proxy** for "processed" with what actually proves it — the message is stored and the bell fires — and one replaced a hardcoded `unread === 0` with a
+comparison against that user's own rows, a stronger scoping assertion than the constant it replaced.
+
+**I verified their production warning myself, and it is already satisfied.** They flagged that whatever domain real requesters are on must be in
+`EMAIL_ALLOWED_DOMAINS` before `EMAIL_TEST_RECIPIENTS` is cleared, or every surviving email is refused at send time. **Production has
+`EMAIL_ALLOWED_DOMAINS = csnhc.com` explicitly set** (checked against the App Service), and `parseDomainList` falls back to a default when unset. Worth knowing the
+limit though: **every requester is `@csnhc.com` because they are all employees**, so the day this system must email somebody genuinely external it will be refused —
+recorded rather than silent, since card 1.32 writes an `EMAIL_RECIPIENT_REFUSED` ticket event.
+
+**Card 1.43 was spun out of this pass** — a pre-existing threading defect they found and deliberately did not fix, because §5 said not to touch threading headers.
+
+**Four things they raised that need the owner:**
+
+1. **On-call paging is gone with the rest.** SLA on-call addresses are raw addresses that exist to **page staff out of hours** — arguably not "email about something they
+   can see on screen". The decision removed it. `dispatchNotification` is the one place to restore a pager route if wanted.
+2. **An unrouted inbound ticket now reaches nobody.** The bell goes to the assigned team, and an inbound ticket only gets a team if a routing rule matches — otherwise
+   `routeTarget` leaves it null. So no email and no bell; discoverable only from the Unassigned queue. **They wrote a test asserting this honestly rather than
+   aspirationally.** Strongest argument yet for **card 1.16's digest**.
+3. **The created-email now actually fires** to somebody raising their own portal ticket, which it never did before. That is what the owner asked for, so I would keep it.
+   One line to reverse.
+4. **`EMAIL_COMPANY_NAME` is now unread anywhere** — confirmed — since it only ever appeared in the deleted sign-offs.
+
+**A process miss of mine, recorded:** I verified this card and said GREEN in conversation, then went straight to writing card 1.43 and **never recorded the verdict on
+this board**. The owner asking whether the run had finished is what surfaced it. The board is meant to be the authority; a verdict that exists only in a chat message is
+not one.
 
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
