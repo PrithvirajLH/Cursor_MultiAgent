@@ -1349,10 +1349,20 @@ function AnimatedTooltipAvatar({
     // (TicketDetailPage), which meant the tooltip rendered BEHIND it. The base
     // z-10 stays: it is what orders the overlapping avatars.
     <div className="group/avatar relative -ml-2 first:ml-0 z-10 hover:z-50">
-      {/* Tooltip */}
-      <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1 text-[10px] font-semibold text-background shadow-lg pointer-events-none opacity-0 scale-90 translate-y-1 group-hover/avatar:opacity-100 group-hover/avatar:scale-100 group-hover/avatar:translate-y-0 transition-all duration-200 z-50">
+      {/*
+        Tooltip, BELOW the avatar - it used to sit at -top-9 and was clipped.
+        These avatars live in the Actions card header, which is the first thing
+        in the sidebar, and the sidebar is a scroll container
+        (`lg:overflow-y-auto`, ticket-detail-layout.ts). Anything reaching above
+        the card's top reaches above the container's top edge and is cut off
+        there. NO z-index can fix that: a stacking context cannot escape an
+        ancestor's overflow clip, which is why raising the wrapper to z-50
+        corrected the paint order and left the tooltip still looking cut off.
+        Opening downward keeps it inside the scroll box entirely.
+      */}
+      <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1 text-[10px] font-semibold text-background shadow-lg pointer-events-none opacity-0 scale-90 -translate-y-1 group-hover/avatar:opacity-100 group-hover/avatar:scale-100 group-hover/avatar:translate-y-0 transition-all duration-200 z-50">
         {name}
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 bg-foreground" />
+        <div className="absolute -top-1 left-1/2 -translate-x-1/2 h-2 w-2 rotate-45 bg-foreground" />
       </div>
       {/* Avatar */}
       <div
