@@ -1,18 +1,18 @@
-# Implementation Prompt — five small cards, in order
+# Implementation Prompt — six cards, in order
 
 **Date:** 2026-09-04
 **Repo:** `Ticketing System Quality Review` (branch `ui-redesign-and-api-hardening`)
-**Cards:** 1.43, 1.18, 1.17, 1.12, 1.11 — **in that order**
+**Cards:** 1.43, 1.18, 1.17, 1.12, 1.11, **1.44** — **in that order**
 **Baseline:** production `1b5e8f5` at schema **54**; branch HEAD is verified GREEN
 with migrations **55–57 undeployed**.
 
-**One commit per card. Five commits.**
+**One commit per card. Six commits.**
 
 ---
 
 ## 0. How to work through this
 
-**Work straight through all five. Do not check in between cards, and do not ask
+**Work straight through all six. Do not check in between cards, and do not ask
 permission to proceed** — the owner has asked for one uninterrupted pass.
 
 **But finish each card completely before starting the next**, which means:
@@ -26,7 +26,7 @@ Run the **full integration suite** after each card that touches the API. It cost
 six minutes and it is the only thing that catches a card breaking an earlier one —
 which has happened on this project.
 
-**Then, at the end, one Playwright pass over all five**, per §6.
+**Then, at the end, one Playwright pass over all six**, per §7.
 
 **"Stop and report" still applies** to the specific hazards each card names below.
 That is not asking permission — it is telling the owner you found something. The
@@ -205,9 +205,51 @@ store raw PHI."*
 
 ---
 
-## 6 — The final Playwright pass
+## 6 — Card 1.44: one click from the email (S–M, no migration)
 
-After all five are committed and the full suite is green, **one browser pass over
+**The card is already written:
+`prompts/2026-09-04-1-44-one-click-from-the-email.md`. Follow it.**
+
+**Do this one LAST**, and not because it is least important — it is the largest of
+the six, it is the only one that adds an **unauthenticated write path**, and it
+cannot be fully finished locally because it needs an Easy Auth exclusion that only
+the deploy agent can add. It deserves the attention of a card you are not rushing
+past on the way to something else.
+
+Owner's requirement, and it is not negotiable down: **one click closes it, one
+click reopens it, five stars and one click rates it. No mail app, no sign-in, no
+second click.**
+
+The three things that would make it fail, all in the card:
+
+- ⚠️ **Defender Safe Links and antivirus gateways fetch email URLs before a human
+  reads them.** A link that acts on `GET` would auto-confirm every resolved ticket.
+  The link must serve a page that performs the action itself with a `POST` on load.
+  **Do not add a confirmation button** — that is the second click the owner ruled
+  out.
+- ⚠️ **The outcome page must reveal nothing about the ticket** — no subject, no
+  reference, no name. Anyone who can read or forward the email reaches it.
+- ⚠️ **The stars must be text, not images.** Most clients block remote images, and
+  a rating nobody can see is a rating nobody gives.
+
+**It needs no migration** because all three actions are already idempotent —
+`CsatService` refuses a second rating, and confirm or reopen on an
+already-confirmed or open ticket is a no-op. **Verify that rather than trusting
+it**; if any one is not idempotent, stop and report instead of quietly adding a
+token table.
+
+**This one supersedes an instruction of mine.** Card 1.42 §4 said *"do NOT build a
+public one-click rating endpoint."* The owner has overruled that, and it is
+defensible: unlike card 1.40's reply token, this token **cannot post a message** —
+it flips one narrow state on one ticket, shows nothing, and expires. The card
+explains the reasoning rather than pretending the earlier instruction never
+existed.
+
+---
+
+## 7 — The final Playwright pass
+
+After all six are committed and the full suite is green, **one browser pass over
 everything**, against the live dev API.
 
 **Twice on the previous pair of cards the browser found what the suites could
@@ -236,6 +278,12 @@ Check, at minimum:
       readable by whoever §5 says may not read it.
 - [ ] **1.17** — load each of the three new reports as a LEAD and confirm the
       numbers are scoped to their team, not the whole desk.
+- [ ] **1.44** — read the resolved email off a real outbox row, open it in a
+      browser, and **click all seven links**: close, reopen, and each of the five
+      stars. Confirm each performs its action once, the page says nothing about the
+      ticket, and a **bare `GET` of a link changes nothing** — that last one is the
+      scanner test and the most important check in this batch.
+- [ ] **1.44 with images blocked** — confirm the stars are still visible.
 - [ ] **1.43** cannot be browser-checked — no mailbox feeds the webhook. Say so
       rather than claiming it.
 
@@ -266,14 +314,17 @@ its numbers are not real; re-run it.
 
 ## What to report back
 
-1. **Five commit SHAs**, one per card, and `git diff --stat` for each.
+1. **Six commit SHAs**, one per card, and `git diff --stat` for each.
 2. Every `Tests:` line, both `tsc`, vitest, and the **migration DROP count** for
-   **58**, which is the only migration in this batch.
+   **58**, which is the only migration in this batch — card 1.44 needs none.
 3. **The decisions each card asked you to make and state:**
    - 1.12 — per-ticket versus all-or-nothing, and why
    - 1.11 — who may read the preserved original, and how you reconciled that with
      `AiInferenceLog`'s "never store raw PHI"
    - 1.17 — whether the three reports went into the CSV export
+   - 1.44 — your token expiry, and **the Easy Auth exclusion path the deploy agent
+     must add**; without it every link returns 401 and the feature silently does
+     nothing
 4. **The §7 browser results, control by control**, and screenshots of 1.11's
    already-sent-email caveat and 1.12's per-ticket outcome.
 5. **1.18's real answer** — which of the three things actually survived a reload
@@ -286,5 +337,6 @@ its numbers are not real; re-run it.
    **Say so plainly if this one is wrong too.**
 
 **Stop and report instead of improvising** if 1.11 appears to need the original
-body kept somewhere a LEAD can read it, if 1.12 appears to need bulk messaging, or
+body kept somewhere a LEAD can read it, if 1.12 appears to need bulk messaging, if
+1.44's actions turn out not to be idempotent or its token seems to need storing, or
 if `access-control.parity.spec.ts` goes red at any point.
