@@ -1343,7 +1343,12 @@ function AnimatedTooltipAvatar({
     AVATAR_COLORS.length;
 
   return (
-    <div className="group/avatar relative -ml-2 first:ml-0 z-10 hover:z-30">
+    // hover:z-50, not z-30. `relative` + a z-index makes this wrapper its own
+    // stacking context, so the tooltip's own z-50 below is capped at whatever
+    // this element wins - and the page's sticky header is z-40
+    // (TicketDetailPage), which meant the tooltip rendered BEHIND it. The base
+    // z-10 stays: it is what orders the overlapping avatars.
+    <div className="group/avatar relative -ml-2 first:ml-0 z-10 hover:z-50">
       {/* Tooltip */}
       <div className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1 text-[10px] font-semibold text-background shadow-lg pointer-events-none opacity-0 scale-90 translate-y-1 group-hover/avatar:opacity-100 group-hover/avatar:scale-100 group-hover/avatar:translate-y-0 transition-all duration-200 z-50">
         {name}
