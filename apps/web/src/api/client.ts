@@ -301,6 +301,12 @@ export type TicketMessage = {
    * failed is worse than no label, because the agent stops chasing.
    */
   delivery?: { emailed: number; refused: number; internal: boolean };
+  /**
+   * Card 1.11. Set once the message has been removed; `body` is then the
+   * "[message removed by ...]" marker and the original text no longer exists.
+   */
+  redactedAt?: string | null;
+  redactedById?: string | null;
 };
 
 export type TicketEvent = {
@@ -2499,6 +2505,20 @@ export function bulkMacroTickets(
       body: JSON.stringify({ ticketIds, cannedResponseId }),
     },
   ).then((response) => unwrapDataEnvelope(response));
+}
+
+/**
+ * Card 1.11. Removes a message's content. DELETE because the message is gone
+ * from the reader's point of view; the row stays so the conversation keeps its
+ * shape. The original text is not preserved anywhere.
+ */
+export function redactTicketMessage(ticketId: string, messageId: string) {
+  return apiFetch<{
+    id: string;
+    redactedAt: string;
+    redactedBy: string;
+    alreadyEmailed: boolean;
+  }>(`/tickets/${ticketId}/messages/${messageId}`, { method: "DELETE" });
 }
 
 export function bulkPriorityTickets(ticketIds: string[], priority: string) {

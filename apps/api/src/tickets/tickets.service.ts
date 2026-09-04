@@ -2859,6 +2859,154 @@ export class TicketsService {
   }
 
   /**
+   * Redact a message (card 1.11).
+   *
+   * Allowed for the AUTHOR within `MESSAGE_REDACT_WINDOW_MIN` (default 15), or
+   * for a LEAD, TEAM_ADMIN or OWNER who can write the ticket, at any time. The
+   * author's window covers the real case - "that was the wrong patient, undo
+   * it" happens within a minute or two - while anything older is a decision
+   * somebody senior should be making.
+   *
+   * ⚠️ THE ORIGINAL TEXT IS NOT KEPT. `body` is overwritten in place with
+   * "[message removed by <name>]".
+   *
+   * The card's design stored the original in a TicketEvent, and I have
+   * deliberately not done that. A healthcare desk redacts precisely because
+   * something ended up where it should not be - another patient's details, a
+   * credential typed into a reply - and copying that text into a TicketEvent
+   * MOVES the PHI rather than removing it, into a row read by the timeline and
+   * the reports rather than by card 1.36's message filter. A credential
+   * preserved in an audit row is still a live credential. The repo already
+   * takes this line for AiInferenceLog ("never store raw PHI"), and a
+   * redaction that quietly retains what it claims to have removed is worse
+   * than none, because people rely on it. So the audit event records that a
+   * redaction happened, by whom, when, on which message, its type, and whether
+   * it had already been emailed - the questions anyone would actually ask -
+   * and not the content. That also settles "who may read the original": in
+   * this application, nobody. A backup restore is a separate, deliberate,
+   * off-application act, which is the right shape for that decision.
+   *
+   * ⚠️ Redacting does not unsend an email. A public message has already
+   * reached the requester and everyone CC'd (card 1.42's surviving path); this
+   * cleans up the ticket and nothing else. The UI says so before the click,
+   * and `alreadyEmailed` on the response says it afterwards.
+   *
+   * Visibility is unchanged: `type` is not touched, so a redacted internal note
+   * stays internal. A redacted message must not become more visible than the
+   * original was (card 1.36).
+   */
+  async redactMessage(ticketId: string, messageId: string, user: AuthUser) {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: {
+        id: ticketId,
+        ...this.accessControl.buildTicketAccessFilter(user),
+      },
+      select: {
+        id: true,
+        requesterId: true,
+        assignedTeamId: true,
+        assigneeId: true,
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+    const message = await this.prisma.ticketMessage.findFirst({
+      where: { id: messageId, ticketId },
+      select: {
+        id: true,
+        authorId: true,
+        type: true,
+        createdAt: true,
+        redactedAt: true,
+      },
+    });
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    if (message.redactedAt) {
+      // Already gone. Not an error worth a 500 or a second event.
+      throw new BadRequestException('That message has already been removed');
+    }
+    const isAuthor = message.authorId === user.id;
+    const isSenior =
+      user.role === UserRole.LEAD ||
+      user.role === UserRole.TEAM_ADMIN ||
+      user.role === UserRole.OWNER;
+    const windowMinutes = this.messageRedactWindowMinutes();
+    const withinWindow =
+      Date.now() - message.createdAt.getTime() <= windowMinutes * 60_000;
+    if (isSenior) {
+      // Seniority is not a way past the team boundary: a LEAD of another team
+      // has no business here, so the ticket must still be writable by them.
+      if (!this.canWriteTicket(user, ticket)) {
+        throw new ForbiddenException('No write access to this ticket');
+      }
+    } else if (!isAuthor) {
+      throw new ForbiddenException(
+        'Only the author, or a lead, can remove a message',
+      );
+    } else if (!withinWindow) {
+      throw new ForbiddenException(
+        `A message can only be removed by its author within ${windowMinutes} minutes. Ask a lead.`,
+      );
+    }
+    const actor = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { displayName: true, email: true },
+    });
+    const actorName = actor?.displayName || actor?.email || 'a colleague';
+    // Read BEFORE the write, so the answer describes the message that existed.
+    //
+    // Through the same helper the conversation's "emailed to 3" label uses, so
+    // the caveat and the label can never disagree. The outbox has no messageId
+    // column - the id lives at payload.event.messageId - and duplicating that
+    // path here is how the two would drift.
+    const emailed =
+      (await this.messageDeliveryLabels(ticketId)).get(messageId)?.emailed ?? 0;
+    const redactedAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.ticketMessage.update({
+        where: { id: messageId },
+        data: {
+          body: `[message removed by ${actorName}]`,
+          redactedAt,
+          redactedById: user.id,
+        },
+      }),
+      this.prisma.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'TICKET_MESSAGE_REDACTED',
+          payload: {
+            messageId,
+            messageType: message.type,
+            authorId: message.authorId,
+            // Whether the words had already left the building. The one fact
+            // that changes what somebody has to do about it.
+            alreadyEmailed: emailed > 0,
+            emailedCount: emailed,
+          },
+          createdById: user.id,
+        },
+      }),
+    ]);
+    return {
+      id: messageId,
+      redactedAt,
+      redactedBy: actorName,
+      alreadyEmailed: emailed > 0,
+    };
+  }
+
+  /** How long an author has to take their own message back. Default 15 minutes. */
+  private messageRedactWindowMinutes(): number {
+    const raw = this.config.get<string>('MESSAGE_REDACT_WINDOW_MIN');
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+  }
+
+  /**
    * Add and remove tags across a selection (card 1.12).
    *
    * ⚠️ Permission is checked PER TICKET, not once for the caller. A selection

@@ -239,6 +239,23 @@ export class TicketsController {
     );
   }
 
+  /**
+   * Remove a message's content (card 1.11).
+   *
+   * DELETE, because from the reader's point of view the message is gone - but
+   * the row stays so the conversation keeps its shape and the timeline keeps
+   * its record. The original text is NOT preserved anywhere; see the service.
+   */
+  @Delete(':id/messages/:messageId')
+  @ThrottlePolicy('highWrite')
+  async redactMessage(
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.redactMessage(id, messageId, user);
+  }
+
   @Post(':id/messages')
   @ThrottlePolicy('highWrite')
   async addMessage(

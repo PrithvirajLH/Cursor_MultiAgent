@@ -157,6 +157,14 @@ export type TicketConversationProps = {
   cannedVariables: { ticketId?: string };
   /** Re-read the ticket after a macro's actions changed it. */
   onMacroApplied?: () => void;
+  /**
+   * Remove a message's content (card 1.11). Absent when the viewer may not
+   * remove anything, which hides the control entirely rather than offering one
+   * that answers 403.
+   */
+  onRedactMessage?: (message: TicketMessage) => void;
+  /** Whether THIS viewer may remove THIS message. The server decides too. */
+  canRedactMessage?: (message: TicketMessage) => boolean;
 };
 
 export const TicketConversation = memo(function TicketConversation({
@@ -195,6 +203,8 @@ export const TicketConversation = memo(function TicketConversation({
   users,
   cannedVariables,
   onMacroApplied,
+  onRedactMessage,
+  canRedactMessage,
 }: TicketConversationProps) {
   void ticket;
   void onAttachmentDownload;
@@ -323,7 +333,7 @@ export const TicketConversation = memo(function TicketConversation({
                   </div>
                 ) : null}
                 <div
-                  className={`flex items-end gap-2 py-0.5 ${isCurrentUser ? "justify-end" : "justify-start"}`}
+                  className={`group/message flex items-end gap-2 py-0.5 ${isCurrentUser ? "justify-end" : "justify-start"}`}
                 >
                   {!isCurrentUser ? (
                     isGroupEnd ? (
@@ -418,7 +428,15 @@ export const TicketConversation = memo(function TicketConversation({
                             }`
                       }
                     >
-                      {!isImageOnly && message.body.includes("\n") ? (
+                      {message.redactedAt ? (
+                        // Card 1.11. Deliberately still a bubble in
+                        // the right place: the conversation keeps its
+                        // shape, and a reader can see that something
+                        // was here and is not any more.
+                        <span className="italic opacity-70">
+                          {message.body}
+                        </span>
+                      ) : !isImageOnly && message.body.includes("\n") ? (
                         <pre className="w-full whitespace-pre-wrap break-words text-sm">
                           {message.body}
                         </pre>
@@ -430,6 +448,27 @@ export const TicketConversation = memo(function TicketConversation({
                         />
                       )}
                     </div>
+                    {/*
+                      Card 1.11. Sits under the bubble beside the delivery
+                      label rather than inside it: a control layered over the
+                      text would cover the very words somebody is deciding
+                      about. Shown on hover and on keyboard focus - focus
+                      matters, or the only way to reach it is a mouse.
+                    */}
+                    {onRedactMessage &&
+                    canRedactMessage?.(message) &&
+                    !message.redactedAt ? (
+                      <button
+                        type="button"
+                        onClick={() => onRedactMessage(message)}
+                        aria-label="Remove this message"
+                        className={`mt-0.5 text-[10px] text-muted-foreground underline opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover/message:opacity-100 ${
+                          isCurrentUser ? "text-right" : "text-left"
+                        }`}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
                     {deliveryLabel(message.delivery) ? (
                       <div
                         data-delivery-label="true"

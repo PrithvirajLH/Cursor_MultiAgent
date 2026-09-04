@@ -32,6 +32,7 @@ import {
   fetchTeamMembers,
   fetchTicketById,
   fetchTicketEvents,
+  redactTicketMessage,
   fetchTicketMessages,
   sendTicketTypingSignal,
   setTicketCategory,
@@ -54,6 +55,7 @@ import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { redactionEmailCaveat } from "../components/ticket-detail/redaction-caveat";
 import { MessageAudience } from "../components/ticket-detail/MessageAudience";
 import { TicketDescription } from "../components/ticket-detail/TicketDescription";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
@@ -153,6 +155,15 @@ const VIEWING_HEARTBEAT_MS = 30_000;
  */
 const VIEWING_TIMEOUT_MS = 90_000;
 
+/**
+ * How long an author has to take their own message back (card 1.11).
+ *
+ * Mirrors the server's default. It is a HINT for whether to offer the control -
+ * the server re-checks against its own `MESSAGE_REDACT_WINDOW_MIN`, and if the
+ * two ever disagree the worst case is a button that answers 403, not a
+ * redaction that should not have happened.
+ */
+const MESSAGE_REDACT_WINDOW_MIN = 15;
 const TICKET_SUBJECT_MAX = 200;
 const TICKET_DESCRIPTION_MAX = 5000;
 
@@ -237,6 +248,19 @@ export function TicketDetailPage({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
+
+  /**
+   * The message a person has asked to remove, held while they confirm (1.11).
+   *
+   * There IS a confirmation here, unlike card 1.44's deliberate absence of one:
+   * this destroys text that cannot be recovered, and the dialog is the only
+   * place the "we cannot unsend the email" caveat can be read BEFORE the click
+   * rather than after it.
+   */
+  const [redactTarget, setRedactTarget] = useState<ConversationMessage | null>(
+    null,
+  );
+  const [redacting, setRedacting] = useState(false);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
@@ -1665,6 +1689,58 @@ export function TicketDetailPage({
     [messageBody, ticketId],
   );
 
+  /**
+   * May this viewer remove this message (card 1.11)?
+   *
+   * A hint, not the rule - the server checks again and is the authority. It
+   * exists so the control is not offered where it would answer 403: the author
+   * inside the window, or a lead and above on a ticket they can manage.
+   */
+  const canRedactMessage = useCallback(
+    (message: TicketMessage) => {
+      if (message.redactedAt) return false;
+      if (isDeleted) return false;
+      const senior =
+        role === "LEAD" || role === "TEAM_ADMIN" || role === "OWNER";
+      if (senior && canManage) return true;
+      if (message.author?.email !== currentEmail) return false;
+      const age = Date.now() - new Date(message.createdAt).getTime();
+      return age <= MESSAGE_REDACT_WINDOW_MIN * 60_000;
+    },
+    [canManage, currentEmail, isDeleted, role],
+  );
+
+  const handleConfirmRedact = useCallback(async () => {
+    if (!redactTarget || !ticketId) return;
+    setRedacting(true);
+    try {
+      const result = await redactTicketMessage(ticketId, redactTarget.id);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === redactTarget.id
+            ? {
+                ...m,
+                body: `[message removed by ${result.redactedBy}]`,
+                redactedAt: result.redactedAt,
+              }
+            : m,
+        ),
+      );
+      setRedactTarget(null);
+      toast.success(
+        result.alreadyEmailed
+          ? "Removed from the ticket. The email that already went out cannot be recalled."
+          : "Message removed.",
+      );
+      // The timeline gains a "message removed" entry, so re-read it.
+      void loadEventsPage(ticketId, true);
+    } catch (error) {
+      setActionError(handleApiError(error));
+    } finally {
+      setRedacting(false);
+    }
+  }, [loadEventsPage, redactTarget, ticketId, toast]);
+
   const handleMessageInputBlur = useCallback(() => {
     stopTyping();
   }, [stopTyping]);
@@ -2251,6 +2327,38 @@ export function TicketDetailPage({
       className={`flex flex-col bg-card animate-fade-in ${ticketIdProp ? "h-full overflow-hidden" : "h-screen"}`}
       title={headerTitle}
     >
+      {/*
+        Card 1.11. The caveat is the point of this dialog, and it is different
+        for the two kinds of message: a public one has ALREADY reached the
+        requester and everyone CC'd, and nothing here recalls it. An internal
+        note was emailed to nobody (card 1.42), so claiming otherwise would be
+        noise. `delivery.emailed` is the outbox truth, not the intent, so this
+        never promises an email went out when the send failed.
+      */}
+      <ConfirmDialog
+        open={redactTarget !== null}
+        title="Remove this message?"
+        message={
+          <>
+            <p>
+              The text is deleted and cannot be recovered — not by you, not by
+              an owner. The message stays in the conversation as “message
+              removed by …”.
+            </p>
+            {redactTarget && redactionEmailCaveat(redactTarget) ? (
+              <p className="mt-2 font-medium text-amber-700 dark:text-amber-400">
+                {redactionEmailCaveat(redactTarget)}
+              </p>
+            ) : null}
+          </>
+        }
+        confirmLabel="Remove message"
+        destructive
+        loading={redacting}
+        onConfirm={() => void handleConfirmRedact()}
+        onCancel={() => setRedactTarget(null)}
+      />
+
       <ConfirmDialog
         open={deleteDialogOpen}
         title="Delete this ticket?"
@@ -2807,6 +2915,8 @@ export function TicketDetailPage({
                         attachmentInputRef={attachmentInputRef}
                         conversationListRef={conversationListRef}
                         users={teamMembers.map((m) => m.user)}
+                        onRedactMessage={setRedactTarget}
+                        canRedactMessage={canRedactMessage}
                         cannedVariables={{ ticketId: ticket.id }}
                         onMacroApplied={() =>
                           void loadTicketDetail(ticket.id)

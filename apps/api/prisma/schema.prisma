@@ -177,6 +177,7 @@ model User {
   kbArticles              KbArticle[]          @relation("KbArticleAuthor")
   emailAliases            UserEmailAlias[]
   ticketLinksCreated      TicketLink[]         @relation("TicketLinkCreatedBy")
+  messagesRedacted        TicketMessage[]      @relation("TicketMessageRedactedBy")
 
   // TEAM_ADMIN user listings filter users by primaryTeamId
   // (users.service.ts getUserListScope) — index avoids a full User scan.
@@ -440,11 +441,21 @@ model TicketMessage {
   body      String      @db.Text
   createdAt DateTime    @default(now())
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  author User   @relation(fields: [authorId], references: [id])
+  /// Card 1.11. Set when the message has been redacted; `body` is OVERWRITTEN
+  /// at that moment with "[message removed by <name>]" and the original text is
+  /// not kept anywhere. See docs and the redact endpoint for why: a healthcare
+  /// desk redacts precisely because something ended up in the wrong place, and
+  /// preserving it in a TicketEvent would move the PHI rather than remove it.
+  redactedAt   DateTime?
+  redactedById String?
+
+  ticket     Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author     User   @relation(fields: [authorId], references: [id])
+  redactedBy User?  @relation("TicketMessageRedactedBy", fields: [redactedById], references: [id])
 
   @@index([ticketId, createdAt])
   @@index([authorId])
+  @@index([redactedById])
 }
 
 model TicketEvent {
