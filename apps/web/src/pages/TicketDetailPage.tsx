@@ -83,6 +83,7 @@ import { copyToClipboard } from "../utils/clipboard";
 import { getUiZoom } from "../utils/uiZoom";
 import { formatStatus, formatTicketId } from "../utils/format";
 import {
+  clampDraftMessageType,
   clearMessageDraft,
   readMessageDraft,
   writeMessageDraft,
@@ -204,17 +205,37 @@ export function TicketDetailPage({
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TicketDetailTabId>("conversation");
-  const [messageType, setMessageType] = useState<"PUBLIC" | "INTERNAL">(
-    "PUBLIC",
+  // Card 1.18: the toggle is restored with the body, because sending an
+  // internal note to the requester because a reload reset the toggle is the
+  // kind of mistake that cannot be taken back. The ticket is not loaded yet on
+  // this first render, so isPeerAgent is not knowable here - the clamp below
+  // applies what IS knowable (role) and the two effects further down re-clamp
+  // once the ticket arrives.
+  const [messageType, setMessageType] = useState<"PUBLIC" | "INTERNAL">(() =>
+    clampDraftMessageType(readMessageDraft(ticketId).messageType, {
+      role,
+      isPeerAgent: false,
+    }),
   );
-  const [messageBody, setMessageBody] = useState(() =>
-    readMessageDraft(ticketId),
+  const [messageBody, setMessageBody] = useState(
+    () => readMessageDraft(ticketId).body,
   );
 
   // Standalone /tickets/:id keeps this component mounted across ticket
   // navigation, so reload the draft when ticketId changes.
   useEffect(() => {
-    setMessageBody(readMessageDraft(ticketId));
+    const draft = readMessageDraft(ticketId);
+    setMessageBody(draft.body);
+    // Read through the same clamp. `isPeerAgent` here still describes the
+    // ticket being navigated AWAY from - the new one has not loaded - so this
+    // is a best effort that the effects correct a moment later, never the only
+    // guard. It matters that it is not skipped: a restored PUBLIC sitting on
+    // screen for even one frame of a note-only ticket is what card 1.37 called
+    // the screen lying.
+    setMessageType(
+      clampDraftMessageType(draft.messageType, { role, isPeerAgent }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1611,7 +1632,7 @@ export function TicketDetailPage({
   const handleMessageBodyChange = useCallback(
     (nextBody: string) => {
       setMessageBody(nextBody);
-      writeMessageDraft(ticketId, nextBody);
+      writeMessageDraft(ticketId, nextBody, messageType);
 
       if (!ticketId) {
         return;
@@ -1622,7 +1643,26 @@ export function TicketDetailPage({
       }
       markTypingActivity();
     },
-    [ticketId, stopTyping, markTypingActivity],
+    [ticketId, messageType, stopTyping, markTypingActivity],
+  );
+
+  /**
+   * The toggle, when a person moves it (card 1.18).
+   *
+   * Deliberately NOT the same path as the clamping effects. Those correct the
+   * composer to what the ticket permits, and persisting their correction would
+   * write a choice nobody made. This one is the agent's own decision, so it is
+   * the one that gets stored - and it stores immediately rather than waiting
+   * for the next keystroke, because switching to internal and then reloading
+   * without typing again is exactly the sequence that used to publish a private
+   * note.
+   */
+  const handleMessageTypeChange = useCallback(
+    (nextType: "PUBLIC" | "INTERNAL") => {
+      setMessageType(nextType);
+      writeMessageDraft(ticketId, messageBody, nextType);
+    },
+    [messageBody, ticketId],
   );
 
   const handleMessageInputBlur = useCallback(() => {
@@ -2705,7 +2745,7 @@ export function TicketDetailPage({
                         messagesError={messagesError}
                         currentEmail={currentEmail}
                         messageType={messageType}
-                        setMessageType={setMessageType}
+                        setMessageType={handleMessageTypeChange}
                         messageBody={messageBody}
                         onMessageBodyChange={handleMessageBodyChange}
                         onMessageInputBlur={handleMessageInputBlur}
