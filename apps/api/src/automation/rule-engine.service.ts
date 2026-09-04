@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import type { Prisma, User } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isStaffRole } from '../notifications/is-staff-role.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { TagsService } from '../tags/tags.service';
@@ -868,6 +869,44 @@ export class RuleEngineService {
       addresses.push(action.address);
     }
     if (recipients.length === 0 && addresses.length === 0) return null;
+    // Card 1.42 §1b. A rule may email an address OUTSIDE the staff group - a
+    // vendor, a distribution list - but not a member of staff, or `send_email`
+    // becomes the way around "staff use the app". Staff still receive the
+    // rule's message; they receive it as a bell.
+    //
+    // ⚠️ §1b says "the in-app notification still fires - only the email is
+    // dropped". IT DID NOT. `send_email` was email-only and raised nothing
+    // in-app; the action that raises one is the separate `notify_requester`
+    // above. So the bell below is BUILT here, not merely preserved - without it
+    // restricting the email would silently swallow a rule's message.
+    //
+    // The `to: 'address'` branch is looked up rather than pattern-matched: a
+    // staff member's own address must not become a bypass, and addresses cannot
+    // be judged by domain because everybody is on the organisation's own one.
+    const externalRecipients = recipients.filter(
+      (user) => !isStaffRole(user.role),
+    );
+    const staffUserIds = new Set(
+      recipients.filter((user) => isStaffRole(user.role)).map((u) => u.id),
+    );
+    const addressOwners = addresses.length
+      ? await tx.user.findMany({
+          where: {
+            email: { in: addresses.map((a) => a.trim().toLowerCase()) },
+          },
+          select: { id: true, email: true, role: true },
+        })
+      : [];
+    const staffAddresses = new Set<string>();
+    for (const owner of addressOwners) {
+      if (isStaffRole(owner.role)) {
+        staffAddresses.add(owner.email.toLowerCase());
+        staffUserIds.add(owner.id);
+      }
+    }
+    const externalAddresses = addresses.filter(
+      (address) => !staffAddresses.has(address.trim().toLowerCase()),
+    );
     const vars: Record<string, string> = {
       'ticket.displayId': current.displayId ?? '',
       'ticket.subject': current.subject,
@@ -881,13 +920,59 @@ export class RuleEngineService {
       payload: { ruleId },
     };
     return async (): Promise<void> => {
-      if (recipients.length > 0) {
-        await this.notifications.notifyUsers(recipients, details);
+      if (externalRecipients.length > 0) {
+        await this.notifications.notifyUsers(externalRecipients, details);
       }
-      if (addresses.length > 0) {
-        await this.notifications.notifyAddresses(addresses, details);
+      if (externalAddresses.length > 0) {
+        await this.notifications.notifyAddresses(externalAddresses, details);
+      }
+      if (staffUserIds.size > 0) {
+        await this.notifyStaffOfRuleEmail(
+          Array.from(staffUserIds),
+          ticketId,
+          details.subject,
+          details.body,
+        );
       }
     };
+  }
+
+  /**
+   * A rule's message delivered as a bell rather than an email (card 1.42 §1b).
+   *
+   * Written straight through prisma, matching the `notify_requester` action
+   * rather than injecting InAppNotificationsService, so both automation
+   * notifications have one shape. That does mean no realtime push - the same as
+   * `notify_requester` today - so it arrives on the notification centre's next
+   * poll rather than instantly. Acceptable for a rule-driven message; say so
+   * rather than discovering it later.
+   *
+   * TICKET_UPDATED is the type the automation engine already uses, and card
+   * 1.42 added it to the notification centre's icon map, where it had been
+   * missing and falling through to a generic bell.
+   */
+  private async notifyStaffOfRuleEmail(
+    userIds: string[],
+    ticketId: string,
+    subject: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.notification.createMany({
+        data: userIds.map((userId) => ({
+          userId,
+          type: NotificationType.TICKET_UPDATED,
+          title: subject,
+          body,
+          ticketId,
+        })),
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to raise in-app notifications for a rule on ticket ${ticketId}`,
+        (error as Error).stack,
+      );
+    }
   }
 
   /** Run post-commit tasks one by one; a failure is logged and never undoes the rule. */

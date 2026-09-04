@@ -47,7 +47,15 @@ describe('Message recipient preview', () => {
         description: 'A ticket with a requester, an assignee and a follower.',
         assignedTeamId: fixtureTeamIds.it,
         assigneeId: fixtureUserIds.agent,
-        followers: { create: [{ userId: fixtureUserIds.lead }] },
+        // A LEAD follower (staff) and an EMPLOYEE follower (not staff). Card
+        // 1.42 emails only the second, so the fixture needs both for the
+        // preview assertions to mean anything.
+        followers: {
+          create: [
+            { userId: fixtureUserIds.lead },
+            { userId: fixtureUserIds.otherRequester },
+          ],
+        },
       },
       select: { id: true },
     });
@@ -71,11 +79,15 @@ describe('Message recipient preview', () => {
   it('answers an agent on the team', async () => {
     const body = await preview(fixtureEmails.agent);
     expect(body.emails).toBe(true);
-    // The requester takes To; the follower is copied. The agent asking is the
-    // assignee and must not appear in their own preview.
+    // The requester takes To; the NON-STAFF follower is copied. Updated by
+    // card 1.42: this asserted the LEAD follower was copied. Staff are no
+    // longer emailed for a public message, so the preview must not list them -
+    // it exists so an agent knows who will actually receive what they write,
+    // and naming somebody who will not is the exact lie it was built against.
     expect(body.to?.id).toBe(fixtureUserIds.requester);
     const ids = body.cc.map((entry) => entry.id);
-    expect(ids).toContain(fixtureUserIds.lead);
+    expect(ids).toContain(fixtureUserIds.otherRequester);
+    expect(ids).not.toContain(fixtureUserIds.lead);
     expect(ids).not.toContain(fixtureUserIds.agent);
   });
 

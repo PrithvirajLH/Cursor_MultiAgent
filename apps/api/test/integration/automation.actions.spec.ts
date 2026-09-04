@@ -302,7 +302,12 @@ describe('Automation actions: tags, category, follower, email (card 1.4)', () =>
       'Assignee must belong to the ticket team',
     );
     const rows = await getPrisma().notificationOutbox.count({
-      where: { ticketId: ticket.id },
+      // Scoped to the rule's own email by card 1.42: a portal ticket now also
+      // produces a TICKET_CREATED acknowledgement to its requester, so an
+      // unscoped count of this ticket's outbox rows is no longer zero. What
+      // this test is about is unchanged - a failed later action must leave no
+      // email from an earlier send_email.
+      where: { ticketId: ticket.id, eventType: 'AUTOMATION_EMAIL' },
     });
     expect(rows).toBe(0);
   });

@@ -54,6 +54,21 @@ const FOLLOWER = user({
   displayName: 'Dana Whitfield',
   role: UserRole.LEAD,
 });
+/**
+ * Somebody CC'd into the conversation who is NOT staff (card 1.42).
+ *
+ * The whole public-reply block below now turns on this distinction: the
+ * requester and this person are emailed; the AGENT assignee and the LEAD
+ * follower are not, because staff read the app. Every test in that block
+ * asserts both halves - that this one survives AND that the two staff members
+ * are absent - so a re-introduction cannot pass by only half breaking.
+ */
+const CC_COLLEAGUE = user({
+  id: 'u-cc',
+  email: 'cc.colleague@company.com',
+  displayName: 'Cc Colleague',
+  role: UserRole.EMPLOYEE,
+});
 
 type TicketShape = {
   requester?: unknown;
@@ -76,7 +91,10 @@ describe('previewMessageRecipients', () => {
       requester: REQUESTER,
       assignee: ASSIGNEE,
       assignedTeam: { id: 'team-it', slug: 'it', name: 'IT' },
-      followers: [{ userId: FOLLOWER.id, user: FOLLOWER }],
+      followers: [
+        { userId: FOLLOWER.id, user: FOLLOWER },
+        { userId: CC_COLLEAGUE.id, user: CC_COLLEAGUE },
+      ],
       ...overrides,
     };
   }
@@ -108,8 +126,21 @@ describe('previewMessageRecipients', () => {
     delete process.env.EMAIL_ALLOWED_DOMAINS;
   });
 
+  /**
+   * REWRITTEN BY CARD 1.42, and the change is the point.
+   *
+   * These tests used to assert that the assignee and every follower appeared in
+   * Cc. Under card 1.42 a public message emails the people OUTSIDE the system
+   * only: the requester on To, the non-staff CC'd people on Cc. Staff get the
+   * bell instead - the owner's reasoning was that the reply arrives by email,
+   * is pulled onto the ticket, and the assignee reads it there, so the email
+   * would tell her something already on her screen.
+   *
+   * The purpose of the block has NOT changed: the preview must equal the send.
+   * Only which send it mirrors has.
+   */
   describe('a public reply', () => {
-    it('puts the requester in To and everyone else in Cc, by name', async () => {
+    it('puts the requester in To and the non-staff CCs in Cc, never staff', async () => {
       findUnique.mockResolvedValue(buildTicket());
       const preview = await service.previewMessageRecipients(
         't-1',
@@ -118,23 +149,28 @@ describe('previewMessageRecipients', () => {
       );
       expect(preview.emails).toBe(true);
       expect(preview.to).toEqual({ id: 'u-req', name: 'Bhavesh Patel' });
-      expect(preview.cc.map((entry) => entry.name)).toEqual([
-        'Greg Weitzer',
-        'Dana Whitfield',
-      ]);
+      expect(preview.cc.map((entry) => entry.name)).toEqual(['Cc Colleague']);
+      // The negative, asserted explicitly: the AGENT assignee and the LEAD
+      // follower are on this ticket and are NOT emailed.
+      const everyone = [preview.to, ...preview.cc].map((entry) => entry?.name);
+      expect(everyone).not.toContain('Greg Weitzer');
+      expect(everyone).not.toContain('Dana Whitfield');
       // Names, never addresses: this renders on a screen a requester may be
       // reading over a shoulder.
-      expect(JSON.stringify(preview.to) + JSON.stringify(preview.cc)).not.toContain(
-        '@',
-      );
+      expect(
+        JSON.stringify(preview.to) + JSON.stringify(preview.cc),
+      ).not.toContain('@');
     });
 
     it('never lists the agent doing the writing', async () => {
       findUnique.mockResolvedValue(
         buildTicket({
           followers: [
-            { userId: FOLLOWER.id, user: FOLLOWER },
-            { userId: ACTOR.id, user: user({ id: ACTOR.id, email: ACTOR.email }) },
+            { userId: CC_COLLEAGUE.id, user: CC_COLLEAGUE },
+            {
+              userId: ACTOR.id,
+              user: user({ id: ACTOR.id, email: ACTOR.email }),
+            },
           ],
         }),
       );
@@ -147,21 +183,35 @@ describe('previewMessageRecipients', () => {
       expect(everyone.map((entry) => entry!.id)).not.toContain(ACTOR.id);
     });
 
-    it('offers removal only for someone who is here because they follow it', async () => {
-      // Removal unfollows from the ticket. Unfollowing the assignee would not
-      // stop them receiving it, and the requester cannot be removed at all -
-      // a public reply with no To: is not a thing.
+    it('excludes the REQUESTER when the requester is the one writing', async () => {
+      // Card 1.42 §1c, second row: when a requester or a CC'd person replies,
+      // the email goes to the OTHER external people and to no staff at all.
+      // Nobody had tested this direction before.
       findUnique.mockResolvedValue(buildTicket());
-      const preview = await service.previewMessageRecipients(
-        't-1',
-        MessageType.PUBLIC,
-        { ...ACTOR, role: UserRole.LEAD },
-      );
+      const preview = await service.previewMessageRecipients('t-1', MessageType.PUBLIC, {
+        ...ACTOR,
+        id: REQUESTER.id,
+        email: REQUESTER.email,
+        role: UserRole.EMPLOYEE,
+      });
+      expect(preview.to).toEqual({ id: 'u-cc', name: 'Cc Colleague' });
+      expect(preview.cc).toEqual([]);
+    });
+
+    it('offers removal only for someone who is here because they follow it', async () => {
+      // Removal unfollows from the ticket. The requester cannot be removed at
+      // all - a public reply with no To: is not a thing.
+      findUnique.mockResolvedValue(buildTicket());
+      const preview = await service.previewMessageRecipients('t-1', MessageType.PUBLIC, {
+        ...ACTOR,
+        role: UserRole.LEAD,
+      });
       const byName = new Map(
         preview.cc.map((entry) => [entry.name, entry.removable]),
       );
-      expect(byName.get('Dana Whitfield')).toBe(true);
-      expect(byName.get('Greg Weitzer')).toBe(false);
+      expect(byName.get('Cc Colleague')).toBe(true);
+      // The assignee is not merely non-removable now - they are not listed.
+      expect(byName.has('Greg Weitzer')).toBe(false);
     });
 
     it('offers no removal at all to an AGENT, who the endpoint would refuse', async () => {
@@ -176,9 +226,9 @@ describe('previewMessageRecipients', () => {
       );
       expect(ACTOR.role).toBe(UserRole.AGENT);
       expect(preview.cc.some((entry) => entry.removable)).toBe(false);
-      // ...and the follower is still listed. They are reachable; it is only the
-      // removal that is not this person's to make.
-      expect(preview.cc.map((entry) => entry.name)).toContain('Dana Whitfield');
+      // ...and the CC'd colleague is still listed. They are reachable; it is
+      // only the removal that is not this person's to make.
+      expect(preview.cc.map((entry) => entry.name)).toContain('Cc Colleague');
     });
 
     it.each([
@@ -192,11 +242,14 @@ describe('previewMessageRecipients', () => {
         role,
       });
       expect(
-        preview.cc.find((entry) => entry.name === 'Dana Whitfield')?.removable,
+        preview.cc.find((entry) => entry.name === 'Cc Colleague')?.removable,
       ).toBe(true);
     });
 
     it('reports an out-of-domain follower as refused, not as a Cc', async () => {
+      // The vendor is an EMPLOYEE here, deliberately. Card 1.42 filters staff
+      // out BEFORE the outbound guard runs, so a staff-roled fixture would
+      // never reach the guard and this test would pass without testing it.
       findUnique.mockResolvedValue(
         buildTicket({
           followers: [
@@ -206,6 +259,7 @@ describe('previewMessageRecipients', () => {
                 id: 'u-ext',
                 email: 'consultant@vendor.example',
                 displayName: 'Ext Consultant',
+                role: UserRole.EMPLOYEE,
               }),
             },
           ],
@@ -229,7 +283,7 @@ describe('previewMessageRecipients', () => {
 
     it('reports a suppressed address as refused', async () => {
       isSuppressed.mockImplementation(
-        async (address: string) => address === FOLLOWER.email,
+        async (address: string) => address === CC_COLLEAGUE.email,
       );
       findUnique.mockResolvedValue(buildTicket());
       const preview = await service.previewMessageRecipients(
@@ -238,27 +292,43 @@ describe('previewMessageRecipients', () => {
         ACTOR,
       );
       expect(preview.cc.map((entry) => entry.name)).not.toContain(
-        'Dana Whitfield',
+        'Cc Colleague',
       );
       expect(preview.refused).toEqual([
-        { address: FOLLOWER.email, reason: 'suppressed after a bounce' },
+        { address: CC_COLLEAGUE.email, reason: 'suppressed after a bounce' },
       ]);
     });
 
     it('promotes the first surviving recipient when there is no requester', async () => {
       // An intake ticket whose requester never resolved. Mirrors
       // queuePublicReplyEmail: an empty To with only Cc recipients is a spam
-      // signal, so somebody has to be promoted.
+      // signal, so somebody has to be promoted - and under card 1.42 the
+      // promoted one is the external colleague, not the assignee.
       findUnique.mockResolvedValue(buildTicket({ requester: null }));
       const preview = await service.previewMessageRecipients(
         't-1',
         MessageType.PUBLIC,
         ACTOR,
       );
-      expect(preview.to).toEqual({ id: 'u-asg', name: 'Greg Weitzer' });
-      expect(preview.cc.map((entry) => entry.name)).toEqual([
-        'Dana Whitfield',
-      ]);
+      expect(preview.to).toEqual({ id: 'u-cc', name: 'Cc Colleague' });
+      expect(preview.cc).toEqual([]);
+    });
+
+    it('emails nobody when the only people left are staff', async () => {
+      // Card 1.42 §1c: rather than an email with an empty To, queue nothing.
+      findUnique.mockResolvedValue(
+        buildTicket({
+          requester: null,
+          followers: [{ userId: FOLLOWER.id, user: FOLLOWER }],
+        }),
+      );
+      const preview = await service.previewMessageRecipients(
+        't-1',
+        MessageType.PUBLIC,
+        ACTOR,
+      );
+      expect(preview.to).toBeNull();
+      expect(preview.cc).toEqual([]);
     });
   });
 
@@ -337,16 +407,30 @@ describe('previewMessageRecipients', () => {
 
   describe('the preview cannot drift from the send', () => {
     /**
-     * Both paths must ask buildRecipients the same question. This spies on it
-     * and runs BOTH, comparing the options each passed. messageAdded is allowed
-     * to fail afterwards on the mocks it does not have - by then the call has
-     * been recorded, which is the only thing under test here.
+     * The guarantee card 1.28 exists for, updated by card 1.42 rather than
+     * weakened. There are now TWO audience functions, and each path must use
+     * the same one as the other for a given message type:
+     *
+     *   a public message -> emailAudience   (the people outside the system)
+     *   an internal note -> buildRecipients (the staff audience, unchanged)
+     *
+     * This spies on both and runs the send and the preview, comparing which
+     * function each reached and with what. `messageAdded` is allowed to fail
+     * afterwards on mocks it does not have - by then the call is recorded,
+     * which is the only thing under test.
      */
-    async function optionsPassedBy(run: () => Promise<unknown>) {
-      const spy = jest.spyOn(
-        service as unknown as {
-          buildRecipients: (...args: unknown[]) => unknown[];
-        },
+    type Spied = {
+      emailAudience: (...args: unknown[]) => unknown[];
+      buildRecipients: (...args: unknown[]) => unknown[];
+    };
+
+    async function audienceCallsOf(run: () => Promise<unknown>) {
+      const emailSpy = jest.spyOn(
+        service as unknown as Spied,
+        'emailAudience',
+      );
+      const staffSpy = jest.spyOn(
+        service as unknown as Spied,
         'buildRecipients',
       );
       try {
@@ -354,28 +438,48 @@ describe('previewMessageRecipients', () => {
       } catch {
         // expected for messageAdded: the send path's mocks are not wired
       }
-      expect(spy).toHaveBeenCalled();
-      const options = spy.mock.calls[0][1];
-      spy.mockRestore();
-      return options;
+      const result = {
+        email: emailSpy.mock.calls.map((call) => call[1]),
+        staff: staffSpy.mock.calls.map((call) => call[1]),
+      };
+      emailSpy.mockRestore();
+      staffSpy.mockRestore();
+      return result;
     }
 
-    it.each([
-      ['a public reply', MessageType.PUBLIC],
-      ['an internal note', MessageType.INTERNAL],
-    ])('asks the same question as messageAdded for %s', async (_label, type) => {
+    it('a public reply resolves its email audience the same way on both paths', async () => {
       findUnique.mockResolvedValue(buildTicket());
-      const fromSend = await optionsPassedBy(() =>
+      const fromSend = await audienceCallsOf(() =>
         service.messageAdded(
           't-1',
-          { id: 'm-1', type, body: 'Body' } as never,
+          { id: 'm-1', type: MessageType.PUBLIC, body: 'Body' } as never,
           ACTOR,
         ),
       );
-      const fromPreview = await optionsPassedBy(() =>
-        service.previewMessageRecipients('t-1', type, ACTOR),
+      const fromPreview = await audienceCallsOf(() =>
+        service.previewMessageRecipients('t-1', MessageType.PUBLIC, ACTOR),
       );
-      expect(fromPreview).toEqual(fromSend);
+      // Both asked emailAudience, with the same actor.
+      expect(fromSend.email).toEqual([ACTOR.id]);
+      expect(fromPreview.email).toEqual([ACTOR.id]);
+      // And the preview did NOT fall back to the staff audience.
+      expect(fromPreview.staff).toEqual([]);
+    });
+
+    it('an internal note still asks buildRecipients the same question', async () => {
+      findUnique.mockResolvedValue(buildTicket());
+      const fromSend = await audienceCallsOf(() =>
+        service.messageAdded(
+          't-1',
+          { id: 'm-1', type: MessageType.INTERNAL, body: 'Body' } as never,
+          ACTOR,
+        ),
+      );
+      const fromPreview = await audienceCallsOf(() =>
+        service.previewMessageRecipients('t-1', MessageType.INTERNAL, ACTOR),
+      );
+      expect(fromPreview.staff[0]).toEqual(fromSend.staff[0]);
+      expect(fromPreview.email).toEqual([]);
     });
   });
 });

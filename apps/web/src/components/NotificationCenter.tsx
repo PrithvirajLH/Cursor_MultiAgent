@@ -19,6 +19,9 @@ import {
   UserPlus,
   ArrowRightLeft,
   CheckCircle,
+  Inbox,
+  RefreshCw,
+  CalendarClock,
   X,
 } from "lucide-react";
 import type { NotificationRecord } from "../api/client";
@@ -76,6 +79,24 @@ const NOTIFICATION_ICON_CONFIG: Record<
   TICKET_MENTIONED: {
     icon: <MessageSquare className="h-4 w-4 text-white" />,
     bgClass: "bg-blue-500",
+  },
+  // A new ticket arrived (card 1.42). This bell replaced the created-email to
+  // staff, so it is the only signal that work has come in - it earns a distinct
+  // icon rather than falling through to the generic one below.
+  TICKET_CREATED: {
+    icon: <Inbox className="h-4 w-4 text-white" />,
+    bgClass: "bg-indigo-500",
+  },
+  // Both of these were missing and fell through to the grey fallback bell:
+  // TICKET_UPDATED is raised by the automation engine, FOLLOW_UP_DUE by card
+  // 1.10's scheduler. Pre-existing gaps, fixed here while in the file.
+  TICKET_UPDATED: {
+    icon: <RefreshCw className="h-4 w-4 text-white" />,
+    bgClass: "bg-slate-500",
+  },
+  FOLLOW_UP_DUE: {
+    icon: <CalendarClock className="h-4 w-4 text-white" />,
+    bgClass: "bg-sky-500",
   },
 };
 

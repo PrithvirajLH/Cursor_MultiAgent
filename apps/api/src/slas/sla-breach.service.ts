@@ -698,18 +698,22 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
    */
   private async dispatchNotification(intent: NotificationIntent) {
     try {
-      const eventType =
-        intent.kind === 'BREACH' ? 'SLA_BREACHED' : 'SLA_AT_RISK';
-
+      // NO EMAIL, for either kind (card 1.42). The owner overruled the
+      // planner on this one explicitly: "I don't want any emails to agent or
+      // lead, not even the breach email. We can all track that on the
+      // platform." The planner's objection - that an alert reaching only
+      // somebody already looking at the app is not an alert - is recorded in
+      // the card and is NOT to be re-argued here. A breach is now seen when
+      // somebody next opens the app, and card 1.16's digest covers the rest.
+      //
+      // It costs the metrics nothing: agent-performance, sla-compliance,
+      // sla-breaches and reopen-rate all read timers and timestamps. The emails
+      // were never the record.
+      //
+      // ⚠️ THE IN-APP ALERT BELOW IS THE WHOLE REMAINING SIGNAL. It used to sit
+      // inside the same `if` as the send; keep it firing. If a later tidy-up
+      // removes it as well, an SLA breach becomes invisible.
       if (intent.leadUsers.length > 0) {
-        await this.notifications.notifyUsers(intent.leadUsers, {
-          eventType,
-          subject: intent.subject,
-          body: intent.body,
-          ticketId: intent.ticketId,
-          payload: intent.payload,
-        });
-
         const leadIds = intent.leadUsers.map((user) => user.id);
         if (intent.kind === 'BREACH') {
           await this.inAppNotifications.notifySlaBreached(
@@ -727,15 +731,12 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      if (intent.onCallEmails.length > 0) {
-        await this.notifications.notifyAddresses(intent.onCallEmails, {
-          eventType,
-          subject: intent.subject,
-          body: intent.body,
-          ticketId: intent.ticketId,
-          payload: intent.payload,
-        });
-      }
+      // The on-call addresses are gone too. They are raw addresses rather
+      // than users, so they LOOK like the automation escape hatch in §1b - but
+      // they exist to page staff out of hours, which is the exact thing the
+      // owner's decision removes. Flagged in the report: if the owner wants a
+      // pager route back, this is the one place to restore it, and it belongs
+      // to the digest card rather than here.
     } catch (error) {
       this.logger.error(
         'Failed to dispatch SLA notification',

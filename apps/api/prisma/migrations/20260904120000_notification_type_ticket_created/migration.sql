@@ -1,0 +1,40 @@
+-- A new-ticket bell (card 1.42, section 2a). Additive only: one new enum value
+-- and nothing else. The 56th migration.
+--
+-- WHY THIS EXISTS. Card 1.42 deletes the "ticket created" email to staff, and
+-- that email was the ONLY signal that work had arrived: NotificationsService
+-- .ticketCreated queued email and never touched InAppNotificationsService, so
+-- with the email gone staff would find out by opening the queue and looking.
+-- The bell has to exist before the email can go.
+--
+-- WHY NOT REUSE TICKET_UPDATED. It is already raised by the automation engine
+-- (rule-engine.service.ts), and the notification centre maps type -> icon, so a
+-- new ticket would have shown the automation icon or none at all.
+--
+-- ⚠️ THE NEW VALUE IS ADDED AND NOT USED. PostgreSQL will not let a newly added
+-- enum value be referenced in the same transaction that adds it, and Prisma runs
+-- a migration file inside one. So there is deliberately no backfill and no row
+-- written with 'TICKET_CREATED' here - the first one is written by the next
+-- ticket created after this deploys. Same rule as 20260903180000_ticket_follow_up
+-- and 20260828120000_ticket_channel_api, which is the precedent for the one-liner.
+--
+-- HAND-WRITTEN from `prisma migrate diff`, which additionally emitted the
+-- standing twelve destructive statements that are NOT part of this change.
+-- Every one was removed:
+--
+--   * six DROP INDEX for the trigram GIN indexes created by
+--     20260220150000_add_ticket_search_trigram_indexes and
+--     20260528_add_knowledge_base -- KbArticle_content/summary/title_trgm_idx
+--     and Ticket_description/displayId/subject_trgm_idx. Prisma cannot express
+--     `USING GIN (col gin_trgm_ops)` in schema.prisma, so it reads them as
+--     drift on every generate. Applying them would silently destroy ticket and
+--     KB search performance against the stated sub-500ms requirement.
+--   * six ALTER COLUMN ... DROP DEFAULT on AutomationExecution.trigger and the
+--     updatedAt columns of SlaBusinessHoursSetting, SlaPolicyAssignment,
+--     SlaPolicyConfig, SlaPolicyConfigTarget and TicketEmailThread -- the same
+--     standing drift, equally unrelated to this change.
+--
+-- Verified: grep -cE '^(DROP|ALTER TABLE .* DROP)' migration.sql  =>  0
+
+-- AlterEnum
+ALTER TYPE "NotificationType" ADD VALUE 'TICKET_CREATED';

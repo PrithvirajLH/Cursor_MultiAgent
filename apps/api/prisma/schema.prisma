@@ -115,6 +115,10 @@ enum IdempotencyState {
 }
 
 enum NotificationType {
+  /// A new ticket arrived and somebody on the assigned team should pick it up
+  /// (card 1.42). NOT the same as TICKET_UPDATED, which the automation engine
+  /// raises - the notification centre maps type to icon, so they cannot share.
+  TICKET_CREATED
   TICKET_ASSIGNED
   TICKET_UPDATED
   NEW_MESSAGE

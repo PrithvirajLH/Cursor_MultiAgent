@@ -1287,7 +1287,21 @@ export class TicketsService {
   async create(
     payload: CreateTicketDto,
     user: AuthUser,
-    options?: { skipRequiredCustomFields?: boolean; tagSource?: TagSource },
+    options?: {
+      skipRequiredCustomFields?: boolean;
+      tagSource?: TagSource;
+      /**
+       * Do not email the requester that their ticket was created (card 1.42
+       * §3). For the inbound path only, which sends its own and better
+       * acknowledgement - without this one emailed-in request produced TWO
+       * emails back, "Ticket created" and "We have received your request".
+       *
+       * The EMAIL only. The new-ticket bell for the assigned team still fires,
+       * because an emailed-in ticket is exactly the kind nobody is watching a
+       * queue for. Shaped like addMessage's `{ suppressNotifications }`.
+       */
+      suppressCreatedEmail?: boolean;
+    },
   ) {
     const requesterId = payload.requesterId ?? user.id;
 
@@ -1519,7 +1533,9 @@ export class TicketsService {
     ]);
 
     await this.safeNotify(() =>
-      this.notifications.ticketCreated(updatedTicket, user),
+      this.notifications.ticketCreated(updatedTicket, user, {
+        suppressEmail: options?.suppressCreatedEmail === true,
+      }),
     );
     await this.ticketRealtime.safeRealtime(() =>
       this.ticketRealtime.emitTicketRealtimeEvent({

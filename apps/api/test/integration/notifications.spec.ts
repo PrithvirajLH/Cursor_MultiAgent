@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
 import { fixtureEmails, fixtureUserIds, fixtureTeamIds } from '../utils/fixtures';
+import { getPrisma } from '../utils/prisma';
 import { resetTestDb } from '../utils/reset-test-db';
 import { createTestApp } from '../utils/test-app';
 
@@ -188,8 +189,17 @@ describe('In-app notifications', () => {
   });
 
   it('scopes notifications to their owning user', async () => {
-    // The lead has never been assigned a ticket, so should have none of the
-    // agent's notifications and an unread count of zero.
+    // UPDATED BY CARD 1.42. This asserted the lead's unread count was exactly
+    // ZERO, on the premise that "the lead has never been assigned a ticket".
+    // That premise is gone: the lead sits on the IT roster, and card 1.42's
+    // new-ticket bell rings the whole assigned team - so the lead now
+    // legitimately has notifications of their own.
+    //
+    // The thing under test is SCOPING, not emptiness, so the count is compared
+    // against the lead's own rows instead of a hardcoded zero. That is a
+    // stronger assertion: a leak would show up as a mismatch rather than
+    // needing the lead to own nothing.
+    //
     const leadList = (
       await request(server)
         .get('/api/notifications')
@@ -210,7 +220,17 @@ describe('In-app notifications', () => {
         .set(authHeader(fixtureEmails.lead))
         .expect(200)
     ).body as UnreadCountResponse;
-    expect(leadCount.data.count).toBe(0);
+    // The count is the lead's OWN unread rows and nobody else's. Compared
+    // against the database rather than a hardcoded number, so it stays true
+    // however many bells card 1.42's new-ticket notification adds.
+    const ownUnread = await getPrisma().notification.count({
+      where: { userId: fixtureUserIds.lead, isRead: false },
+    });
+    const everyoneElseUnread = await getPrisma().notification.count({
+      where: { userId: { not: fixtureUserIds.lead }, isRead: false },
+    });
+    expect(leadCount.data.count).toBe(ownUnread);
+    expect(leadCount.data.count).toBeLessThan(ownUnread + everyoneElseUnread + 1);
   });
 
   it('does not let a user mark another user notification as read', async () => {

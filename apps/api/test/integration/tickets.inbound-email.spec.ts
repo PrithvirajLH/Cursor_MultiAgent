@@ -217,13 +217,28 @@ describe('Inbound email ingestion', () => {
       `${subject} [${body.ticket.displayId ?? body.ticket.id}]`,
     );
     expect(outbox[0]?.body).toContain('Hello Ack Requester,');
-    expect(outbox[0]?.body).toContain('What happens next');
-    expect(outbox[0]?.body).toContain('Status: New');
+    // REWRITTEN BY CARD 1.42: the "What happens next" block is deleted - it
+    // promised only that we would respond - along with the Ticket details
+    // block and the sign-off. What is left is the reference and how to reply.
+    expect(outbox[0]?.body).toContain('We have your email');
+    expect(outbox[0]?.body).toContain('Your reference is');
+    expect(outbox[0]?.body).not.toContain('Best regards');
+    // No status line at all now. It read "Status: New", which told a requester
+    // nothing and is the shape card 1.42 forbids reaching them.
+    expect(outbox[0]?.body).not.toContain('Status:');
     const html = getOutboxHtml(outbox[0]?.payload);
     const emailMetadata = getOutboxEmailMetadata(outbox[0]?.payload);
-    expect(html).toContain('Request received');
-    expect(html).toContain('What happens next');
-    expect(html).toContain('View Ticket');
+    // The heading, the "What happens next" panel and the hero button are all
+    // deleted (card 1.34's treatment, applied by 1.42). A hidden preheader
+    // takes their place, and it is asserted on its style attribute because a
+    // preheader that is not really hidden is a duplicated visible line.
+    expect(html).not.toContain('Request received');
+    expect(html).not.toContain('What happens next');
+    expect(html).not.toContain('View Ticket');
+    expect(html).toContain('view online');
+    expect(html).toContain(
+      'display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;',
+    );
     expect(emailMetadata.replyTo).toMatch(expectedReplyToPattern());
     expect(emailMetadata.inReplyTo).toBe(inboundMessageId);
     expect(emailMetadata.references).toContain(inboundMessageId);
@@ -277,75 +292,107 @@ describe('Inbound email ingestion', () => {
       })
       .expect(201);
 
-    const requesterOutbox = await prisma.notificationOutbox.findMany({
-      where: {
-        ticketId: created.ticket.id,
-        toEmail: inboundEmail,
-        eventType: {
-          in: ['TICKET_TRANSFERRED', 'TICKET_STATUS_CHANGED', 'MESSAGE_ADDED'],
-        },
-      },
+    // REWRITTEN BY CARD 1.42, and the rewrite is most of the point of that card.
+    //
+    // This used to assert that a transfer, a status change and a reply each
+    // produced an email to the requester, and that all three threaded. Two of
+    // those three emails no longer exist: a transfer is an internal routing
+    // decision and a non-RESOLVED status change is a note to ourselves. What
+    // survives is the inbound acknowledgement and the public reply.
+    //
+    // The threading contract it was written to protect (card 1.33) is asserted
+    // in full below on the emails that remain, so the coverage moves rather
+    // than disappearing.
+    const surviving = await prisma.notificationOutbox.findMany({
+      where: { ticketId: created.ticket.id, toEmail: inboundEmail },
       orderBy: { createdAt: 'asc' },
     });
+    expect(surviving.map((entry) => entry.eventType)).toEqual([
+      'INBOUND_EMAIL_ACKNOWLEDGED',
+      'MESSAGE_ADDED',
+    ]);
 
-    expect(requesterOutbox).toHaveLength(3);
-
-    const transferOutbox = requesterOutbox.find(
-      (entry) => entry.eventType === 'TICKET_TRANSFERRED',
-    );
-    const statusOutbox = requesterOutbox.find(
-      (entry) => entry.eventType === 'TICKET_STATUS_CHANGED',
-    );
-    const replyOutbox = requesterOutbox.find(
-      (entry) => entry.eventType === 'MESSAGE_ADDED',
-    );
-
-    expect(transferOutbox).toBeTruthy();
-    expect(statusOutbox).toBeTruthy();
-    expect(replyOutbox).toBeTruthy();
-
-    const assignedOutbox = await prisma.notificationOutbox.findFirst({
+    // THE DELETIONS, ASSERTED AS ABSENCES (card 1.42 §7). A count, not a
+    // response code - a count is what catches a re-introduction.
+    const deleted = await prisma.notificationOutbox.findMany({
       where: {
         ticketId: created.ticket.id,
-        toEmail: fixtureEmails.agent,
-        eventType: 'TICKET_ASSIGNED',
+        eventType: {
+          in: [
+            'TICKET_ASSIGNED',
+            'TICKET_TRANSFERRED',
+            'TICKET_STATUS_CHANGED',
+          ],
+        },
       },
-      orderBy: { createdAt: 'desc' },
     });
-    expect(assignedOutbox).toBeTruthy();
+    expect(deleted).toHaveLength(0);
 
-    const transferMetadata = getOutboxEmailMetadata(transferOutbox?.payload);
-    const statusMetadata = getOutboxEmailMetadata(statusOutbox?.payload);
-    const replyMetadata = getOutboxEmailMetadata(replyOutbox?.payload);
-    const assignedHtml = getOutboxHtml(assignedOutbox?.payload);
-    const transferHtml = getOutboxHtml(transferOutbox?.payload);
-    const statusHtml = getOutboxHtml(statusOutbox?.payload);
+    // AND THE OTHER HALF: staff must still be told, in the app. This is the
+    // assertion most likely to be lost by accident, which is why it sits
+    // directly beside the absence above.
+    const assignedBell = await prisma.notification.findMany({
+      where: {
+        ticketId: created.ticket.id,
+        type: 'TICKET_ASSIGNED',
+        userId: fixtureUserIds.agent,
+      },
+    });
+    expect(assignedBell).toHaveLength(1);
+    const transferBell = await prisma.notification.findMany({
+      where: { ticketId: created.ticket.id, type: 'TICKET_TRANSFERRED' },
+    });
+    expect(transferBell.length).toBeGreaterThan(0);
+
+    const ackOutbox = surviving[0];
+    const replyOutbox = surviving[1];
+    const ackMetadata = getOutboxEmailMetadata(ackOutbox.payload);
+    const replyMetadata = getOutboxEmailMetadata(replyOutbox.payload);
 
     // Card 1.33 brackets composed msg-ids. RFC 5322 requires
     // `msg-id = "<" id-left "@" id-right ">"`, and this webhook payload
     // supplies the id bare; emitting it bare was malformed and could fail a
     // strict client's matching. The STORED value is unchanged.
     const bracketed = `<${inboundMessageId}>`;
-    expect(transferMetadata.inReplyTo).toBe(bracketed);
-    expect(statusMetadata.inReplyTo).toBe(bracketed);
     expect(replyMetadata.inReplyTo).toBe(bracketed);
-    expect(transferMetadata.references).toContain(bracketed);
-    expect(statusMetadata.references).toContain(bracketed);
     expect(replyMetadata.references).toContain(bracketed);
 
-    const transferMessageId = buildOutboundMessageId(
-      transferOutbox!.id,
-      transferMetadata.replyTo,
-    );
-    expect(statusMetadata.inReplyTo).not.toBe(transferMessageId);
-    expect(replyMetadata.inReplyTo).not.toBe(transferMessageId);
+    // ⚠️ A PRE-EXISTING DEFECT, FOUND BY WRITING THIS AND DELIBERATELY NOT
+    // FIXED HERE. The acknowledgement emits In-Reply-To BARE, not bracketed:
+    // buildOutboundEmailContext uses `params.preferredInReplyTo?.trim()` raw
+    // (ticket-email-thread.service.ts:51) while `normalizeMessageId` on line
+    // 126 exists to bracket exactly this. RFC 5322 requires
+    // `msg-id = "<" id-left "@" id-right ">"`, so a strict client may fail to
+    // match it - on the requester's very FIRST email, whose threading is the
+    // one that decides whether their reply lands on the ticket.
+    //
+    // Card 1.42 §5 says not to touch the threading headers and to stop and
+    // report instead. So this asserts what the code actually does, and the
+    // report names the one-line fix. The other emails were unaffected because
+    // theirs comes from pickInReplyTo, which is already bracketed - which is
+    // why no existing test caught it.
+    expect(ackMetadata.inReplyTo).toBe(inboundMessageId);
+    expect(ackMetadata.references).toContain(bracketed);
 
-    expect(assignedHtml).toContain('Assignment updated');
-    expect(assignedHtml).toContain('View Ticket');
-    expect(transferHtml).toContain('Ticket transferred');
-    expect(transferHtml).toContain('View Ticket');
-    expect(statusHtml).toContain('Status updated');
-    expect(statusHtml).toContain('View Ticket');
+    // Still anchored to the ORIGINAL inbound email after the transfer, which
+    // is what this test is named for: In-Reply-To never names another
+    // outbound copy.
+    const ackMessageId = buildOutboundMessageId(
+      ackOutbox.id,
+      ackMetadata.replyTo,
+    );
+    expect(replyMetadata.inReplyTo).not.toBe(ackMessageId);
+
+    // Card 1.42 §5 on the survivors: no hero button, no sign-off, and a
+    // preheader that is really hidden.
+    const ackHtml = getOutboxHtml(ackOutbox.payload);
+    const replyHtml = getOutboxHtml(replyOutbox.payload);
+    for (const html of [ackHtml, replyHtml]) {
+      expect(html).not.toContain('View Ticket');
+      expect(html).not.toContain('Best regards');
+      expect(html).toContain('view online');
+      expect(html).toContain('display:none;font-size:0;line-height:0');
+    }
   });
 
   it('threads consecutive outbound status notifications for portal-created tickets', async () => {
@@ -407,43 +454,32 @@ describe('Inbound email ingestion', () => {
       orderBy: { createdAt: 'asc' },
     });
 
-    const stepMessageIds = (fragment: string) =>
-      statusOutbox
-        .filter((entry) => entry.body.includes(fragment))
-        .map((entry) =>
-          buildOutboundMessageId(
-            entry.id,
-            getOutboxEmailMetadata(entry.payload).replyTo,
-          ),
-        );
-    const requesterStep = (fragment: string) =>
-      statusOutbox.find(
-        (entry) =>
-          entry.toEmail === fixtureEmails.requester &&
-          entry.body.includes(fragment),
-      );
+    // REWRITTEN AGAIN BY CARD 1.42. Six transitions were driven above -
+    // TRIAGED, an assignment, RESOLVED, CLOSED, REOPENED, RESOLVED - and they
+    // now produce exactly TWO emails, one for each RESOLVED, both to the
+    // requester alone. That count is simultaneously the threading fixture and
+    // the deletion assertion for this flow: if a non-RESOLVED status email
+    // came back, this length changes.
+    expect(statusOutbox).toHaveLength(2);
+    expect(statusOutbox.map((entry) => entry.toEmail)).toEqual([
+      fixtureEmails.requester,
+      fixtureEmails.requester,
+    ]);
+    // No raw enum reaches the requester any more. The old bodies read
+    // "Status changed from CLOSED to REOPENED."
+    for (const entry of statusOutbox) {
+      expect(entry.body).toContain('We have marked your request as resolved.');
+      expect(entry.body).not.toContain('RESOLVED');
+      expect(entry.body).not.toContain('REOPENED');
+      expect(entry.body).not.toContain('CLOSED');
+    }
 
-    const closedMessageIds = stepMessageIds(
-      'Status changed from RESOLVED to CLOSED.',
-    );
-    const reopenedMessageIds = stepMessageIds(
-      'Status changed from CLOSED to REOPENED.',
-    );
-    const reopenedOutbox = requesterStep('Status changed from CLOSED to REOPENED.');
-    const resolvedOutbox = requesterStep(
-      'Status changed from REOPENED to RESOLVED.',
-    );
+    const [firstResolved, secondResolved] = statusOutbox;
+    const firstMetadata = getOutboxEmailMetadata(firstResolved.payload);
+    const secondMetadata = getOutboxEmailMetadata(secondResolved.payload);
 
-    expect(closedMessageIds.length).toBeGreaterThan(0);
-    expect(reopenedMessageIds.length).toBeGreaterThan(0);
-    expect(reopenedOutbox).toBeTruthy();
-    expect(resolvedOutbox).toBeTruthy();
-
-    const reopenedMetadata = getOutboxEmailMetadata(reopenedOutbox?.payload);
-    const resolvedMetadata = getOutboxEmailMetadata(resolvedOutbox?.payload);
-
-    expect(reopenedMetadata.replyTo).toMatch(expectedReplyToPattern());
-    expect(resolvedMetadata.replyTo).toMatch(expectedReplyToPattern());
+    expect(firstMetadata.replyTo).toMatch(expectedReplyToPattern());
+    expect(secondMetadata.replyTo).toMatch(expectedReplyToPattern());
     // Every step references the one stable root, so they all land in one
     // conversation regardless of which recipient's copy went out when.
     const thread = await prisma.ticketEmailThread.findUnique({
@@ -452,15 +488,18 @@ describe('Inbound email ingestion', () => {
     });
     const root = buildTicketRootMessageId(
       thread?.replyToken ?? '',
-      reopenedMetadata.replyTo,
+      secondMetadata.replyTo,
     );
-    expect(reopenedMetadata.references?.[0]).toBe(root);
-    expect(resolvedMetadata.references?.[0]).toBe(root);
+    expect(firstMetadata.references?.[0]).toBe(root);
+    expect(secondMetadata.references?.[0]).toBe(root);
     // And In-Reply-To is never one of those per-recipient outbound ids.
-    expect(closedMessageIds).not.toContain(reopenedMetadata.inReplyTo);
-    expect(reopenedMessageIds).not.toContain(resolvedMetadata.inReplyTo);
+    const firstMessageId = buildOutboundMessageId(
+      firstResolved.id,
+      firstMetadata.replyTo,
+    );
+    expect(secondMetadata.inReplyTo).not.toBe(firstMessageId);
     // Nothing unroutable is ever emitted.
-    for (const metadata of [reopenedMetadata, resolvedMetadata]) {
+    for (const metadata of [firstMetadata, secondMetadata]) {
       expect(metadata.inReplyTo ?? '').not.toContain('@localhost');
       expect(
         (metadata.references ?? []).some((id) => id.includes('@localhost')),

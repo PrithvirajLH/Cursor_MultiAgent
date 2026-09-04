@@ -204,13 +204,28 @@ describe('SLA instances and breaches', () => {
     });
     expect(updatedTicket?.priority).toBe('SEV1');
 
+    // REWRITTEN BY CARD 1.42. This asserted that the lead and the on-call
+    // address were emailed. The owner overruled that explicitly - "I don't
+    // want any emails to agent or lead, not even the breach email. We can all
+    // track that on the platform" - so a breach now sends NOTHING and is seen
+    // when somebody next opens the app.
+    //
+    // BOTH HALVES ARE ASSERTED ON PURPOSE. Zero emails alone would still pass
+    // if a later tidy-up deleted the in-app alert too, which would make a
+    // breach invisible rather than quiet.
     const outbox = await prisma.notificationOutbox.findMany({
       where: { ticketId: ticket.id, eventType: 'SLA_BREACHED' },
     });
-    const emails = outbox.map((entry) => entry.toEmail);
-    expect(emails).toEqual(
-      expect.arrayContaining([fixtureEmails.lead, 'oncall@company.com']),
-    );
+    expect(outbox).toHaveLength(0);
+
+    const breachBell = await prisma.notification.findMany({
+      where: {
+        ticketId: ticket.id,
+        type: 'SLA_BREACHED',
+        userId: fixtureUserIds.lead,
+      },
+    });
+    expect(breachBell).toHaveLength(1);
   });
 
   it('sends SLA at-risk notification before breach', async () => {
@@ -251,5 +266,12 @@ describe('SLA instances and breaches', () => {
       },
     });
     expect(inApp.length).toBe(1);
+
+    // Card 1.42: the bell above is now the ONLY at-risk signal. Assert the
+    // email really is gone, next to the assertion that the alert survives.
+    const atRiskOutbox = await prisma.notificationOutbox.findMany({
+      where: { ticketId: ticket.id, eventType: 'SLA_AT_RISK' },
+    });
+    expect(atRiskOutbox).toHaveLength(0);
   });
 });

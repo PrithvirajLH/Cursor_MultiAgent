@@ -56,11 +56,20 @@ describe('Email threading', () => {
       })
       .expect(201);
     const ticket = response.body as TicketResponse;
-    // An assignee gives the public reply somebody to CC.
     await request(server)
       .post(`/api/tickets/${ticket.id}/assign`)
       .set(authHeader(fixtureEmails.lead))
       .send({ assigneeId: fixtureUserIds.agent })
+      .expect(201);
+    // UPDATED BY CARD 1.42. The comment here used to read "an assignee gives
+    // the public reply somebody to CC" - it no longer does, because staff are
+    // not emailed at all now. A NON-STAFF follower is what gives the reply a
+    // Cc, so the one-email-with-a-Cc shape this suite protects still has
+    // something to protect.
+    await request(server)
+      .post(`/api/tickets/${ticket.id}/followers`)
+      .set(authHeader(fixtureEmails.lead))
+      .send({ userId: fixtureUserIds.otherRequester })
       .expect(201);
     return ticket;
   }
@@ -106,7 +115,12 @@ describe('Email threading', () => {
     // Message-ID divergence entirely.
     expect(rows).toHaveLength(1);
     expect(rows[0].toEmail).toBe(fixtureEmails.requester);
-    expect(headersOf(rows[0].payload).cc).toContain(fixtureEmails.agent);
+    // The Cc is the external colleague. Card 1.42: the AGENT assignee is on
+    // this ticket and is deliberately NOT on the email - the reply is already
+    // on her screen with a bell.
+    const cc = headersOf(rows[0].payload).cc ?? [];
+    expect(cc).toContain(fixtureEmails.otherRequester);
+    expect(cc).not.toContain(fixtureEmails.agent);
   });
 
   it('threads two replies onto the same root, and grows References', async () => {

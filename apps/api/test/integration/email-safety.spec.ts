@@ -220,8 +220,24 @@ describe('Email safety rails', () => {
       })
       .expect(201);
 
-    // Notifications still go out, which is the proof the DTO change is additive.
-    expect(await outboxCount(ticket.id)).toBeGreaterThan(before);
+    // REWRITTEN BY CARD 1.42. This asserted the outbox grew, as a proxy for
+    // "an ordinary reply is processed normally". That proxy no longer holds and
+    // the new behaviour is correct: the inbound sender IS the requester, so
+    // after card 1.42 the only people left are staff, and staff are not
+    // emailed - the reply is on their screen with a bell.
+    //
+    // The intent of the test is that card 1.22's header handling is ADDITIVE,
+    // so the proxy moves to what actually proves the reply was processed: the
+    // message is stored and the in-app notification fires.
+    void before;
+    const stored = await prisma.ticketMessage.findFirst({
+      where: { ticketId: ticket.id, body: { contains: 'Any update on this' } },
+    });
+    expect(stored).toBeTruthy();
+    const bells = await prisma.notification.findMany({
+      where: { ticketId: ticket.id, type: 'NEW_MESSAGE' },
+    });
+    expect(bells.length).toBeGreaterThan(0);
     expect(await suppressionEvents(ticket.id)).toHaveLength(0);
   });
 

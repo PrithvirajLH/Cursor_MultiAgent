@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
 import { resolveOutboundRecipients } from './outbound-recipients.util';
+import { isStaffRole } from './is-staff-role.util';
 import { canManageOtherFollowers } from '../common/can-manage-followers.util';
 import type { MessageRecipientsPreview } from './message-recipients-preview.type';
 import { InAppNotificationsService } from './in-app-notifications.service';
@@ -46,6 +47,16 @@ type RecipientOptions = {
 type QueuedEmailDetails = {
   subject: string;
   body: string;
+  /**
+   * The hidden inbox-preview line (card 1.34, applied by 1.42).
+   *
+   * Explicit rather than derived, because the first line of the body is often
+   * the least useful thing to preview - "We have marked your request as
+   * resolved" tells the reader nothing they cannot see in the subject, whereas
+   * "tell us if it is fixed, or reopen it" is why they should open it. Falls
+   * back to the body when a caller has nothing better to say.
+   */
+  preheader?: string;
   eventType: string;
   ticketId?: string;
   payload?: Prisma.InputJsonValue;
@@ -67,40 +78,143 @@ export class NotificationsService {
     private readonly emailSuppression: EmailSuppressionService,
   ) {}
 
-  async ticketCreated(ticket: { id: string }, actor: AuthUser) {
+  /**
+   * A new ticket: ONE email, to the requester, and a bell for the team.
+   *
+   * Card 1.42. The assignee-and-followers email is gone - staff read the app.
+   * What replaced it is `notifyTeamOfNewTicket` below, and that had to be built
+   * before this email could be cut: until this card `ticketCreated` queued email
+   * and never touched InAppNotificationsService at all, so the deleted email was
+   * the ONLY signal that work had arrived.
+   *
+   * `suppressEmail` is for the inbound path, which sends its own and better
+   * acknowledgement (§3 - otherwise one emailed-in request produces two emails
+   * back). It suppresses THE EMAIL ONLY and the bell still fires: §3 says
+   * "suppress the created-email", and suppressing the whole call would have
+   * silenced the team notification on exactly the tickets nobody is watching a
+   * queue for.
+   */
+  async ticketCreated(
+    ticket: { id: string },
+    actor: AuthUser,
+    options?: { suppressEmail?: boolean },
+  ) {
     const fullTicket = await this.loadTicket(ticket.id);
     if (!fullTicket) {
       return;
     }
-
-    const recipients = this.buildRecipients(fullTicket, {
-      includeRequester: true,
-      includeAssignee: true,
-      includeFollowers: true,
-      excludeUserId: actor.id,
-    });
-
+    await this.notifyTeamOfNewTicket(fullTicket, actor);
+    if (options?.suppressEmail) {
+      return;
+    }
+    const requester = fullTicket.requester;
+    if (!requester?.email) {
+      return;
+    }
+    // ⚠️ THE ACTOR IS NOT EXCLUDED HERE, and that is a deliberate change.
+    //
+    // The old code built this audience with `excludeUserId: actor.id`, and on
+    // the portal the requester IS the actor - so the "ticket created ->
+    // requester" email that §1 keeps had in practice almost never fired. It
+    // reached the assignee and followers, who are exactly the staff this card
+    // removes. Keeping the exclusion would have left a survivor that only
+    // sends when staff raise a ticket on somebody's behalf.
+    //
+    // So a requester now gets an acknowledgement for a portal ticket, the same
+    // courtesy the inbound path already gave for an emailed one. That is a NEW
+    // email in practice rather than a preserved one; flagged in the report,
+    // and one line to reverse if the owner would rather it stayed silent.
     const emailContext = await this.buildTicketEmailContext(fullTicket);
+    const reference = this.ticketLabel(fullTicket);
+    // No raw status or priority enum, and no team name: a requester does not
+    // need our internal routing, and card 1.42 forbids the enum outright. The
+    // old body led with "A new ticket has been created", which is what the
+    // subject line already said.
     const body = [
-      'A new ticket has been created.',
-      `Subject: ${fullTicket.subject}`,
-      `Priority: ${fullTicket.priority}`,
-      `Status: ${fullTicket.status}`,
-      `Team: ${fullTicket.assignedTeam?.name ?? 'Unassigned'}`,
+      'We have logged your request and the team will pick it up.',
       '',
-      `View: ${this.ticketLink(fullTicket.id)}`,
+      `Your reference is ${reference}.`,
+      '',
+      REPLY_INSTRUCTION,
     ].join('\n');
-    await this.queueEmails(recipients, {
+    await this.queueEmails([requester], {
       eventType: 'TICKET_CREATED',
       subject: emailContext.subject,
       body,
+      preheader: `Logged as ${reference}. We will be in touch.`,
       ticketId: fullTicket.id,
+      // The payload is the outbox audit row, never shown to a recipient, so the
+      // enums stay here where reporting can still read them.
       payload: {
         priority: fullTicket.priority,
         status: fullTicket.status,
       },
       emailMetadata: emailContext.emailMetadata,
     });
+  }
+
+  /**
+   * Tell the assigned team that a new ticket landed (card 1.42 §2a).
+   *
+   * `buildRecipients` cannot answer this and that is why it is a separate
+   * query: it offers requester / assignee / followers and has NO notion of a
+   * team, while a brand-new ticket usually has no assignee and no followers at
+   * all - so the existing options would have notified nobody. The team roster
+   * (TeamMember) is the lookup.
+   *
+   * The roster is staff by construction, so this cannot show a ticket to
+   * somebody outside the team. With no team at all - an unrouted intake ticket -
+   * it deliberately tells NOBODY rather than everybody; that ticket is found in
+   * the unassigned queue, and waking the whole organisation is worse.
+   *
+   * ⚠️ The requester is excluded EXPLICITLY, not merely via the actor. §2a
+   * assumed `excludeUserId` covered it - it does not. An agent raising a ticket
+   * on behalf of a colleague who happens to sit on the assigned team would
+   * otherwise send that colleague a "new ticket" bell for their own request.
+   */
+  private async notifyTeamOfNewTicket(
+    ticket: {
+      id: string;
+      subject: string;
+      requesterId: string;
+      assigneeId: string | null;
+      assignedTeamId: string | null;
+      assignedTeam?: { name: string } | null;
+    },
+    actor: AuthUser,
+  ) {
+    const ids = new Set<string>();
+    if (ticket.assigneeId) {
+      ids.add(ticket.assigneeId);
+    }
+    if (ticket.assignedTeamId) {
+      const members = await this.prisma.teamMember.findMany({
+        where: { teamId: ticket.assignedTeamId },
+        select: { userId: true },
+      });
+      for (const member of members) {
+        ids.add(member.userId);
+      }
+    }
+    ids.delete(ticket.requesterId);
+    const recipientIds = Array.from(ids);
+    if (recipientIds.length === 0) {
+      return;
+    }
+    await this.inAppNotifications
+      .notifyTicketCreated(
+        ticket.id,
+        recipientIds,
+        actor.id,
+        ticket.subject,
+        ticket.assignedTeam?.name ?? null,
+      )
+      .catch((error) =>
+        this.logger.error(
+          'Failed to create new-ticket notification',
+          (error as Error).stack,
+        ),
+      );
   }
 
   /**
@@ -150,10 +264,14 @@ export class NotificationsService {
       fullTicket.assignedTeam?.slug,
       actor,
     );
+    // TWO audiences, and they are deliberately different (card 1.42 §1c).
+    // Everyone on the ticket gets the bell; only the people outside the system
+    // get an email.
     const recipients = this.buildRecipients(
       fullTicket,
       this.messageAudienceOptions(actor.id, isInternal),
     );
+    const emailRecipients = this.emailAudience(fullTicket, actor.id);
 
     // An INTERNAL note sends no email, to anybody (card 1.33 section 4.0b).
     // Staff see it in the ticket conversation and get the in-app notification
@@ -166,7 +284,7 @@ export class NotificationsService {
     if (!isInternal) {
       await this.queuePublicReplyEmail(
         fullTicket,
-        recipients,
+        emailRecipients,
         message,
         actor,
         agentDisplayName,
@@ -213,32 +331,14 @@ export class NotificationsService {
       return;
     }
 
-    const recipients = this.buildRecipients(fullTicket, {
-      includeAssignee: true,
-      includeFollowers: true,
-      excludeUserId: actor.id,
-    });
-
-    const assigneeName = fullTicket.assignee?.displayName ?? 'Unassigned';
-    const emailContext = await this.buildTicketEmailContext(fullTicket);
-    const body = [
-      `Ticket assigned to ${assigneeName}.`,
-      `Status: ${fullTicket.status}`,
-      '',
-      `View: ${this.ticketLink(fullTicket.id)}`,
-    ].join('\n');
-
-    // Queue email notifications
-    await this.queueEmails(recipients, {
-      eventType: 'TICKET_ASSIGNED',
-      subject: emailContext.subject,
-      body,
-      ticketId: fullTicket.id,
-      payload: {
-        assigneeId: fullTicket.assigneeId,
-      },
-      emailMetadata: emailContext.emailMetadata,
-    });
+    // NO EMAIL (card 1.42). Assignment concerns the assignee and the followers,
+    // who are staff, and staff read the app. The in-app notification below is
+    // what tells them, and it already existed - which is why this deletion was
+    // safe and the created-email's was not.
+    //
+    // Nothing is composed here on purpose. A subject and body left behind for a
+    // send that no longer happens is how a later card re-enables this by
+    // accident; the same reasoning as the internal-note comment above.
 
     // Create in-app notification for assignee
     if (fullTicket.assigneeId) {
@@ -275,28 +375,10 @@ export class NotificationsService {
       excludeUserId: actor.id,
     });
 
-    const priorTeam = priorTeamId
-      ? await this.prisma.team.findUnique({ where: { id: priorTeamId } })
-      : null;
-    const emailContext = await this.buildTicketEmailContext(fullTicket);
-    const body = [
-      `Ticket transferred from ${priorTeam?.name ?? 'Unassigned'} to ${fullTicket.assignedTeam?.name ?? 'Unassigned'}.`,
-      '',
-      `View: ${this.ticketLink(fullTicket.id)}`,
-    ].join('\n');
-
-    // Queue email notifications
-    await this.queueEmails(recipients, {
-      eventType: 'TICKET_TRANSFERRED',
-      subject: emailContext.subject,
-      body,
-      ticketId: fullTicket.id,
-      payload: {
-        fromTeamId: priorTeamId,
-        toTeamId: fullTicket.assignedTeamId,
-      },
-      emailMetadata: emailContext.emailMetadata,
-    });
+    // NO EMAIL (card 1.42). A transfer is an internal routing decision; the
+    // requester does not need to know which team holds their ticket, and the
+    // teams involved read the app. `recipients` survives because the in-app
+    // notification below still goes to the whole ticket audience.
 
     // Create in-app notifications
     const recipientIds = recipients.map((r) => r.id);
@@ -333,37 +415,20 @@ export class NotificationsService {
       excludeUserId: actor.id,
     });
 
-    const emailContext = await this.buildTicketEmailContext(fullTicket);
-    // On RESOLVED the requester can confirm or reopen from the email; the
-    // links only pre-open a dialog in the portal, the API still authorises.
-    const requesterActionLines =
-      fullTicket.status === TicketStatus.RESOLVED
-        ? [
-            `Is it fixed? Close it: ${this.ticketLink(fullTicket.id)}?action=confirm`,
-            `Not fixed? Reopen it: ${this.ticketLink(fullTicket.id)}?action=reopen`,
-            '',
-          ]
-        : [];
-    const body = [
-      `Status changed from ${previousStatus} to ${fullTicket.status}.`,
-      '',
-      'If you need anything else, reply to this email and the ticket will update automatically.',
-      '',
-      ...requesterActionLines,
-      `View: ${this.ticketLink(fullTicket.id)}`,
-    ].join('\n');
-    // Queue email notifications
-    await this.queueEmails(recipients, {
-      eventType: 'TICKET_STATUS_CHANGED',
-      subject: emailContext.subject,
-      body,
-      ticketId: fullTicket.id,
-      payload: {
-        from: previousStatus,
-        to: fullTicket.status,
-      },
-      emailMetadata: emailContext.emailMetadata,
-    });
+    // ONE status change sends email, and only to the requester (card 1.42).
+    //
+    // Every other transition sent one before this card - to the requester, the
+    // assignee and every follower - and none of them needed it. WAITING_ON_VENDOR
+    // is a note to ourselves; ASSIGNED and IN_PROGRESS are visible in the queue.
+    // The old body also leaked the raw enum ("Status changed from NEW to
+    // WAITING_ON_REQUESTER") to the person being waited on.
+    //
+    // RESOLVED survives because it asks the requester for something: confirm,
+    // reopen, or rate it. The links only pre-open a dialog in the portal; the
+    // API still authorises.
+    if (fullTicket.status === TicketStatus.RESOLVED) {
+      await this.queueResolvedEmail(fullTicket, previousStatus, actor);
+    }
 
     // Create in-app notifications for resolved tickets
     if (
@@ -385,6 +450,112 @@ export class NotificationsService {
           ),
         );
     }
+  }
+
+  /**
+   * The one status email a requester still receives - and card 1.14 folded in.
+   *
+   * It has its own body rather than going through the default builder because
+   * it asks three things at once. `buildHtmlContentBlocks` escapes the body
+   * text, so a URL written into it renders as unclickable characters; three
+   * real anchors matter too much here to accept that.
+   *
+   * ⚠️ The rating is a LINK to the ticket, where card 1.14's widget already
+   * lives - NOT a one-click star in the email. A public rating endpoint would be
+   * an unauthenticated write whose only authorisation is a token sitting in a
+   * forwardable email, which is precisely the hazard card 1.40 exists to
+   * prevent. Sign-in is SSO on a managed device, so the link costs the requester
+   * very little. If response rates turn out poor that is a later decision with a
+   * proper design, not a shortcut taken here.
+   */
+  private async queueResolvedEmail(
+    ticket: {
+      id: string;
+      displayId: string | null;
+      number: number;
+      subject: string;
+      requester?: User | null;
+    },
+    previousStatus: TicketStatus,
+    actor: AuthUser,
+  ) {
+    const requester = ticket.requester;
+    if (!requester?.email || requester.id === actor.id) {
+      return;
+    }
+    const emailContext = await this.buildTicketEmailContext(ticket);
+    await this.queueEmails([requester], {
+      eventType: 'TICKET_STATUS_CHANGED',
+      subject: emailContext.subject,
+      body: this.buildResolvedTextBody(ticket.id),
+      // What matters is the ask, not the fact. "Resolved" is already in the
+      // subject; whether they need to do something about it is not.
+      preheader: 'Tell us if this is fixed, or reopen it.',
+      ticketId: ticket.id,
+      payload: {
+        from: previousStatus,
+        to: TicketStatus.RESOLVED,
+      },
+      emailMetadata: emailContext.emailMetadata,
+      emailContent: { html: this.buildResolvedHtmlBody(ticket.id) },
+    });
+  }
+
+  /** The plain-text half of the resolved email, mirroring the HTML exactly. */
+  private buildResolvedTextBody(ticketId: string) {
+    const link = this.ticketLink(ticketId);
+    return [
+      'We have marked your request as resolved.',
+      '',
+      `Is it fixed? Confirm it: ${link}?action=confirm`,
+      `Not fixed? Reopen it: ${link}?action=reopen`,
+      '',
+      `How did we do? Rate it on the ticket: ${link}`,
+      '',
+      REPLY_INSTRUCTION,
+    ].join('\n');
+  }
+
+  /**
+   * Card 1.34's shape: hidden preheader, content first, no hero button, no
+   * sign-off, and no raw status enum anywhere - the word "resolved" in a
+   * sentence, never `RESOLVED` in a details block.
+   */
+  private buildResolvedHtmlBody(ticketId: string) {
+    const link = this.escapeHtml(this.ticketLink(ticketId));
+    const preheader = this.escapeHtml('Tell us if this is fixed, or reopen it.');
+    const actionStyle =
+      'font-size:15px;line-height:1.7;color:#2563eb;text-decoration:underline;';
+    return [
+      '<!DOCTYPE html>',
+      '<html>',
+      // 'Segoe UI' quoted: unquoted it is invalid CSS and strict clients drop
+      // the whole stack. The public-reply body has always had this right; the
+      // two older builders did not, and card 1.42 fixed them.
+      `  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Segoe UI', Arial, sans-serif;color:#1f2937;">`,
+      `    <div style="display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;">${preheader}</div>`,
+      '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f6f8;padding:24px 0;">',
+      '      <tr>',
+      '        <td align="center">',
+      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">',
+      '            <tr>',
+      '              <td style="padding:32px;">',
+      '                <div style="font-size:16px;line-height:1.7;color:#111827;margin-bottom:20px;">We have marked your request as resolved.</div>',
+      `                <div style="margin-bottom:10px;">Is it fixed? <a href="${link}?action=confirm" style="${actionStyle}">Confirm it</a></div>`,
+      `                <div style="margin-bottom:20px;">Not fixed? <a href="${link}?action=reopen" style="${actionStyle}">Reopen it</a></div>`,
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">How did we do? <a href="${link}" style="${actionStyle}">Rate it on the ticket</a></div>`,
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;">${REPLY_INSTRUCTION}</div>`,
+      '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
+      `                <div><a href="${link}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
+      '              </td>',
+      '            </tr>',
+      '          </table>',
+      '        </td>',
+      '      </tr>',
+      '    </table>',
+      '  </body>',
+      '</html>',
+    ].join('\n');
   }
 
   async inboundEmailAcknowledged(details: {
@@ -480,6 +651,44 @@ export class NotificationsService {
   }
 
   /**
+   * Who may be EMAILED about a public message (card 1.42 §1c).
+   *
+   * The requester, plus the followers who are not staff - exactly the people
+   * card 1.33 puts on Cc. Staff are absent even here, and the owner is the one
+   * who caught that they should be: the reply arrives by email, is pulled onto
+   * the ticket, and the assignee reads it there with a bell. Emailing her would
+   * tell her something already on her screen.
+   *
+   * A RELATIONSHIP test, not a domain one. Everybody is on the organisation's
+   * own domain, so an address says nothing about whether its owner is staff -
+   * see is-staff-role.util.ts. The requester is kept whatever their role, which
+   * is the case the role test alone would get wrong.
+   *
+   * Returns [] readily, and `queuePublicReplyEmail` then queues nothing rather
+   * than an email with an empty To (§1c).
+   */
+  private emailAudience(
+    ticket: {
+      requester?: User | null;
+      followers: { userId: string; user: User }[];
+    },
+    actorId: string,
+  ): User[] {
+    const recipients = new Map<string, User>();
+    if (ticket.requester) {
+      recipients.set(ticket.requester.id, ticket.requester);
+    }
+    for (const follower of ticket.followers) {
+      if (follower.user && !isStaffRole(follower.user.role)) {
+        recipients.set(follower.userId, follower.user);
+      }
+    }
+    return Array.from(recipients.values()).filter(
+      (user) => user.id !== actorId,
+    );
+  }
+
+  /**
    * Who a message is about to reach, for the compose screen (card 1.28).
    *
    * Runs the same audience calculation as the send, then the same outbound
@@ -501,10 +710,17 @@ export class NotificationsService {
       return { to: null, cc: [], refused: [], emails: false };
     }
     const isInternal = type === MessageType.INTERNAL;
-    const audience = this.buildRecipients(
-      ticket,
-      this.messageAudienceOptions(actor.id, isInternal),
-    );
+    // For a public message this is now the EMAIL audience (card 1.42 §1c), not
+    // everyone on the ticket. The preview exists so an agent knows who will
+    // receive what they are writing; listing a colleague who will not be
+    // emailed would be the same lie the preview was built to remove. The
+    // internal branch below still shows the full in-app audience.
+    const audience = isInternal
+      ? this.buildRecipients(
+          ticket,
+          this.messageAudienceOptions(actor.id, isInternal),
+        )
+      : this.emailAudience(ticket, actor.id);
     const requesterId = ticket.requester?.id ?? null;
     const assigneeId = ticket.assignee?.id ?? null;
     const followerIds = new Set(ticket.followers.map((row) => row.userId));
@@ -971,27 +1187,25 @@ export class NotificationsService {
   }) {
     const requesterName = details.requesterName?.trim() || 'there';
     const ticketId = details.ticketDisplayId ?? details.ticketId;
-    const companyName = this.companyName();
 
+    // Card 1.42 cut this to what a person needs on first contact: we have it,
+    // here is the reference, reply to add anything. Gone: the "What happens
+    // next" block (it promised only that we would respond), the Ticket details
+    // block (it restated the subject they wrote and a status), and the
+    // "Best regards" sign-off - the From line says who this is.
+    //
+    // The greeting stays, unlike the public reply's. This is the only email a
+    // requester gets before any human has spoken to them, and it is the one
+    // place the courtesy reads as courtesy rather than padding.
     return [
       `Hello ${requesterName},`,
       '',
-      'We received your email and created a support ticket for your request.',
+      'We have your email and opened a ticket for it.',
       '',
-      'What happens next',
-      'Our team will review your request and respond as soon as possible.',
-      'You can reply directly to this email at any time to add more details.',
+      `Your reference is ${ticketId}.`,
       '',
-      'Ticket details',
-      `Ticket ID: ${ticketId}`,
-      `Subject: ${details.ticketSubject}`,
-      'Status: New',
-      '',
-      'Reply to this email if you need to share more information, or view your ticket here:',
+      REPLY_INSTRUCTION,
       this.ticketLink(details.ticketId),
-      '',
-      'Best regards,',
-      `${companyName} Support`,
     ].join('\n');
   }
 
@@ -1007,49 +1221,34 @@ export class NotificationsService {
     const ticketId = this.escapeHtml(
       details.ticketDisplayId ?? details.ticketId,
     );
-    const ticketSubject = this.escapeHtml(details.ticketSubject);
     const ticketUrl = this.escapeHtml(this.ticketLink(details.ticketId));
-    const companyName = this.escapeHtml(this.companyName());
+    // Escaped like everything else, and easy to forget precisely because it is
+    // invisible - hence a test for it.
+    const preheader = this.escapeHtml(
+      `We have your email. Your reference is ${
+        details.ticketDisplayId ?? details.ticketId
+      }.`,
+    );
 
     return [
       '<!DOCTYPE html>',
       '<html>',
-      '  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">',
+      `  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Segoe UI', Arial, sans-serif;color:#1f2937;">`,
+      // First in the body: clients build the inbox preview from the earliest
+      // text they find.
+      `    <div style="display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;">${preheader}</div>`,
       '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f6f8;padding:24px 0;">',
       '      <tr>',
       '        <td align="center">',
-      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">',
+      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">',
       '            <tr>',
-      '              <td style="padding:32px 32px 16px 32px;">',
-      '                <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:16px;">',
-      '                  Request received',
-      '                </div>',
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">Hello ${requesterName},</div>`,
-      '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">',
-      '                  We received your email and created a support ticket for your request.',
-      '                </div>',
-      '                <div style="background:#f8fafc;border:1px solid #dbe4ea;border-left:5px solid #2563eb;border-radius:10px;padding:20px;margin:0 0 24px 0;">',
-      '                  <div style="font-size:13px;font-weight:700;letter-spacing:0.02em;text-transform:uppercase;color:#2563eb;margin-bottom:10px;">What happens next</div>',
-      '                  <div style="font-size:15px;line-height:1.8;color:#111827;">',
-      '                    Our team will review your request and respond as soon as possible.',
-      '                    You can reply directly to this email at any time to add more details.',
-      '                  </div>',
-      '                </div>',
-      '                <div style="font-size:16px;font-weight:700;color:#111827;margin-bottom:12px;">Ticket details</div>',
-      '                <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin-bottom:24px;">',
-      '                  <div style="font-size:14px;line-height:1.8;color:#374151;">',
-      `                    <div><strong>Ticket ID:</strong> ${ticketId}</div>`,
-      `                    <div><strong>Subject:</strong> ${ticketSubject}</div>`,
-      '                    <div><strong>Status:</strong> New</div>',
-      '                  </div>',
-      '                </div>',
-      '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">',
-      '                  Reply to this email if you need to share more information, or view your ticket here:',
-      '                </div>',
-      '                <div style="margin-bottom:28px;">',
-      `                  <a href="${ticketUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;">View Ticket</a>`,
-      '                </div>',
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;">Best regards,<br />${companyName} Support</div>`,
+      '              <td style="padding:32px;">',
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:16px;">Hello ${requesterName},</div>`,
+      '                <div style="font-size:16px;line-height:1.7;color:#111827;margin-bottom:20px;">We have your email and opened a ticket for it.</div>',
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">Your reference is <strong>${ticketId}</strong>.</div>`,
+      `                <div style="font-size:15px;line-height:1.7;color:#374151;">${REPLY_INSTRUCTION}</div>`,
+      '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
+      `                <div><a href="${ticketUrl}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
       '              </td>',
       '            </tr>',
       '          </table>',
@@ -1061,10 +1260,21 @@ export class NotificationsService {
     ].join('\n');
   }
 
+  /**
+   * The body for the survivors that are not a public reply or the two with
+   * bespoke bodies: the ticket-created notice and an automation rule's own
+   * message.
+   *
+   * Card 1.42 put this into card 1.34's shape, which the owner reviewed and
+   * chose. Deleted deliberately: the uppercase event headline, the 24px repeat
+   * of the subject line (the reader has just read it in their inbox), the
+   * "View Ticket" hero button, and the "Best regards" sign-off - the From line
+   * already says who this is, and since card 1.31 it names the agent. What is
+   * left is a hidden preheader, the content, and one quiet text link.
+   *
+   * See docs/email-conversation.md before adding anything back.
+   */
   private buildDefaultNotificationHtmlBody(details: QueuedEmailDetails) {
-    const title = this.escapeHtml(this.notificationHeadline(details.eventType));
-    const subject = this.escapeHtml(details.subject);
-    const companyName = this.escapeHtml(this.companyName());
     const ticketUrl = details.ticketId
       ? this.escapeHtml(this.ticketLink(details.ticketId))
       : null;
@@ -1072,31 +1282,28 @@ export class NotificationsService {
       details.body,
       details.ticketId,
     );
+    const preheader = this.escapeHtml(
+      this.buildPreheader(details.preheader ?? details.body),
+    );
 
     return [
       '<!DOCTYPE html>',
       '<html>',
-      '  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:Segoe UI, Arial, sans-serif;color:#1f2937;">',
+      `  <body style="margin:0;padding:0;background-color:#f4f6f8;font-family:'Segoe UI', Arial, sans-serif;color:#1f2937;">`,
+      `    <div style="display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;">${preheader}</div>`,
       '    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f6f8;padding:24px 0;">',
       '      <tr>',
       '        <td align="center">',
-      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">',
+      '          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;">',
       '            <tr>',
-      '              <td style="padding:32px 32px 16px 32px;">',
-      `                <div style="font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#2563eb;margin-bottom:12px;">${title}</div>`,
-      `                <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:20px;">${subject}</div>`,
-      '                <div style="background:#f8fafc;border:1px solid #dbe4ea;border-left:5px solid #2563eb;border-radius:10px;padding:20px;margin:0 0 24px 0;">',
+      '              <td style="padding:32px;">',
       ...contentBlocks,
-      '                </div>',
       ...(ticketUrl
         ? [
-            '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">Open the ticket for full details and replies.</div>',
-            '                <div style="margin-bottom:28px;">',
-            `                  <a href="${ticketUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;">View Ticket</a>`,
-            '                </div>',
+            '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
+            `                <div><a href="${ticketUrl}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
           ]
         : []),
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;">Best regards,<br />${companyName} Support</div>`,
       '              </td>',
       '            </tr>',
       '          </table>',
@@ -1144,43 +1351,6 @@ export class NotificationsService {
     });
   }
 
-  private notificationHeadline(eventType: string) {
-    switch (eventType) {
-      case 'TICKET_CREATED':
-        return 'Ticket created';
-      case 'TICKET_ASSIGNED':
-        return 'Assignment updated';
-      case 'TICKET_TRANSFERRED':
-        return 'Ticket transferred';
-      case 'TICKET_STATUS_CHANGED':
-        return 'Status updated';
-      case 'MESSAGE_ADDED':
-        return 'New reply';
-      case 'SLA_BREACHED':
-        return 'SLA breached';
-      case 'SLA_AT_RISK':
-        return 'SLA at risk';
-      case 'INBOUND_EMAIL_ACKNOWLEDGED':
-        return 'Request received';
-      default:
-        return 'Ticket update';
-    }
-  }
-
-  private companyName() {
-    const configured = this.config.get<string>('EMAIL_COMPANY_NAME')?.trim();
-    if (configured) {
-      return configured;
-    }
-
-    const address = this.ticketEmailThreads.getBaseReplyToAddress();
-    const domain = address.split('@')[1]?.split('.')[0]?.trim();
-    if (domain) {
-      return domain.toUpperCase();
-    }
-
-    return 'Support';
-  }
 
   private escapeHtml(value: string) {
     return value

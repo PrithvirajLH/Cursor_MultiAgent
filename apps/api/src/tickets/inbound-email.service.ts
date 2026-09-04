@@ -341,6 +341,10 @@ export class InboundEmailService {
           requesterId: requester.id,
         },
         requesterAuth,
+        // Card 1.42 §3: the acknowledgement queued further down is the better
+        // of the two emails, so the created-email is suppressed rather than the
+        // acknowledgement dropped. The team's new-ticket bell still fires.
+        { suppressCreatedEmail: true },
       );
       persistedMutation = {
         ticketId: created.id,

@@ -221,6 +221,36 @@ export class InAppNotificationsService {
   // Helper methods to create specific notifications
   // ============================================
 
+  /**
+   * "A new ticket arrived" - the bell that replaces the created-email.
+   *
+   * Card 1.42 deletes every internal email, and for ticket creation there was
+   * nothing else: `NotificationsService.ticketCreated` queued email and never
+   * raised an in-app notification at all. So this is now the ONLY signal that
+   * work has come in. If it stops firing, tickets sit unnoticed until somebody
+   * happens to open the queue.
+   *
+   * `actorId` is optional because the intake and automation paths have no human
+   * behind them.
+   */
+  async notifyTicketCreated(
+    ticketId: string,
+    recipientIds: string[],
+    actorId: string | null,
+    ticketSubject: string,
+    teamName: string | null,
+  ) {
+    const filteredRecipients = recipientIds.filter((id) => id !== actorId);
+    if (filteredRecipients.length === 0) return;
+    return this.createMany(filteredRecipients, {
+      type: NotificationType.TICKET_CREATED,
+      title: teamName ? `New ticket for ${teamName}` : 'New ticket',
+      body: ticketSubject,
+      ticketId,
+      ...(actorId ? { actorId } : {}),
+    });
+  }
+
   async notifyTicketAssigned(
     ticketId: string,
     assigneeId: string,
