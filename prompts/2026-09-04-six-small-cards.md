@@ -1,0 +1,315 @@
+# Implementation Prompt — six small cards, in order
+
+**Date:** 2026-09-04
+**Repo:** `Ticketing System Quality Review` (branch `ui-redesign-and-api-hardening`)
+**Cards:** 1.43, 1.18, 1.17, 1.12, 1.11, 1.15 — **in that order**
+**Baseline:** production `1b5e8f5` at schema **54**; branch HEAD is verified GREEN
+with migrations **55–57 undeployed**.
+
+**One commit per card. Six commits.**
+
+---
+
+## 0. How to work through this
+
+**Work straight through all six. Do not check in between cards, and do not ask
+permission to proceed** — the owner has asked for one uninterrupted pass.
+
+**But finish each card completely before starting the next**, which means:
+
+- [ ] Its own tests written and passing
+- [ ] `apps/api` `tsc` + unit, and `apps/web` `tsc` + vitest, **green**
+- [ ] Committed on its own
+- [ ] **Only then** move on
+
+Run the **full integration suite** after each card that touches the API. It costs
+six minutes and it is the only thing that catches a card breaking an earlier one —
+which has happened on this project.
+
+**Then, at the end, one Playwright pass over all six**, per §7.
+
+**"Stop and report" still applies** to the specific hazards each card names below.
+That is not asking permission — it is telling the owner you found something. The
+difference matters: proceed through the work, but if you hit one of the named
+conditions, say so in the report rather than improvising around it.
+
+> ⚠️ **Card 1.6 was on the owner's list and is NOT in this handoff — it is already
+> done.** GREEN as `68c476e` + `d0ff232`, sitting in the pending deploy with
+> migration 55. Do not rebuild it.
+
+---
+
+## 1 — Card 1.43: bracket the inbound message id (XS, no migration)
+
+**The card is already written: `prompts/2026-09-04-1-43-bracket-the-inbound-message-id.md`.
+Follow it.** In short: `preferredInReplyTo` is used raw at
+`ticket-email-thread.service.ts:51` (`In-Reply-To`) **and `:58`** (`References`),
+while `normalizeMessageId` at `:126` exists to bracket bare ids. Normalise **once**
+and use it for both.
+
+- [ ] An existing test pins the current unbracketed behaviour on purpose.
+      **Update it, do not delete it**, and say which.
+
+---
+
+## 2 — Card 1.18: draft autosave (XS, no migration)
+
+**The card says "verify, probably done". It is not done, and here is the answer so
+you do not have to rediscover it.**
+
+`apps/web/src/utils/messageDraft.ts` stores exactly:
+
+```ts
+interface StoredDraft { body: string; updatedAt: number }
+```
+
+Its own comment says *"today we just read the body."* So:
+
+| The card asks | Reality |
+|---|---|
+| Body survives a reload | **Yes** |
+| Inline pasted images survive | **Yes, incidentally** — they live in the body HTML as data URIs. Confirm, do not assume |
+| The public/internal toggle survives | **No.** It is not stored at all |
+
+- [ ] Add the message type to `StoredDraft` and restore it on load.
+- [ ] ⚠️ **Restoring the toggle must not fight card 1.38.** On a ticket where an
+      agent may only write internally, a restored `PUBLIC` draft must **not** flip
+      the composer back to Public. The server would refuse it anyway, but the
+      screen would be lying — which is the exact defect card 1.37 existed to fix.
+      **The ticket's rules win over the stored draft.**
+- [ ] Handle a stored draft written by the old code with no type — treat a missing
+      type as the composer's normal default, never as a crash.
+- [ ] Card 1.39 requires a **restored draft to open the composer expanded**. That
+      still has to hold.
+
+---
+
+## 3 — Card 1.17: the missing desk metrics (S, no migration)
+
+Three KPIs absent from the 22 report endpoints. Design from the card, which is
+sound:
+
+- **First-contact resolution** — resolved tickets with ≤ 1 public agent
+  `TicketMessage`
+- **Reassignment count** — `TicketEvent.type = 'TICKET_ASSIGNED'` per ticket
+- **Time in each status** — from consecutive status-change events
+
+- [ ] Three endpoints, scoped by the existing **`scopeReportQuery`**. Do not invent
+      a second scoping path — that function is what keeps a lead's report inside
+      their own team.
+- [ ] ⚠️ **Use `roleConditionSql`, not `roleFilter`.** Reports run on raw SQL, and
+      card 1.36 had to add a requester clause to **both**; they are kept in step by
+      `access-control.parity.spec.ts`. **If that spec goes red, stop** — you have
+      broken visibility, not a report.
+- [ ] Add them to `exportable-reports.const.ts` if the CSV export should cover
+      them, and say whether you did.
+- [ ] **Out of scope, but note it in the report:** CSAT is stored as a
+      `TicketEvent` rather than a table, which makes aggregate rating reporting
+      awkward. This is the card where that would be fixed. **Do not fix it here** —
+      flag it.
+
+---
+
+## 4 — Card 1.12: bulk tags and bulk macro (S, no migration)
+
+Depends on card 1.7, which is **done** (`92a6737`).
+
+- [ ] `POST /api/tickets/bulk/tags { ticketIds, add[], remove[] }` using
+      `TagsService.attachManyToTicket` (`tags.service.ts:133`) and
+      `removeFromTicket`.
+- [ ] `POST /api/tickets/bulk/macro { ticketIds, cannedResponseId }`.
+- [ ] Follow the **existing** bulk DTO pattern — `bulk-assign`, `bulk-priority`,
+      `bulk-status`, `bulk-transfer` in `tickets/dto/` — including
+      `@ArrayMaxSize`.
+
+### ⚠️ The decision this card turns on
+
+**Card 1.7 established that a macro rolls back entirely if its status change is
+illegal for that ticket** (`NEW → RESOLVED` is refused). Across twenty tickets,
+some will be in a state the macro cannot legally reach.
+
+**All-or-nothing, or per-ticket?** **Do per-ticket, and report which ones were
+skipped and why.** All-or-nothing means one awkward ticket blocks nineteen good
+ones, and the agent cannot tell which was the problem. Say in your report if you
+disagree.
+
+- [ ] ⚠️ **Check permission per ticket, not once for the caller.** A selection can
+      span teams. `canWriteTicket` on **each** — the bulk endpoints are exactly
+      where a role check gets done once and applied to twenty rows.
+- [ ] The **macro allowlist** still applies, unchanged. A bulk macro must not send
+      email or notify.
+- [ ] ⚠️ **A bulk macro must not post messages.** Card 1.7 deliberately returns the
+      text to the composer instead of sending; there is no composer for twenty
+      tickets, so **bulk applies the actions only** and never the text. If that
+      seems wrong to you, stop and report rather than inventing bulk messaging.
+
+---
+
+## 5 — Card 1.11: redact a message (S, **migration 58**)
+
+`TicketMessage.redactedAt DateTime?` and `redactedById String?`;
+`DELETE /api/tickets/:id/messages/:messageId`, allowed for the author within
+`MESSAGE_REDACT_WINDOW_MIN` (default **15**) or LEAD+ at any time. Body becomes
+`[message removed by <name>]`.
+
+- [ ] Migration **58**. Additive, hand-written,
+      `grep -cE '^(DROP|ALTER TABLE .* DROP)' migration.sql` must be **0**, the
+      twelve drift statements stripped and documented as migrations 52–57 do.
+      **Dev Supabase first.** ⚠️ Check the folder number: HEAD is at **57**.
+
+### ⚠️ Two things this card must be honest about
+
+**1. You cannot unsend an email.** A **public** message has already gone to the
+requester and everyone CC'd — card 1.42's surviving email path. Redacting removes
+it from the ticket and from nobody's inbox.
+
+- [ ] **The UI must say so** where somebody redacts a message that was emailed.
+      One sentence: the ticket is cleaned up, the email that already went out is
+      not. **Do not** let the button imply a recall.
+- [ ] An **internal** note was emailed to nobody (card 1.42), so it has no such
+      caveat. Distinguish the two cases.
+
+**2. Redacted is not deleted.** The design stores the original in a `TicketEvent`,
+so the PHI **moves rather than leaves**. For a healthcare organisation that is a
+real distinction, and the repo already takes a stricter line elsewhere:
+`AiInferenceLog` carries *"Redacted before write for sensitive departments — never
+store raw PHI."*
+
+- [ ] ⚠️ **Decide who can read the preserved original, and make it narrow** —
+      OWNER is the defensible answer. A LEAD being able to read what a colleague
+      redacted defeats the point of redacting it.
+- [ ] Reconcile with `AiInferenceLog`'s stance in your report: either keeping the
+      original is right and that comment is stricter than the product needs, or
+      keeping it is wrong and the audit should record **that a redaction happened**
+      without the body. **Say which and why** — do not just implement the card.
+- [ ] Card 1.36's read filter still governs who sees messages at all. A redacted
+      message must not become **more** visible than the original was.
+
+---
+
+## 6 — Card 1.15: notification preferences (S — **and its premise is gone**)
+
+⚠️ **Read this before writing anything. This card was written for a world that no
+longer exists.**
+
+Its stated purpose is *"email fatigue makes people ignore the alerts that
+matter"*, and its stated implementation point is filtering inside
+`NotificationsService.buildRecipients`.
+
+**Card 1.42 removed staff email entirely.** Four email types survive and every one
+goes to a requester or a CC'd person. So:
+
+- **Email preferences for staff:** there is nothing left to switch off.
+- **Email preferences for requesters:** the surviving emails are the
+  acknowledgement, the reply, ticket-created and resolved. **Turning off "resolved"
+  would break the confirm / reopen / rate loop** — that email is the only thing
+  that asks.
+
+**So build it as in-app notification preferences only** — which bell types a
+person wants. That is smaller than the card, and it is the part that still has a
+purpose now that staff live entirely on the bell.
+
+- [ ] `NotificationPreference { userId, eventType, inApp Boolean @default(true) }`,
+      unique per (user, eventType). **Include the `email` column too** if you want
+      the model to outlast this decision, but **do not wire an email path** — there
+      is nothing to gate.
+- [ ] Filter in **`InAppNotificationsService`**, not `buildRecipients`.
+- [ ] ⚠️ **Some notifications must not be switchable off.** A person turning off
+      *"ticket assigned"* stops being told work is theirs. Decide a small set that
+      is always on — assignment and mentions are my recommendation — and **say what
+      you chose.**
+- [ ] **Default everything to on.** A preference nobody has set must behave exactly
+      as today.
+- [ ] This one needs a migration if you add the table. **That would be 59**, after
+      1.11's 58.
+
+---
+
+## 7 — The final Playwright pass
+
+After all six are committed and the full suite is green, **one browser pass over
+everything**, against the live dev API.
+
+**Twice on the previous pair of cards the browser found what the suites could
+not** — an unclickable toolbar button, and a form that merged instead of replaced
+when somebody changed their mind mid-edit. Both needed a human interaction no unit
+test performs. **So this pass is not a formality.**
+
+Read `repo-landmines.md` § *"Running the stack by hand for a browser pass"* first:
+the API needs `AUTH_ALLOW_INSECURE_HEADERS=true` or every request 401s, and setting
+`localStorage.demoUserEmail` without reloading serves the previous persona's cached
+data.
+
+Check, at minimum:
+
+- [ ] **1.18** — type a draft, paste an image, switch to internal, reload. All
+      three survive, the composer opens expanded, and on a ticket where only
+      internal notes are allowed a stored `PUBLIC` draft does **not** flip the
+      toggle.
+- [ ] **1.12** — select several tickets spanning two teams, add a tag, remove a
+      tag, apply a macro. Confirm the per-ticket outcome is reported and that a
+      ticket you cannot write is refused rather than silently skipped.
+- [ ] **1.11** — redact your own message inside the window, then try outside it;
+      redact somebody else's as a LEAD. Confirm the body reads
+      `[message removed by …]`, the caveat about the already-sent email appears for
+      a public message and not for an internal note, and the original is not
+      readable by whoever §5 says may not read it.
+- [ ] **1.17** — load each of the three new reports as a LEAD and confirm the
+      numbers are scoped to their team, not the whole desk.
+- [ ] **1.15** — turn a bell type off, cause that event, confirm no bell; turn it
+      back on, confirm it returns. And confirm an always-on type cannot be turned
+      off.
+- [ ] **1.43** cannot be browser-checked — no mailbox feeds the webhook. Say so
+      rather than claiming it.
+
+**Click every control you added.** That is the specific thing that caught the last
+two defects.
+
+---
+
+## Verification
+
+```bash
+cd "/c/Users/PHulgur/Downloads/Ticketing System Quality Review/apps/api"
+npx tsc --noEmit && npx jest --silent
+export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
+npm run test:integration > ../../int-full.txt 2>&1
+grep -E "Tests:|Test Suites:" ../../int-full.txt
+cd ../web && npx tsc --noEmit && npx vitest run
+bash scripts/check-migrations.sh    # 0 DROPs; it only sees COMMITTED migrations
+```
+
+**Baselines — read `CLAUDE.md`.** It is updated at every GREEN, which is more often
+than any card is rewritten. As of writing: api `tsc` 0, unit **480 / 48**,
+integration **617 + 1 skipped, 62 of 63**, web `tsc` 0, vitest **158 / 26**,
+migrations **57**. Delete the log afterwards.
+
+**A backgrounded run reported as `exit 127` was killed, not missing a command** —
+its numbers are not real; re-run it.
+
+## What to report back
+
+1. **Six commit SHAs**, one per card, and `git diff --stat` for each.
+2. Every `Tests:` line, both `tsc`, vitest, and the **migration DROP count** for
+   58 (and 59 if 1.15 added a table).
+3. **The decisions each card asked you to make and state:**
+   - 1.12 — per-ticket versus all-or-nothing, and why
+   - 1.11 — who may read the preserved original, and how you reconciled that with
+     `AiInferenceLog`'s "never store raw PHI"
+   - 1.15 — which notification types you made always-on
+   - 1.17 — whether the three reports went into the CSV export
+4. **The §7 browser results, control by control**, and screenshots of 1.11's
+   already-sent-email caveat and 1.12's per-ticket outcome.
+5. **1.18's real answer** — which of the three things actually survived a reload
+   before your change.
+6. Anything that did not match. Handoffs from this planner have carried a wrong
+   line number, a stale premise, an invented file reference, a dead CSS class
+   quoted as live, a Tailwind trap, an unconditional status transition that would
+   have lost inbound mail, a mislabelled verdict, a check with no path to run it,
+   and an instruction that would have leaked the existence of deleted tickets.
+   **Say so plainly if this one is wrong too.**
+
+**Stop and report instead of improvising** if 1.11 appears to need the original
+body kept somewhere a LEAD can read it, if 1.12 appears to need bulk messaging, if
+1.15 appears to need an email path, or if `access-control.parity.spec.ts` goes red
+at any point.
