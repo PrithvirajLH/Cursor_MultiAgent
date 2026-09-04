@@ -782,7 +782,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** Visible on every ticket for AGENT+; hidden for EMPLOYEE; one query, cached by React Query.
 
-### 1.9 "Someone is already on this" warning — **Ready, and smaller than it looks** · S
+### 1.9 "Someone is already on this" warning — **Done — status in the table above** · S
 
 > **Re-scoped 2026-09-01** after the Web PubSub audit. The typing channel is
 > already wired **end to end**: `POST /tickets/:id/typing` →
@@ -800,7 +800,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.5.
 **Done when.** e2e in `e2e/realtime-chat.spec.ts` shows the banner to agent B when agent A opens the ticket.
 
-### 1.10 Snooze / follow-up date — **Ready** · S
+### 1.10 Snooze / follow-up date — **Done — status in the table above** · S
 
 **What we are doing.** "Remind me Friday" — WAITING_ON_VENDOR tickets rely on memory today.
 
@@ -832,7 +832,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** Filtered export opens in Excel with the visible columns; the fake link is gone.
 
-### 1.14 Satisfaction survey email — **Ready** · S
+### 1.14 Satisfaction survey email — **CLOSED BY CARD 1.42** — the rating goes on the resolved email; no separate survey · S
 
 **What we are doing.** The rating widget exists; nobody is sent to it.
 
