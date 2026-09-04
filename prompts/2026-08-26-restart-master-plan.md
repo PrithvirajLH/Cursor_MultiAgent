@@ -1009,6 +1009,49 @@ No new Azure spend, no tenant policy change, no Graph app permission.
 
 ### 1.24 Inbound mailbox worker (Graph delta polling) — **Ready, but blocked on the Graph permission (owner to-do #1)** · L
 
+> ## ⬜ WHEN 1.24 SHIPS — the deferred checklist
+>
+> **Six things have been deliberately parked on this card's arrival.** They are
+> scattered across five other cards, so they are collected here; nothing below is
+> testable until real mail reaches the webhook. Owner asked for this to be circled
+> back (2026-09-04).
+>
+> **1. An unrouted inbound ticket reaches nobody.** The new-ticket bell goes to the
+> assigned team, and an inbound ticket only gets a team if a routing rule matches
+> or the address carries a department suffix — otherwise `routeTarget` leaves it
+> null, so there is **no email and no bell**, and it is discoverable only from the
+> Unassigned queue. Card 1.42's implementer wrote a test asserting this honestly
+> rather than aspirationally. **Department addressing (`helpdesk+payroll@`) covers
+> the normal case**, so what remains is mail to bare `helpdesk@`. **Decide then:
+> a fallback department, or rely on card 1.16's digest.** The planner's view is a
+> fallback — small, and it means nothing can arrive with no owner.
+>
+> **2. Card 1.29's two checks**, which the 2026-09-03 deploy could not run: a
+> genuine reply clears *Waiting on requester* and shows a REPLIED marker that
+> survives a reload; and an **out-of-office reply does not** move the status. The
+> second matters most — that failure looks like progress, so the ticket quietly
+> leaves the chase list.
+>
+> **3. Card 1.40's verification** — a looped-in colleague's reply lands on the
+> ticket, and a stranger's is recorded as an attempt with the body discarded.
+>
+> **4. Card 1.43**, if it has shipped — confirm a real requester's reply threads
+> onto the ticket rather than arriving as a new one. If 1.43 has **not** shipped,
+> this is the moment it stops being dormant: do it first.
+>
+> **5. The `Asset Tag` required field.** Still required on `it-service-desk`, and a
+> required custom field **rejects a department email**. The owner to-do (set it
+> not-required, 30 seconds) and this card's `skipRequiredCustomFields` fix must both
+> be in place, or IT mail is silently dropped.
+>
+> **6. `EMAIL_TEST_RECIPIENTS`.** Everything still redirects to the owner's inbox.
+> Card 1.42 has shipped the email policy, so the precondition is met — but
+> **clear it only after these checks pass**, and confirm
+> `EMAIL_ALLOWED_DOMAINS` still covers whatever domain real requesters are on
+> (production: `csnhc.com`, verified 2026-09-04).
+>
+> ---
+>
 > **Carries two checks inherited from card 1.29, 2026-09-03.** 1.29 shipped live but could not be verified in production, because both of its checks need a reply
 > arriving by email and nothing feeds the webhook yet. **When this card rolls out, verify them for real:**
 > 1. A genuine requester reply clears **Waiting on requester**, the ticket leaves "Awaiting reply", and a **REPLIED** marker appears in the list and survives a reload.
