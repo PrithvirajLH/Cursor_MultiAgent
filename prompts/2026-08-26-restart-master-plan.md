@@ -766,7 +766,25 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.1 pattern.
 **Done when.** Links survive on both tickets, show in the timeline, and a parent's detail lists its children.
 
-### 1.7 Macros: canned responses with actions and placeholders — **Ready** · M
+### 1.7 Macros: canned responses with actions and placeholders — **Handoff written 2026-09-04** · M
+
+> `prompts/2026-09-04-1-7-macros.md`. **Most of this is already built and the card did not know it.** `fillTemplateVars`
+> (`src/automation/template-vars.util.ts`) already substitutes `{{key}}`, and its own comment reads *"Seed of the macro variables planned for card 1.7"* — unknown
+> keys become **empty strings**, so a typo cannot leak a raw placeholder into a customer email. **Reuse it; do not write a second templating function**, because the
+> one that drifts would be the one facing requesters.
+>
+> **⚠️ The most important decision is an action allowlist, which the card never mentions.** The rule engine's executor supports **twelve** actions, and three must
+> not be available to a one-click macro: **`send_email`, `notify_requester`, `notify_team_lead`**. Card 1.42 is deleting most email precisely to stop noise; a macro
+> that sends email reintroduces it through a side door. Enforced server-side **on save and on execute**, from one constant, so the next person adding an automation
+> action has to decide consciously. `add_internal_note` is the owner's call.
+>
+> **⚠️ And the card's premise is wrong: `executeActions` is private and coupled to automation rules.** Its signature takes `ruleId` and `ruleCreatedById`, and
+> `AutomationExecution` rows drive automation reporting — **writing them with a fabricated ruleId would corrupt that reporting and make a person's click look like a
+> rule firing.** It also takes a transaction client and returns post-commit tasks, so the caller owns the transaction. The handoff asks for an explicit **provenance**
+> parameter rather than a bare ruleId, recommends extraction over a second copy of the switch — duplication being what caused 1.36's Fault C and 1.38 — and says to
+> stop if the extraction cannot be done with the automation tests untouched.
+>
+> Needs one additive migration for `CannedResponse.actions`; **check the folder number**, HEAD is at 55 and card 1.42 also adds one.
 
 **What we are doing.** Canned responses are plain text. Make them do things (set status, add tag, assign) and fill in names automatically.
 
