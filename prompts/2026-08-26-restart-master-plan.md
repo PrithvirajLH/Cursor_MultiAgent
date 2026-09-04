@@ -488,6 +488,35 @@ and following does not change that. So a loop-in is an **email-only participant*
 throw the reminder away silently, whereas left set it keeps surfacing in "Follow-ups due today". **1.9 presence**: 30s heartbeat, viewer dropped after **90s** (three
 missed beats), with unmount announcing `false` so the normal case is immediate.
 
+**1.6 — GREEN, 2026-09-04, commits `68c476e` + `d0ff232`.** Re-ran everything: api `tsc` 0, unit **468/47** held, integration **560 + 1 skipped, 59 of 60**, web `tsc`
+0, vitest **143/25**. **Migration 55** — 0 DROPs by hand check, additive only, applied to dev and test; **production is still at 54 and 55 is pending**, which is correct.
+
+**⚠️ My A.3.5 instruction was wrong and they were right to depart from it.** I said a link to a soft-deleted ticket should list "marked as deleted". `canViewTicket`
+hides soft-deleted tickets from **everyone but OWNER** (`access-control.service.ts:11`), so doing what I asked would have **leaked the existence of deleted tickets**.
+Their fix is the best-reasoned access work in this project: `visible = canViewTicket(user, other)` and
+`couldSeeWhenLive = canViewTicket(user, { ...other, deletedAt: null })`, with `deleted` surfacing only when both the ticket is deleted **and** the reader could have
+opened it while live. **It reuses the one access function rather than re-deriving the rule** — exactly the discipline cards 1.36 and 1.38 existed to establish.
+
+**And they found a leak I did not.** They withheld `displayId` as well as the subject, because `HR_20260903_014` **names the owning department**, which is itself
+information about a ticket you cannot open. The card never mentioned it. They also chose **404 rather than 403** for an invisible target, since a 403 confirms the id is
+real.
+
+**Two of their eighteen tests cover leaks the card never named:** the `TICKET_LINKED` event payload must not carry the other ticket's subject, and a link id belonging to
+another ticket must not be unlinkable through this ticket's path. Both are real, and neither was asked for. They also paired the leak test with
+*"gives the OWNER, who can see both, the full detail"* — the positive control that stops the negative assertion being vacuous.
+
+**One correction to their report:** `check-migrations.sh` proving nothing on uncommitted migrations is **already in `repo-landmines.md`**, added 2026-09-02. The live
+confirmation is welcome; the caveat was documented.
+
+**A miss of mine, recorded:** my `git add` for `68c476e` covered `apps/api/src` but not `apps/api/test`, so the eighteen integration tests were left untracked. Fixed in
+`d0ff232` as a separate commit rather than an amend, so the miss stays visible.
+
+**Their two dev-environment findings are now in `repo-landmines.md`** — the API needs `AUTH_ALLOW_INSECURE_HEADERS=true` or every request 401s, and Vite may not pick
+`VITE_E2E_MODE` up from the shell. I recorded the second honestly rather than as a Vite bug: Vite normally does expose `VITE_`-prefixed process env, so the likely
+culprit is the npx shim under Git Bash on Windows. I verified `apps/web/.env.local` is gitignored before recommending it.
+
+**Part B (card 1.5) not started, as instructed.** §B.4 is unanswered, and §B.3.1 — where a reply to a merged-away ticket lands — still needs the owner.
+
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
 *Blocking other work:*
@@ -724,7 +753,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.2 (closeReason), 1.6 (a "duplicate-of" link is the lightweight alternative when merge is inappropriate).
 **Done when.** Merge in staging leaves one ticket with all messages, source shows a banner and link, reports count one ticket.
 
-### 1.6 Link related tickets — **Handoff written 2026-09-03**, build-ready · M
+### 1.6 Link related tickets — **GREEN 2026-09-04** (`68c476e` + `d0ff232`), migration 55, **not deployed** · M
 
 > `prompts/2026-09-03-1-6-and-1-5-links-then-merge.md` — Part A. Needs **migration 55** (new `TicketLink` table + `TicketLinkType` enum); check the folder
 > number first, HEAD already has 54 from card 1.10. The master plan's model is sound and should be used as written — it is the one part of 1.5/1.6 needing no rework.
