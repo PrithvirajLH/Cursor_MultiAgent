@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, TagSource, UserRole } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,6 +21,41 @@ export class TagsService {
     private readonly prisma: PrismaService,
     private readonly accessControl: AccessControlService,
   ) {}
+
+  /**
+   * Get or create the tag with this name, safely under concurrency.
+   *
+   * ⚠️ `tag.upsert` is NOT safe here, and catching the failure is not enough
+   * either. Prisma compiles this upsert to a read then a write, so two requests
+   * creating the same NEW tag at the same moment both miss on the read, both
+   * insert, and one loses on `Tag.name`'s unique index. Every caller was
+   * single-ticket until card 1.12, which tags up to a hundred at five at a
+   * time; bulk-tagging with a tag that did not exist yet failed on most of the
+   * selection, and the macro path hit it too through the rule engine's add_tag.
+   *
+   * Catching P2002 and re-reading looks like the fix and is not: the macro
+   * executor runs inside a TRANSACTION, and a constraint violation aborts it -
+   * every later statement answers `25P02 current transaction is aborted`. The
+   * recovery read is one of those statements.
+   *
+   * So the conflict has to be avoided rather than survived. `ON CONFLICT DO
+   * NOTHING` is one statement that cannot raise, leaving the row present
+   * whoever won, and the read after it is then guaranteed to find it. The id is
+   * generated here because Prisma's `@default(uuid())` is client-side and the
+   * column has no database default.
+   */
+  private async upsertTagByName(
+    client: Prisma.TransactionClient | PrismaService,
+    name: string,
+    createdById: string | null,
+  ) {
+    await client.$executeRaw`
+      INSERT INTO "Tag" ("id", "name", "createdById", "createdAt")
+      VALUES (${randomUUID()}, ${name}, ${createdById}, now())
+      ON CONFLICT ("name") DO NOTHING
+    `;
+    return client.tag.findUniqueOrThrow({ where: { name } });
+  }
 
   /**
    * Normalize a user-supplied tag string. Trim, lowercase, collapse internal
@@ -155,11 +191,7 @@ export class TagsService {
     if (!names.length) return;
 
     for (const name of names) {
-      const tag = await client.tag.upsert({
-        where: { name },
-        update: {},
-        create: { name, createdById: createdById ?? undefined },
-      });
+      const tag = await this.upsertTagByName(client, name, createdById);
       await client.ticketTag.upsert({
         where: { ticketId_tagId: { ticketId, tagId: tag.id } },
         update: {},
@@ -193,11 +225,7 @@ export class TagsService {
     }
 
     const name = this.normalize(rawName);
-    const tag = await this.prisma.tag.upsert({
-      where: { name },
-      update: {},
-      create: { name, createdById: user.id },
-    });
+    const tag = await this.upsertTagByName(this.prisma, name, user.id);
 
     await this.prisma.ticketTag.upsert({
       where: { ticketId_tagId: { ticketId, tagId: tag.id } },

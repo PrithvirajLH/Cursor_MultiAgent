@@ -41,6 +41,7 @@ import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { InboundEmailService } from './inbound-email.service';
+import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
 import { TagsService } from '../tags/tags.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { parsePositiveInt } from '../common/config.utils';
@@ -49,6 +50,7 @@ import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
+import { BulkTagsDto } from './dto/bulk-tags.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { DeleteTicketDto } from './dto/delete-ticket.dto';
@@ -2840,46 +2842,95 @@ export class TicketsService {
   /** Concurrency limit for bulk operations to avoid overwhelming the database. */
   private static readonly BULK_CONCURRENCY = 5;
 
+  /**
+   * Per-ticket bulk runner.
+   *
+   * The body moved to `run-bulk-with-concurrency.util.ts` in card 1.12 so the
+   * bulk macro endpoint - which lives in the canned-responses module, to avoid
+   * a module cycle - reports in exactly this shape rather than growing a second
+   * copy. Behaviour is unchanged; four existing bulk endpoints and the web
+   * app's `failedTicketIdsFromBulkResult` depend on it.
+   */
   private async runBulkWithConcurrency<T>(
     items: string[],
     operation: (ticketId: string) => Promise<T>,
   ) {
-    // Deduplicate to prevent concurrent mutations on the same ticket (TICKET-005)
-    const uniqueItems = [...new Set(items)];
+    return runBulkWithConcurrency(items, operation);
+  }
 
-    const results = {
-      success: 0,
-      failed: 0,
-      succeededTicketIds: [] as string[],
-      failedTicketIds: [] as string[],
-      errors: [] as { ticketId: string; message: string }[],
-    };
-    const executing = new Set<Promise<void>>();
-
-    for (const ticketId of uniqueItems) {
-      const task = (async () => {
-        try {
-          await operation(ticketId);
-          results.success++;
-          results.succeededTicketIds.push(ticketId);
-        } catch (err: unknown) {
-          results.failed++;
-          results.failedTicketIds.push(ticketId);
-          const message = err instanceof Error ? err.message : 'Unknown error';
-          results.errors.push({ ticketId, message });
-        }
-      })();
-
-      executing.add(task);
-      void task.finally(() => executing.delete(task));
-
-      if (executing.size >= TicketsService.BULK_CONCURRENCY) {
-        await Promise.race(executing);
-      }
+  /**
+   * Add and remove tags across a selection (card 1.12).
+   *
+   * ⚠️ Permission is checked PER TICKET, not once for the caller. A selection
+   * can span teams - the list is filtered to what someone can SEE, and seeing a
+   * ticket is not writing to it - so a single check applied to twenty rows is
+   * exactly the mistake a bulk endpoint invites. `attachManyToTicket` documents
+   * itself as skipping access control because its caller is trusted, which
+   * makes checking here not optional.
+   *
+   * Per ticket rather than all-or-nothing: one ticket the agent cannot write
+   * must not block nineteen they can, and the result names every failure so
+   * they can see which.
+   */
+  async bulkTags(payload: BulkTagsDto, user: AuthUser) {
+    const add = payload.add ?? [];
+    const remove = payload.remove ?? [];
+    if (add.length === 0 && remove.length === 0) {
+      throw new BadRequestException('Give at least one tag to add or remove');
     }
-
-    await Promise.all(executing);
-    return { data: results };
+    if (user.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('Requesters cannot tag tickets');
+    }
+    // Normalised once, outside the loop: a malformed tag is the caller's
+    // mistake and should be one 400, not a hundred identical per-ticket errors.
+    const addNames = add.map((name: string) =>
+      this.tagsService.normalize(name),
+    );
+    const removeNames = remove.map((name: string) =>
+      this.tagsService.normalize(name),
+    );
+    return this.runBulkWithConcurrency(payload.ticketIds, async (ticketId) => {
+      const ticket = await this.prisma.ticket.findFirst({
+        where: {
+          id: ticketId,
+          ...this.accessControl.buildTicketAccessFilter(user),
+        },
+        select: {
+          id: true,
+          requesterId: true,
+          assignedTeamId: true,
+          assigneeId: true,
+        },
+      });
+      if (!ticket) {
+        throw new Error('Ticket not found');
+      }
+      if (!this.canWriteTicket(user, ticket)) {
+        throw new Error('No write access');
+      }
+      if (addNames.length > 0) {
+        await this.tagsService.attachManyToTicket(
+          ticketId,
+          addNames,
+          TagSource.MANUAL,
+          user.id,
+        );
+      }
+      if (removeNames.length > 0) {
+        const tags = await this.prisma.tag.findMany({
+          where: { name: { in: removeNames } },
+          select: { id: true },
+        });
+        if (tags.length > 0) {
+          // A tag that is not on this ticket is simply not deleted. Removing
+          // "vpn" from twenty tickets where only nine carry it is a success on
+          // all twenty, not eleven failures.
+          await this.prisma.ticketTag.deleteMany({
+            where: { ticketId, tagId: { in: tags.map((tag) => tag.id) } },
+          });
+        }
+      }
+    });
   }
 
   /** Bulk assign tickets. assigneeId optional = assign to self. */

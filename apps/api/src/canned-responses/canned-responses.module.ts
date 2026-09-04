@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { AutomationModule } from '../automation/automation.module';
 import { CommonModule } from '../common/common.module';
+import { BulkMacroController } from './bulk-macro.controller';
 import { CannedResponsesController } from './canned-responses.controller';
 import { CannedResponsesService } from './canned-responses.service';
 
@@ -13,7 +14,8 @@ import { CannedResponsesService } from './canned-responses.service';
  */
 @Module({
   imports: [CommonModule, forwardRef(() => AutomationModule)],
-  controllers: [CannedResponsesController],
+  controllers: [CannedResponsesController, BulkMacroController],
   providers: [CannedResponsesService],
+  exports: [CannedResponsesService],
 })
 export class CannedResponsesModule {}

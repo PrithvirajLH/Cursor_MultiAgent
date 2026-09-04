@@ -2468,6 +2468,39 @@ export function bulkStatusTickets(ticketIds: string[], status: string) {
   ).then((response) => unwrapDataEnvelope(response));
 }
 
+/**
+ * Card 1.12. `add` and `remove` are tag NAMES, matching the single-ticket
+ * endpoint - an agent tagging twenty tickets is thinking "vpn", not a uuid.
+ */
+export function bulkTagTickets(
+  ticketIds: string[],
+  add: string[],
+  remove: string[],
+) {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>("/tickets/bulk/tags", {
+    method: "POST",
+    body: JSON.stringify({ ticketIds, add, remove }),
+  }).then((response) => unwrapDataEnvelope(response));
+}
+
+/**
+ * Card 1.12. Runs the macro's ACTIONS only - its text is never sent. There is
+ * no composer for twenty tickets, and the composer is the only path that
+ * enforces the reply rules.
+ */
+export function bulkMacroTickets(
+  ticketIds: string[],
+  cannedResponseId: string,
+) {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>(
+    "/tickets/bulk/macro",
+    {
+      method: "POST",
+      body: JSON.stringify({ ticketIds, cannedResponseId }),
+    },
+  ).then((response) => unwrapDataEnvelope(response));
+}
+
 export function bulkPriorityTickets(ticketIds: string[], priority: string) {
   return apiFetch<BulkResult | DataEnvelope<BulkResult>>(
     "/tickets/bulk/priority",

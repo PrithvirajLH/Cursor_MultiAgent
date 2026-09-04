@@ -26,6 +26,7 @@ import { AssignTicketDto } from './dto/assign-ticket.dto';
 import { BulkAssignDto } from './dto/bulk-assign.dto';
 import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
+import { BulkTagsDto } from './dto/bulk-tags.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
 import { CreateIntakeTicketDto } from './dto/create-intake-ticket.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
@@ -189,6 +190,15 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.bulkStatus(payload, user);
+  }
+
+  @Post('bulk/tags')
+  @ThrottlePolicy('highWrite')
+  async bulkTags(
+    @Body() payload: BulkTagsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.bulkTags(payload, user);
   }
 
   @Post('bulk/priority')

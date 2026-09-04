@@ -7,7 +7,9 @@ import { TicketDetailPage } from "./TicketDetailPage";
 import {
   bulkAssignTickets,
   bulkPriorityTickets,
+  bulkMacroTickets,
   bulkStatusTickets,
+  bulkTagTickets,
   bulkTransferTickets,
   fetchTicketById,
   exportTicketsCsv,
@@ -1213,6 +1215,34 @@ export function TicketsPage({
     }
   }
 
+  /**
+   * Card 1.12. No optimistic patch, unlike status and priority above: a bulk
+   * macro can change status, priority, assignee, team and tags at once, and
+   * guessing all of that would put a wrong row on screen more often than a
+   * brief wait would annoy anyone. The list reloads from the server instead.
+   */
+  async function handleBulkTags(add: string[], remove: string[]) {
+    const result = await bulkTagTickets(selection.selectedIds, add, remove);
+    if (result.success > 0) {
+      await loadTickets();
+      notifyTicketAggregatesChanged();
+    }
+    return result;
+  }
+
+  async function handleBulkMacro(cannedResponseId: string) {
+    const result = await bulkMacroTickets(
+      selection.selectedIds,
+      cannedResponseId,
+    );
+    if (result.success > 0) {
+      await loadTickets();
+      notifyTicketAggregatesChanged();
+      notifyTicketReportsChanged();
+    }
+    return result;
+  }
+
   async function handleBulkPriority(priority: string) {
     const selectedIds = selection.selectedIds;
     const snapshots = snapshotTicketsById(selectedIds);
@@ -1596,6 +1626,8 @@ export function TicketsPage({
               onBulkTransfer={handleBulkTransfer}
               onBulkStatus={handleBulkStatus}
               onBulkPriority={handleBulkPriority}
+              onBulkTags={handleBulkTags}
+              onBulkMacro={handleBulkMacro}
               teamsList={teamsList}
               assignableUsers={assignableUsers}
               onSuccess={(message) => {

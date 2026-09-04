@@ -7,10 +7,16 @@ import {
   Signal,
   Loader2,
   ChevronDown,
+  Tag as TagIcon,
+  Zap,
 } from "lucide-react";
-import type { TeamRef, TeamMember } from "../api/client";
+import type {
+  CannedResponseRecord,
+  TeamRef,
+  TeamMember,
+} from "../api/client";
 import type { UserRef } from "../api/client";
-import { fetchTeamMembers } from "../api/client";
+import { fetchCannedResponses, fetchTeamMembers } from "../api/client";
 import { formatStatus } from "../utils/format";
 
 const STATUS_OPTIONS = [
@@ -43,6 +49,15 @@ type BulkActionsToolbarProps = {
   onBulkPriority: (
     priority: string,
   ) => Promise<{ success: number; failed: number }>;
+  /** Card 1.12. Tag names, not ids - one of the two lists may be empty. */
+  onBulkTags: (
+    add: string[],
+    remove: string[],
+  ) => Promise<{ success: number; failed: number }>;
+  /** Card 1.12. Runs the macro's actions; its text is never sent. */
+  onBulkMacro: (
+    cannedResponseId: string,
+  ) => Promise<{ success: number; failed: number }>;
   teamsList: TeamRef[];
   assignableUsers: UserRef[];
   onSuccess?: (message: string) => void;
@@ -56,6 +71,8 @@ export function BulkActionsToolbar({
   onBulkTransfer,
   onBulkStatus,
   onBulkPriority,
+  onBulkTags,
+  onBulkMacro,
   teamsList,
   assignableUsers,
   onSuccess,
@@ -69,6 +86,26 @@ export function BulkActionsToolbar({
   const [transferMembersLoading, setTransferMembersLoading] = useState(false);
   const [statusValue, setStatusValue] = useState("");
   const [priorityValue, setPriorityValue] = useState("");
+  const [tagValue, setTagValue] = useState("");
+  const [tagMode, setTagMode] = useState<"add" | "remove">("add");
+  const [macroId, setMacroId] = useState("");
+  const [macros, setMacros] = useState<CannedResponseRecord[]>([]);
+
+  // The macro list is small and the toolbar only appears once something is
+  // selected, so this is one fetch per visit rather than per selection change.
+  useEffect(() => {
+    let cancelled = false;
+    fetchCannedResponses()
+      .then((res) => {
+        if (!cancelled) setMacros(res.data ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setMacros([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Fetch team members when transfer team changes
   useEffect(() => {
@@ -107,6 +144,66 @@ export function BulkActionsToolbar({
     } finally {
       setLoading(false);
       setAssignToId("");
+    }
+  }
+
+  /**
+   * Report per ticket, not "done".
+   *
+   * A bulk result that says "20 tickets updated" when four were refused is the
+   * failure mode card 1.12 exists to avoid: the agent walks away believing the
+   * selection is consistent. Partial success says both numbers.
+   */
+  function reportBulkResult(
+    result: { success: number; failed: number },
+    verb: string,
+  ) {
+    if (result.failed === 0) {
+      onSuccess?.(`${result.success} ticket(s) ${verb}.`);
+      onClearSelection();
+    } else if (result.success > 0) {
+      onSuccess?.(
+        `${result.success} ${verb}, ${result.failed} could not be — check those tickets.`,
+      );
+      onClearSelection();
+    } else {
+      onError?.(
+        result.failed === 1
+          ? `Unable to update that ticket.`
+          : `Unable to update any of the ${result.failed} selected tickets.`,
+      );
+    }
+  }
+
+  async function handleBulkTags() {
+    const name = tagValue.trim();
+    if (!name) return;
+    setLoading(true);
+    try {
+      const result = await onBulkTags(
+        tagMode === "add" ? [name] : [],
+        tagMode === "remove" ? [name] : [],
+      );
+      reportBulkResult(result, tagMode === "add" ? "tagged" : "untagged");
+    } catch {
+      onError?.("Unable to update tags.");
+    } finally {
+      setLoading(false);
+      setTagValue("");
+    }
+  }
+
+  async function handleBulkMacro() {
+    if (!macroId) return;
+    setLoading(true);
+    try {
+      const result = await onBulkMacro(macroId);
+      reportBulkResult(result, "updated");
+    } catch {
+      onError?.("Unable to run that template.");
+    } finally {
+      setLoading(false);
+      setMacroId("");
     }
   }
 
@@ -288,6 +385,56 @@ export function BulkActionsToolbar({
               onClick={() => handleBulkPriority()}
               disabled={loading}
             >
+              Apply
+            </ActionButton>
+          )}
+        </ActionGroup>
+
+        <Divider />
+
+        {/* Tags (card 1.12) */}
+        <ActionGroup>
+          <TagIcon className="ml-2 h-3.5 w-3.5 text-muted-foreground" />
+          <select
+            aria-label="Tag action"
+            value={tagMode}
+            onChange={(e) => setTagMode(e.target.value as "add" | "remove")}
+            disabled={loading}
+            className="h-9 bg-transparent px-1 text-sm text-foreground outline-none"
+          >
+            <option value="add">Add tag</option>
+            <option value="remove">Remove tag</option>
+          </select>
+          <input
+            aria-label="Tag name"
+            value={tagValue}
+            onChange={(e) => setTagValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleBulkTags();
+            }}
+            disabled={loading}
+            placeholder="tag name"
+            className="h-9 w-28 bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+          {tagValue.trim() && (
+            <ActionButton onClick={() => handleBulkTags()} disabled={loading}>
+              Apply
+            </ActionButton>
+          )}
+        </ActionGroup>
+
+        {/* Macro (card 1.12) */}
+        <ActionGroup>
+          <StyledSelect
+            value={macroId}
+            onChange={setMacroId}
+            disabled={loading || macros.length === 0}
+            placeholder={macros.length > 0 ? "Template" : "No templates"}
+            icon={Zap}
+            options={macros.map((m) => ({ value: m.id, label: m.name }))}
+          />
+          {macroId && (
+            <ActionButton onClick={() => handleBulkMacro()} disabled={loading}>
               Apply
             </ActionButton>
           )}

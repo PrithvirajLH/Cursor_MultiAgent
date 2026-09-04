@@ -11,6 +11,8 @@ import { AccessControlService } from '../common/access-control.service';
 import { RuleEngineService } from '../automation/rule-engine.service';
 import { MACRO_ALLOWED_ACTIONS } from '../automation/macro-allowed-actions.util';
 import { fillTemplateVars } from '../automation/template-vars.util';
+import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
+import { BulkMacroDto } from '../tickets/dto/bulk-macro.dto';
 import { buildMacroVars } from './build-macro-vars.util';
 import { CreateCannedResponseDto } from './dto/create-canned-response.dto';
 import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
@@ -272,6 +274,31 @@ export class CannedResponsesService {
       applied: result.applied,
       skippedActions: result.skipped,
     };
+  }
+
+  /**
+   * Run one macro's actions across a selection of tickets (card 1.12).
+   *
+   * Every ticket goes through `apply` above, so nothing is re-implemented and
+   * nothing is relaxed: the macro must be one this person can see, the ticket
+   * must pass `canWriteTicket`, and every action still meets the execute-time
+   * allowlist. The rendered TEXT is discarded - see BulkMacroDto for why a bulk
+   * macro has no send path at all.
+   *
+   * ⚠️ Permission is checked PER TICKET because `apply` loads each one. A
+   * selection can span teams, and a single check applied to twenty rows is the
+   * mistake a bulk endpoint invites.
+   *
+   * Per ticket rather than all-or-nothing: a macro that sets RESOLVED rolls
+   * back on a ticket where that transition is illegal (card 1.7), and across
+   * twenty tickets some will be in such a state. One awkward ticket must not
+   * block nineteen good ones, and the result names every failure with its own
+   * message so the agent can see which.
+   */
+  async applyToMany(payload: BulkMacroDto, user: AuthUser) {
+    return runBulkWithConcurrency(payload.ticketIds, (ticketId) =>
+      this.apply(payload.cannedResponseId, ticketId, user),
+    );
   }
 
   /**
