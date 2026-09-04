@@ -982,6 +982,11 @@ export type CannedResponseRecord = {
    * this file, and a second copy of the permission would be the same mistake.
    */
   canWrite?: boolean;
+  /**
+   * Is the caller the AUTHOR, as opposed to a lead maintaining their team's
+   * copy? Only the author may change who a template is shared with.
+   */
+  isMine?: boolean;
   userId: string | null;
   teamId: string | null;
   createdAt: string;
@@ -1076,7 +1081,17 @@ export function createCannedResponse(payload: {
 
 export function updateCannedResponse(
   id: string,
-  payload: { name?: string; content?: string; actions?: MacroAction[] },
+  payload: {
+    name?: string;
+    content?: string;
+    actions?: MacroAction[];
+    /**
+     * A team id shares it, `null` makes it private, omitting it leaves the
+     * sharing alone. Only the author may change this - the server refuses
+     * anyone else, including a lead who may otherwise edit the template.
+     */
+    teamId?: string | null;
+  },
 ) {
   return apiFetch<CannedResponseRecord>(`/canned-responses/${id}`, {
     method: "PATCH",

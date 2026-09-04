@@ -13,6 +13,9 @@ import {
   createCannedResponse,
   deleteCannedResponse,
   fetchCannedResponses,
+  fetchCategories,
+  fetchTeamMembers,
+  fetchTeams,
   renderCannedResponse,
   updateCannedResponse,
   type CannedResponseRecord,
@@ -111,8 +114,22 @@ export function CannedResponsePicker({
     name: string;
     content: string;
     shareWithTeam: boolean;
+    /** False when a lead is maintaining somebody else's shared template. */
+    isMine?: boolean;
     actions: MacroAction[];
   } | null>(null);
+  /**
+   * The lists the three id-based actions choose from.
+   *
+   * Loaded once, only when the editor is actually opened - a template picker
+   * that is usually used to paste text should not fetch three extra lists on
+   * every open.
+   */
+  const [lookups, setLookups] = useState<{
+    categories: { id: string; name: string }[];
+    teams: { id: string; name: string }[];
+    people: { id: string; name: string }[];
+  }>({ categories: [], teams: [], people: [] });
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useModalFocusTrap({ open, containerRef: dialogRef, onClose });
@@ -139,6 +156,48 @@ export function CannedResponsePicker({
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const editorOpen = editing !== null;
+  useEffect(() => {
+    if (!editorOpen || lookups.teams.length > 0) return;
+    let cancelled = false;
+    void Promise.allSettled([
+      fetchCategories(),
+      fetchTeams(),
+      team ? fetchTeamMembers(team.id) : Promise.resolve({ data: [] }),
+    ]).then(([categories, teams, members]) => {
+      if (cancelled) return;
+      // Partial failure is survivable: a dropdown with nothing in it still
+      // beats losing the whole editor, and an action with no id chosen is
+      // dropped on save rather than sent.
+      setLookups({
+        categories:
+          categories.status === "fulfilled"
+            ? (categories.value.data ?? []).map((c) => ({
+                id: c.id,
+                name: c.name,
+              }))
+            : [],
+        teams:
+          teams.status === "fulfilled"
+            ? (teams.value.data ?? []).map((x) => ({ id: x.id, name: x.name }))
+            : [],
+        people:
+          members.status === "fulfilled"
+            ? ((members.value as { data?: { user?: { id: string; displayName?: string; email?: string } }[] })
+                .data ?? []
+              ).map((m) => ({
+                id: m.user?.id ?? "",
+                name: m.user?.displayName || m.user?.email || "Unknown",
+              }))
+            : [],
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorOpen, team]);
 
   if (!open) return null;
 
@@ -169,20 +228,32 @@ export function CannedResponsePicker({
     try {
       // Only complete rows are sent. A half-filled action would come back as a
       // whole-form 400 that does not say which row is wrong.
-      const actions = editing.actions.filter(isActionComplete);
+      // Empty id fields are stripped as well as filtered. `isActionComplete`
+      // catches a blank row, but a stray empty string on an unrelated key would
+      // still fail the server's UUID check, and a whole-form 400 does not say
+      // which row is wrong.
+      const actions = editing.actions.filter(isActionComplete).map((action) =>
+        Object.fromEntries(
+          Object.entries(action).filter(([, value]) => value !== ""),
+        ),
+      ) as MacroAction[];
       const payload = {
         name: editing.name.trim(),
         content: editing.content,
         actions,
       };
+      // The sharing choice travels on both routes now. On edit it is sent as
+      // an explicit value - a team id to share, or null to make it private
+      // again - because omitting it means "leave it as it is". Only the author
+      // may change it; the server refuses a lead who tries, and the control is
+      // hidden from them below.
+      const sharing = editing.shareWithTeam && team ? team.id : null;
       if (editing.id) {
-        await updateCannedResponse(editing.id, payload);
+        await updateCannedResponse(editing.id, { ...payload, teamId: sharing });
       } else {
         await createCannedResponse({
           ...payload,
-          // Omitted entirely when private. The server refuses any team but the
-          // caller's own since card 1.7b, so there is nothing else to offer.
-          ...(editing.shareWithTeam && team ? { teamId: team.id } : {}),
+          ...(sharing ? { teamId: sharing } : {}),
         });
       }
       setEditing(null);
@@ -210,6 +281,20 @@ export function CannedResponsePicker({
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Swap an action for a different kind, discarding the old parameters. */
+  function replaceAction(index: number, next: MacroAction) {
+    setEditing((prev) =>
+      prev
+        ? {
+            ...prev,
+            actions: prev.actions.map((action, i) =>
+              i === index ? next : action,
+            ),
+          }
+        : prev,
+    );
   }
 
   function patchAction(index: number, patch: Partial<MacroAction>) {
@@ -364,10 +449,14 @@ export function CannedResponsePicker({
               . Anything else fills in as nothing.
             </p>
 
-            {/* Only offered for a NEW template: moving an existing one between
-                private and shared is a different decision, and the server does
-                not accept a teamId change on PATCH. */}
-            {!editing.id && (
+            {/* Shown when EDITING as well as creating, so a template can move
+                between private and shared after the fact. Hidden from anybody
+                who is not the author: a lead may maintain their team's shared
+                template, but un-sharing it would hide it from the team, and
+                sharing somebody's private draft would publish unfinished work.
+                The server refuses them either way; this stops the control
+                promising something that would be refused. */}
+            {(!editing.id || editing.isMine) && (
               <label className="mb-4 flex items-center gap-2 text-sm text-foreground">
                 <input
                   type="checkbox"
@@ -383,6 +472,12 @@ export function CannedResponsePicker({
                   : "Private (you are on no team)"}
               </label>
             )}
+            {editing.id && !editing.isMine && (
+              <p className="mb-4 text-[11px] text-muted-foreground">
+                Shared with {team?.name ?? "the team"}. Only its author can
+                change that.
+              </p>
+            )}
 
             <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               <Zap className="h-3 w-3" />
@@ -395,7 +490,13 @@ export function CannedResponsePicker({
                     aria-label="Action"
                     value={action.type}
                     onChange={(e) =>
-                      patchAction(index, blankAction(e.target.value))
+                      // REPLACE, never merge. Merging left the previous type's
+                      // parameter behind - switch to "Set category" and back to
+                      // "Move to team" and the action carried both a teamId and
+                      // an empty categoryId, which the server rejects as "must
+                      // be a UUID". Found by changing my mind in the editor,
+                      // which no unit test does.
+                      replaceAction(index, blankAction(e.target.value))
                     }
                     className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
                   >
@@ -480,6 +581,61 @@ export function CannedResponsePicker({
                       placeholder="Standard reset performed."
                       className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
                     />
+                  )}
+                  {action.type === "set_category" && (
+                    <select
+                      aria-label="Category"
+                      value={action.categoryId ?? ""}
+                      onChange={(e) =>
+                        patchAction(index, { categoryId: e.target.value })
+                      }
+                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      <option value="">Choose a category…</option>
+                      {lookups.categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {action.type === "assign_team" && (
+                    <select
+                      aria-label="Team"
+                      value={action.teamId ?? ""}
+                      onChange={(e) =>
+                        patchAction(index, { teamId: e.target.value })
+                      }
+                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      <option value="">Choose a team…</option>
+                      {lookups.teams.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {action.type === "assign_user" && (
+                    <select
+                      aria-label="Assignee"
+                      value={action.userId ?? ""}
+                      onChange={(e) =>
+                        patchAction(index, { userId: e.target.value })
+                      }
+                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      <option value="">
+                        {lookups.people.length > 0
+                          ? "Choose a person…"
+                          : "No team members to choose"}
+                      </option>
+                      {lookups.people.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name}
+                        </option>
+                      ))}
+                    </select>
                   )}
                   <button
                     type="button"
@@ -663,6 +819,7 @@ export function CannedResponsePicker({
                             name: item.name,
                             content: item.content,
                             shareWithTeam: item.teamId != null,
+                            isMine: item.isMine ?? false,
                             actions: item.actions ?? [],
                           })
                         }

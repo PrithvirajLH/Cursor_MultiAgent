@@ -2,6 +2,7 @@ import {
   IsArray,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -18,6 +19,22 @@ export class UpdateCannedResponseDto {
   @IsString()
   @MaxLength(10000)
   content?: string;
+
+  /**
+   * Move the template between private and shared (card 1.7b, second pass).
+   *
+   * Three distinct meanings, and they matter:
+   *   omitted  -> leave the sharing exactly as it is
+   *   a teamId -> share with that team, which must be the caller's own
+   *   null     -> make it private again
+   *
+   * `@IsOptional` skips validation for null as well as undefined, which is what
+   * lets an explicit null through to mean "unshare". The service tells the two
+   * apart with `!== undefined`.
+   */
+  @IsOptional()
+  @IsUUID()
+  teamId?: string | null;
 
   /** See CreateCannedResponseDto.actions. The allowlist is checked on save. */
   @IsOptional()

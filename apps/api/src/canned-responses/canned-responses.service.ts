@@ -53,6 +53,10 @@ export class CannedResponsesService {
       data: items.map((item) => ({
         ...item,
         canWrite: this.mayWrite(item, user),
+        // Separate from canWrite on purpose: a LEAD may write their team's
+        // shared template but is not its author, and only the author may
+        // change who it is shared with.
+        isMine: item.userId === user.id,
       })),
       // The one team this person may share with. The editor offers this or
       // nothing, because anything else is now a 400.
@@ -108,6 +112,9 @@ export class CannedResponsesService {
         ...(dto.actions != null && {
           actions: this.assertActionsAllowed(dto.actions),
         }),
+        ...(dto.teamId !== undefined && {
+          teamId: this.assertMayReshare(existing, dto.teamId, user),
+        }),
       },
     });
     return item;
@@ -141,6 +148,34 @@ export class CannedResponsesService {
       );
     }
     return teamId;
+  }
+
+  /**
+   * Who a template is shared with is the AUTHOR's decision, not a lead's.
+   *
+   * A lead may maintain their team's shared template - fix its wording, correct
+   * an action - because otherwise it freezes when its author leaves. But
+   * un-sharing one would hide it from the team (and from the lead), and sharing
+   * somebody's private draft would publish work they had not finished. Neither
+   * is a maintenance job, so both stay with the person whose template it is.
+   *
+   * The target team is still checked: an author may only share with a team they
+   * are actually in, exactly as on create.
+   */
+  private assertMayReshare(
+    existing: { userId: string | null; teamId: string | null },
+    teamId: string | null,
+    user: AuthUser,
+  ): string | null {
+    if (existing.userId !== user.id) {
+      throw new ForbiddenException(
+        'Only the author can change who a template is shared with',
+      );
+    }
+    if (teamId === null) {
+      return null;
+    }
+    return this.assertTeamIsMine(teamId, user);
   }
 
   /**

@@ -1,13 +1,13 @@
 import type { MacroAction } from "../api/client";
 
 /**
- * The actions the template editor can build (card 1.7b §3d).
+ * The actions the template editor can build.
  *
- * A STRICT SUBSET of the server's MACRO_ALLOWED_ACTIONS, and deliberately so:
- * these are the six that need no entity lookup. `set_category`, `assign_team`
- * and `assign_user` are allowed by the server but need a picker for a category,
- * team or team-member id, so the editor does not offer them yet — offering a
- * control that cannot produce a valid value is worse than not offering it.
+ * NOW THE COMPLETE SERVER ALLOWLIST. The first pass offered only the six that
+ * need no entity lookup; the last three are here as of this pass, each backed by
+ * a real dropdown of categories, teams or team members. An action whose id
+ * cannot be chosen is worse than one that is absent, which is why they waited
+ * for the lookups rather than shipping as free-text id boxes.
  *
  * ⚠️ Nothing here may ever include `send_email`, `notify_requester` or
  * `notify_team_lead`. The server refuses them on save and again on execute, so
@@ -20,6 +20,9 @@ export const EDITABLE_ACTION_TYPES = [
   { value: "remove_tag", label: "Remove tag" },
   { value: "add_follower", label: "Add follower" },
   { value: "add_internal_note", label: "Add internal note" },
+  { value: "set_category", label: "Set category" },
+  { value: "assign_team", label: "Move to team" },
+  { value: "assign_user", label: "Assign to" },
 ] as const;
 
 export const TEMPLATE_STATUS_OPTIONS = [
@@ -69,6 +72,12 @@ export function blankAction(type: string): MacroAction {
       return { type, tags: [] };
     case "add_follower":
       return { type, target: "requester" };
+    case "set_category":
+      return { type, categoryId: "" };
+    case "assign_team":
+      return { type, teamId: "" };
+    case "assign_user":
+      return { type, userId: "" };
     default:
       return { type, body: "" };
   }
@@ -93,6 +102,15 @@ export function isActionComplete(action: MacroAction): boolean {
       return Boolean(action.target);
     case "add_internal_note":
       return Boolean(action.body && action.body.trim() !== "");
+    // An id-based action with nothing chosen is dropped on save rather than
+    // sent - the server would reject it, and a whole-form 400 does not say
+    // which row was blank.
+    case "set_category":
+      return Boolean(action.categoryId);
+    case "assign_team":
+      return Boolean(action.teamId);
+    case "assign_user":
+      return Boolean(action.userId);
     default:
       return false;
   }

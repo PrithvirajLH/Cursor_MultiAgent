@@ -20,6 +20,10 @@ vi.mock("../api/client", () => ({
   createCannedResponse: vi.fn(),
   updateCannedResponse: vi.fn(),
   deleteCannedResponse: vi.fn(),
+  // The editor loads these for its id-based action dropdowns.
+  fetchCategories: vi.fn().mockResolvedValue({ data: [] }),
+  fetchTeams: vi.fn().mockResolvedValue({ data: [] }),
+  fetchTeamMembers: vi.fn().mockResolvedValue({ data: [] }),
 }));
 
 /**
@@ -128,9 +132,10 @@ describe("the template editor's action list", () => {
     expect(offered).not.toContain("notify_team_lead");
   });
 
-  it("offers only actions the server's allowlist contains", () => {
-    // Mirrors MACRO_ALLOWED_ACTIONS in the API. Deliberately a SUBSET: the
-    // three id-based actions need an entity picker and are not offered yet.
+  it("offers exactly the server's allowlist, all nine of it", () => {
+    // Mirrors MACRO_ALLOWED_ACTIONS in the API. It used to be a subset - the
+    // three id-based actions waited for their dropdowns - and is now complete,
+    // so this asserts both directions: nothing extra, nothing missing.
     const serverAllowlist = [
       "set_status",
       "set_priority",
@@ -142,9 +147,8 @@ describe("the template editor's action list", () => {
       "add_follower",
       "add_internal_note",
     ];
-    for (const option of EDITABLE_ACTION_TYPES) {
-      expect(serverAllowlist).toContain(option.value);
-    }
+    const offered = EDITABLE_ACTION_TYPES.map((option) => option.value);
+    expect([...offered].sort()).toEqual([...serverAllowlist].sort());
   });
 
   it("gives every offered action a usable default", () => {
@@ -153,11 +157,31 @@ describe("the template editor's action list", () => {
       expect(fresh.type).toBe(option.value);
       // A tag or note starts empty on purpose - there is nothing sensible to
       // guess - so those are the only two that start incomplete.
-      const expectIncomplete = ["add_tag", "remove_tag", "add_internal_note"];
+      // The id-based three start blank too - there is no sensible default
+      // category, team or person to guess.
+      const expectIncomplete = [
+        "add_tag",
+        "remove_tag",
+        "add_internal_note",
+        "set_category",
+        "assign_team",
+        "assign_user",
+      ];
       expect(isActionComplete(fresh)).toBe(
         !expectIncomplete.includes(option.value),
       );
     }
+  });
+
+  it("will not save an id-based action with nothing chosen", () => {
+    expect(isActionComplete({ type: "set_category", categoryId: "" })).toBe(
+      false,
+    );
+    expect(isActionComplete({ type: "set_category", categoryId: "c1" })).toBe(
+      true,
+    );
+    expect(isActionComplete({ type: "assign_team", teamId: "" })).toBe(false);
+    expect(isActionComplete({ type: "assign_user", userId: "u1" })).toBe(true);
   });
 
   it("will not save a half-filled tag or note", () => {
@@ -169,6 +193,27 @@ describe("the template editor's action list", () => {
     expect(isActionComplete({ type: "add_internal_note", body: "Done." })).toBe(
       true,
     );
+  });
+
+  it("gives a fresh action ONLY its own parameter", () => {
+    // The shape that caused a real 400. The editor used to MERGE when an
+    // action's type changed, so switching from "Set category" to "Move to
+    // team" left `categoryId: ""` behind and the server refused the save with
+    // "categoryId must be a UUID". A blank action must therefore carry nothing
+    // but its own key - the editor now replaces rather than merges, and this
+    // pins the half that lives in the data.
+    const team = blankAction("assign_team");
+    expect(Object.keys(team).sort()).toEqual(["teamId", "type"]);
+    const category = blankAction("set_category");
+    expect(Object.keys(category).sort()).toEqual(["categoryId", "type"]);
+    const person = blankAction("assign_user");
+    expect(Object.keys(person).sort()).toEqual(["type", "userId"]);
+    // and none of them carries a stray key from another action type
+    for (const action of [team, category, person]) {
+      expect(action).not.toHaveProperty("status");
+      expect(action).not.toHaveProperty("tags");
+      expect(action).not.toHaveProperty("body");
+    }
   });
 
   it("advertises exactly the placeholders the server fills", () => {

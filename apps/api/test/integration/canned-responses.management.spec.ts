@@ -288,6 +288,82 @@ describe('Template management', () => {
     });
   });
 
+  describe('moving a template between private and shared', () => {
+    it('lets the AUTHOR share a private one', async () => {
+      const tpl = await plant(null);
+      const res = await edit(
+        tpl.id,
+        { teamId: fixtureTeamIds.it },
+        fixtureEmails.agent,
+      );
+      expect(res.status).toBe(200);
+      expect(
+        (
+          await prisma.cannedResponse.findUniqueOrThrow({
+            where: { id: tpl.id },
+            select: { teamId: true },
+          })
+        ).teamId,
+      ).toBe(fixtureTeamIds.it);
+    });
+
+    it('lets the AUTHOR make a shared one private again', async () => {
+      const tpl = await plant(fixtureTeamIds.it);
+      const res = await edit(tpl.id, { teamId: null }, fixtureEmails.agent);
+      expect(res.status).toBe(200);
+      expect(
+        (
+          await prisma.cannedResponse.findUniqueOrThrow({
+            where: { id: tpl.id },
+            select: { teamId: true },
+          })
+        ).teamId,
+      ).toBeNull();
+    });
+
+    it('leaves the sharing alone when teamId is omitted', async () => {
+      // The third meaning of the field, and the one an ordinary content edit
+      // relies on: omitted must not be read as "make it private".
+      const tpl = await plant(fixtureTeamIds.it);
+      await edit(tpl.id, { content: 'Just the wording.' }, fixtureEmails.agent);
+      expect(
+        (
+          await prisma.cannedResponse.findUniqueOrThrow({
+            where: { id: tpl.id },
+            select: { teamId: true },
+          })
+        ).teamId,
+      ).toBe(fixtureTeamIds.it);
+    });
+
+    it('refuses a LEAD who tries to unshare a template they did not write', async () => {
+      // A lead may MAINTAIN their team's shared template - that is the whole
+      // point of the previous section - but un-sharing it would hide it from
+      // the team, and that decision belongs to its author.
+      const tpl = await plant(fixtureTeamIds.it);
+      const res = await edit(tpl.id, { teamId: null }, fixtureEmails.lead);
+      expect(res.status).toBe(403);
+      expect(
+        (
+          await prisma.cannedResponse.findUniqueOrThrow({
+            where: { id: tpl.id },
+            select: { teamId: true },
+          })
+        ).teamId,
+      ).toBe(fixtureTeamIds.it);
+    });
+
+    it('still refuses a team the author is not in', async () => {
+      const tpl = await plant(null);
+      const res = await edit(
+        tpl.id,
+        { teamId: fixtureTeamIds.hr },
+        fixtureEmails.agent,
+      );
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe('the allowlist still holds on edit', () => {
     it('refuses to save send_email through a PATCH', async () => {
       // The save-time gate has to cover both routes, not just create.
