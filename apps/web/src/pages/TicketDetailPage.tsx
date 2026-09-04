@@ -60,6 +60,7 @@ import { TicketConversation } from "../components/ticket-detail/TicketConversati
 import { messageSentToast } from "../components/ticket-detail/message-sent-toast";
 import { TicketTimeline } from "../components/ticket-detail/TicketTimeline";
 import { TicketAttachments } from "../components/ticket-detail/TicketAttachments";
+import { TicketLinks } from "../components/ticket-detail/TicketLinks";
 import {
   TicketSidebar,
   type ExpandedSections,
@@ -2902,6 +2903,12 @@ export function TicketDetailPage({
                 statusEvents={statusEvents}
                 currentEmail={currentEmail}
                 canSeeRequesterHistory={role !== "EMPLOYEE"}
+              />
+              <TicketLinks
+                ticketId={ticket.id}
+                links={ticket.links ?? []}
+                canManage={canManage}
+                onChanged={() => void loadTicketDetail(ticket.id)}
               />
             </div>
           )}

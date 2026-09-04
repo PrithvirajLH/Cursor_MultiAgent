@@ -17,6 +17,9 @@ export type TicketRealtimeReason =
   | 'priority_changed'
   | 'category_changed'
   | 'followers_changed'
+  // A link to another ticket was added or removed (card 1.6). Emitted on BOTH
+  // tickets, because a link is visible from either end.
+  | 'links_changed'
   | 'attachment_added'
   | 'attachment_scan_status_changed'
   | 'automation_rule_executed'

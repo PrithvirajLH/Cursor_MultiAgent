@@ -19,6 +19,7 @@ import {
   TagSource,
   TeamAssignmentStrategy,
   TicketCloseReason,
+  TicketLinkType,
   TicketPriority,
   TicketStatus,
   UserRole,
@@ -33,6 +34,8 @@ import { AutomationQueueService } from '../common/automation-queue.service';
 import { CustomFieldsService } from '../custom-fields/custom-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { MessageRecipientsPreview } from '../notifications/message-recipients-preview.type';
+import type { LinkTicketDto } from './dto/link-ticket.dto';
+import type { TicketLinkView } from './ticket-link-view.type';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
@@ -1017,22 +1020,24 @@ export class TicketsService {
       throw new ForbiddenException('No access to this ticket');
     }
 
-    const [followers, attachments, customFieldValues] = await Promise.all([
-      this.prisma.ticketFollower.findMany({
-        where: { ticketId: id },
-        include: { user: true },
-        orderBy: { createdAt: 'asc' },
-      }),
-      this.prisma.attachment.findMany({
-        where: { ticketId: id },
-        include: { uploadedBy: true },
-        orderBy: { createdAt: 'asc' },
-      }),
-      this.prisma.customFieldValue.findMany({
-        where: { ticketId: id },
-        include: { customField: true },
-      }),
-    ]);
+    const [followers, attachments, customFieldValues, links] =
+      await Promise.all([
+        this.prisma.ticketFollower.findMany({
+          where: { ticketId: id },
+          include: { user: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.prisma.attachment.findMany({
+          where: { ticketId: id },
+          include: { uploadedBy: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.prisma.customFieldValue.findMany({
+          where: { ticketId: id },
+          include: { customField: true },
+        }),
+        this.loadTicketLinkViews(id, user),
+      ]);
 
     const { accessGrants, tags: tagRows, ...rest } = ticket;
     void accessGrants;
@@ -1048,6 +1053,7 @@ export class TicketsService {
       followers,
       attachments,
       customFieldValues,
+      links,
       allowedTransitions: rest.deletedAt
         ? []
         : this.getAvailableTransitionsForTicket(rest.status, rest.assigneeId),
@@ -3081,6 +3087,304 @@ export class TicketsService {
     );
 
     return { id: targetUserId };
+  }
+
+  /**
+   * Link two tickets (card 1.6).
+   *
+   * TWO different permissions, deliberately. You must be able to WRITE the
+   * ticket you are linking from - linking is reversible in one click, so write
+   * access is the right bar - and be able to VIEW the one you are linking to.
+   * The second is the security-relevant half: without it, linking a ticket you
+   * can open to one you cannot and then reading the link list back would hand
+   * you the subject of a ticket you have no access to, and HR and payroll
+   * subjects carry people's names.
+   *
+   * An unviewable target answers 404 rather than 403 on purpose. A 403 would
+   * confirm that the id belongs to a real ticket, which is the same leak in a
+   * smaller form.
+   */
+  async linkTicket(
+    ticketId: string,
+    payload: LinkTicketDto,
+    user: AuthUser,
+  ): Promise<{ data: TicketLinkView[] }> {
+    if (payload.toTicketId === ticketId) {
+      throw new BadRequestException('A ticket cannot be linked to itself');
+    }
+    const tickets = await this.prisma.ticket.findMany({
+      where: { id: { in: [ticketId, payload.toTicketId] } },
+      select: {
+        id: true,
+        requesterId: true,
+        assignedTeamId: true,
+        assigneeId: true,
+        deletedAt: true,
+        accessGrants: { select: { teamId: true } },
+      },
+    });
+    const source = tickets.find((row) => row.id === ticketId);
+    const target = tickets.find((row) => row.id === payload.toTicketId);
+    if (!source || (source.deletedAt && user.role !== UserRole.OWNER)) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!this.accessControl.canWriteTicket(user, source)) {
+      throw new ForbiddenException('No write access to this ticket');
+    }
+    if (!target || !this.accessControl.canViewTicket(user, target)) {
+      throw new NotFoundException('Linked ticket not found');
+    }
+    await this.ensureNoParentCycle(ticketId, payload.toTicketId, payload.type);
+    const link = await this.prisma.ticketLink
+      .create({
+        data: {
+          fromTicketId: ticketId,
+          toTicketId: payload.toTicketId,
+          type: payload.type,
+          createdById: user.id,
+        },
+        select: { id: true },
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new BadRequestException(
+            'These tickets are already linked with that type',
+          );
+        }
+        throw error;
+      });
+    await this.recordLinkEvents(
+      'TICKET_LINKED',
+      link.id,
+      ticketId,
+      payload.toTicketId,
+      payload.type,
+      user.id,
+    );
+    return { data: await this.loadTicketLinkViews(ticketId, user) };
+  }
+
+  /**
+   * Remove a link from either end (card 1.6).
+   *
+   * A link belongs to both tickets, so either side may remove it. What is
+   * checked is write access to the ticket named in the path AND that the link
+   * actually touches that ticket - without the second check, a link id from an
+   * unrelated pair could be deleted through a ticket the caller happens to own.
+   */
+  async unlinkTicket(
+    ticketId: string,
+    linkId: string,
+    user: AuthUser,
+  ): Promise<{ id: string }> {
+    const link = await this.prisma.ticketLink.findUnique({
+      where: { id: linkId },
+      select: { id: true, fromTicketId: true, toTicketId: true, type: true },
+    });
+    if (
+      !link ||
+      (link.fromTicketId !== ticketId && link.toTicketId !== ticketId)
+    ) {
+      throw new NotFoundException('Link not found');
+    }
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        requesterId: true,
+        assignedTeamId: true,
+        assigneeId: true,
+        deletedAt: true,
+      },
+    });
+    if (!ticket || (ticket.deletedAt && user.role !== UserRole.OWNER)) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!this.accessControl.canWriteTicket(user, ticket)) {
+      throw new ForbiddenException('No write access to this ticket');
+    }
+    await this.prisma.ticketLink.delete({ where: { id: linkId } });
+    await this.recordLinkEvents(
+      'TICKET_UNLINKED',
+      link.id,
+      link.fromTicketId,
+      link.toTicketId,
+      link.type,
+      user.id,
+    );
+    return { id: linkId };
+  }
+
+  /**
+   * Every link on a ticket, reduced to what this reader may see (card 1.6).
+   *
+   * One row is stored per relationship, so this reads both directions and
+   * derives the inverse rather than storing it: a row where this ticket is the
+   * `to` side comes back as `direction: 'incoming'`, and the web renders
+   * "duplicated by" where the stored row says "duplicate of".
+   */
+  private async loadTicketLinkViews(
+    ticketId: string,
+    user: AuthUser,
+  ): Promise<TicketLinkView[]> {
+    const ticketSelect = {
+      id: true,
+      number: true,
+      displayId: true,
+      subject: true,
+      status: true,
+      priority: true,
+      requesterId: true,
+      assignedTeamId: true,
+      assigneeId: true,
+      deletedAt: true,
+      accessGrants: { select: { teamId: true } },
+    } as const;
+    const links = await this.prisma.ticketLink.findMany({
+      where: { OR: [{ fromTicketId: ticketId }, { toTicketId: ticketId }] },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        type: true,
+        createdAt: true,
+        fromTicketId: true,
+        createdBy: { select: { id: true, displayName: true } },
+        fromTicket: { select: ticketSelect },
+        toTicket: { select: ticketSelect },
+      },
+    });
+    return links.map((link) => {
+      const isOutgoing = link.fromTicketId === ticketId;
+      const other = isOutgoing ? link.toTicket : link.fromTicket;
+      const visible = this.accessControl.canViewTicket(user, other);
+      // A soft-deleted ticket is invisible to everyone but OWNER, so tell the
+      // reader it was deleted only if they could have opened it while it was
+      // live. Otherwise a link an agent made themselves reads as "no access".
+      const couldSeeWhenLive = this.accessControl.canViewTicket(user, {
+        ...other,
+        deletedAt: null,
+      });
+      return {
+        id: link.id,
+        type: link.type,
+        direction: isOutgoing ? ('outgoing' as const) : ('incoming' as const),
+        createdAt: link.createdAt,
+        createdBy: link.createdBy,
+        otherTicket: {
+          id: other.id,
+          number: other.number,
+          visible,
+          deleted: other.deletedAt !== null && couldSeeWhenLive,
+          displayId: visible ? other.displayId : null,
+          subject: visible ? other.subject : null,
+          status: visible ? other.status : null,
+          priority: visible ? other.priority : null,
+        },
+      };
+    });
+  }
+
+  /**
+   * Refuse a PARENT_OF link that would make a ticket its own ancestor.
+   *
+   * Two levels only, which is what the card asks for: the direct inverse (the
+   * target is already this ticket's parent) and one step above it (the target
+   * is the parent of this ticket's parent). A full graph walker is not worth
+   * building for a relationship an agent sets by hand, and an unbounded walk
+   * over user-supplied data is its own hazard.
+   */
+  private async ensureNoParentCycle(
+    fromTicketId: string,
+    toTicketId: string,
+    type: TicketLinkType,
+  ): Promise<void> {
+    if (type !== TicketLinkType.PARENT_OF) {
+      return;
+    }
+    const parents = await this.prisma.ticketLink.findMany({
+      where: { toTicketId: fromTicketId, type: TicketLinkType.PARENT_OF },
+      select: { fromTicketId: true },
+    });
+    const parentIds = parents.map((row) => row.fromTicketId);
+    if (parentIds.includes(toTicketId)) {
+      throw new BadRequestException(
+        'Those two tickets cannot be parents of each other',
+      );
+    }
+    if (!parentIds.length) {
+      return;
+    }
+    const loops = await this.prisma.ticketLink.count({
+      where: {
+        fromTicketId: toTicketId,
+        toTicketId: { in: parentIds },
+        type: TicketLinkType.PARENT_OF,
+      },
+    });
+    if (loops > 0) {
+      throw new BadRequestException('That would loop the parent chain');
+    }
+  }
+
+  /**
+   * Write the link event on BOTH tickets, so each timeline records it.
+   *
+   * The payload carries ids and the link type only - never the other ticket's
+   * subject. A timeline entry is readable by anyone who can read the ticket it
+   * sits on, so a subject in here would reopen the exact leak the link view
+   * rules close.
+   */
+  private async recordLinkEvents(
+    type: 'TICKET_LINKED' | 'TICKET_UNLINKED',
+    linkId: string,
+    fromTicketId: string,
+    toTicketId: string,
+    linkType: TicketLinkType,
+    actorId: string,
+  ): Promise<void> {
+    await this.prisma.ticketEvent.createMany({
+      data: [
+        {
+          ticketId: fromTicketId,
+          type,
+          payload: {
+            linkId,
+            linkType,
+            direction: 'outgoing',
+            otherTicketId: toTicketId,
+          },
+          createdById: actorId,
+        },
+        {
+          ticketId: toTicketId,
+          type,
+          payload: {
+            linkId,
+            linkType,
+            direction: 'incoming',
+            otherTicketId: fromTicketId,
+          },
+          createdById: actorId,
+        },
+      ],
+    });
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId: fromTicketId,
+        reason: 'links_changed',
+        actorId,
+      }),
+    );
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId: toTicketId,
+        reason: 'links_changed',
+        actorId,
+      }),
+    );
   }
 
   /**

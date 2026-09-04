@@ -46,6 +46,17 @@ enum TicketChannel {
   API
 }
 
+/// How two tickets relate (card 1.6).
+///
+/// RELATED is symmetric; DUPLICATE_OF and PARENT_OF are not. Only ONE row is
+/// ever stored per relationship and the inverse is derived for display -
+/// storing both directions doubles the rows and lets them disagree.
+enum TicketLinkType {
+  RELATED
+  DUPLICATE_OF
+  PARENT_OF
+}
+
 enum MessageType {
   PUBLIC
   INTERNAL
@@ -161,6 +172,7 @@ model User {
   adminAuditEvents        AdminAuditEvent[]    @relation("AdminAuditEventCreatedBy")
   kbArticles              KbArticle[]          @relation("KbArticleAuthor")
   emailAliases            UserEmailAlias[]
+  ticketLinksCreated      TicketLink[]         @relation("TicketLinkCreatedBy")
 
   // TEAM_ADMIN user listings filter users by primaryTeamId
   // (users.service.ts getUserListScope) — index avoids a full User scan.
@@ -327,6 +339,8 @@ model Ticket {
   customFieldValues    CustomFieldValue[]
   automationExecutions AutomationExecution[]
   tags                 TicketTag[]
+  linksFrom            TicketLink[]          @relation("TicketLinkFrom")
+  linksTo              TicketLink[]          @relation("TicketLinkTo")
 
   /// The scheduler sweeps for due follow-ups on every tick (card 1.10).
   @@index([followUpAt])
@@ -442,6 +456,32 @@ model TicketEvent {
 
   @@index([ticketId, createdAt])
   @@index([type])
+  @@index([createdById])
+}
+
+/// A relationship between two tickets (card 1.6).
+///
+/// One row per relationship, direction carried by from -> to. The composite
+/// unique stops the same pair being linked twice with the same type; a pair may
+/// still carry two different types, which is legitimate (RELATED and PARENT_OF
+/// say different things).
+model TicketLink {
+  id           String         @id @default(uuid())
+  fromTicketId String
+  toTicketId   String
+  type         TicketLinkType
+  /// Nullable, like TicketEvent.createdById: a link outlives the account that
+  /// made it, and card 1.30 established that accounts do get merged away.
+  createdById  String?
+  createdAt    DateTime       @default(now())
+
+  fromTicket Ticket @relation("TicketLinkFrom", fields: [fromTicketId], references: [id], onDelete: Cascade)
+  toTicket   Ticket @relation("TicketLinkTo", fields: [toTicketId], references: [id], onDelete: Cascade)
+  createdBy  User?  @relation("TicketLinkCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([fromTicketId, toTicketId, type])
+  @@index([fromTicketId])
+  @@index([toTicketId])
   @@index([createdById])
 }
 

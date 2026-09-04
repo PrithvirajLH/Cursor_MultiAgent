@@ -321,6 +321,38 @@ export type Attachment = {
   uploadedBy: UserRef;
 };
 
+export type TicketLinkType = "RELATED" | "DUPLICATE_OF" | "PARENT_OF";
+
+/**
+ * One link between two tickets (card 1.6).
+ *
+ * Only ONE row is stored per relationship; `direction` is what the server
+ * derived for the ticket being read, and it is what lets the same stored row
+ * render as "Duplicate of" on one ticket and "Duplicated by" on the other.
+ *
+ * `otherTicket.visible` is false when the reader may not open the linked
+ * ticket. Every descriptive field is then null and only `number` remains - the
+ * link is still shown, because an agent needs to know the ticket was linked,
+ * but its subject is withheld.
+ */
+export type TicketLinkRecord = {
+  id: string;
+  type: TicketLinkType;
+  direction: "outgoing" | "incoming";
+  createdAt: string;
+  createdBy?: { id: string; displayName: string } | null;
+  otherTicket: {
+    id: string;
+    number: number;
+    visible: boolean;
+    deleted: boolean;
+    displayId: string | null;
+    subject: string | null;
+    status: TicketStatus | null;
+    priority: TicketPriority | null;
+  };
+};
+
 export type TicketFollower = {
   id: string;
   createdAt: string;
@@ -352,6 +384,7 @@ export type CustomFieldValueRecord = {
 
 export type TicketDetail = TicketRecord & {
   followers: TicketFollower[];
+  links?: TicketLinkRecord[];
   attachments: Attachment[];
   customFieldValues?: CustomFieldValueRecord[];
   allowedTransitions?: string[];
@@ -1118,6 +1151,23 @@ export function followTicket(id: string, userId?: string) {
 
 export function unfollowTicket(id: string, userId: string = "me") {
   return apiFetch<{ id: string }>(`/tickets/${id}/followers/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+export function linkTicket(
+  id: string,
+  toTicketId: string,
+  type: TicketLinkType,
+) {
+  return apiFetch<{ data: TicketLinkRecord[] }>(`/tickets/${id}/links`, {
+    method: "POST",
+    body: JSON.stringify({ toTicketId, type }),
+  });
+}
+
+export function unlinkTicket(id: string, linkId: string) {
+  return apiFetch<{ id: string }>(`/tickets/${id}/links/${linkId}`, {
     method: "DELETE",
   });
 }

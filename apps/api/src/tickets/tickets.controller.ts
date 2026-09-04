@@ -32,6 +32,7 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { DeleteTicketDto } from './dto/delete-ticket.dto';
 import { FollowTicketDto } from './dto/follow-ticket.dto';
 import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
+import { LinkTicketDto } from './dto/link-ticket.dto';
 import { ListTicketEventsDto } from './dto/list-ticket-events.dto';
 import { MessageType } from '@prisma/client';
 import { ListTicketMessagesDto } from './dto/list-ticket-messages.dto';
@@ -378,5 +379,24 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.unfollowTicket(id, userId, user);
+  }
+
+  @Post(':id/links')
+  @ThrottlePolicy('highWrite')
+  async linkTicket(
+    @Param('id') id: string,
+    @Body() payload: LinkTicketDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.linkTicket(id, payload, user);
+  }
+
+  @Delete(':id/links/:linkId')
+  async unlinkTicket(
+    @Param('id') id: string,
+    @Param('linkId') linkId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.unlinkTicket(id, linkId, user);
   }
 }
