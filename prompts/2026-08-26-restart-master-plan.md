@@ -610,6 +610,38 @@ send path of its own to get wrong.
 read 470 / 576+1 / 143** — I updated it at 10:46 in `730acfa`; they committed at 11:27. It was stale when they **started**, not when they finished, so the rule stands:
 read `CLAUDE.md`, and if it looks wrong say so rather than working around it.
 
+**1.7b — GREEN, 2026-09-04, commits `9b93430` + `c73502c`.** Re-ran everything: api `tsc` 0, unit **480/48** held, integration **617 + 1 skipped, 62 of 63**, web
+`tsc` 0, vitest **158/26**. **No migration.** Every number matched the report.
+
+**The card exists because the owner asked a question the engine could not answer.** Card 1.7 built the macro engine and it worked — but "where do I set a template up,
+and who can?" had no answer: `createCannedResponse`, `updateCannedResponse` and `deleteCannedResponse` all existed in the web client and **nothing called any of them**
+(verified). So the engine shipped unreachable. **That is a scoping lesson, not a 1.7 defect** — 1.7 scoped itself to the engine and the picker and delivered both.
+
+**Its placement decision is right and worth keeping:** the editor goes in the picker, not an admin page, because **Administration is TEAM_ADMIN/OWNER only** and an agent
+would therefore never see it. Templates are a working agent's tool.
+
+**Three real findings in it, all verified:**
+
+- **A foreign `teamId` was silently demoted to private** — "share with HR" from an IT agent returned `201` with `teamId: null`. Somebody would have announced a team
+  template only they could see. Now a `400`.
+- **Only the creator could edit a shared team template** — not the lead, not the team admin. A shared template froze when its author left, and that matters more now
+  that a template **changes ticket state** rather than just pasting text. Leads and admins of the owning team can now maintain it; **private templates stay private**.
+- An **EMPLOYEE could create one**. Not a hole — theirs are private and the allowlist blocks email — but not intended. Now behind a `StaffOnlyGuard` that reuses card
+  1.42's `isStaffRole` rather than listing roles again.
+
+**The bug worth remembering, and it is the second of its kind on this card.** Changing an action's type **merged instead of replaced**, leaving an empty `categoryId` or
+`userId` behind and killing the save with "must be a UUID". **It needed somebody to change their mind mid-form** — no unit test does that. Fixed at the root, backed by
+stripping empty ids on save, and pinned by a test asserting a fresh action carries only its own key.
+
+**So twice on this pair of cards the browser found what the suites could not** — this, and card 1.7's unclickable template button. Their conclusion is the right one and
+belongs in the working agreement: **keep a browser pass in the loop for anything with a form in it.**
+
+**One correction I made to the card itself.** §5 told future readers to treat `CLAUDE.md`'s baselines "with suspicion" because they were stale during card 1.7. **They
+were not** — `CLAUDE.md` read 470 / 576 + 1 / 143, updated at 10:46 in `730acfa`, while 1.7 was committed at 11:27. Stale when that card **started**, not when it
+finished. I left the observation and removed the standing advice: teaching the next reader to distrust the authoritative file leaves them nothing to trust.
+
+**The card was also untracked while its own implementation sat in the working tree** — committed as `83241aa`. That is how a card gets lost.
+
 **Owner to-do (refreshed 2026-09-02).** Grouped by what each one unblocks.
 
 *Blocking other work:*
