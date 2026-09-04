@@ -759,6 +759,13 @@ export const RichTextEditor = forwardRef<
         <div className="mx-1 w-px bg-border" />
         <button
           type="button"
+          // Without this the button is UNCLICKABLE, and card 1.7 found it the
+          // hard way. Card 1.39 made the toolbar render only while the editor
+          // is focused or non-empty; a mousedown on a toolbar button blurs the
+          // editor, so the button unmounted before the click could land. Every
+          // other button here already had the guard - this one was the only
+          // control added after that change without it.
+          onMouseDown={handleToolbarMouseDown}
           onClick={() => setShowCanned(true)}
           className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
           title="Insert template"

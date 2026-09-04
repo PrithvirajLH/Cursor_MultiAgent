@@ -739,7 +739,15 @@ export class RuleEngineService {
                 ticketId,
                 authorId,
                 type: 'INTERNAL',
-                body: `[Automation] ${action.body}`,
+                // The prefix follows the provenance. A macro is a person
+                // clicking a button, and labelling their note "[Automation]"
+                // contradicted the rest of the audit trail, which correctly
+                // attributes it to them - caught by reading a real note in the
+                // browser, not by a test.
+                body:
+                  provenance.kind === 'rule'
+                    ? `[Automation] ${action.body}`
+                    : `[Template] ${action.body}`,
               },
             });
           }

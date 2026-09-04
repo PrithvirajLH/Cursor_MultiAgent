@@ -306,6 +306,10 @@ describe('Macros', () => {
       });
       expect(notes).toHaveLength(1);
       expect(notes[0].authorId).toBe(fixtureUserIds.agent);
+      // "[Template]", not "[Automation]". The prefix follows the provenance,
+      // because labelling a person's note as automation contradicts the rest
+      // of the audit trail - found by reading a real note in the browser.
+      expect(notes[0].body).toBe('[Template] Standard reset performed.');
       // An internal note emails nobody (card 1.42), which is why it is on the
       // allowlist at all.
       expect(
