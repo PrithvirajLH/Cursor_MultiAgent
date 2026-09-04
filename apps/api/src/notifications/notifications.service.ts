@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { MessageType, Prisma, TicketStatus, UserRole } from '@prisma/client';
 import type { TicketMessage, User } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
+import {
+  buildResolvedEmailLinks as buildLinks,
+  type ResolvedEmailLinks,
+} from '../email-actions/email-action-link.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
@@ -484,10 +488,14 @@ export class NotificationsService {
       return;
     }
     const emailContext = await this.buildTicketEmailContext(ticket);
+    // Card 1.44. Null when no signing secret is configured, and the email then
+    // falls back to the plain "view online" link rather than carrying links
+    // that would answer "this link is not valid" when clicked.
+    const links = this.buildResolvedEmailLinks(ticket.id);
     await this.queueEmails([requester], {
       eventType: 'TICKET_STATUS_CHANGED',
       subject: emailContext.subject,
-      body: this.buildResolvedTextBody(ticket.id),
+      body: this.buildResolvedTextBody(ticket.id, links),
       // What matters is the ask, not the fact. "Resolved" is already in the
       // subject; whether they need to do something about it is not.
       preheader: 'Tell us if this is fixed, or reopen it.',
@@ -497,23 +505,48 @@ export class NotificationsService {
         to: TicketStatus.RESOLVED,
       },
       emailMetadata: emailContext.emailMetadata,
-      emailContent: { html: this.buildResolvedHtmlBody(ticket.id) },
+      emailContent: { html: this.buildResolvedHtmlBody(ticket.id, links) },
     });
   }
 
-  /** The plain-text half of the resolved email, mirroring the HTML exactly. */
-  private buildResolvedTextBody(ticketId: string) {
-    const link = this.ticketLink(ticketId);
-    return [
-      'We have marked your request as resolved.',
-      '',
-      `Is it fixed? Confirm it: ${link}?action=confirm`,
-      `Not fixed? Reopen it: ${link}?action=reopen`,
-      '',
-      `How did we do? Rate it on the ticket: ${link}`,
-      '',
-      REPLY_INSTRUCTION,
-    ].join('\n');
+  /**
+   * The seven one-click links for the resolved email (card 1.44).
+   *
+   * All seven or none: if signing is not configured, the email keeps its shape
+   * without them rather than offering links that cannot work.
+   */
+  private buildResolvedEmailLinks(ticketId: string): ResolvedEmailLinks {
+    // A pure util over ConfigService rather than an injected service, and
+    // deliberately: EmailActionsModule imports TicketsModule, which imports
+    // this module, so injecting it here would close a cycle for the sake of
+    // one function that needs nothing but three config keys.
+    return buildLinks(this.config, ticketId);
+  }
+
+  /**
+   * The plain-text half of the resolved email, mirroring the HTML exactly.
+   *
+   * Every link is a full URL on its own labelled line - a plain-text reader
+   * cannot click a word, and a URL split across two lines does not work.
+   */
+  private buildResolvedTextBody(ticketId: string, links: ResolvedEmailLinks) {
+    const lines = ['We have marked your request as resolved.', ''];
+    if (links.confirm && links.reopen) {
+      lines.push(
+        `Is it fixed? Close it: ${links.confirm}`,
+        `Not fixed? Reopen it: ${links.reopen}`,
+        '',
+      );
+    }
+    if (links.ratings.length > 0) {
+      lines.push('How did we do? 1 is poor, 5 is great:');
+      links.ratings.forEach((url, index) => {
+        lines.push(`  ${index + 1} of 5: ${url}`);
+      });
+      lines.push('');
+    }
+    lines.push(REPLY_INSTRUCTION, this.ticketLink(ticketId));
+    return lines.join('\n');
   }
 
   /**
@@ -521,11 +554,38 @@ export class NotificationsService {
    * sign-off, and no raw status enum anywhere - the word "resolved" in a
    * sentence, never `RESOLVED` in a details block.
    */
-  private buildResolvedHtmlBody(ticketId: string) {
+  private buildResolvedHtmlBody(ticketId: string, links: ResolvedEmailLinks) {
     const link = this.escapeHtml(this.ticketLink(ticketId));
     const preheader = this.escapeHtml('Tell us if this is fixed, or reopen it.');
     const actionStyle =
       'font-size:15px;line-height:1.7;color:#2563eb;text-decoration:underline;';
+    // ⚠️ TEXT STARS, NEVER IMAGES. Most clients block remote images by
+    // default, and a rating nobody can see is a rating nobody gives. U+2605 is
+    // a plain character: it renders with no download, survives image blocking
+    // entirely, and copies as text in a plain-text reader.
+    //
+    // Five separate links, left to right, with the scale spelled out beneath -
+    // five identical stars with no caption say nothing about which is which.
+    const stars =
+      links.ratings.length > 0
+        ? [
+            '                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:4px;">How did we do?</div>',
+            `                <div style="margin-bottom:4px;">${links.ratings
+              .map(
+                (url, index) =>
+                  `<a href="${this.escapeHtml(url)}" style="font-size:28px;line-height:1.2;color:#f59e0b;text-decoration:none;padding:0 4px;" title="${index + 1} out of 5">&#9733;</a>`,
+              )
+              .join('')}</div>`,
+            '                <div style="font-size:12px;line-height:1.6;color:#6b7280;margin-bottom:20px;">1 is poor, 5 is great. One click and you are done.</div>',
+          ]
+        : [];
+    const actions =
+      links.confirm && links.reopen
+        ? [
+            `                <div style="margin-bottom:10px;">Is it fixed? <a href="${this.escapeHtml(links.confirm)}" style="${actionStyle}">Yes, close it</a></div>`,
+            `                <div style="margin-bottom:20px;">Not fixed? <a href="${this.escapeHtml(links.reopen)}" style="${actionStyle}">Reopen it</a></div>`,
+          ]
+        : [];
     return [
       '<!DOCTYPE html>',
       '<html>',
@@ -541,9 +601,8 @@ export class NotificationsService {
       '            <tr>',
       '              <td style="padding:32px;">',
       '                <div style="font-size:16px;line-height:1.7;color:#111827;margin-bottom:20px;">We have marked your request as resolved.</div>',
-      `                <div style="margin-bottom:10px;">Is it fixed? <a href="${link}?action=confirm" style="${actionStyle}">Confirm it</a></div>`,
-      `                <div style="margin-bottom:20px;">Not fixed? <a href="${link}?action=reopen" style="${actionStyle}">Reopen it</a></div>`,
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">How did we do? <a href="${link}" style="${actionStyle}">Rate it on the ticket</a></div>`,
+      ...actions,
+      ...stars,
       `                <div style="font-size:15px;line-height:1.7;color:#374151;">${REPLY_INSTRUCTION}</div>`,
       '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
       `                <div><a href="${link}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,

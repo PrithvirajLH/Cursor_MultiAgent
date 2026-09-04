@@ -203,11 +203,31 @@ describe('Email policy: only people outside the system', () => {
       expect(resolved[0].toEmail).toBe(fixtureEmails.requester);
 
       const html = htmlOf(resolved[0].payload);
-      // Confirm, reopen and rate - card 1.14 folded in, as real links.
-      expect(html).toContain('?action=confirm');
-      expect(html).toContain('?action=reopen');
-      expect(html).toContain('Rate it on the ticket');
+      // REWRITTEN BY CARD 1.44. This used to assert `?action=confirm`,
+      // `?action=reopen` and the words "Rate it on the ticket" - three links
+      // into the portal, each costing the requester a browser, a Microsoft
+      // sign-in and then hunting for a rating widget in a sidebar. They are now
+      // SEVEN one-click links: close, reopen, and one per star.
+      const actionLinks = (html.match(/\/api\/email-actions\/[A-Za-z0-9_.-]+/g) ??
+        []) as string[];
+      expect(new Set(actionLinks).size).toBe(7);
+      expect(html).toContain('Yes, close it');
+      expect(html).toContain('Reopen it');
+      // ⚠️ TEXT STARS, NEVER IMAGES. Most clients block remote images by
+      // default, and a rating nobody can see is a rating nobody gives. U+2605
+      // as an HTML entity renders with no download at all.
+      expect(html).toContain('&#9733;');
+      expect(html.split('&#9733;')).toHaveLength(6); // five stars
+      expect(html).not.toContain('<img');
+      expect(html).toContain('1 is poor, 5 is great');
+      // The plain-text half carries the same links as full URLs, one labelled
+      // line each - a plain-text reader cannot click a word.
       expect(resolved[0].body).toContain('How did we do?');
+      expect(resolved[0].body).toContain('1 of 5:');
+      expect(resolved[0].body).toContain('5 of 5:');
+      expect(
+        (resolved[0].body.match(/\/api\/email-actions\//g) ?? []).length,
+      ).toBe(7);
       // The word, never the enum.
       expect(resolved[0].body).toContain('resolved');
       expect(resolved[0].body).not.toContain('RESOLVED');

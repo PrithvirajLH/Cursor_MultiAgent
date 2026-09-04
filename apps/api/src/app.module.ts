@@ -33,6 +33,7 @@ import { UsersModule } from './users/users.module';
 import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 import { AiModule } from './ai/ai.module';
 import { CsatModule } from './csat/csat.module';
+import { EmailActionsModule } from './email-actions/email-actions.module';
 
 // Resolve env file from cwd (apps/api) to work in both dev and production builds
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
@@ -100,6 +101,7 @@ import { validateEnv } from './common/env.validation';
     KbModule,
     CommonModule,
     CsatModule,
+    EmailActionsModule,
     CustomFieldsModule,
     HealthModule,
     NotificationsModule,
