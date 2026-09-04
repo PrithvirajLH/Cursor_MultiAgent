@@ -23,6 +23,12 @@ export const EXPORTABLE_REPORTS = [
   'csat-drivers',
   'csat-low-tags',
   'ticket-volume',
+  // Card 1.17. All three flatten honestly to a table: two are already a list of
+  // rows, and first-contact-resolution is a single object of totals, which
+  // toReportRows renders as one row - the same shape sla-compliance exports.
+  'first-contact-resolution',
+  'reassignment-count',
+  'time-in-status',
 ] as const;
 
 export type ReportKey = (typeof EXPORTABLE_REPORTS)[number];

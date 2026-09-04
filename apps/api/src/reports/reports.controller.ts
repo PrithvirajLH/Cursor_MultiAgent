@@ -47,6 +47,37 @@ export class ReportsController {
     return this.reportsService.getTicketVolume(query, user);
   }
 
+  /**
+   * The three desk metrics card 1.17 found missing from the other 22 reports.
+   *
+   * Same guard, same DTO, same scoping as every report above: LeadOrAdminGuard
+   * on the controller and `scopeReportQuery` inside the service, which fails
+   * closed for any role it does not name.
+   */
+  @Get('first-contact-resolution')
+  getFirstContactResolution(
+    @Query() query: ReportQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.reportsService.getFirstContactResolution(query, user);
+  }
+
+  @Get('reassignment-count')
+  getReassignmentCount(
+    @Query() query: ReportQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.reportsService.getReassignmentCount(query, user);
+  }
+
+  @Get('time-in-status')
+  getTimeInStatus(
+    @Query() query: ReportQueryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.reportsService.getTimeInStatus(query, user);
+  }
+
   @Get('sla-compliance')
   getSlaCompliance(
     @Query() query: ReportQueryDto,

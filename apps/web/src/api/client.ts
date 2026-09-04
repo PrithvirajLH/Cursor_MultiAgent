@@ -2571,6 +2571,27 @@ export type TicketAgeBucketResponse = {
 export type ReopenRateResponse = {
   data: { date: string; count: number }[];
 };
+/** Card 1.17. A single object of totals, not a series. */
+export type FirstContactResolutionResponse = {
+  resolved: number;
+  firstContact: number;
+  percent: number;
+};
+/** Card 1.17. `reassignments: 0` is the healthy case, not missing data. */
+export type ReassignmentCountResponse = {
+  data: { reassignments: number; tickets: number }[];
+  tickets: number;
+  averagePerTicket: number;
+};
+/** Card 1.17. `intervals` is how many closed intervals each average rests on. */
+export type TimeInStatusResponse = {
+  data: {
+    status: string;
+    averageHours: number;
+    medianHours: number;
+    intervals: number;
+  }[];
+};
 export type CsatTrendResponse = {
   data: { date: string; average: number; count: number }[];
   summary: { average: number | null; responses: number };
@@ -2695,6 +2716,21 @@ export function fetchReportTicketsByAge(params: ReportQuery) {
 export function fetchReportReopenRate(params: ReportQuery) {
   return apiFetch<ReopenRateResponse>(
     `/reports/reopen-rate${reportQueryString(params)}`,
+  );
+}
+export function fetchReportFirstContactResolution(params: ReportQuery) {
+  return apiFetch<FirstContactResolutionResponse>(
+    `/reports/first-contact-resolution${reportQueryString(params)}`,
+  );
+}
+export function fetchReportReassignmentCount(params: ReportQuery) {
+  return apiFetch<ReassignmentCountResponse>(
+    `/reports/reassignment-count${reportQueryString(params)}`,
+  );
+}
+export function fetchReportTimeInStatus(params: ReportQuery) {
+  return apiFetch<TimeInStatusResponse>(
+    `/reports/time-in-status${reportQueryString(params)}`,
   );
 }
 export function fetchReportCsatTrend(params: ReportQuery) {

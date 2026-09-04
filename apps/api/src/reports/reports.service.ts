@@ -398,6 +398,10 @@ export class ReportsService {
       'csat-drivers': () => this.getCsatDrivers(query, user),
       'csat-low-tags': () => this.getCsatLowTags(query, user),
       'ticket-volume': () => this.getTicketVolume(query, user),
+      'first-contact-resolution': () =>
+        this.getFirstContactResolution(query, user),
+      'reassignment-count': () => this.getReassignmentCount(query, user),
+      'time-in-status': () => this.getTimeInStatus(query, user),
     };
     const rows = toReportRows(await loaders[report as ReportKey]());
     if (rows.length === 0) {
@@ -1576,6 +1580,201 @@ export class ReportsService {
         open: Number(row.open_count),
         resolved: Number(row.resolved_count),
         total: Number(row.total_count),
+      })),
+    };
+  }
+
+  /**
+   * First-contact resolution: how often one reply was enough (card 1.17).
+   *
+   * A resolved ticket counts as first-contact when the desk sent at most ONE
+   * public message on it. "The desk" is anyone who is not the ticket's
+   * requester - the requester's own replies are not our answers, and counting
+   * them would make a chatty requester look like a hard problem.
+   *
+   * Internal notes are excluded on purpose: three agents arguing in the notes
+   * and then sending one clear answer IS a first-contact resolution.
+   *
+   * The window is on `resolvedAt`, not `createdAt`, because the question is how
+   * the desk performed in that period - a ticket raised in March and resolved
+   * in April belongs to April.
+   *
+   * Scoped by `scopeReportQuery` like every other report: a LEAD sees their own
+   * team, a TEAM_ADMIN their primary team, an OWNER the platform.
+   */
+  async getFirstContactResolution(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`t."resolvedAt" >= ${fromDate}`,
+      Prisma.sql`t."resolvedAt" < ${toEndExclusive}`,
+      // Soft-deleted tickets are not desk performance. The Prisma-side reports
+      // exclude them; every raw-SQL report in this file predates that and does
+      // not, which the card 1.17 handoff reports rather than changes here.
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
+    this.applyTicketFilterConditions(conditions, scoped, user, 't');
+    const rows = await this.prisma.$queryRaw<
+      { resolved: bigint; firstContact: bigint }[]
+    >`
+      SELECT
+        count(*)::bigint as resolved,
+        count(*) FILTER (WHERE s.desk_replies <= 1)::bigint as "firstContact"
+      FROM (
+        SELECT
+          t.id,
+          (
+            SELECT count(*)
+            FROM "TicketMessage" tm
+            WHERE tm."ticketId" = t.id
+              AND tm."type" = 'PUBLIC'
+              AND tm."authorId" <> t."requesterId"
+          ) as desk_replies
+        FROM "Ticket" t
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      ) s
+    `;
+    const resolved = Number(rows[0]?.resolved ?? 0);
+    const firstContact = Number(rows[0]?.firstContact ?? 0);
+    return {
+      resolved,
+      firstContact,
+      percent:
+        resolved > 0 ? Math.round((firstContact / resolved) * 1000) / 10 : 0,
+    };
+  }
+
+  /**
+   * How often a ticket gets handed on before somebody finishes it (card 1.17).
+   *
+   * Counts `TICKET_ASSIGNED` events per ticket. The FIRST assignment is not a
+   * reassignment - every ticket gets one - so a ticket with n assignment events
+   * has n-1 reassignments and the distribution is reported that way. A row of
+   * `reassignments: 0` is the healthy case, not missing data.
+   *
+   * Reported as a distribution rather than one average because the average
+   * hides the shape: twenty clean tickets and one that went round the houses
+   * five times reads the same as twenty-one mildly untidy ones, and only the
+   * first is worth a conversation. The average is returned beside it for the
+   * headline figure.
+   */
+  async getReassignmentCount(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const dateField =
+      scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`${Prisma.raw(`t."${dateField}"`)} >= ${fromDate}`,
+      Prisma.sql`${Prisma.raw(`t."${dateField}"`)} < ${toEndExclusive}`,
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
+    this.applyTicketFilterConditions(conditions, scoped, user, 't');
+    const rows = await this.prisma.$queryRaw<
+      { reassignments: number; tickets: bigint }[]
+    >`
+      SELECT
+        greatest(s.assignments - 1, 0)::int as reassignments,
+        count(*)::bigint as tickets
+      FROM (
+        SELECT
+          t.id,
+          (
+            SELECT count(*)
+            FROM "TicketEvent" e
+            WHERE e."ticketId" = t.id AND e."type" = 'TICKET_ASSIGNED'
+          ) as assignments
+        FROM "Ticket" t
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      ) s
+      GROUP BY 1
+      ORDER BY 1
+    `;
+    const data = rows.map((row) => ({
+      reassignments: Number(row.reassignments),
+      tickets: Number(row.tickets),
+    }));
+    const tickets = data.reduce((sum, row) => sum + row.tickets, 0);
+    const total = data.reduce(
+      (sum, row) => sum + row.reassignments * row.tickets,
+      0,
+    );
+    return {
+      data,
+      tickets,
+      averagePerTicket:
+        tickets > 0 ? Math.round((total / tickets) * 100) / 100 : 0,
+    };
+  }
+
+  /**
+   * How long tickets sit in each status (card 1.17).
+   *
+   * Built from consecutive `TICKET_STATUS_CHANGED` events: each one opens an
+   * interval in the status it moved TO, and the next event on that ticket
+   * closes it.
+   *
+   * Only CLOSED intervals count. The interval a ticket is sitting in right now
+   * has no end yet, and measuring it to "now" would make every currently busy
+   * status look slower purely because the report was run today. The number of
+   * intervals behind each figure is returned beside it, so an average resting
+   * on three samples is visibly that.
+   *
+   * The status a ticket was created in produces no event and therefore no
+   * interval, which is correct: a ticket nobody has touched has not yet spent a
+   * measurable time anywhere.
+   */
+  async getTimeInStatus(query: ReportQueryDto, user: AuthUser) {
+    const scoped = this.scopeReportQuery(query, user);
+    const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`e."type" = 'TICKET_STATUS_CHANGED'`,
+      Prisma.sql`e."createdAt" >= ${fromDate}`,
+      Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
+    this.applyTicketFilterConditions(conditions, scoped, user, 't');
+    const rows = await this.prisma.$queryRaw<
+      {
+        status: string;
+        averageHours: number | null;
+        medianHours: number | null;
+        intervals: bigint;
+      }[]
+    >`
+      SELECT
+        ev.status as status,
+        avg(ev.hours)::float8 as "averageHours",
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY ev.hours)::float8
+          as "medianHours",
+        count(*)::bigint as intervals
+      FROM (
+        SELECT
+          e."payload"->>'to' as status,
+          EXTRACT(
+            EPOCH FROM (
+              lead(e."createdAt") OVER (
+                PARTITION BY e."ticketId" ORDER BY e."createdAt"
+              ) - e."createdAt"
+            )
+          ) / 3600.0 as hours
+        FROM "TicketEvent" e
+        INNER JOIN "Ticket" t ON t.id = e."ticketId"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+      ) ev
+      WHERE ev.status IS NOT NULL AND ev.hours IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1
+    `;
+    return {
+      data: rows.map((row) => ({
+        status: row.status,
+        averageHours:
+          row.averageHours == null
+            ? 0
+            : Math.round(row.averageHours * 100) / 100,
+        medianHours:
+          row.medianHours == null ? 0 : Math.round(row.medianHours * 100) / 100,
+        intervals: Number(row.intervals),
       })),
     };
   }

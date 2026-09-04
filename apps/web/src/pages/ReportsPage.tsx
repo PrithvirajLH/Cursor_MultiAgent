@@ -21,6 +21,9 @@ import {
   fetchReportTicketsByAge,
   fetchReportTicketsByCategory,
   fetchTicketById,
+  fetchReportFirstContactResolution,
+  fetchReportReassignmentCount,
+  fetchReportTimeInStatus,
   fetchReportReopenRate,
   fetchSavedViews,
   fetchTeams,
@@ -30,7 +33,10 @@ import {
   type CsatLowTagsResponse,
   type CsatTrendResponse,
   type ReportQuery,
+  type FirstContactResolutionResponse,
+  type ReassignmentCountResponse,
   type ReopenRateResponse,
+  type TimeInStatusResponse,
   type SlaBreachesResponse,
   type SlaComplianceResponse,
   type TeamRef,
@@ -47,6 +53,7 @@ import {
   MiniBars,
   toPercent,
 } from "../components/reports/report-primitives";
+import { ReportsDeskTab } from "../components/reports/ReportsDeskTab";
 import { ReportsVolumeTab } from "../components/reports/ReportsVolumeTab";
 import { TagAnalyticsPanel } from "../components/tags/TagAnalyticsPanel";
 import { useHeaderContext } from "../contexts/HeaderContext";
@@ -65,6 +72,7 @@ type ReportsTab =
   | "sla"
   | "volume"
   | "agents"
+  | "desk"
   | "csat"
   | "backlog"
   | "export";
@@ -102,6 +110,9 @@ type SourceState = {
   aging: boolean;
   reopenRate: boolean;
   teamSummary: boolean;
+  firstContact: boolean;
+  reassignment: boolean;
+  timeInStatus: boolean;
 };
 
 type OverviewKpis = {
@@ -508,6 +519,11 @@ const EXPORTABLE_REPORTS_BY_TAB: Record<string, { key: string; label: string }[]
     { key: "resolution-time", label: "Resolution time" },
     { key: "reopen-rate", label: "Reopen rate" },
   ],
+  desk: [
+    { key: "first-contact-resolution", label: "First-contact resolution" },
+    { key: "reassignment-count", label: "Reassignments" },
+    { key: "time-in-status", label: "Time in each status" },
+  ],
   csat: [
     { key: "csat-trend", label: "CSAT trend" },
     { key: "csat-drivers", label: "CSAT drivers" },
@@ -531,6 +547,15 @@ export function ReportsPage({ role }: { role: Role }) {
   const headerCtx = useHeaderContext();
   const toast = useToast();
   const [tab, setTab] = useState<ReportsTab>("overview");
+  // Card 1.17. `null` means "not loaded or the request failed", which the tab
+  // renders as an empty state rather than as a zero - a KPI showing 0% because
+  // the endpoint 500'd is worse than one showing nothing.
+  const [firstContactData, setFirstContactData] =
+    useState<FirstContactResolutionResponse | null>(null);
+  const [reassignmentData, setReassignmentData] =
+    useState<ReassignmentCountResponse | null>(null);
+  const [timeInStatusData, setTimeInStatusData] =
+    useState<TimeInStatusResponse | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [teams, setTeams] = useState<TeamRef[]>([]);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
@@ -595,6 +620,9 @@ export function ReportsPage({ role }: { role: Role }) {
     aging: false,
     reopenRate: false,
     teamSummary: false,
+    firstContact: false,
+    reassignment: false,
+    timeInStatus: false,
   });
   const lastRealtimeUpdatedAtByTicketRef = useRef<Record<string, number>>({});
   const knownTicketStateRef = useRef<
@@ -933,6 +961,9 @@ export function ReportsPage({ role }: { role: Role }) {
         aging: false,
         reopenRate: false,
         teamSummary: false,
+        firstContact: false,
+        reassignment: false,
+        timeInStatus: false,
       };
 
       const needsSolvedSeries =
@@ -946,6 +977,9 @@ export function ReportsPage({ role }: { role: Role }) {
       const needsCategories = tab === "overview";
       const needsAging = tab === "backlog";
       const needsReopenRate = tab === "agents";
+      // Card 1.17. Fetched only for their own tab: three extra round trips on
+      // every Overview load would be paid by everyone to serve one screen.
+      const needsDeskMetrics = tab === "desk";
       const needsTeamSummary = tab === "backlog";
 
       type LoadTask = {
@@ -1158,6 +1192,42 @@ export function ReportsPage({ role }: { role: Role }) {
           },
           onError: () => {
             setReopenData([]);
+          },
+        });
+      }
+
+      if (needsDeskMetrics) {
+        tasks.push({
+          key: "firstContact",
+          label: "first-contact-resolution",
+          request: () => fetchReportFirstContactResolution(reportQuery),
+          onSuccess: (value) => {
+            setFirstContactData(value as FirstContactResolutionResponse);
+          },
+          onError: () => {
+            setFirstContactData(null);
+          },
+        });
+        tasks.push({
+          key: "reassignment",
+          label: "reassignment-count",
+          request: () => fetchReportReassignmentCount(reportQuery),
+          onSuccess: (value) => {
+            setReassignmentData(value as ReassignmentCountResponse);
+          },
+          onError: () => {
+            setReassignmentData(null);
+          },
+        });
+        tasks.push({
+          key: "timeInStatus",
+          label: "time-in-status",
+          request: () => fetchReportTimeInStatus(reportQuery),
+          onSuccess: (value) => {
+            setTimeInStatusData(value as TimeInStatusResponse);
+          },
+          onError: () => {
+            setTimeInStatusData(null);
           },
         });
       }
@@ -1775,6 +1845,7 @@ export function ReportsPage({ role }: { role: Role }) {
               ["sla", "SLA"],
               ["volume", "Volume"],
               ["agents", "Agents"],
+              ["desk", "Desk"],
               ["csat", "CSAT"],
               ["backlog", "Backlog"],
               ["export", "Export and sharing"],
@@ -2304,6 +2375,14 @@ export function ReportsPage({ role }: { role: Role }) {
                   )}
                 </CardShell>
               </div>
+            ) : null}
+
+            {tab === "desk" ? (
+              <ReportsDeskTab
+                firstContact={firstContactData}
+                reassignment={reassignmentData}
+                timeInStatus={timeInStatusData}
+              />
             ) : null}
 
             {tab === "csat" ? (
