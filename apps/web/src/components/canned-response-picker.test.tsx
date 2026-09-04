@@ -4,11 +4,22 @@ import {
   CannedResponsePicker,
   describeMacroAction,
 } from "./CannedResponsePicker";
+import {
+  blankAction,
+  EDITABLE_ACTION_TYPES,
+  isActionComplete,
+  TEMPLATE_PLACEHOLDERS,
+} from "./template-editor-actions";
 
 vi.mock("../api/client", () => ({
-  fetchCannedResponses: vi.fn().mockResolvedValue([]),
+  // The list now returns an envelope with the caller's shareable team, not a
+  // bare array (card 1.7b).
+  fetchCannedResponses: vi.fn().mockResolvedValue({ data: [], team: null }),
   renderCannedResponse: vi.fn(),
   applyCannedResponse: vi.fn(),
+  createCannedResponse: vi.fn(),
+  updateCannedResponse: vi.fn(),
+  deleteCannedResponse: vi.fn(),
 }));
 
 /**
@@ -100,5 +111,89 @@ describe("CannedResponsePicker", () => {
     // rendered, and nothing is applied, until then.
     expect(html).not.toContain("And it will");
     expect(html).not.toContain("Insert and apply");
+  });
+});
+
+/**
+ * Card 1.7b — the editor must never offer an action the server will refuse.
+ *
+ * A control that produces a guaranteed 400 is worse than no control: the agent
+ * fills a form, clicks save, and gets an error they cannot act on.
+ */
+describe("the template editor's action list", () => {
+  it("never offers an action that sends email or notifies anyone", () => {
+    const offered = EDITABLE_ACTION_TYPES.map((option) => option.value);
+    expect(offered).not.toContain("send_email");
+    expect(offered).not.toContain("notify_requester");
+    expect(offered).not.toContain("notify_team_lead");
+  });
+
+  it("offers only actions the server's allowlist contains", () => {
+    // Mirrors MACRO_ALLOWED_ACTIONS in the API. Deliberately a SUBSET: the
+    // three id-based actions need an entity picker and are not offered yet.
+    const serverAllowlist = [
+      "set_status",
+      "set_priority",
+      "set_category",
+      "add_tag",
+      "remove_tag",
+      "assign_user",
+      "assign_team",
+      "add_follower",
+      "add_internal_note",
+    ];
+    for (const option of EDITABLE_ACTION_TYPES) {
+      expect(serverAllowlist).toContain(option.value);
+    }
+  });
+
+  it("gives every offered action a usable default", () => {
+    for (const option of EDITABLE_ACTION_TYPES) {
+      const fresh = blankAction(option.value);
+      expect(fresh.type).toBe(option.value);
+      // A tag or note starts empty on purpose - there is nothing sensible to
+      // guess - so those are the only two that start incomplete.
+      const expectIncomplete = ["add_tag", "remove_tag", "add_internal_note"];
+      expect(isActionComplete(fresh)).toBe(
+        !expectIncomplete.includes(option.value),
+      );
+    }
+  });
+
+  it("will not save a half-filled tag or note", () => {
+    expect(isActionComplete({ type: "add_tag", tags: [] })).toBe(false);
+    expect(isActionComplete({ type: "add_tag", tags: ["vpn"] })).toBe(true);
+    expect(isActionComplete({ type: "add_internal_note", body: "   " })).toBe(
+      false,
+    );
+    expect(isActionComplete({ type: "add_internal_note", body: "Done." })).toBe(
+      true,
+    );
+  });
+
+  it("advertises exactly the placeholders the server fills", () => {
+    // Card 1.7 found three hint strings in this app naming keys the server did
+    // not understand. These are the five buildMacroVars actually produces.
+    expect([...TEMPLATE_PLACEHOLDERS]).toEqual([
+      "{{requester.firstName}}",
+      "{{requester.displayName}}",
+      "{{ticket.displayId}}",
+      "{{ticket.subject}}",
+      "{{agent.firstName}}",
+    ]);
+  });
+});
+
+describe("the picker's list view", () => {
+  it("offers a way to create one, which is what card 1.7b was for", () => {
+    const html = renderToStaticMarkup(
+      <CannedResponsePicker
+        open
+        onClose={() => {}}
+        onSelect={() => {}}
+        ticketId="t-1"
+      />,
+    );
+    expect(html).toContain("New template");
   });
 });

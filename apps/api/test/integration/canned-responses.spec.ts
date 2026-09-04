@@ -134,15 +134,28 @@ describe('Canned responses', () => {
     expect(body.content).toBe('Updated content.');
   });
 
-  it('blocks another user from updating or deleting the agent response (IDOR guard, 403)', async () => {
-    // Agent creates a team-shared response so the lead can SEE it but still
-    // must not be able to mutate it (owner-only write).
+  it('blocks a NON-STAFF user from updating or deleting a response (IDOR guard, 403)', async () => {
+    // REWRITTEN BY CARD 1.7b, and the change of persona is the whole point.
+    //
+    // This used to assert that a LEAD could not mutate a TEAM-SHARED response -
+    // "owner-only write". Card 1.7b deliberately reverses that: a shared
+    // template belongs to the team, and under the old rule it froze the moment
+    // its author left, went on holiday or changed team. Since card 1.7 a
+    // template also changes ticket state, so a stale one is not merely
+    // cosmetic. The lead's new access is asserted in
+    // canned-responses.management.spec.ts.
+    //
+    // The IDOR intent is unchanged and still asserted here, against somebody
+    // who genuinely has no business writing it: an EMPLOYEE. Everything else
+    // that must still be refused - a plain agent who is not the author (403), a
+    // lead of a DIFFERENT team (404), and anyone at all against a PRIVATE
+    // template (404) - is covered in that same spec.
     const created = await request(server)
       .post('/api/canned-responses')
       .set(authHeader(fixtureEmails.agent))
       .send({
         name: 'Agent-owned shared reply',
-        content: 'Only the agent may edit this.',
+        content: 'Only staff may edit this.',
         teamId: fixtureTeamIds.it,
       })
       .expect(201);
@@ -150,13 +163,13 @@ describe('Canned responses', () => {
 
     await request(server)
       .patch(`/api/canned-responses/${id}`)
-      .set(authHeader(fixtureEmails.lead))
+      .set(authHeader(fixtureEmails.otherRequester))
       .send({ name: 'Hijacked name' })
       .expect(403);
 
     await request(server)
       .delete(`/api/canned-responses/${id}`)
-      .set(authHeader(fixtureEmails.lead))
+      .set(authHeader(fixtureEmails.otherRequester))
       .expect(403);
 
     // Confirm the record is untouched: the agent can still read the original.

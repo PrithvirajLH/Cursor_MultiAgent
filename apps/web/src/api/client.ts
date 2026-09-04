@@ -973,6 +973,15 @@ export type CannedResponseRecord = {
   content: string;
   /** What applying this template does, beyond pasting its text (card 1.7). */
   actions?: MacroAction[];
+  /**
+   * May THIS person edit or delete it (card 1.7b)?
+   *
+   * Decided by the server, from the same rule its write routes enforce - the
+   * author, a lead or admin of the owning team, or an OWNER. Deliberately not
+   * re-derived here: card 1.7 had just finished deleting a duplicated rule from
+   * this file, and a second copy of the permission would be the same mistake.
+   */
+  canWrite?: boolean;
   userId: string | null;
   teamId: string | null;
   createdAt: string;
@@ -1032,16 +1041,32 @@ export function applyCannedResponse(id: string, ticketId: string) {
   });
 }
 
+/**
+ * The templates this person can use, plus the one team they may share with.
+ *
+ * `team` is null when they are on no team, and the editor then offers only
+ * "private" - anything else is a 400 since card 1.7b.
+ */
+export type CannedResponseList = {
+  data: CannedResponseRecord[];
+  team: { id: string; name: string } | null;
+};
+
 export function fetchCannedResponses() {
-  return apiFetch<
-    CannedResponseRecord[] | DataEnvelope<CannedResponseRecord[]>
-  >("/canned-responses").then((response) => unwrapDataEnvelope(response));
+  return apiFetch<CannedResponseList | CannedResponseRecord[]>(
+    "/canned-responses",
+  ).then((response) =>
+    Array.isArray(response)
+      ? { data: response, team: null }
+      : { data: response.data ?? [], team: response.team ?? null },
+  );
 }
 
 export function createCannedResponse(payload: {
   name: string;
   content: string;
   teamId?: string;
+  actions?: MacroAction[];
 }) {
   return apiFetch<CannedResponseRecord>("/canned-responses", {
     method: "POST",
@@ -1051,7 +1076,7 @@ export function createCannedResponse(payload: {
 
 export function updateCannedResponse(
   id: string,
-  payload: { name?: string; content?: string },
+  payload: { name?: string; content?: string; actions?: MacroAction[] },
 ) {
   return apiFetch<CannedResponseRecord>(`/canned-responses/${id}`, {
     method: "PATCH",

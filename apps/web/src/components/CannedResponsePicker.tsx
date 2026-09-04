@@ -1,14 +1,34 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, X, Zap } from "lucide-react";
+import {
+  FileText,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 import {
   applyCannedResponse,
+  createCannedResponse,
+  deleteCannedResponse,
   fetchCannedResponses,
   renderCannedResponse,
+  updateCannedResponse,
   type CannedResponseRecord,
   type MacroAction,
   type MacroPreview,
 } from "../api/client";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
+import {
+  blankAction,
+  EDITABLE_ACTION_TYPES,
+  isActionComplete,
+  TEMPLATE_FOLLOWER_TARGETS,
+  TEMPLATE_PLACEHOLDERS,
+  TEMPLATE_PRIORITY_OPTIONS,
+  TEMPLATE_STATUS_OPTIONS,
+} from "./template-editor-actions";
 
 export type CannedResponsePickerProps = {
   open: boolean;
@@ -79,26 +99,45 @@ export function CannedResponsePicker({
   className = "",
 }: CannedResponsePickerProps) {
   const [list, setList] = useState<CannedResponseRecord[]>([]);
+  const [team, setTeam] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<MacroPreview | null>(null);
   const [busy, setBusy] = useState(false);
+  // The editor (card 1.7b). `editing` null means "not editing"; an object with
+  // no id means a new template.
+  const [editing, setEditing] = useState<{
+    id?: string;
+    name: string;
+    content: string;
+    shareWithTeam: boolean;
+    actions: MacroAction[];
+  } | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useModalFocusTrap({ open, containerRef: dialogRef, onClose });
 
-  useEffect(() => {
-    if (!open) return;
-    setPreview(null);
+  function reload() {
     setLoading(true);
     setError(null);
-    fetchCannedResponses()
-      .then((data) => setList(Array.isArray(data) ? data : []))
+    return fetchCannedResponses()
+      .then((res) => {
+        setList(res.data);
+        setTeam(res.team);
+      })
       .catch(() => {
         setError("Failed to load templates");
         setList([]);
       })
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    setPreview(null);
+    setEditing(null);
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   if (!open) return null;
@@ -121,6 +160,69 @@ export function CannedResponsePicker({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveTemplate() {
+    if (!editing) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Only complete rows are sent. A half-filled action would come back as a
+      // whole-form 400 that does not say which row is wrong.
+      const actions = editing.actions.filter(isActionComplete);
+      const payload = {
+        name: editing.name.trim(),
+        content: editing.content,
+        actions,
+      };
+      if (editing.id) {
+        await updateCannedResponse(editing.id, payload);
+      } else {
+        await createCannedResponse({
+          ...payload,
+          // Omitted entirely when private. The server refuses any team but the
+          // caller's own since card 1.7b, so there is nothing else to offer.
+          ...(editing.shareWithTeam && team ? { teamId: team.id } : {}),
+        });
+      }
+      setEditing(null);
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not save that template",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeTemplate(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteCannedResponse(id);
+      setEditing(null);
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not delete that template",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function patchAction(index: number, patch: Partial<MacroAction>) {
+    setEditing((prev) =>
+      prev
+        ? {
+            ...prev,
+            actions: prev.actions.map((action, i) =>
+              i === index ? { ...action, ...patch } : action,
+            ),
+          }
+        : prev,
+    );
   }
 
   async function confirm() {
@@ -161,18 +263,43 @@ export function CannedResponsePicker({
         aria-label="Insert canned response"
         tabIndex={-1}
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-foreground">
-            {preview ? preview.name : "Insert template"}
+            {editing
+              ? editing.id
+                ? "Edit template"
+                : "New template"
+              : preview
+                ? preview.name
+                : "Insert template"}
           </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {!editing && !preview && (
+              <button
+                type="button"
+                onClick={() =>
+                  setEditing({
+                    name: "",
+                    content: "",
+                    shareWithTeam: false,
+                    actions: [],
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New template
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -181,7 +308,254 @@ export function CannedResponsePicker({
           </p>
         )}
 
-        {preview ? (
+        {editing ? (
+          <div className="max-h-[70vh] overflow-auto p-4">
+            <label
+              className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+              htmlFor="tpl-name"
+            >
+              Name
+            </label>
+            <input
+              id="tpl-name"
+              value={editing.name}
+              onChange={(e) =>
+                setEditing({ ...editing, name: e.target.value })
+              }
+              placeholder="Password reset done"
+              className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            />
+
+            <label
+              className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-muted-foreground"
+              htmlFor="tpl-content"
+            >
+              The reply
+            </label>
+            <textarea
+              id="tpl-content"
+              value={editing.content}
+              onChange={(e) =>
+                setEditing({ ...editing, content: e.target.value })
+              }
+              rows={5}
+              placeholder="Hi {{requester.firstName}}, ..."
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
+            />
+            <p className="mb-4 mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+              Placeholders:{" "}
+              {TEMPLATE_PLACEHOLDERS.map((key, i) => (
+                <span key={key}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditing({
+                        ...editing,
+                        content: `${editing.content}${key}`,
+                      })
+                    }
+                    className="font-mono text-primary hover:underline"
+                  >
+                    {key}
+                  </button>
+                </span>
+              ))}
+              . Anything else fills in as nothing.
+            </p>
+
+            {/* Only offered for a NEW template: moving an existing one between
+                private and shared is a different decision, and the server does
+                not accept a teamId change on PATCH. */}
+            {!editing.id && (
+              <label className="mb-4 flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={editing.shareWithTeam}
+                  disabled={!team}
+                  onChange={(e) =>
+                    setEditing({ ...editing, shareWithTeam: e.target.checked })
+                  }
+                  className="h-3.5 w-3.5"
+                />
+                {team
+                  ? `Share with ${team.name}`
+                  : "Private (you are on no team)"}
+              </label>
+            )}
+
+            <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <Zap className="h-3 w-3" />
+              And it will
+            </p>
+            <ul className="mb-2 space-y-2">
+              {editing.actions.map((action, index) => (
+                <li key={index} className="flex items-start gap-1.5">
+                  <select
+                    aria-label="Action"
+                    value={action.type}
+                    onChange={(e) =>
+                      patchAction(index, blankAction(e.target.value))
+                    }
+                    className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                  >
+                    {EDITABLE_ACTION_TYPES.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  {action.type === "set_status" && (
+                    <select
+                      aria-label="Status"
+                      value={action.status ?? ""}
+                      onChange={(e) =>
+                        patchAction(index, { status: e.target.value })
+                      }
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      {TEMPLATE_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt.replace(/_/g, " ").toLowerCase()}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {action.type === "set_priority" && (
+                    <select
+                      aria-label="Priority"
+                      value={action.priority ?? ""}
+                      onChange={(e) =>
+                        patchAction(index, { priority: e.target.value })
+                      }
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      {TEMPLATE_PRIORITY_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {(action.type === "add_tag" ||
+                    action.type === "remove_tag") && (
+                    <input
+                      aria-label="Tags"
+                      value={(action.tags ?? []).join(", ")}
+                      onChange={(e) =>
+                        patchAction(index, {
+                          tags: e.target.value
+                            .split(",")
+                            .map((tag) => tag.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      placeholder="password, vpn"
+                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    />
+                  )}
+                  {action.type === "add_follower" && (
+                    <select
+                      aria-label="Follower"
+                      value={action.target ?? "requester"}
+                      onChange={(e) =>
+                        patchAction(index, { target: e.target.value })
+                      }
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    >
+                      {TEMPLATE_FOLLOWER_TARGETS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {action.type === "add_internal_note" && (
+                    <input
+                      aria-label="Note"
+                      value={action.body ?? ""}
+                      onChange={(e) =>
+                        patchAction(index, { body: e.target.value })
+                      }
+                      placeholder="Standard reset performed."
+                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Remove this action"
+                    onClick={() =>
+                      setEditing({
+                        ...editing,
+                        actions: editing.actions.filter((_, i) => i !== index),
+                      })
+                    }
+                    className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() =>
+                setEditing({
+                  ...editing,
+                  actions: [...editing.actions, blankAction("set_status")],
+                })
+              }
+              className="mb-4 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add an action
+            </button>
+            {/* Named, so nobody hunts for a control that is deliberately absent. */}
+            <p className="mb-4 text-[11px] text-muted-foreground">
+              A template cannot send email or notify anyone — that is enforced on
+              the server, on save and again when it runs.
+            </p>
+
+            <div className="flex items-center justify-between gap-2">
+              {editing.id ? (
+                <button
+                  type="button"
+                  onClick={() => void removeTemplate(editing.id as string)}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </button>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  disabled={busy}
+                  className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveTemplate()}
+                  disabled={
+                    busy ||
+                    editing.name.trim() === "" ||
+                    editing.content.trim() === ""
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60"
+                >
+                  {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save template
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : preview ? (
           <div className="p-4">
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               The reply
@@ -248,7 +622,7 @@ export function CannedResponsePicker({
             {!loading && list.length > 0 && (
               <ul className="space-y-1">
                 {list.map((item) => (
-                  <li key={item.id}>
+                  <li key={item.id} className="flex items-start gap-1">
                     <button
                       type="button"
                       disabled={busy}
@@ -271,7 +645,32 @@ export function CannedResponsePicker({
                           {item.actions?.length}
                         </span>
                       )}
+                      {item.teamId && (
+                        <span className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          team
+                        </span>
+                      )}
                     </button>
+                    {/* Present only when the SERVER says this person may write
+                        it. The rule lives there, not here. */}
+                    {item.canWrite && (
+                      <button
+                        type="button"
+                        aria-label={`Edit ${item.name}`}
+                        onClick={() =>
+                          setEditing({
+                            id: item.id,
+                            name: item.name,
+                            content: item.content,
+                            shareWithTeam: item.teamId != null,
+                            actions: item.actions ?? [],
+                          })
+                        }
+                        className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

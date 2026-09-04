@@ -8,9 +8,11 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { ThrottlePolicy } from '../common/throttle-policy.decorator';
+import { StaffOnlyGuard } from '../auth/staff-only.guard';
 import { CreateCannedResponseDto } from './dto/create-canned-response.dto';
 import { UpdateCannedResponseDto } from './dto/update-canned-response.dto';
 import { CannedResponsesService } from './canned-responses.service';
@@ -26,12 +28,21 @@ export class CannedResponsesController {
     return this.cannedResponsesService.list(user);
   }
 
+  /**
+   * Making a template is ordinary agent work, but not a requester's (1.7b §3a).
+   *
+   * The guard is only on the write routes. `list` stays open because it is
+   * already scoped to the caller's own plus their team's, and an EMPLOYEE has
+   * neither - so it simply returns nothing for them.
+   */
   @Post()
+  @UseGuards(StaffOnlyGuard)
   create(@Body() dto: CreateCannedResponseDto, @CurrentUser() user: AuthUser) {
     return this.cannedResponsesService.create(dto, user);
   }
 
   @Patch(':id')
+  @UseGuards(StaffOnlyGuard)
   update(
     @Param('id') id: string,
     @Body() dto: UpdateCannedResponseDto,
@@ -41,6 +52,7 @@ export class CannedResponsesController {
   }
 
   @Delete(':id')
+  @UseGuards(StaffOnlyGuard)
   delete(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.cannedResponsesService.delete(id, user);
   }

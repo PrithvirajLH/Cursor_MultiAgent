@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
@@ -37,15 +37,54 @@ export class CannedResponsesService {
       where: { OR: orConditions },
       orderBy: { name: 'asc' },
     });
-    return { data: items };
+    // `canWrite` is computed HERE, by the same rule the write routes enforce,
+    // so the editor can hide a control it would be refused rather than
+    // re-deriving the rule in the browser. Card 1.7 was cleaning up exactly
+    // that kind of duplicated rule when it deleted the client-side
+    // substitution; adding a second copy of the permission would repeat it.
+    const team =
+      user.teamId != null
+        ? await this.prisma.team.findUnique({
+            where: { id: user.teamId },
+            select: { id: true, name: true },
+          })
+        : null;
+    return {
+      data: items.map((item) => ({
+        ...item,
+        canWrite: this.mayWrite(item, user),
+      })),
+      // The one team this person may share with. The editor offers this or
+      // nothing, because anything else is now a 400.
+      team,
+    };
+  }
+
+  /** Who may change a template: its author, a lead of the owning team, an OWNER. */
+  private mayWrite(
+    macro: { userId: string | null; teamId: string | null },
+    user: AuthUser,
+  ): boolean {
+    if (macro.userId === user.id) {
+      return true;
+    }
+    if (user.role === UserRole.OWNER) {
+      return true;
+    }
+    // A private template is its author's alone - a lead has no business in
+    // somebody's unfinished drafts.
+    if (macro.teamId == null) {
+      return false;
+    }
+    return (
+      (user.role === UserRole.LEAD || user.role === UserRole.TEAM_ADMIN) &&
+      user.teamId === macro.teamId
+    );
   }
 
   async create(dto: CreateCannedResponseDto, user: AuthUser) {
     const actions = this.assertActionsAllowed(dto.actions);
-    const teamId =
-      dto.teamId != null && user.teamId != null && dto.teamId === user.teamId
-        ? dto.teamId
-        : null;
+    const teamId = this.assertTeamIsMine(dto.teamId, user);
     const item = await this.prisma.cannedResponse.create({
       data: {
         name: dto.name,
@@ -59,17 +98,8 @@ export class CannedResponsesService {
   }
 
   async update(id: string, dto: UpdateCannedResponseDto, user: AuthUser) {
-    const existing = await this.prisma.cannedResponse.findUnique({
-      where: { id },
-    });
-    if (!existing) {
-      throw new NotFoundException('Canned response not found');
-    }
-    if (existing.userId !== user.id) {
-      throw new ForbiddenException(
-        'You can only edit your own canned responses',
-      );
-    }
+    const existing = await this.loadWritable(id, user, 'edit');
+    void existing;
     const item = await this.prisma.cannedResponse.update({
       where: { id },
       data: {
@@ -84,19 +114,73 @@ export class CannedResponsesService {
   }
 
   async delete(id: string, user: AuthUser) {
+    await this.loadWritable(id, user, 'delete');
+    await this.prisma.cannedResponse.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  /**
+   * A template may only be shared with a team the caller is actually in.
+   *
+   * REFUSES rather than demotes (card 1.7b §3b). This used to keep the id only
+   * when it matched the caller's team and quietly write `null` otherwise - so
+   * "share this with HR" from an IT agent returned 201 and became a private
+   * template. Somebody would eventually announce a team template that only they
+   * could see.
+   */
+  private assertTeamIsMine(
+    teamId: string | undefined,
+    user: AuthUser,
+  ): string | null {
+    if (teamId == null) {
+      return null;
+    }
+    if (user.teamId == null || teamId !== user.teamId) {
+      throw new BadRequestException(
+        'You can only share a template with your own team',
+      );
+    }
+    return teamId;
+  }
+
+  /**
+   * Load a template this person may change, or say why not.
+   *
+   * Card 1.7b §3c. Before this card only the AUTHOR could edit, which froze a
+   * shared template the moment its author left, went on holiday or changed team
+   * - and since card 1.7 a template also changes ticket state, so a typo in one
+   * is no longer only cosmetic.
+   *
+   * The three outcomes are deliberate:
+   *   * cannot even SEE it        -> 404, never 403. A 403 confirms the id is
+   *                                  real, which is the rule card 1.7 set for
+   *                                  somebody else's private template.
+   *   * can see, cannot write     -> 403. An agent looking at a teammate's
+   *                                  shared template.
+   *   * author, or a lead/admin of the owning team, or an OWNER -> allowed.
+   *
+   * A PRIVATE template stays its author's alone. A lead has no business in
+   * somebody's unfinished drafts, so `teamId === null` grants nobody else
+   * anything - not even sight of it.
+   */
+  private async loadWritable(id: string, user: AuthUser, verb: string) {
     const existing = await this.prisma.cannedResponse.findUnique({
       where: { id },
     });
-    if (!existing) {
+    const isMine = existing?.userId === user.id;
+    const isMyTeams =
+      existing?.teamId != null &&
+      user.teamId != null &&
+      existing.teamId === user.teamId;
+    if (!existing || (!isMine && !isMyTeams && user.role !== UserRole.OWNER)) {
       throw new NotFoundException('Canned response not found');
     }
-    if (existing.userId !== user.id) {
+    if (!this.mayWrite(existing, user)) {
       throw new ForbiddenException(
-        'You can only delete your own canned responses',
+        `Only the author, or a lead of the owning team, can ${verb} this template`,
       );
     }
-    await this.prisma.cannedResponse.delete({ where: { id } });
-    return { deleted: true };
+    return existing;
   }
 
   /**
