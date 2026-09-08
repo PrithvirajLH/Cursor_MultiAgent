@@ -35,10 +35,30 @@ try {
   console.log(`Applied migrations: ${n}`);
   console.log('Most recent four:');
   for (const r of rows) console.log(`  ${r.migration_name}`);
-  const failed = await prisma.$queryRaw`
-    SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NULL`;
-  console.log(`\nUnfinished/failed rows: ${failed.length}`);
-  for (const r of failed) console.log(`  ⚠️ ${r.migration_name}`);
+  // `finished_at IS NULL` alone is NOT a problem and must not be reported as one.
+  // A row that failed and was then resolved with `prisma migrate resolve
+  // --rolled-back` keeps finished_at NULL for ever and carries rolled_back_at
+  // instead. Prisma treats that as settled and `migrate deploy` proceeds. Only a
+  // row with NEITHER timestamp actually blocks a deploy (P3009).
+  const blocking = await prisma.$queryRaw`
+    SELECT migration_name FROM "_prisma_migrations"
+    WHERE finished_at IS NULL AND rolled_back_at IS NULL`;
+  const resolved = await prisma.$queryRaw`
+    SELECT migration_name, rolled_back_at FROM "_prisma_migrations"
+    WHERE finished_at IS NULL AND rolled_back_at IS NOT NULL`;
+  console.log(`\nBlocking rows (would stop migrate deploy): ${blocking.length}`);
+  for (const r of blocking) console.log(`  ⚠️ ${r.migration_name}`);
+  if (resolved.length > 0) {
+    console.log(
+      `\nKnown resolved-as-rolled-back rows (harmless, do NOT "fix" these): ${resolved.length}`,
+    );
+    for (const r of resolved) {
+      console.log(`  ${r.migration_name} — rolled back ${r.rolled_back_at.toISOString()}`);
+    }
+  }
+  const trigram = await prisma.$queryRaw`
+    SELECT indexname FROM pg_indexes WHERE indexname LIKE '%_trgm_idx'`;
+  console.log(`\nTrigram indexes present: ${trigram.length} (must be 6)`);
 } finally {
   await prisma.$disconnect();
 }

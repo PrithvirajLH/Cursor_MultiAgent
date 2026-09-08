@@ -22,13 +22,26 @@ git log --oneline 15d2179..HEAD    # expect docs only
 
 ---
 
-## ⚠️ Three prerequisites. Two of them are not in the implementer's report.
+## ⚠️ Three prerequisites — P1 is done, **P2 and P3 are still owed**
 
-The implementer flagged one. The planner found two more while verifying. **Any one
-of the three missing means the deploy either fails outright or silently ships a
-feature that does nothing.**
+The implementer flagged one (P3). The planner found two more while verifying.
+**Either of the two remaining, if missed, silently ships a feature that does
+nothing** — no error, no log line.
 
-### P1 — This machine cannot reach the production database right now
+- **P1 firewall** — ✅ done 2026-09-08, production database reachable.
+- **P2 signing secret** — ❌ **still not set.** Card 1.44 ships with zero of its
+  seven links if you skip it.
+- **P3 Easy Auth exclusion** — ❌ **still owed.** Every link returns 401 without it.
+
+### P1 — ✅ CLEARED 2026-09-08. The firewall rule is in.
+
+The owner ran it; rule `dev-laptop-20260908` exists and the production database
+is reachable from this machine (confirmed by a read-only query that returned the
+migration count). **Nothing to do here — the rest of this section is kept as the
+record of why, and for the next time the IP changes.**
+
+<details>
+<summary>Original P1 — this machine could not reach the production database</summary>
 
 `prisma migrate deploy` will fail before it does anything:
 
@@ -79,6 +92,8 @@ paths to the production database from addresses that may no longer be yours — 
 home or office IP that has since been reassigned now belongs to a stranger.
 Pruning the ones you no longer use is a separate decision; flagging it, not
 doing it.
+
+</details>
 
 ### P2 — Production has no signing secret, so all seven links vanish
 
@@ -151,10 +166,32 @@ indexes, six `ALTER COLUMN … DROP DEFAULT`).
 **No enum is touched**, so this carries none of the
 enum-value-in-the-same-transaction hazard that migrations 54 and 56 documented.
 
-**Production should be at 57 going in, 58 coming out.** I could not confirm the
-applied count from here — see P1 — so **`npx prisma migrate status` is the gate**:
-if anything other than `20260904200000_ticket_message_redaction` is pending,
-**stop and report** rather than applying.
+**Production is at 57 going in, 58 coming out — now confirmed, not predicted.**
+Read directly from `_prisma_migrations` on 2026-09-08 once the P1 firewall rule
+was in (`apps/api/prod-migration-count.mjs`, read-only):
+
+```
+Applied migrations: 57      (latest: 20260904180000_canned_response_actions)
+Blocking rows:       0
+Trigram indexes:     6      (must be 6)
+```
+
+`npx prisma migrate status` is still the gate: if anything other than
+`20260904200000_ticket_message_redaction` is pending, **stop and report**.
+
+> ⚠️ **You will see one alarming row. It is fine, and you must not "fix" it.**
+> `20260220150000_add_ticket_search_trigram_indexes` has `finished_at = NULL`
+> and error `0A000` in its logs — but it also has **`rolled_back_at` set
+> (2026-05-01)**, because someone resolved it with
+> `prisma migrate resolve --rolled-back` back in May. Prisma treats that as
+> settled, which is exactly why migrations 55–57 deployed cleanly on 09-04. The
+> six trigram indexes exist regardless — verified above.
+>
+> **Do not run `migrate resolve --applied` on it.** That would tell Prisma a
+> migration ran which did not, and the next `migrate dev` would generate against
+> a false baseline. The planner briefly flagged this row as a deploy blocker on
+> 2026-09-08 after filtering only on `finished_at`; checking `rolled_back_at`
+> settled it.
 
 Per the standing rule: **apply to the Supabase dev database before production.**
 The implementer already did (their report says so, and the local integration run

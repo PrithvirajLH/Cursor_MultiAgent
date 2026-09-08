@@ -502,3 +502,33 @@ tickets since they were written.** Found by the card 1.17 implementer, 2026-09-0
   fragment also applies role/team visibility, which `scopeReportQuery` already
   does differently, and layering the two would silently change who sees what.
   Add the `deletedAt` clause to each raw report.
+
+## Production carries one permanently "failed" migration row. Leave it alone.
+
+`_prisma_migrations` in **production** has a row for
+`20260220150000_add_ticket_search_trigram_indexes` with:
+
+```
+finished_at         NULL
+rolled_back_at      2026-05-01T16:06:49Z
+applied_steps_count 0
+logs                "A migration failed to apply..."  Database error code: 0A000
+```
+
+**This is settled state, not a pending failure.** Someone resolved it in May with
+`prisma migrate resolve --rolled-back`, and Prisma treats a row with
+`rolled_back_at` set as dealt with — which is why migrations 51 through 57 have
+all deployed cleanly since. **All six trigram indexes exist** (verified
+2026-09-08); they are simply not owned by that migration any more.
+
+- ⚠️ **Never run `prisma migrate resolve --applied` on it.** That would assert a
+  migration ran which did not, and the next `migrate dev` would diff against a
+  false baseline.
+- ⚠️ **Do not report it as a deploy blocker.** Only a row with **neither**
+  `finished_at` **nor** `rolled_back_at` triggers P3009 and stops
+  `migrate deploy`. A check that filters on `finished_at IS NULL` alone will cry
+  wolf every single time — the planner did exactly that on 2026-09-08.
+- `apps/api/prod-migration-count.mjs` (read-only) reports the count, the genuinely
+  blocking rows, this known row separately, and the trigram index count. Run it
+  from `apps/api` so `@prisma/client` resolves. It needs the current IP on the
+  database firewall.
