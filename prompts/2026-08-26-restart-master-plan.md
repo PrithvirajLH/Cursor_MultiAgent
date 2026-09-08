@@ -12,6 +12,14 @@
 
 ## Status board
 
+⚠️ **Which record wins, and it is not the same answer for every card.** A card
+with a row in the table below has its status **only** there — its `###` section
+heading carries no status, because keeping the two in step failed repeatedly (nine
+headings went stale, then three more, then cards 1.40 and 1.41 sat five days saying
+"handoff written" after they had shipped). **A card with no table row keeps its
+status in its heading**, because for those 31 cards the heading is the only record
+there is — do not strip it. Every card numbered 1.19 and above lives in the table.
+
 Updated by the planning session as cards move. States: **Queued** → **Handoff written** (prompt exists, kickoff sent) → **Building** (implementer session working) → **Verifying** (planning session re-running checks) → **GREEN** (merge/deploy approved) or **RED** (sent back with reasons) → **Merged** / **Deployed**.
 
 | Card | State | Handoff prompt | Notes |
@@ -52,7 +60,7 @@ Two files outside §6, both disclosed and both correct: `tickets.service.ts` gai
 **Acceptance criterion 3 is unmet by design, and stopping was correct.** The agent-name From line cannot be built from `EmailService` alone: the `MESSAGE_ADDED` outbox payload carries only `{messageId, type}`, so neither the actor nor the team ever reaches the send path — **verified in code**. My §11 named exactly this as a stop condition. Every email currently uses the generic `CSNHC Helpdesk` identity, which is the safe direction to be wrong in. Now **card 1.31**.
 
 Also from this card: the standing Prisma drift is **twelve** statements, not the six my card warned about (six trigram `DROP INDEX` plus six `ALTER COLUMN ... DROP DEFAULT`), and **`check-migrations.sh` only sees migrations already committed** — line 39 diffs files added *in commits*, so running it beforehand exits 0 having checked nothing, which looks exactly like a pass. Both are now in `repo-landmines.md`. **Owed:** migration 52 **is now applied to local-dev Supabase as well** — corrected 2026-09-02: this row previously said it was on the test database only and that dev still needed it. `prisma migrate status` against dev Supabase reports **52 migrations, "Database schema is up to date"**, so that owner to-do is closed. The SocketLabs bounce webhook is still unbuilt. |
-| 1.24 Inbound mailbox worker (Graph delta polling) | **Queued** — the real build | — | A background worker polls one shared mailbox every ~30 s using a Microsoft Graph **delta token** and feeds the existing ingestion path in-process. Chosen over webhooks (push subscriptions expire every few days and silently stop; a fired webhook is lost if the app is down) and over Power Automate (throttling, silent failure, no retry control, production dependency outside the codebase). The delta token is a durable cursor, so a deploy or outage loses nothing. Needs `Mail.ReadWrite` **scoped to the single mailbox** via an Application Access Policy — unscoped, the app can read the whole tenant. Reuses `AZURE_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`. Size L. |
+| 1.24 Inbound mailbox worker (Graph delta polling) | **Queued — BLOCKED on the Graph permission (owner to-do #1):** `Mail.ReadWrite` scoped to the one helpdesk mailbox, **plus** a directory-read scope, requested together. Nothing here can start until that lands, and it also gates 1.25 and five deferred verification items. — the real build | — | A background worker polls one shared mailbox every ~30 s using a Microsoft Graph **delta token** and feeds the existing ingestion path in-process. Chosen over webhooks (push subscriptions expire every few days and silently stop; a fired webhook is lost if the app is down) and over Power Automate (throttling, silent failure, no retry control, production dependency outside the codebase). The delta token is a durable cursor, so a deploy or outage loses nothing. Needs `Mail.ReadWrite` **scoped to the single mailbox** via an Application Access Policy — unscoped, the app can read the whole tenant. Reuses `AZURE_TENANT_ID` / `_CLIENT_ID` / `_CLIENT_SECRET`. Size L. |
 | 1.25 Helpdesk mailbox + threading proof | **Queued** — owner/M365 setup, then verification | — | Create the shared mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…`), then prove all three threading paths end to end: reply token in the To address, `In-Reply-To`/`References`, and ticket id in the subject. **No build — reply tokens are already implemented** (`ticket-email-thread.service.ts`: `generateReplyToken`, `buildReplyToAddress`; `inbound-email.service.ts` extracts them). Size S. |
 | 1.26 The ticket list must not lie about how fresh it is | **GREEN** (verified 2026-09-01) | `prompts/2026-09-01-1-26-ticket-list-freshness.md` | **Verified 2026-09-01:** new tickets *do* arrive in the list without a refresh — `handleTicketChanged` in `TicketsPage.tsx` fires on every realtime reason and calls `maybeHydrateRealtimeTicket`, which fetches the row and inserts it in sort order. But `hooks/useRealtimeEvents.ts` has **no polling fallback**, so if Web PubSub drops the list silently stops updating and an idle queue is indistinguishable from a broken one. Three parts: **(a)** a poll backstop for the list, copying the pattern already in `hooks/useNotifications.ts:325` (interval + `isTabVisible` gate); **(b)** a visible connection state so silence is never ambiguous; **(c)** the stale header count (was a separate follow-up — the row appears but "N open tickets" does not move). Also note `maybeHydrateRealtimeTicket` returns early when `filters.page > 1`, so nothing arrives on page 2+. Web only. Size S–M. Commit `d9f5bc2`. Planner re-ran: web tsc 0, vitest **64/17** — matches the implementer's report exactly. Reviewed the implementation: poll gated on disconnected + tab-visible + page 1; reconnect catch-up via `previousRealtimeAvailableRef` guarded on `hasLoadedOnceRef` so it cannot fire on mount; `loadTickets({ background: true })` for reconcile-not-replace. **The implementer added a tab-visibility catch-up the card did not ask for** — a tab hidden while disconnected ran no poll, so it re-reads on the way back in instead of making the agent wait out another interval. Correct and worth keeping. |
 | 1.27 SLA breaches and badge counts must reach the screen | **GREEN** (verified 2026-09-01) | `prompts/2026-09-01-1-27-sla-and-counts-realtime.md` | From the Web PubSub audit the owner asked for. **`slas/sla-breach.service.ts` publishes no realtime event at all** — it raises the bell and the email, so an agent is told, but the ticket row's SLA badge stays green, "Breach risk · 1h" does not move, and the detail panel does not update. A countdown that is silently wrong is worse than none. Also folds in two smaller gaps found in the same audit: **nothing outside `client.ts` ever invalidates the `/tickets/counts` cache**, so a change made by *another* agent moves the rows but not the sidebar badges; and `retention.service.ts` purges tickets without emitting `deleted`. Design decision recorded: a **new `sla_changed` reason and the web re-reads the row**, rather than widening the realtime payload — the payload carries no SLA fields and adding them means keeping two field lists in sync. CSAT deliberately excluded. API + web, no schema. Size S. Commits `200ac61` (api) + `230ed6c` (web). Planner re-ran **everything**: api tsc 0, unit **277/33**, full integration **431 passed + 1 skipped, 48 of 49**, web tsc 0, vitest **64/17** — every figure matches the implementer's report. **The implementer corrected two of my facts and I verified both:** (a) my §3 fact 5 was wrong — `App.tsx:561` already called `notifyTicketAggregatesChanged()` on every reason except `message_added`; my grep looked for `invalidateApiGetCache`/`clearApiGetCache` and missed a differently-named function. The real gap was one layer down, the 15s hot GET cache (`client.ts:18`, checked at `:690`) answering the refetch — a narrower fix than I wrote, now test-pinned. (b) my acceptance criterion 3 was **unachievable**: `atRisk`/`overdue` are raw SQL over `Ticket.dueAt` with no SLA flag (`:735-746`), so a first-response breach cannot move either; a resolution-at-risk does (confirmed 0→1). Logged as a pre-existing follow-up. Also verified: `TicketRealtimeService` provided directly in `SlasModule` with no cycle and no forwardRef (better than my hint); the publish loops `changedTicketIds` rather than notification intents, so a team with **no lead and no on-call** is still announced — intents would have silently skipped exactly those tickets; `actorId: null` with the `ticket-attachment.service.ts:330` precedent. Task 4 (retention) **deliberately not done**, with a reason I accept — see the follow-up above. |
@@ -698,7 +706,7 @@ Copied from `CLAUDE.md` and `docs/agent-context/repo-landmines.md`. An implement
 
 Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history shows unverified changes producing phantom failures and stale docs.
 
-### 0.1 Fix the three failing front-end test files — **Ready** · S
+### 0.1 Fix the three failing front-end test files · S
 
 **What we are doing.** The web unit suite is red, so no automated check can be trusted. Make it green.
 
@@ -710,7 +718,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** `cd apps/web && npx vitest run` → 13 files passed, 35+ tests, exit 0; documented as the new web baseline in `CLAUDE.md`.
 
-### 0.2 A gate that blocks a deploy when checks fail — **Needs brainstorming** · S–M
+### 0.2 A gate that blocks a deploy when checks fail · S–M
 
 **What we are doing.** Today the checks exist but nothing forces them to run before code goes live. Pick one of three ways to make "CI green" a precondition of `az webapp deploy`.
 
@@ -723,7 +731,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.1.
 **Done when.** A commit with a failing test cannot be deployed without a human overriding a red status; runbook updated.
 
-### 0.3 Guard against the Prisma migration trap in CI — **Ready** · S
+### 0.3 Guard against the Prisma migration trap in CI · S
 
 **What we are doing.** One unedited generated migration destroys ticket and KB search performance. Make the check automatic.
 
@@ -731,7 +739,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.2 (so the check actually runs somewhere).
 **Done when.** A test PR adding a migration with `DROP INDEX` fails CI with the offending line printed.
 
-### 0.4 Monitoring and alerts — **Ready** (one small decision) · S–M
+### 0.4 Monitoring and alerts · S–M
 
 **What we are doing.** If email stops sending or the SLA worker stalls, nobody is told. Add telemetry and five alerts.
 
@@ -743,7 +751,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.5 for the counts.
 **Done when.** Killing SMTP in staging produces an alert email within 15 minutes.
 
-### 0.5 Readiness endpoint that says what is actually connected — **Ready** · S
+### 0.5 Readiness endpoint that says what is actually connected · S
 
 **What we are doing.** Redis, SMTP, Web PubSub, Blob storage, the scanner secret and AI are all optional env vars, and the repo does not record which are set in production. Make the app report it.
 
@@ -751,7 +759,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** `curl https://<prod>/api/health/ready` (via Kudu, since Easy Auth returns 401 on the front door) shows the real state and the inventory doc exists.
 
-### 0.6 Staging environment — **Ready** (cost decision) · M
+### 0.6 Staging environment · M
 
 **What we are doing.** There is one App Service. Migrations run against production first, by hand, from a laptop. Add a staging copy.
 
@@ -760,7 +768,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.2.
 **Done when.** A deploy to staging + migration runs from CI with no laptop involved; prod runbook references staging as step 1.
 
-### 0.7 Real virus scanning for attachments — **Needs brainstorming** · S–M
+### 0.7 Real virus scanning for attachments · S–M
 
 **What we are doing.** Uploads default to `PENDING` (`ticket-attachment.service.ts:584`) and downloads are blocked until a scanner posts to `POST /api/attachments/:id/scan-status` with `x-attachment-scan-secret`. No scanner exists. Choose one.
 
@@ -773,7 +781,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.5 (to learn the current state).
 **Done when.** Upload an EICAR test file in staging → `INFECTED`, download refused; a clean PDF → `CLEAN` within 2 minutes.
 
-### 0.8 Soft delete and a retention policy — **Ready** (periods need a decision) · M
+### 0.8 Soft delete and a retention policy · M
 
 **What we are doing.** Nothing can be deleted safely and nothing is ever cleaned up. Deleting a Team silently unassigns its tickets. IT.pdf §7.4 requires a retention policy.
 
@@ -786,7 +794,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** Integration tests prove deleted tickets are invisible to non-owners and excluded from reports; retention dry-run logs counts without deleting.
 
-### 0.9 Re-measure performance and add a regression gate — **Ready** · S
+### 0.9 Re-measure performance and add a regression gate · S
 
 **What we are doing.** The last measurement (Feb 2026) missed p95 targets 2.5–5×; indexes, trigram search and caching landed since; nobody re-measured.
 
@@ -794,7 +802,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.6.
 **Done when.** New findings doc exists; gate runs in CI.
 
-### 0.10 Clean up dev data and run the pending HR merge — **Ready** · S
+### 0.10 Clean up dev data and run the pending HR merge · S
 
 **What we are doing.** Production still shows `[Seed]` tickets and fake users, and the one-time `merge-hr-teams.sql` has never run.
 
@@ -802,7 +810,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.8 (so removal is soft-delete, not hard).
 **Done when.** No `[Seed]` rows in prod; HR teams merged; runbook notes it is done.
 
-### 0.11 Prune stale documents — **Ready** · S
+### 0.11 Prune stale documents · S
 
 **What we are doing.** Four planning docs contradict the code and will send the next engineer the wrong way.
 
@@ -810,7 +818,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** Nothing.
 **Done when.** `CLAUDE.md` "Read these first" table is the only entry point and nothing it links contradicts code.
 
-### 0.12 Backup and restore drill — **Ready** · S
+### 0.12 Backup and restore drill · S
 
 **What we are doing.** Azure Postgres has point-in-time restore by default, but nobody has written down the recovery objectives or tried a restore.
 
@@ -829,7 +837,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 > 2026-09-03. If you are about to update a heading's status, update the table
 > instead.
 
-### 1.1 Edit a ticket's title and description — **Done — status in the table above** · S
+### 1.1 Edit a ticket's title and description · S
 
 **What we are doing.** Titles and descriptions are permanent after creation. Email subjects like "Re: Re: help" become useless. Add an edit.
 
@@ -837,7 +845,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 0.1–0.3.
 **Done when.** Integration tests in `test/integration/tickets.lifecycle.spec.ts`: 403 for a different requester, 200 for the assignee, event row written, realtime event emitted; UI edit round-trips.
 
-### 1.2 Requester can confirm, reopen — and maybe cancel — **Done — status in the table above** · S
+### 1.2 Requester can confirm, reopen — and maybe cancel · S
 
 **What we are doing.** `tickets.service.ts:1992` forbids every status change for the `EMPLOYEE` role. Requesters should be able to say "yes, it's fixed" and "no, it isn't".
 
@@ -846,7 +854,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.1.
 **Done when.** Requester confirm/reopen tested in `tickets.workflow.spec.ts`; agents' transitions unchanged; e2e `lifecycle.spec.ts` gains a requester-confirm case.
 
-### 1.3 Timed automations (auto-close, reminders, escalate-if-idle) — **Done — status in the table above** · M
+### 1.3 Timed automations (auto-close, reminders, escalate-if-idle) · M
 
 **What we are doing.** Rules only react to events. Add rules that run on a clock: close N days after RESOLVED; remind the requester after N days WAITING_ON_REQUESTER; alert the lead when a ticket is unassigned for N hours; stop re-opening after K reopens.
 
@@ -854,7 +862,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.2 (closeReason).
 **Done when.** `automation.spec.ts` covers each trigger with a time-travelled fixture; a resolved ticket in staging closes itself after the configured window.
 
-### 1.4 More automation actions — **Done — status in the table above** · S
+### 1.4 More automation actions · S
 
 **What we are doing.** Rules can only assign, set priority/status, notify a lead, or add a note. Add the rest agents expect.
 
@@ -862,7 +870,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.3 (for the scheduler-fired rules to be useful), 1.7 for `apply_macro`.
 **Done when.** Each action has a unit test in `rule-engine.service.spec.ts` and one integration case.
 
-### 1.5 Merge duplicate tickets — **STILL NOT READY — the planner recommends keeping it on hold** · M
+### 1.5 Merge duplicate tickets · M
 
 > `prompts/2026-09-03-1-6-and-1-5-links-then-merge.md` — Part B, which is a **decision pass, not a coding task**.
 >
@@ -888,7 +896,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.2 (closeReason), 1.6 (a "duplicate-of" link is the lightweight alternative when merge is inappropriate).
 **Done when.** Merge in staging leaves one ticket with all messages, source shows a banner and link, reports count one ticket.
 
-### 1.6 Link related tickets — **GREEN 2026-09-04** (`68c476e` + `d0ff232`), migration 55, **not deployed** · M
+### 1.6 Link related tickets — **GREEN 2026-09-04** (`68c476e` + `d0ff232`), migration 55, **deployed** — live since the 2026-09-04 20:22 UTC deploy (`050a527c`) that took production to `f48452b` · M
 
 > `prompts/2026-09-03-1-6-and-1-5-links-then-merge.md` — Part A. Needs **migration 55** (new `TicketLink` table + `TicketLinkType` enum); check the folder
 > number first, HEAD already has 54 from card 1.10. The master plan's model is sound and should be used as written — it is the one part of 1.5/1.6 needing no rework.
@@ -901,7 +909,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.1 pattern.
 **Done when.** Links survive on both tickets, show in the timeline, and a parent's detail lists its children.
 
-### 1.7 Macros: canned responses with actions and placeholders — **GREEN 2026-09-04** (`92a6737` + `b959e39`), migration 57, **not deployed** · M
+### 1.7 Macros: canned responses with actions and placeholders — **GREEN 2026-09-04** (`92a6737` + `b959e39`), migration 57, **deployed** — live since the 2026-09-04 20:22 UTC deploy (`050a527c`) that took production to `f48452b` · M
 
 > `prompts/2026-09-04-1-7-macros.md`. **Most of this is already built and the card did not know it.** `fillTemplateVars`
 > (`src/automation/template-vars.util.ts`) already substitutes `{{key}}`, and its own comment reads *"Seed of the macro variables planned for card 1.7"* — unknown
@@ -927,7 +935,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.4 (shared action executor).
 **Done when.** A "Password reset done" macro pastes a personalised reply, sets RESOLVED and adds tag `password` in one click.
 
-### 1.8 Requester history panel — **Done — status in the table above** · S
+### 1.8 Requester history panel · S
 
 **What we are doing.** Agents cannot see what else this person has asked. It is the first thing they check before replying.
 
@@ -977,7 +985,7 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.7 for macro.
 **Done when.** e2e `sprint3.spec.ts` bulk test extended with tags.
 
-### 1.13 CSV export for the ticket list and every report — **Done — status in the table above** · S
+### 1.13 CSV export for the ticket list and every report · S
 
 **What we are doing.** Excel is the real BI tool. The Export button today is a picture.
 
@@ -993,7 +1001,14 @@ Nothing in Phase 1 should start until 0.1–0.5 are done. The repo's own history
 **Depends on.** 1.3 for the reminder (the send itself has no dependency).
 **Done when.** Resolving a ticket in staging emails the requester; clicking 5 records a CSAT event; the CSAT report moves.
 
-### 1.15 Notification preferences — **Ready** · S
+### 1.15 Notification preferences — **DROPPED by the owner 2026-09-04** · S
+
+⚠️ **Do not build this.** It existed to fix *"email fatigue"* by letting people
+switch emails off. **Card 1.42 removed staff email entirely**, so there is no fatigue
+left to fix, and the four surviving emails all go to requesters — where switching
+off *"resolved"* would break the confirm / reopen / rate loop that card 1.44 just
+built. **Do not add a `NotificationPreference` model.** If you find yourself wanting
+one, that is a new conversation with the owner.
 
 **What we are doing.** Email fatigue makes people ignore the alerts that matter. Let each person choose.
 
@@ -1037,7 +1052,7 @@ above. Threading, third-party replies, auto-reopen, attachment ingest, duplicate
 suppression and reply-address tokens are **already implemented**. These four
 cards are the gaps, nothing more.
 
-### 1.22 Email safety rails — **Done — status in the table above** · M
+### 1.22 Email safety rails · M
 
 **What we are doing.** Four guards, none of which exist today, plus one switch
 copied from the LMS.
@@ -1068,7 +1083,7 @@ the pilot switch is proven by a test to make real recipients unreachable.
 
 ---
 
-### 1.23 Switch on outbound email (SocketLabs) — **Done — status in the table above** · S
+### 1.23 Switch on outbound email (SocketLabs) · S
 
 **What we are doing.** Copy the seven `SMTP_*` values from
 `learningms/apps/lms/.env` into the `TicketTicket` app settings and rename
@@ -1088,7 +1103,7 @@ No new Azure spend, no tenant policy change, no Graph app permission.
 
 ---
 
-### 1.24 Inbound mailbox worker (Graph delta polling) — **Ready, but blocked on the Graph permission (owner to-do #1)** · L
+### 1.24 Inbound mailbox worker (Graph delta polling) · L
 
 > ## ⬜ WHEN 1.24 SHIPS — the deferred checklist
 >
@@ -1214,7 +1229,7 @@ ticket message.
 
 ---
 
-### 1.25 Helpdesk mailbox + threading proof — **Ready, but needs the mailbox to exist first** · S
+### 1.25 Helpdesk mailbox + threading proof · S
 
 **What we are doing.** Owner/M365 setup, then verification. Create the shared
 mailbox, confirm it accepts plus-addressing (`helpdesk+ticket-<token>@…` must
@@ -1237,7 +1252,7 @@ the reply token doing its job).
 
 ---
 
-### 1.26 The ticket list must not lie about how fresh it is — **Done — status in the table above** · S–M
+### 1.26 The ticket list must not lie about how fresh it is · S–M
 
 **What we are doing.** Three related fixes so an agent can trust what is on screen.
 

@@ -65,21 +65,36 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
    in `prompts/` turned out to contain factual errors that only surfaced on
    execution. Verify, then say so when a document is wrong.
 
-## Current state (2026-08-25)
+## Current state (2026-09-08)
 
 - Branch `ui-redesign-and-api-hardening`. Remotes: `azure` (Azure DevOps, the
   deploy target), plus two **public** GitHub remotes.
-- Production App Service `TicketTicket` runs commit `d8811a7` (deployed
-  2026-08-29 02:48 UTC, deployment `5d0d116a`; previous `2df679d` 08-28, `d1d57bc` 08-27,
-  `c2ff777` 08-26, `458543a` before that). Schema is up to date at **54**
-  migrations; the six trigram indexes are intact. `main` and
-  `ui-redesign-and-api-hardening` are both at `d8811a7` — exactly what shipped. Live since this deploy: ticket editing, requester
-  confirm/reopen/cancel, timed automations (scheduler on, no timed rules yet),
-  the extra automation actions, and `POST /api/tickets/intake`, which is **live**
-  (secret set, path excluded from Easy Auth) and, since card 1.20, replays
-  retries correctly across connections and accepts required custom fields by
-  name. The retention job remains off. Two probe tickets
-  (`PA_20260829_021`, `IT_20260829_022`) are awaiting deletion by the owner.
+- Production App Service `TicketTicket` runs commit `f48452b` (deployed
+  2026-09-04 20:22 UTC, deployment `050a527c`; previous `d8811a7` 08-29,
+  `2df679d` 08-28, `d1d57bc` 08-27, `c2ff777` 08-26). Live since that deploy:
+  ticket links and merge (1.6), staff email removed so email now goes only to
+  requesters and CC'd outsiders (1.42), macros with actions and placeholders
+  (1.7 / 1.7b), and the intake acknowledgement fix. `POST /api/tickets/intake`
+  is **live** (secret set, path excluded from Easy Auth). The retention job
+  remains off. Two probe tickets (`PA_20260829_021`, `IT_20260829_022`) are
+  awaiting deletion by the owner.
+- **HEAD is ahead of production by seven code commits** — the six-card batch
+  (1.43, 1.18, 1.17, 1.12, 1.11, 1.44), **GREEN 2026-09-08**, carrying
+  **migration 58**. Deploy handoff:
+  `prompts/2026-09-08-deploy-six-card-batch.md`. ⚠️ **It names three
+  prerequisites and two of them are easy to miss** — this machine's IP is not on
+  the production database firewall, so `migrate deploy` cannot connect; and
+  production has **no email-action signing secret**, which would silently ship
+  card 1.44 with none of its seven links. Read that handoff before deploying.
+- Migration count: **58 in the tree**. Production was last verified at 54 on
+  08-29 and should be at 57 now (55–57 went out with the 09-04 deploy), but
+  **that was not re-confirmed** — the production database is unreachable from
+  this machine. `npx prisma migrate status` at deploy time is the gate. The six
+  trigram indexes were intact at the last check.
+- ⚠️ **Reports have never excluded soft-deleted tickets** (card 1.45). 20 of the
+  23 raw-SQL reports in `reports.service.ts` have no `deletedAt` filter, and the
+  comment at `:200` wrongly says they get one from `accessConditionSql` — which
+  reports never call. Found 2026-09-08.
 - `azure-pipelines.yml` exists but **cannot run** — the Azure DevOps org has no
   hosted parallelism grant. **Nothing currently gates a deploy except running the
   checks above by hand.**
