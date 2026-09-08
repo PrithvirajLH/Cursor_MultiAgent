@@ -456,3 +456,49 @@ it rather than rediscovering. The highlights:
   public GitHub remotes if automated checks are wanted sooner — but note those
   remotes are **public**, and `docs/security-audit-2026-08.md` describes live
   weaknesses.
+
+## A killed integration run can leave `apps/api/.env` renamed
+
+`scripts/reset-test-db.cjs:174-182` renames **`apps/api/.env` → `apps/api/.env.bak`**
+for the duration of the database reset, so the reset cannot pick up the dev
+`DATABASE_URL` by accident. It renames it back in a `finally`.
+
+That `finally` does not run if the process is **hard-killed** — which is exactly
+what happens when a background integration run is stopped mid-flight, something
+this repo's own notes record happening more than once. The result is a working
+tree with **no `apps/api/.env` at all**: the dev API then starts with no
+database, no Azure credentials and no secrets, and every symptom points
+somewhere other than the real cause.
+
+- **If the API suddenly cannot find anything, look for `apps/api/.env.bak` first.**
+  Renaming it back to `.env` is the whole fix.
+- `.env.bak` is the **live config**, not a stale copy — do not delete it, and do
+  not commit it.
+- Verified 2026-09-08: a completed run restores the file (3241 bytes, and
+  `.env.bak` gone). The hazard is only the killed run.
+
+## Report queries do not all exclude soft-deleted tickets
+
+`reports.service.ts:199-201` carries this comment:
+
+```
+// Soft-deleted tickets never count in reports (the raw-SQL reports get
+// this from accessConditionSql; the groupBy reports come through here).
+```
+
+**The first half is false.** `AccessControlService.accessConditionSql` does add
+`deletedAt IS NULL` (`access-control.service.ts:130-134`) — but
+`reports.service.ts` **never calls it.** Reports scope through
+`scopeReportQuery` behind `LeadOrAdminGuard` instead, and only the Prisma
+`where` path (`:201`) filters `deletedAt`.
+
+Of the file's 23 `$queryRaw` reports, exactly **three** filter it — the three
+added by card 1.17 (`:1614`, `:1669`, `:1733`). **The rest have counted deleted
+tickets since they were written.** Found by the card 1.17 implementer, 2026-09-08.
+
+- The practical impact tracks how many tickets have ever been soft-deleted, so
+  it is small today and grows quietly.
+- **Do not "fix" this by pointing reports at `accessConditionSql`** — that
+  fragment also applies role/team visibility, which `scopeReportQuery` already
+  does differently, and layering the two would silently change who sees what.
+  Add the `deletedAt` clause to each raw report.
