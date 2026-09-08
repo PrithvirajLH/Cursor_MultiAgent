@@ -6,8 +6,19 @@
 session on 2026-09-08. Every number below was re-run here, not taken from the
 implementer's report.
 
-**Production is at `f48452b`. HEAD is `15d2179`. Nine commits, seven of them
-code.** Migration **58** is the only schema change.
+**Production is at `f48452b`. The last code commit is `15d2179`.** Migration
+**58** is the only schema change.
+
+⚠️ **HEAD is ahead of `15d2179` by documentation-only commits** (this handoff, the
+board, `CLAUDE.md`). **Ship HEAD, and stamp `DEPLOYED_COMMIT_SHA` with whatever
+you actually shipped** — not with `15d2179`, and not with a value you carried over
+from a previous deploy. Confirm the two are the same afterwards; a wrong stamp is
+how the last board rot started. Verify before you build that no *code* commit has
+landed since `15d2179`:
+
+```
+git log --oneline 15d2179..HEAD    # expect docs only
+```
 
 ---
 
@@ -166,7 +177,7 @@ updated to these.
 
 **Check, in this order:**
 
-1. **`DEPLOYED_COMMIT_SHA` reads `15d2179`.**
+1. **`DEPLOYED_COMMIT_SHA` reads the commit you actually shipped** (HEAD at build time, not `15d2179`, which is only the last code commit).
 2. **`prisma migrate status` reports 58 applied and nothing pending.**
 3. **The six trigram indexes are still there** — the standing check after every
    migration.
