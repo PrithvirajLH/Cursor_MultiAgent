@@ -41,7 +41,13 @@ az postgres flexible-server firewall-rule list --resource-group csnhc-ai \
 curl -s https://api.ipify.org           # where you are calling from
 ```
 
-**Owner's decision, not mine to make.** Two ways forward:
+**✅ Owner approved this on 2026-09-08** (*"allow IP list current"*). The planner
+could not run it — Azure resource writes are blocked by the auto-mode classifier,
+the same way production database writes are — so **the owner runs the command
+below with `!`**. If the rule is already present when you read this, that step is
+done; confirm rather than re-create it.
+
+Two ways forward:
 
 - Add a firewall rule for the current IP. **What it changes:** one inbound
   allow-rule on `csh-ticketing-db`. **Blast radius:** that IP can reach the
