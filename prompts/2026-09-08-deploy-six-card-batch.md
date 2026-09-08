@@ -195,8 +195,15 @@ updated to these.
 
 **Cannot be checked after this deploy, and should not be claimed:**
 
-- **Card 1.43 stays dormant.** No mailbox feeds the inbound webhook, so nothing
-  exercises the bracketed `In-Reply-To`. It is on card 1.24's checklist.
+- ~~**Card 1.43 stays dormant.**~~ **Corrected 2026-09-08 — this was my error, and
+  1.43 IS checkable here.** I said it needed a live mailbox. It does not: the
+  implementer verified it in a browser walkthrough by **posting to the inbound
+  webhook directly**, which showed the bare id going in and
+  `In-Reply-To: <…>` bracketed coming out, with the bare form absent from
+  `References`. Production **has** `INBOUND_EMAIL_WEBHOOK_SECRET` set, so the same
+  check runs against production — no mailbox, no card 1.24 required. **Do this
+  check.** What still genuinely waits on 1.24 is whether a real mail client threads
+  on it; the header itself can be proven now.
 - The redaction caveat's *"already emailed to N people"* count needs a message
   that was genuinely emailed to more than one person — possible, but only after
   there is real requester traffic.
