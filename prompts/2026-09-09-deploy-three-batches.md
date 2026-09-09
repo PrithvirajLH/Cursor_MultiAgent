@@ -64,13 +64,12 @@ behind Easy Auth with `unauthenticatedClientAction: RedirectToLoginPage`.
 `authsettingsV2`**, beside `/api/tickets/inbound-email` and `/api/tickets/intake`.
 Without it every link returns 401.
 
-### Worth doing in the same restart window — not a prerequisite
+### ⛔ Do NOT rotate the intake secret
 
-An app-settings change restarts the app. **Card 1.57's intake-secret rotation also
-needs a settings change**, so doing both together costs one restart instead of two.
-It is a separate decision with a Power Automate coordination cost — the owner has
-the script (`rotate-intake-secret.sh`) and its warning. **Do not run it on your own
-initiative.**
+The owner **declined this on 2026-09-09**. `INTAKE_API_SECRET` stays as it is.
+**Do not run `rotate-intake-secret.sh`, do not change that setting, and do not
+raise it in your report as an outstanding action** — it is a closed decision, not
+an oversight. Keep the script out of the deploy package.
 
 ---
 
@@ -117,10 +116,12 @@ Three days of production log hold **2,064 full bearer tokens** and **252 copies 
 the intake shared secret**. Header logging dates from 2026-03-10; the intake secret
 has been exposed since the endpoint went live 2026-08-28.
 
-**Do not treat shipping this as closing the incident.** Two actions remain and both
-are the owner's: rotate `INTAKE_API_SECRET`, and decide what happens to the
-existing log files and who is told. **Say in your report that you shipped the code
-fix and that these are outstanding**, so nobody reads GREEN as resolved.
+**Do not treat shipping this as closing the incident.** **Rotation is declined — see
+above; do not raise it.** What remains is the owner's call on **what happens to the
+existing log files, and who is told** — App Service contributors can read all of
+them. **Say in your report that you shipped the code fix and that the historical
+exposure is untouched**, so nobody reads GREEN as resolved. That is the whole of
+what you need to say about it.
 
 ## Migration 58 — `20260904200000_ticket_message_redaction`
 
