@@ -41,6 +41,7 @@ import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { InboundEmailService } from './inbound-email.service';
+import { OutboxService } from '../notifications/outbox.service';
 import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
 import { TagsService } from '../tags/tags.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
@@ -155,6 +156,19 @@ function formatStatusLabel(value: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+/**
+ * One `NotificationOutbox` row that belongs to a message (card 1.47).
+ *
+ * `reached` is `1 + cc.length`: since card 1.33 a public reply produces a
+ * single row carrying `to` and `cc`, so the number of people it reaches lives
+ * on the row rather than in a count of rows.
+ */
+type MessageOutboxRow = {
+  id: string;
+  status: OutboxStatus;
+  reached: number;
+};
+
 @Injectable()
 export class TicketsService {
   private readonly logger = new Logger(TicketsService.name);
@@ -176,6 +190,9 @@ export class TicketsService {
     @Inject(forwardRef(() => InboundEmailService))
     private readonly inboundEmailService: InboundEmailService,
     private readonly tagsService: TagsService,
+    // Card 1.47: redaction has to be able to stop a queued email. Exported by
+    // NotificationsModule already, for readiness and the operations console.
+    private readonly outbox: OutboxService,
   ) {
     const customTransitionsStr = this.config.get<string>(
       'TICKET_STATUS_TRANSITIONS',
@@ -1182,9 +1199,17 @@ export class TicketsService {
    * Reports the OUTBOX, not the intent. A label reading "emailed to 3" when the
    * send failed is worse than no label at all, because the agent stops
    * chasing - so only a SENT row counts as emailed, and a FAILED one counts as
-   * refused. A row still PENDING contributes to neither and the message carries
-   * no label yet, which is honest: with Redis off in production the processor
-   * runs at queue time, so PENDING is momentary.
+   * refused.
+   *
+   * ⚠️ A PENDING row contributes to neither, and the message carries no
+   * "emailed" label yet. This comment used to add "with Redis off in production
+   * the processor runs at queue time, so PENDING is momentary." THAT WAS WRONG,
+   * and card 1.47 exists because of it: production has no Redis app setting, so
+   * BullMQ never delivers and the SWEEPER does, on a 60-second interval
+   * (`EMAIL_OUTBOX_SWEEP_INTERVAL_MS` unset). A queued email sits for up to a
+   * minute - the exact window in which somebody spots their mistake and
+   * redacts. The count is now returned separately as `pending` so the redaction
+   * path can act on it.
    *
    * Recipients the outbound guard refused BEFORE composing (out-of-domain,
    * suppressed, no-reply) never produce a row here at all; they are recorded on
@@ -1192,14 +1217,14 @@ export class TicketsService {
    * messageId so they can be attributed. The compose-screen preview runs that
    * guard live, so an agent sees those before sending rather than after.
    */
-  private async messageDeliveryLabels(
+  private async messageOutboxRows(
     ticketId: string,
-  ): Promise<Map<string, { emailed: number; refused: number }>> {
+  ): Promise<Map<string, MessageOutboxRow[]>> {
     const rows = await this.prisma.notificationOutbox.findMany({
       where: { ticketId, eventType: 'MESSAGE_ADDED' },
-      select: { status: true, payload: true },
+      select: { id: true, status: true, payload: true },
     });
-    const labels = new Map<string, { emailed: number; refused: number }>();
+    const byMessage = new Map<string, MessageOutboxRow[]>();
     for (const row of rows) {
       const envelope = (row.payload ?? {}) as {
         event?: { messageId?: unknown };
@@ -1211,11 +1236,46 @@ export class TicketsService {
       }
       const cc = envelope.email?.cc;
       const reached = 1 + (Array.isArray(cc) ? cc.length : 0);
-      const label = labels.get(messageId) ?? { emailed: 0, refused: 0 };
-      if (row.status === OutboxStatus.SENT) {
-        label.emailed += reached;
-      } else if (row.status === OutboxStatus.FAILED) {
-        label.refused += reached;
+      const list = byMessage.get(messageId) ?? [];
+      list.push({ id: row.id, status: row.status, reached });
+      byMessage.set(messageId, list);
+    }
+    return byMessage;
+  }
+
+  /**
+   * The conversation's delivery labels, derived from the matcher above.
+   *
+   * `pending` is new in card 1.47 and is not cosmetic: production has no Redis,
+   * so the sweeper delivers on a 60-second interval and a queued email really
+   * can sit unsent for most of a minute. The comment here used to say "the
+   * processor runs at queue time, so PENDING is momentary" - that was true of
+   * the dev machine and false of production, and it is the reason nobody
+   * noticed that redaction could be outrun by its own email. The composer's
+   * label still shows only what happened; the redaction dialog needs to know
+   * something is in the queue so it can promise to stop it.
+   */
+  private async messageDeliveryLabels(
+    ticketId: string,
+  ): Promise<
+    Map<string, { emailed: number; refused: number; pending: number }>
+  > {
+    const byMessage = await this.messageOutboxRows(ticketId);
+    const labels = new Map<
+      string,
+      { emailed: number; refused: number; pending: number }
+    >();
+    for (const [messageId, rows] of byMessage) {
+      const label = { emailed: 0, refused: 0, pending: 0 };
+      for (const row of rows) {
+        if (row.status === OutboxStatus.SENT) {
+          label.emailed += row.reached;
+        } else if (row.status === OutboxStatus.FAILED) {
+          label.refused += row.reached;
+        } else {
+          // PENDING or PROCESSING: on its way out, not yet gone.
+          label.pending += row.reached;
+        }
       }
       labels.set(messageId, label);
     }
@@ -2958,12 +3018,67 @@ export class TicketsService {
     const actorName = actor?.displayName || actor?.email || 'a colleague';
     // Read BEFORE the write, so the answer describes the message that existed.
     //
-    // Through the same helper the conversation's "emailed to 3" label uses, so
-    // the caveat and the label can never disagree. The outbox has no messageId
-    // column - the id lives at payload.event.messageId - and duplicating that
-    // path here is how the two would drift.
-    const emailed =
-      (await this.messageDeliveryLabels(ticketId)).get(messageId)?.emailed ?? 0;
+    // Through `messageOutboxRows`, the SAME matcher the conversation's
+    // "emailed to 3" label goes through, so the caveat, the label and the
+    // cancel path can never disagree about which rows belong to this message.
+    // The outbox has no messageId column - the id lives at
+    // payload.event.messageId, which is why the matching happens in JS - and a
+    // second copy of that lookup here is precisely the one-rule-in-two-places
+    // drift that produced cards 1.36, 1.38 and 1.50.
+    const outboxRows = (await this.messageOutboxRows(ticketId)).get(
+      messageId,
+    ) ?? [];
+    const sentRows = outboxRows.filter(
+      (row) => row.status === OutboxStatus.SENT,
+    );
+    const unsentRows = outboxRows.filter(
+      (row) => row.status === OutboxStatus.PENDING,
+    );
+    // ⚠️ PROCESSING is out of our hands, and must be reported as gone.
+    //
+    // The sweeper has already claimed these and is sending them now; there is
+    // no status we can set that recalls one. My first version of this filtered
+    // only SENT and PENDING, so a PROCESSING row fell through both and the
+    // response said nothing had been emailed - the exact false reassurance
+    // this card removes, reintroduced in the fix for it. A test caught it.
+    const inFlightRows = outboxRows.filter(
+      (row) => row.status === OutboxStatus.PROCESSING,
+    );
+    // ⚠️ CARD 1.47. Stop the email before it leaves, and be honest about
+    // whether we managed it.
+    //
+    // Production has no Redis, so the sweeper delivers on a 60-second interval
+    // and the rendered text sits in `NotificationOutbox.body` until it fires -
+    // read from the database at that moment, so overwriting TicketMessage.body
+    // does nothing to it. Redact a reply a few seconds after sending it and the
+    // original went out anyway, while the dialog said nothing had been emailed.
+    //
+    // The update is conditional on the row still being PENDING, so if the
+    // sweeper claimed it first we do NOT get the row and we must not claim we
+    // stopped anything. Anything we failed to claim is treated as gone.
+    const stoppedIds = await this.outbox.cancelUnsentForRedaction(
+      unsentRows.map((row) => row.id),
+    );
+    const stoppedRows = unsentRows.filter((row) =>
+      stoppedIds.includes(row.id),
+    );
+    const escapedRows = unsentRows.filter(
+      (row) => !stoppedIds.includes(row.id),
+    );
+    // The copy of the words in a row that really did send comes out too. The
+    // email is gone; the transcript of it does not have to live for ever in a
+    // column the retention job is not deleting (card 1.11's own argument).
+    await this.outbox.scrubSentBodyForRedaction(
+      sentRows.map((row) => row.id),
+    );
+    // "Already emailed" means SENT, or in flight and out of our hands: a row
+    // the sweeper is sending right now, or one that was PENDING when we read
+    // it and had been claimed by the time we tried to stop it.
+    const emailed = [...sentRows, ...inFlightRows, ...escapedRows].reduce(
+      (sum, row) => sum + row.reached,
+      0,
+    );
+    const stopped = stoppedRows.reduce((sum, row) => sum + row.reached, 0);
     const redactedAt = new Date();
     await this.prisma.$transaction([
       this.prisma.ticketMessage.update({
@@ -2986,6 +3101,10 @@ export class TicketsService {
             // that changes what somebody has to do about it.
             alreadyEmailed: emailed > 0,
             emailedCount: emailed,
+            // Card 1.47: how many were caught in the queue. An agent reading
+            // the timeline can tell "we caught it" from "we did not", which is
+            // the difference between an awkward apology and a breach report.
+            emailsStopped: stopped,
           },
           createdById: user.id,
         },
@@ -2996,6 +3115,9 @@ export class TicketsService {
       redactedAt,
       redactedBy: actorName,
       alreadyEmailed: emailed > 0,
+      emailedCount: emailed,
+      /** How many queued emails this redaction actually stopped (card 1.47). */
+      emailsStopped: stopped,
     };
   }
 

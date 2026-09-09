@@ -12,6 +12,7 @@ import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { AiObservabilityService } from '../common/ai-observability.service';
+import { OutboxService } from '../notifications/outbox.service';
 import { TagsService } from '../tags/tags.service';
 import { TicketsService } from './tickets.service';
 
@@ -78,6 +79,10 @@ describe('TicketsService', () => {
       { recordCorrection: jest.fn() } as unknown as AiObservabilityService,
       {} as InboundEmailService,
       {} as TagsService,
+      // Card 1.47's outbox cancel path. This suite exercises pure transition
+      // logic; the cancel path is covered by the integration suite, where the
+      // race and the sweeper are real.
+      {} as OutboxService,
     );
   });
 

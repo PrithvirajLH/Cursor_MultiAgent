@@ -300,7 +300,18 @@ export type TicketMessage = {
    * the outbox, not the intent: a label reading "emailed to 3" when the send
    * failed is worse than no label, because the agent stops chasing.
    */
-  delivery?: { emailed: number; refused: number; internal: boolean };
+  /**
+   * `pending` is card 1.47: production's sweeper delivers on a 60-second
+   * interval, so a reply can be queued-but-unsent for most of a minute. The
+   * redaction dialog needs to know, or it says nothing was emailed and then
+   * the email goes out.
+   */
+  delivery?: {
+    emailed: number;
+    refused: number;
+    pending?: number;
+    internal: boolean;
+  };
   /**
    * Card 1.11. Set once the message has been removed; `body` is then the
    * "[message removed by ...]" marker and the original text no longer exists.
@@ -2518,6 +2529,10 @@ export function redactTicketMessage(ticketId: string, messageId: string) {
     redactedAt: string;
     redactedBy: string;
     alreadyEmailed: boolean;
+    /** Card 1.47. How many people a send that got away reached. */
+    emailedCount?: number;
+    /** Card 1.47. How many queued emails this removal actually stopped. */
+    emailsStopped?: number;
   }>(`/tickets/${ticketId}/messages/${messageId}`, { method: "DELETE" });
 }
 

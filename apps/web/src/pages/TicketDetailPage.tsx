@@ -55,7 +55,10 @@ import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { redactionEmailCaveat } from "../components/ticket-detail/redaction-caveat";
+import {
+  redactionEmailCaveat,
+  redactionOutcomeMessage,
+} from "../components/ticket-detail/redaction-caveat";
 import { MessageAudience } from "../components/ticket-detail/MessageAudience";
 import { TicketDescription } from "../components/ticket-detail/TicketDescription";
 import { TicketConversation } from "../components/ticket-detail/TicketConversation";
@@ -1727,11 +1730,10 @@ export function TicketDetailPage({
         ),
       );
       setRedactTarget(null);
-      toast.success(
-        result.alreadyEmailed
-          ? "Removed from the ticket. The email that already went out cannot be recalled."
-          : "Message removed.",
-      );
+      // Card 1.47: the server reports what it actually managed - a queued
+      // email it caught, or one the sweeper got to first - so the toast says
+      // which rather than guessing from the message type.
+      toast.success(redactionOutcomeMessage(result));
       // The timeline gains a "message removed" entry, so re-read it.
       void loadEventsPage(ticketId, true);
     } catch (error) {

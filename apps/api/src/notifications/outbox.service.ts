@@ -10,6 +10,15 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 export const MAX_EMAIL_OUTBOX_ATTEMPTS = 5;
 
+/**
+ * Why a row was stopped, written into `lastError` (card 1.47).
+ *
+ * Exported so a test can assert the reason rather than matching a string
+ * literal in two places.
+ */
+export const REDACTION_CANCELLED_REASON =
+  'Cancelled: the message was removed before this email was sent';
+
 export type EmailOutboxMetadata = {
   replyTo?: string | null;
   inReplyTo?: string | null;
@@ -250,6 +259,104 @@ export class OutboxService {
         lastError: error,
       },
     });
+  }
+
+
+  /**
+   * Stop still-unsent email for a message that has just been redacted (1.47).
+   *
+   * ⚠️ THIS IS A RACE AND IS WRITTEN AS ONE. Production has no Redis, so the
+   * sweeper delivers on a 60-second interval - a PENDING row can sit for most
+   * of a minute, which is exactly the window in which somebody notices they
+   * sent the wrong thing. The sweeper can claim a row (PENDING -> PROCESSING)
+   * between the caller's read and this write, so every update is conditional on
+   * the status STILL being PENDING and the caller is told which ones it won.
+   * An unconditional `update` by id - what `markFailed` does - would silently
+   * overwrite a row the sweeper was already sending, and the caller would
+   * report a stop that never happened.
+   *
+   * One row at a time rather than one `updateMany` over all of them, because
+   * the caller needs to know WHICH ids it claimed: it has to blank their stored
+   * text, and it has to be able to say honestly that the rest got away. A
+   * public reply produces a single outbox row (card 1.33), so this loop is
+   * one iteration in practice.
+   *
+   * FAILED, not a new CANCELLED status: `OutboxStatus` has no such value and
+   * adding one needs a migration that cannot use the value in its own
+   * transaction (migrations 54 and 56). `attempts` is pushed to the ceiling so
+   * the budget rule in `markFailed` can never make it retryable again.
+   */
+  async cancelUnsentForRedaction(ids: string[]): Promise<string[]> {
+    const stopped: string[] = [];
+    for (const id of ids) {
+      const result = await this.prisma.notificationOutbox.updateMany({
+        where: { id, status: OutboxStatus.PENDING },
+        data: {
+          status: OutboxStatus.FAILED,
+          lastError: REDACTION_CANCELLED_REASON,
+          attempts: MAX_EMAIL_OUTBOX_ATTEMPTS,
+          // The rendered email carried the message text. The processor reads
+          // this column at send time, so blanking it is what actually stops
+          // the words going out even if something later flips the status back.
+          body: '',
+        },
+      });
+      if (result.count === 1) {
+        stopped.push(id);
+      }
+    }
+    if (stopped.length > 0) {
+      await this.blankStoredHtml(stopped);
+    }
+    return stopped;
+  }
+
+  /**
+   * Take the redacted text out of rows that were already sent (card 1.47).
+   *
+   * The email is gone and nothing here changes that. What this removes is the
+   * COPY: `NotificationOutbox.body` holds the fully rendered message for ever,
+   * because the retention job that would delete it is off. Card 1.11 refused to
+   * preserve redacted text in a `TicketEvent` on the grounds that it moves PHI
+   * into a row with weaker read rules than the message it came from; that
+   * argument applies to this column word for word.
+   *
+   * `subject`, `toEmail` and the timestamps stay, so "did we email this, to
+   * whom, when" still has an answer. Only the words go.
+   */
+  async scrubSentBodyForRedaction(ids: string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    const result = await this.prisma.notificationOutbox.updateMany({
+      where: { id: { in: ids } },
+      data: { body: '' },
+    });
+    await this.blankStoredHtml(ids);
+    return result.count;
+  }
+
+  /**
+   * Blank `payload.content.html`, which is the other half of the text.
+   *
+   * The processor sends `text: record.body` AND `html: metadata.html`, and that
+   * html is read from `payload.content.html` (email-processor.service.ts's
+   * `getEmailMetadata`). Blanking the column alone would leave the message
+   * sitting in the JSON envelope and, mid-window, still deliverable.
+   *
+   * Raw SQL because this is per-row JSON surgery: `jsonb_set` with
+   * create_missing = false leaves a payload that has no `content` key exactly
+   * as it was, and a NULL payload stays NULL.
+   */
+  private async blankStoredHtml(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+    await this.prisma.$executeRaw`
+      UPDATE "NotificationOutbox"
+      SET "payload" = jsonb_set("payload", '{content,html}', '""'::jsonb, false)
+      WHERE "id" IN (${Prisma.join(ids)})
+    `;
   }
 
   private buildPayloadEnvelope(

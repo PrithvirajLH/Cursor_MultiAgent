@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { redactionEmailCaveat } from "./redaction-caveat";
+import {
+  redactionEmailCaveat,
+  redactionOutcomeMessage,
+} from "./redaction-caveat";
 
 /**
  * Card 1.11 — the sentence that stops the Remove button implying a recall.
@@ -49,5 +52,83 @@ describe("redaction email caveat", () => {
 
   it("says nothing when delivery is not known yet", () => {
     expect(redactionEmailCaveat({})).toBeNull();
+  });
+
+  it("⚠️ warns about an email still sitting in the queue (card 1.47)", () => {
+    // THE ASSERTION THAT FAILS IF THE BUG COMES BACK. This case used to
+    // produce NO caveat at all - `emailed` was 0 because the row was still
+    // PENDING - and then the original text was emailed a moment later.
+    const caveat = redactionEmailCaveat({
+      delivery: { emailed: 0, refused: 0, pending: 1, internal: false },
+    });
+    expect(caveat).not.toBeNull();
+    expect(caveat).toContain("still queued");
+    expect(caveat).toContain("will stop that email");
+  });
+
+  it("does not promise a stop in the past tense before the click", () => {
+    // At dialog time nothing has been stopped yet. Saying "we have stopped it"
+    // here would be a nicer-sounding version of the defect.
+    const caveat = redactionEmailCaveat({
+      delivery: { emailed: 0, refused: 0, pending: 1, internal: false },
+    });
+    expect(caveat).not.toContain("have stopped");
+  });
+
+  it("prefers the sent wording when something both sent and is queued", () => {
+    const caveat = redactionEmailCaveat({
+      delivery: { emailed: 2, refused: 0, pending: 1, internal: false },
+    });
+    expect(caveat).toContain("does not take the email back");
+  });
+
+  it("still says nothing for a queued INTERNAL note", () => {
+    expect(
+      redactionEmailCaveat({
+        delivery: { emailed: 0, refused: 0, pending: 1, internal: true },
+      }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * Card 1.47 — what the agent is told AFTER the removal.
+ *
+ * The server reports what it managed, not what it hoped. These three outcomes
+ * are the whole card: caught it, did not catch it, nothing to catch.
+ */
+describe("redaction outcome", () => {
+  it("says it stopped the email when it really did", () => {
+    expect(
+      redactionOutcomeMessage({ alreadyEmailed: false, emailsStopped: 1 }),
+    ).toBe("Removed. This had not been emailed yet, and we have stopped it.");
+  });
+
+  it("⚠️ does NOT claim a stop when the send got away", () => {
+    // The losing side of the race: the sweeper claimed the row first. False
+    // reassurance here is worse than shipping nothing.
+    const message = redactionOutcomeMessage({
+      alreadyEmailed: true,
+      emailedCount: 3,
+      emailsStopped: 0,
+    });
+    expect(message).not.toContain("stopped");
+    expect(message).toContain("cannot be recalled");
+    expect(message).toContain("3 people");
+  });
+
+  it("stays honest when a stop and a send both happened", () => {
+    const message = redactionOutcomeMessage({
+      alreadyEmailed: true,
+      emailedCount: 1,
+      emailsStopped: 1,
+    });
+    expect(message).toContain("cannot be recalled");
+  });
+
+  it("says the plain thing when there was no email at all", () => {
+    expect(
+      redactionOutcomeMessage({ alreadyEmailed: false, emailsStopped: 0 }),
+    ).toBe("Message removed.");
   });
 });
