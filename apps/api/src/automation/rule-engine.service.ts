@@ -104,6 +104,35 @@ const DEFAULT_REQUESTER_REMINDER =
 const AUTOMATION_EMAIL_EVENT = 'AUTOMATION_EMAIL';
 const TAGS_CHANGED_EVENT = 'TAGS_CHANGED';
 
+/**
+ * How long a macro's transaction may run (card 1.51).
+ *
+ * ⚠️ 15 SECONDS, AND NOT PRISMA'S 5-SECOND DEFAULT. Observed live: a bulk
+ * macro over three tickets failed on one with "Transaction already closed:
+ * ... timeout for this transaction was 5000 ms, however 5037 ms passed",
+ * inside `slaInstance.upsert`. `set_priority` calls `slaEngine.syncFromTicket`
+ * INSIDE this transaction, and with five of these running at once against a
+ * remote pooler, 5 s is simply too tight. Latency, not logic - the retry
+ * succeeded immediately and the rollback was clean.
+ *
+ * ⚠️ THE SLA SYNC STAYS INSIDE THE TRANSACTION. Moving it out would let an SLA
+ * row survive a priority change that rolled back: a visible timeout traded for
+ * silent inconsistency, which is a worse bug and a harder one to notice.
+ *
+ * 15 s rather than the 60 s used by the automation scheduler
+ * (automation-scheduler.service.ts): that one runs alone on a timer, whereas
+ * this runs five-wide under a bulk macro, and a long-held transaction there
+ * starves a pooled connection for everyone else. 15 s is three times the
+ * observed overrun with room to spare, and still short enough that a genuinely
+ * stuck macro fails rather than hangs.
+ *
+ * `maxWait` is deliberately left at its default: the failure we saw was the
+ * transaction's own duration, not waiting for a connection from the pool -
+ * that error reads "Unable to start a transaction in the given time" and has
+ * not appeared.
+ */
+export const MACRO_TRANSACTION_OPTIONS = { timeout: 15_000 } as const;
+
 @Injectable()
 export class RuleEngineService {
   private readonly logger = new Logger(RuleEngineService.name);
@@ -518,7 +547,7 @@ export class RuleEngineService {
           createdById: provenance.actorId,
         },
       });
-    });
+    }, MACRO_TRANSACTION_OPTIONS);
     // External effects only after the commit, so a rolled-back macro does
     // nothing outward - the same rule the rule engine follows.
     await this.runPostCommit(postCommit, 'macro');

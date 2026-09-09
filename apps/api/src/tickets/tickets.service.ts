@@ -2900,8 +2900,15 @@ export class TicketsService {
     );
   }
 
-  /** Concurrency limit for bulk operations to avoid overwhelming the database. */
-  private static readonly BULK_CONCURRENCY = 5;
+  /*
+   * The `BULK_CONCURRENCY = 5` that used to sit here is GONE (card 1.51).
+   *
+   * It had been dead since card 1.12 moved the runner into
+   * `run-bulk-with-concurrency.util.ts`, which has its own copy - nothing
+   * referenced this one any more. Two constants with the same name and one
+   * with no readers is how the next person tunes the wrong number and cannot
+   * work out why nothing changed. The live one is in that util.
+   */
 
   /**
    * Per-ticket bulk runner.

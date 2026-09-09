@@ -4,7 +4,10 @@ import {
   TicketStatus,
 } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
-import { RuleEngineService } from './rule-engine.service';
+import {
+  MACRO_TRANSACTION_OPTIONS,
+  RuleEngineService,
+} from './rule-engine.service';
 import { fillTemplateVars } from './template-vars.util';
 
 /**
@@ -338,5 +341,77 @@ describe('RuleEngineService card 1.4 actions', () => {
       expect.objectContaining({ postCommit: [] }),
     );
     expect(tx.ticketFollower.upsert).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Card 1.51 — the macro transaction must carry a timeout.
+ *
+ * A bulk macro over three tickets failed live on one of them with
+ * "Transaction already closed: ... the timeout for this transaction was 5000
+ * ms, however 5037 ms passed", inside `slaInstance.upsert` — reached because
+ * `set_priority` syncs the SLA INSIDE the transaction. Latency rather than
+ * logic: the retry succeeded and the rollback was clean.
+ *
+ * ⚠️ A TEST CANNOT REPRODUCE THE LATENCY, so it asserts the option is passed
+ * instead. That is cheap and it catches the regression that matters: somebody
+ * removing the argument, after which the default 5 s silently returns.
+ */
+describe('macro transaction options (card 1.51)', () => {
+  function engineWithPrismaSpy() {
+    const calls: unknown[][] = [];
+    const prisma = {
+      ticket: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 't-1',
+          deletedAt: null,
+          requester: null,
+          assignee: null,
+          assignedTeam: null,
+        }),
+      },
+      $transaction: jest.fn(async (...args: unknown[]) => {
+        calls.push(args);
+        // Do not run the callback: this test is about the OPTIONS, and the
+        // body needs a real database.
+        return undefined;
+      }),
+    };
+    // The macro path publishes a realtime update after the commit; stub it,
+    // or the test dies after the thing it is measuring.
+    const ticketsService = {
+      publishAutomationRealtimeUpdate: jest.fn().mockResolvedValue(undefined),
+    };
+    return { engine: engine(ticketsService, { prisma }), calls, prisma };
+  }
+
+  it('⚠️ passes a 15 second timeout, not Prisma\'s 5 second default', async () => {
+    const { engine: svc, calls } = engineWithPrismaSpy();
+    await svc.applyMacroActions('t-1', [], {
+      kind: 'macro',
+      cannedResponseId: 'c-1',
+      actorId: 'u-1',
+    });
+    expect(calls).toHaveLength(1);
+    // THE ASSERTION THAT FAILS IF THE BUG COMES BACK: the second argument is
+    // the options object, and it must carry the raised timeout.
+    const options = calls[0][1] as { timeout?: number } | undefined;
+    expect(options).toBeDefined();
+    expect(options?.timeout).toBe(15_000);
+  });
+
+  it('exports the value so it cannot drift from what is documented', () => {
+    expect(MACRO_TRANSACTION_OPTIONS.timeout).toBe(15_000);
+    // Comfortably clear of the observed 5,037 ms overrun - just under three
+    // times it. (My first version of this asserted MORE than three times,
+    // which 15,000 is not: 3 x 5,037 is 15,111. The assertion was wrong, not
+    // the value.)
+    expect(MACRO_TRANSACTION_OPTIONS.timeout).toBeGreaterThan(2 * 5_037);
+  });
+
+  it('is well short of the scheduler\'s 60 s, which runs alone', () => {
+    // A bulk macro runs five of these at once, and a long-held transaction
+    // starves a pooled connection for everybody else.
+    expect(MACRO_TRANSACTION_OPTIONS.timeout).toBeLessThan(60_000);
   });
 });

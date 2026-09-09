@@ -1,4 +1,15 @@
-/** How many tickets a bulk operation touches at once. */
+/**
+ * How many tickets a bulk operation touches at once.
+ *
+ * ⚠️ THE ONLY COPY, as of card 1.51. `TicketsService` carried a second
+ * `BULK_CONCURRENCY = 5` that had been dead since card 1.12 moved this runner
+ * out; it has been deleted, so this number is the one that acts.
+ *
+ * Worth knowing before changing it: a bulk macro runs this many multi-action
+ * transactions at once, each holding a pooled connection for up to
+ * `MACRO_TRANSACTION_OPTIONS.timeout` (15 s). Raising this raises the peak
+ * connection demand with it.
+ */
 const BULK_CONCURRENCY = 5;
 
 export interface BulkResult {
