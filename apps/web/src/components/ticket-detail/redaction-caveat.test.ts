@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  inlineImageCount,
   redactionEmailCaveat,
   redactionOutcomeMessage,
 } from "./redaction-caveat";
@@ -130,5 +131,35 @@ describe("redaction outcome", () => {
     expect(
       redactionOutcomeMessage({ alreadyEmailed: false, emailsStopped: 0 }),
     ).toBe("Message removed.");
+  });
+});
+
+/**
+ * Card 1.48 — the dialog has to say the image goes too.
+ *
+ * It is not recoverable after the click, so discovering it afterwards is not
+ * good enough.
+ */
+describe("inline image count", () => {
+  it("counts a pasted image", () => {
+    expect(inlineImageCount('<img data-attachment-id="a1">')).toBe(1);
+  });
+
+  it("counts each image once", () => {
+    expect(
+      inlineImageCount(
+        '<img data-attachment-id="a1"><img data-attachment-id="a1"><img data-attachment-id="a2">',
+      ),
+    ).toBe(2);
+  });
+
+  it("ignores an image that is still uploading", () => {
+    expect(inlineImageCount('<img data-temp-id="t1">')).toBe(0);
+  });
+
+  it("is zero for plain text and for nothing at all", () => {
+    expect(inlineImageCount("just words")).toBe(0);
+    expect(inlineImageCount("")).toBe(0);
+    expect(inlineImageCount(null)).toBe(0);
   });
 });

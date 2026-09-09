@@ -56,6 +56,7 @@ import { useToast } from "../hooks/useToast";
 import { TagChips } from "../components/tags/TagChips";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import {
+  inlineImageCount,
   redactionEmailCaveat,
   redactionOutcomeMessage,
 } from "../components/ticket-detail/redaction-caveat";
@@ -2347,6 +2348,18 @@ export function TicketDetailPage({
               an owner. The message stays in the conversation as “message
               removed by …”.
             </p>
+            {/*
+              Card 1.48: an image pasted into the message goes with it, and the
+              agent should know that before clicking rather than discover it
+              afterwards. Only shown when there is actually one to lose.
+            */}
+            {redactTarget && inlineImageCount(redactTarget.body) > 0 ? (
+              <p className="mt-2">
+                {inlineImageCount(redactTarget.body) === 1
+                  ? "The image pasted into this message is deleted too."
+                  : `The ${inlineImageCount(redactTarget.body)} images pasted into this message are deleted too.`}
+              </p>
+            ) : null}
             {redactTarget && redactionEmailCaveat(redactTarget) ? (
               <p className="mt-2 font-medium text-amber-700 dark:text-amber-400">
                 {redactionEmailCaveat(redactTarget)}

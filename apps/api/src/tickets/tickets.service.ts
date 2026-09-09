@@ -42,6 +42,7 @@ import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { InboundEmailService } from './inbound-email.service';
 import { OutboxService } from '../notifications/outbox.service';
+import { inlineAttachmentIds } from './inline-attachment-ids.util';
 import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
 import { TagsService } from '../tags/tags.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
@@ -2979,6 +2980,10 @@ export class TicketsService {
         type: true,
         createdAt: true,
         redactedAt: true,
+        // Card 1.48 needs the ORIGINAL body: the only record of which files
+        // were pasted into this message is the `<img data-attachment-id>`
+        // markers in its HTML, and the redaction is about to overwrite it.
+        body: true,
       },
     });
     if (!message) {
@@ -3079,6 +3084,24 @@ export class TicketsService {
       0,
     );
     const stopped = stoppedRows.reduce((sum, row) => sum + row.reached, 0);
+    // ⚠️ CARD 1.48. The image pasted into this message has to go with it.
+    //
+    // `Attachment` has no `messageId` - only `ticketId` - so redaction cannot
+    // cascade to attachments through a relation, because there is no relation.
+    // What it CAN do is read the ids back out of the body it is about to
+    // overwrite. Without this the reference vanishes while the row and the blob
+    // stay one click away on the Attachments tab: the picture that should not
+    // have been sent is still there, and the conversation no longer shows any
+    // sign it ever was.
+    //
+    // Scoped to THIS ticket, always. The ids come out of text an agent typed,
+    // so an id belonging to another ticket must not be actionable here.
+    const inlineIds = inlineAttachmentIds(message.body);
+    const removableAttachments = await this.resolveRedactableInlineAttachments(
+      ticketId,
+      messageId,
+      inlineIds,
+    );
     const redactedAt = new Date();
     await this.prisma.$transaction([
       this.prisma.ticketMessage.update({
@@ -3089,6 +3112,17 @@ export class TicketsService {
           redactedById: user.id,
         },
       }),
+      ...(removableAttachments.length > 0
+        ? [
+            this.prisma.attachment.deleteMany({
+              where: {
+                id: { in: removableAttachments.map((row) => row.id) },
+                // Belt and braces: the resolver already scoped by ticket.
+                ticketId,
+              },
+            }),
+          ]
+        : []),
       this.prisma.ticketEvent.create({
         data: {
           ticketId,
@@ -3105,11 +3139,22 @@ export class TicketsService {
             // the timeline can tell "we caught it" from "we did not", which is
             // the difference between an awkward apology and a breach report.
             emailsStopped: stopped,
+            // Card 1.48: inline images that went with the message.
+            inlineAttachmentsRemoved: removableAttachments.length,
           },
           createdById: user.id,
         },
       }),
     ]);
+    // AFTER the commit, never before: a blob deleted for a transaction that
+    // then rolled back would be a file lost from a message that was never
+    // redacted. `deleteAttachmentFile` handles Azure Blob and local disk and
+    // logs rather than throws, so a storage failure leaves an orphaned object
+    // - the same outcome the existing orphan-cleanup path accepts - rather
+    // than failing a redaction that has already happened.
+    for (const attachment of removableAttachments) {
+      await this.attachmentService.deleteAttachmentFile(attachment.storageKey);
+    }
     return {
       id: messageId,
       redactedAt,
@@ -3118,7 +3163,50 @@ export class TicketsService {
       emailedCount: emailed,
       /** How many queued emails this redaction actually stopped (card 1.47). */
       emailsStopped: stopped,
+      /** How many pasted-in images went with it (card 1.48). */
+      inlineAttachmentsRemoved: removableAttachments.length,
     };
+  }
+
+  /**
+   * Which of a message's inline attachments this redaction may remove (1.48).
+   *
+   * Three filters, and each one matters:
+   *
+   *  - **Scoped to the ticket.** The ids are read out of body HTML an agent
+   *    authored, so an id naming another ticket's file must not be actionable.
+   *  - **Only files still referenced by nothing else.** An agent can copy an
+   *    image's markup into a second message; removing the first must not break
+   *    the second. A file another live message still points at is left alone.
+   *  - **Inline only.** A file attached to the TICKET rather than pasted into
+   *    this message has no `data-attachment-id` marker in any body, so it never
+   *    appears in `inlineIds` and is never a candidate. Removing an arbitrary
+   *    ticket file is a separate action with its own permission question, not a
+   *    side effect of redacting a message - deliberately out of scope.
+   */
+  private async resolveRedactableInlineAttachments(
+    ticketId: string,
+    messageId: string,
+    inlineIds: string[],
+  ): Promise<{ id: string; storageKey: string }[]> {
+    if (inlineIds.length === 0) {
+      return [];
+    }
+    const candidates = await this.prisma.attachment.findMany({
+      where: { id: { in: inlineIds }, ticketId },
+      select: { id: true, storageKey: true },
+    });
+    if (candidates.length === 0) {
+      return [];
+    }
+    const otherMessages = await this.prisma.ticketMessage.findMany({
+      where: { ticketId, id: { not: messageId }, redactedAt: null },
+      select: { body: true },
+    });
+    const stillReferenced = new Set(
+      otherMessages.flatMap((row) => inlineAttachmentIds(row.body)),
+    );
+    return candidates.filter((row) => !stillReferenced.has(row.id));
   }
 
   /** How long an author has to take their own message back. Default 15 minutes. */

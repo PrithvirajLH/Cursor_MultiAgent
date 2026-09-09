@@ -74,3 +74,20 @@ export function redactionOutcomeMessage(result: {
   }
   return "Message removed.";
 }
+
+/**
+ * How many images were pasted into this message (card 1.48).
+ *
+ * Removing a message now deletes the files pasted into it — the reference used
+ * to vanish while the image stayed one click away on the Attachments tab. The
+ * dialog says so before the click, because it is not recoverable afterwards.
+ *
+ * Counts only images whose upload finished: `RichTextEditor` inserts
+ * `<img data-temp-id>` first and stamps `data-attachment-id` when the upload
+ * resolves, and only the latter has a file behind it to lose.
+ */
+export function inlineImageCount(body: string | null | undefined): number {
+  if (!body) return 0;
+  const matches = body.match(/data-attachment-id\s*=\s*("[^"]+"|'[^']+')/gi);
+  return matches ? new Set(matches).size : 0;
+}
