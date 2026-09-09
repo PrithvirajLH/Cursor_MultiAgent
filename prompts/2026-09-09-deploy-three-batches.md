@@ -66,10 +66,11 @@ Without it every link returns 401.
 
 ### ⛔ Do NOT rotate the intake secret
 
-The owner **declined this on 2026-09-09**. `INTAKE_API_SECRET` stays as it is.
-**Do not run `rotate-intake-secret.sh`, do not change that setting, and do not
-raise it in your report as an outstanding action** — it is a closed decision, not
-an oversight. Keep the script out of the deploy package.
+The owner **deferred this on 2026-09-09** and it is tracked as **card 1.59**. It is
+an owner action with a Power Automate coordination cost, and **not part of this
+deploy.** Do not run `rotate-intake-secret.sh`, do not change that setting, and do
+not list it as an action in your report — it is already tracked, so repeating it
+here just adds noise. Keep the script out of the deploy package.
 
 ---
 
