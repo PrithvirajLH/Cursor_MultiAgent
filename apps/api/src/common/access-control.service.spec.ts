@@ -94,6 +94,125 @@ describe('AccessControlService', () => {
     });
   });
 
+  /**
+   * Card 1.55 — the roster warning fired 186 times on 2026-09-09, 62 each for
+   * three Payroll accounts that all hold correct TeamMember rows.
+   *
+   * `operationalTeamIds` is called from six places, five of them in this file,
+   * and two of those - `roleFilter` and `roleConditionSql` - back every ticket
+   * list and every count. That is why a per-call warning became 186 lines: it
+   * is the hottest read path in the product.
+   */
+  describe('roster warning noise (card 1.55)', () => {
+    function captureWarnings(): { lines: string[]; restore: () => void } {
+      const lines: string[] = [];
+      const spy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation((message: unknown) => {
+          lines.push(String(message));
+        });
+      return { lines, restore: () => spy.mockRestore() };
+    }
+
+    it('⚠️ warns ONCE per account, however many times the account is used', () => {
+      // THE ASSERTION THAT FAILS IF THE BUG COMES BACK. Every ticket list and
+      // every sidebar count runs through here, so a per-call warning is 62
+      // lines per account per day. The comment above the function already
+      // claimed it warned "the first time such an account is used"; it did not.
+      const { lines, restore } = captureWarnings();
+      const mismatched = user({
+        id: 'payroll-1',
+        role: UserRole.AGENT,
+        memberTeamIds: [],
+        teamId: 'payroll',
+      });
+      for (let i = 0; i < 62; i++) {
+        svc.operationalTeamIds(mismatched);
+      }
+      expect(lines).toHaveLength(1);
+      restore();
+    });
+
+    it('still warns separately for a different account in the same state', () => {
+      // Rate-limiting must not hide the second account: three were affected.
+      const { lines, restore } = captureWarnings();
+      svc.operationalTeamIds(
+        user({ id: 'payroll-1', role: UserRole.AGENT, memberTeamIds: [], teamId: 'payroll' }),
+      );
+      svc.operationalTeamIds(
+        user({ id: 'payroll-2', role: UserRole.AGENT, memberTeamIds: [], teamId: 'payroll' }),
+      );
+      expect(lines).toHaveLength(2);
+      restore();
+    });
+
+    it('⚠️ logs the ARRAY, because its value is the whole question', () => {
+      // The planner could not tell why the warning fired on healthy data. The
+      // guard builds memberTeamIds from teamMember.findMany({where:{userId}}),
+      // so an empty array means that query found nothing FOR THIS USER ID -
+      // which is what a duplicate User row for the same person looks like.
+      const { lines, restore } = captureWarnings();
+      svc.operationalTeamIds(
+        user({
+          id: 'payroll-1',
+          email: 'payroll.one@company.com',
+          role: UserRole.AGENT,
+          memberTeamIds: [],
+          teamId: 'payroll',
+          primaryTeamId: 'payroll',
+        }),
+      );
+      expect(lines[0]).toContain('memberTeamIds=[]');
+      expect(lines[0]).toContain('payroll.one@company.com');
+      expect(lines[0]).toContain('primaryTeamId=payroll');
+      restore();
+    });
+
+    it('stops asserting a single cause, and names the duplicate-account check', () => {
+      // "Add the roster row" is the wrong instruction when the row exists.
+      const { lines, restore } = captureWarnings();
+      svc.operationalTeamIds(
+        user({ id: 'payroll-1', role: UserRole.AGENT, memberTeamIds: [], teamId: 'payroll' }),
+      );
+      expect(lines[0]).toContain('duplicate User row');
+      restore();
+    });
+
+    it('⚠️ says nothing when the roster was never looked up', () => {
+      // undefined is not evidence of a mismatch; only an empty array is. Every
+      // HTTP path populates it today, so this guards a future caller that
+      // synthesises an AuthUser from being blamed for a data problem.
+      const { lines, restore } = captureWarnings();
+      svc.operationalTeamIds(
+        user({ id: 'no-lookup', role: UserRole.AGENT, teamId: 'payroll' }),
+      );
+      expect(lines).toHaveLength(0);
+      restore();
+    });
+
+    it('⚠️ returns exactly what it always did — the log changed, not the permissions', () => {
+      // THE OTHER ASSERTION THAT MATTERS. Narrowing this to silence the warning
+      // would change visibility on the hottest read path and could lock out any
+      // account in this state. The fallback to [teamId] is deliberate.
+      const mismatched = user({
+        id: 'payroll-1',
+        role: UserRole.AGENT,
+        memberTeamIds: [],
+        teamId: 'payroll',
+      });
+      const { restore } = captureWarnings();
+      expect(svc.operationalTeamIds(mismatched)).toEqual(['payroll']);
+      // And again, after the warning has been rate-limited away.
+      expect(svc.operationalTeamIds(mismatched)).toEqual(['payroll']);
+      expect(
+        svc.operationalTeamIds(
+          user({ id: 'healthy', role: UserRole.AGENT, memberTeamIds: ['T1', 'T2'], teamId: 'T9' }),
+        ),
+      ).toEqual(['T1', 'T2']);
+      restore();
+    });
+  });
+
   describe('canViewTicket', () => {
     it('OWNER can view any ticket', () => {
       expect(

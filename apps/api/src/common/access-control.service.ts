@@ -10,6 +10,16 @@ import type { AccessOptions } from './access-options.type';
 @Injectable()
 export class AccessControlService {
   private readonly logger = new Logger(AccessControlService.name);
+  /**
+   * Accounts already warned about a missing roster row, this process (card 1.55).
+   *
+   * Bounded by the number of accounts actually in the mismatched state, which
+   * is three, so this does not grow. It exists because the warning fired **186
+   * times on 2026-09-09** - 62 each for three Payroll accounts - and the
+   * comment below already claimed it warned only "the first time such an
+   * account is used". This makes that true.
+   */
+  private readonly warnedMissingRoster = new Set<string>();
 
   /**
    * THE definition of "on a team", for every caller.
@@ -26,6 +36,12 @@ export class AccessControlService {
    * chokepoint on a live system would silently lock out any other account in
    * the same state, which is the failure mode this is trying to end. Instead
    * it now says so, loudly, the first time such an account is used.
+   *
+   * ⚠️ CARD 1.55: THE RETURN VALUE IS UNCHANGED AND MUST STAY THAT WAY. Five of
+   * this function's six callers are in this file, including `roleFilter` and
+   * `roleConditionSql`, which back every ticket list and every count in the
+   * product. Narrowing what it returns to quiet a log would change visibility
+   * on the hottest read path. Only the WARNING changed.
    */
   operationalTeamIds(user: AuthUser): string[] {
     const fromRows = user.memberTeamIds?.filter(Boolean) ?? [];
@@ -33,13 +49,56 @@ export class AccessControlService {
       return fromRows;
     }
     if (user.teamId) {
-      this.logger.warn(
-        `User ${user.id} has team scope on team ${user.teamId} with no TeamMember row. ` +
-          'The web reads roster rows only, so its controls will disagree with the API. Add the roster row.',
-      );
+      this.warnMissingRosterRow(user);
       return [user.teamId];
     }
     return [];
+  }
+
+  /**
+   * Say - once per account - that this session has team scope with no roster row.
+   *
+   * ⚠️ WHY THIS WAS REWRITTEN. The old warning fired on every call, so three
+   * accounts produced 186 lines in a day on the busiest read path in the
+   * product, and it asserted a single cause: "Add the roster row." Three
+   * Payroll accounts hold roster rows created days BEFORE the warnings, so for
+   * them that instruction is to add a row that already exists. A warning that
+   * is usually wrong trains everyone to skip it - and this is the noise the
+   * planner had to read past to diagnose card 1.54.
+   *
+   * Two things make it useful again. It logs `memberTeamIds` ITSELF, because
+   * the value is the whole question: the auth guard populates it from
+   * `teamMember.findMany({ where: { userId } })`, so an empty array means that
+   * query found nothing **for this user id** even though rows exist for the
+   * person. The likeliest shape of that is a second User row for the same human
+   * - this codebase has `DuplicateAccountService` precisely because Entra hands
+   * back a UPN and a `mail` that differ - and the roster rows sitting on the
+   * other row. So the message now names both checks instead of asserting one.
+   *
+   * And `undefined` is distinguished from `[]`. An absent array means nobody
+   * looked up the roster, which says nothing about whether rows exist; only an
+   * empty one is evidence of a mismatch. Every HTTP path populates it today, so
+   * this is a guard against a future caller synthesising an `AuthUser` and
+   * being blamed for a data problem it never had.
+   */
+  private warnMissingRosterRow(user: AuthUser): void {
+    if (user.memberTeamIds === undefined) {
+      return;
+    }
+    if (this.warnedMissingRoster.has(user.id)) {
+      return;
+    }
+    this.warnedMissingRoster.add(user.id);
+    this.logger.warn(
+      `ROSTER_MISMATCH user=${user.id} email=${user.email} ` +
+        `teamId=${user.teamId} primaryTeamId=${user.primaryTeamId ?? 'null'} ` +
+        `memberTeamIds=${JSON.stringify(user.memberTeamIds)}. ` +
+        'This session has team scope with no TeamMember row for THIS user id, so the ' +
+        'web (which reads roster rows only) will disagree with the API. Either the ' +
+        'roster row is missing, or it belongs to a duplicate User row for the same ' +
+        'person - check for a second account before adding a row. Warned once per ' +
+        'account per process.',
+    );
   }
 
   /**
