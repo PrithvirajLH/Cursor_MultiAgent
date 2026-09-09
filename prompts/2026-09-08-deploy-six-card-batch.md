@@ -1,5 +1,10 @@
 # Deploy Handoff — the six-card batch
 
+> ⚠️ **SUPERSEDED 2026-09-09 by `prompts/2026-09-09-deploy-three-batches.md`.**
+> Two more GREEN batches landed on top of this one, so the commit list, the
+> baselines and the post-deploy checks here are all stale. **Use the newer file.**
+> This one is kept only for its P1 record — the firewall rule, which is done.
+
 **Date:** 2026-09-08
 **Branch:** `ui-redesign-and-api-hardening`
 **Verdict:** **GREEN** — all six cards verified independently by the planning
