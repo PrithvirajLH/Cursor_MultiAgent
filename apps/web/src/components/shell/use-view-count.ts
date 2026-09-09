@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query';
 import { fetchTickets } from '../../api/client';
-import { sessionExpiryStore } from '../../api/session-expiry-store';
+import { useSessionExpired } from '../../hooks/use-session-expired';
 import { viewCountPlaceholder } from './view-count-placeholder';
 
 /**
@@ -24,6 +24,13 @@ const DEFAULT_STALE_MS = 60_000;
  */
 export function useViewCounts(filters: FilterParams[], options?: { enabled?: boolean }) {
   const enabled = options?.enabled ?? true;
+  // ⚠️ CARD 1.54, AND FOUND IN THE BROWSER RATHER THAN BY THE TEST. Reading
+  // `sessionExpiryStore` imperatively inside `combine` compiled, passed its unit
+  // test, and did nothing on screen: nothing subscribed to the store, so when
+  // the session expired no re-render was triggered and every badge sat there
+  // holding its last good number - the exact contradiction this card removes.
+  // The hook subscribes, so the flip re-renders the sidebar.
+  const isExpired = useSessionExpired();
 
   return useQueries({
     queries: filters.map(f => ({
@@ -41,14 +48,11 @@ export function useViewCounts(filters: FilterParams[], options?: { enabled?: boo
       // query had broken rather than that they were signed out. A stale number
       // is a helpful lie during a refetch and a harmful one during a sign-out.
       placeholderData: (prev: { meta?: { total: number } } | undefined) =>
-        viewCountPlaceholder(prev, sessionExpiryStore.isExpired()),
+        viewCountPlaceholder(prev, isExpired),
     })),
     combine: (results: Array<{ data?: { meta?: { total: number } }; isLoading: boolean }>) =>
       results.map(r => ({
-        count: viewCountPlaceholder(
-          r.data?.meta?.total,
-          sessionExpiryStore.isExpired(),
-        ),
+        count: viewCountPlaceholder(r.data?.meta?.total, isExpired),
         isLoading: r.isLoading,
       })),
   });

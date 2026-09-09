@@ -69,6 +69,7 @@ import {
 } from "./realtime/events";
 import { guardRoute } from "./route-access";
 import { getSidebarBadge, getSidebarChildBadge } from "./sidebar-badges";
+import { useSessionExpired } from "./hooks/use-session-expired";
 import { useSidebarState } from "./hooks/useSidebarState";
 import { useToast } from "./hooks/useToast";
 import { useTicketCountsQuery } from "./hooks/useTicketCountsQuery";
@@ -525,7 +526,14 @@ function AuthenticatedShell({
   const { notifyTicketAggregatesChanged } = useTicketDataInvalidation();
 
   const [teamsList, setTeamsList] = useState<TeamRef[]>([]);
-  const { data: ticketCounts } = useTicketCountsQuery(currentEmail);
+  // ⚠️ CARD 1.54. A SECOND count source, found in the browser pass: the saved-view
+  // badges come from `useViewCounts`, but the nav badges ("Assigned to Me",
+  // "Unassigned", "Triage") come from here. Blanking only the first left one
+  // badge still showing a confident number beside a session-expired page, which
+  // is the very contradiction this card removes. Both sources are covered now.
+  const sessionExpired = useSessionExpired();
+  const { data: liveTicketCounts } = useTicketCountsQuery(currentEmail);
+  const ticketCounts = sessionExpired ? undefined : liveTicketCounts;
 
   const [navKey, setNavKey] = useState<NavKey>("dashboard");
   const [ticketPresetStatus, setTicketPresetStatus] =
