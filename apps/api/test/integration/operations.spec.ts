@@ -53,7 +53,7 @@ describe('Operations console (card 1.21)', () => {
     await disconnectPrisma();
   });
 
-  it('1: an owner sees the four jobs, the switches and the intake paths', async () => {
+  it('1: an owner sees every job, the switches and the intake paths', async () => {
     const res = await request(server)
       .get('/api/operations')
       .set(authHeader(fixtureEmails.owner))
@@ -63,7 +63,9 @@ describe('Operations console (card 1.21)', () => {
     expect(body.jobs.map((job) => job.key)).toEqual([
       'sla-breach',
       'retention',
-      // Card 1.32 added the outbox sweeper as a fourth job.
+      // Card 1.32 added the outbox sweeper as a fourth job; card 1.16 added the
+      // lead digest as a fifth, just before it.
+      'lead-digest',
       'email-outbox',
       'automation-scheduler',
     ]);
