@@ -6,11 +6,20 @@ export function ErrorState({
   title = "Something went wrong",
   description = "We couldn't load this content. Please try again.",
   onRetry,
+  /**
+   * Label for the primary button (card 1.54).
+   *
+   * ⚠️ Not always "Retry". An expired session cannot be retried into working,
+   * and offering the word is what made the owner click it repeatedly against a
+   * screen that could never recover that way.
+   */
+  retryLabel = "Retry",
   secondaryAction,
 }: {
   title?: string;
   description?: string;
   onRetry: () => void;
+  retryLabel?: string;
   secondaryAction?: Action;
 }) {
   const handleRetryClick = () => {
@@ -37,7 +46,7 @@ export function ErrorState({
           onClick={handleRetryClick}
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:ring-offset-2"
         >
-          Retry
+          {retryLabel}
         </button>
         {secondaryAction && (
           <button

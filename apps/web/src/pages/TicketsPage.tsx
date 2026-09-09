@@ -37,6 +37,8 @@ import { useTabVisible } from "../hooks/useTabVisible";
 import { useToast } from "../hooks/useToast";
 import { downloadCsvContent } from "../utils/download-csv";
 import { handleApiError } from "../utils/handleApiError";
+import { useSessionExpired } from "../hooks/use-session-expired";
+import { ApiError } from "../api/client";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   type RealtimeTicketChangedEventPayload,
@@ -281,6 +283,7 @@ export function TicketsPage({
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
   const [ticketError, setTicketError] = useState<string | null>(null);
+  const sessionExpired = useSessionExpired();
   const [assignableUsers, setAssignableUsers] = useState<UserRef[]>([]);
   const [requesterOptions, setRequesterOptions] = useState<UserRef[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -831,9 +834,20 @@ export function TicketsPage({
         setTicketError(null);
         setLastLoadedAt(new Date().toISOString());
         hasLoadedOnceRef.current = true;
-      } catch {
+      } catch (err: unknown) {
         if (ticketsRequestSeqRef.current !== requestSeq) return;
         if (isBackgroundRefresh) return;
+        // ⚠️ CARD 1.54. A 401 is NOT a data-loading failure, and this bare
+        // `catch` used to make it look like one - throwing the status away and
+        // rendering "Unable to load tickets" with a Retry button that cannot
+        // possibly mint a token. `client.ts` has already flagged the session,
+        // so leave the surface to the session-expired panel below and do not
+        // add a second, contradictory error message on top of it.
+        if (err instanceof ApiError && err.status === 401) {
+          setListMeta(null);
+          setTickets([]);
+          return;
+        }
         setTicketError("Unable to load tickets.");
         setListMeta(null);
         setTickets([]);
@@ -1637,7 +1651,30 @@ export function TicketsPage({
           </div>
         </div>
 
-        {ticketError ? (
+        {/*
+          ⚠️ CARD 1.54. The session-expired case is checked FIRST and the generic
+          error is suppressed while it holds, because the two must never appear
+          together: one says "we could not load your tickets, try again" and the
+          other says "you are signed out", and only the second is true.
+
+          The action is a sign-in, not a retry. `client.ts` has already asked
+          MSAL to redirect; this is the manual door for the case where that was
+          swallowed, which is what left the owner looking at a dead panel.
+        */}
+        {sessionExpired ? (
+          <div className="mt-4">
+            <ErrorState
+              title="Your session expired"
+              description="You have been signed out, so this page could not load. Sign in again to pick up where you left off."
+              onRetry={() => window.location.reload()}
+              retryLabel="Sign in again"
+              secondaryAction={{
+                label: "Go to Dashboard",
+                onClick: () => navigate("/dashboard"),
+              }}
+            />
+          </div>
+        ) : ticketError ? (
           <div className="mt-4">
             <ErrorState
               title="Unable to load tickets"

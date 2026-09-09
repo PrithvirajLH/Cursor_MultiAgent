@@ -1,3 +1,5 @@
+import { sessionExpiryStore } from "./session-expiry-store";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as
   | string
@@ -588,10 +590,36 @@ export function setOnAuthFailure(fn: (() => void) | null) {
   authFailureFired = false;
 }
 
+/**
+ * Hand control to the re-login flow, at most once per failed session (card 1.54).
+ *
+ * ⚠️ THE LATCH IS DELIBERATE — it stops ten simultaneous 401s becoming ten
+ * `loginRedirect` calls. But it was reset ONLY by `setOnAuthFailure`, which runs
+ * once when MSAL initialises, so after the first auth failure in a page session
+ * the redirect could never fire again. That is the dead panel the owner
+ * photographed: the session expires a second time and nothing happens.
+ *
+ * The fix is to reset the latch when a request SUCCEEDS (see `noteRequestSucceeded`)
+ * rather than to remove it. A successful response is proof the session recovered,
+ * and therefore that the next failure is a new one worth redirecting for.
+ */
 function fireAuthFailure() {
+  sessionExpiryStore.set(true);
   if (authFailureFired || !onAuthFailure) return;
   authFailureFired = true;
   onAuthFailure();
+}
+
+/**
+ * Record that the API accepted this session (card 1.54).
+ *
+ * Clears the expiry banner and re-arms the auth-failure latch. Called on every
+ * successful response, including a 304, because a conditional hit is just as
+ * much proof that the credential was accepted.
+ */
+function noteRequestSucceeded() {
+  authFailureFired = false;
+  sessionExpiryStore.set(false);
 }
 
 /**
@@ -748,6 +776,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       );
     }
     const payload = (await response.json()) as T;
+    noteRequestSucceeded();
     if (!isGetRequest) {
       invalidateApiCacheByPath(path);
     }
@@ -795,13 +824,17 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
             });
           }
         }
-        // If still 401 after retry, trigger re-auth
-        if (response.status === 401 && onAuthFailure) {
-          onAuthFailure();
+        // ⚠️ Card 1.54: this called `onAuthFailure()` DIRECTLY, bypassing the
+        // latch in `fireAuthFailure`. Ten sidebar count queries share this
+        // path, so one expired token produced ten `loginRedirect` calls -
+        // precisely the storm the latch was added to prevent.
+        if (response.status === 401) {
+          fireAuthFailure();
         }
       }
 
       if (response.status === 304 && cached) {
+        noteRequestSucceeded();
         const refreshedCacheEntry: ApiGetCacheEntry = {
           ...cached,
           cachedAt: Date.now(),
@@ -819,6 +852,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       }
 
       const payload = (await response.json()) as T;
+      noteRequestSucceeded();
       setApiCacheEntry(cacheKey, {
         data: payload,
         cachedAt: Date.now(),

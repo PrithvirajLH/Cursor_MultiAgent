@@ -1,5 +1,7 @@
 import { useQueries } from '@tanstack/react-query';
 import { fetchTickets } from '../../api/client';
+import { sessionExpiryStore } from '../../api/session-expiry-store';
+import { viewCountPlaceholder } from './view-count-placeholder';
 
 /**
  * Returns the live count for a single filter set by hitting `/tickets`
@@ -31,11 +33,22 @@ export function useViewCounts(filters: FilterParams[], options?: { enabled?: boo
       staleTime: DEFAULT_STALE_MS,
       enabled,
       // Counts are not user-visible during loading — keep stale data.
-      placeholderData: (prev: { meta?: { total: number } } | undefined) => prev,
+      //
+      // ⚠️ CARD 1.54: EXCEPT when the session has expired. On 2026-09-09 all ten
+      // of these queries 401'd in the same 70 ms burst as the list, and this
+      // placeholder kept every badge showing its last good number. The owner saw
+      // confident counts beside a failed list and reasonably concluded that one
+      // query had broken rather than that they were signed out. A stale number
+      // is a helpful lie during a refetch and a harmful one during a sign-out.
+      placeholderData: (prev: { meta?: { total: number } } | undefined) =>
+        viewCountPlaceholder(prev, sessionExpiryStore.isExpired()),
     })),
     combine: (results: Array<{ data?: { meta?: { total: number } }; isLoading: boolean }>) =>
       results.map(r => ({
-        count: r.data?.meta?.total,
+        count: viewCountPlaceholder(
+          r.data?.meta?.total,
+          sessionExpiryStore.isExpired(),
+        ),
         isLoading: r.isLoading,
       })),
   });
