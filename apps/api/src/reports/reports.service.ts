@@ -196,8 +196,19 @@ export class ReportsService {
       {
         [dateField]: { gte: fromDate, lt: toEndExclusive },
       } as Prisma.TicketWhereInput,
-      // Soft-deleted tickets never count in reports (the raw-SQL reports get
-      // this from accessConditionSql; the groupBy reports come through here).
+      // Soft-deleted tickets never count in reports.
+      //
+      // ⚠️ This comment used to add "(the raw-SQL reports get this from
+      // accessConditionSql; the groupBy reports come through here)". THE FIRST
+      // HALF WAS FALSE and card 1.45 exists because of it: reports never call
+      // accessConditionSql at all - they scope through scopeReportQuery behind
+      // LeadOrAdminGuard - so of 23 raw reports only three filtered deletedAt,
+      // and the other 20 counted deleted tickets from the day they were
+      // written. Nobody looked, because the comment said it was handled.
+      //
+      // The raw reports now get it from `rawConditions` and
+      // `applyTicketFilterConditions`, which is where a new report will pick
+      // it up without being told.
       { deletedAt: null },
     ];
 
@@ -261,6 +272,11 @@ export class ReportsService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`${Prisma.raw(dateCol)} >= ${fromDate}`,
       Prisma.sql`${Prisma.raw(dateCol)} < ${toEndExclusive}`,
+      // ⚠️ CARD 1.45. Soft-deleted tickets are not desk activity, and until
+      // this line they were counted by every raw report that goes through
+      // here. Added in the shared builder rather than at each call site so a
+      // new report cannot be written without it.
+      Prisma.sql`${Prisma.raw(pre + 'deletedAt"')} IS NULL`,
     ];
     if (teamId)
       conditions.push(
@@ -298,6 +314,11 @@ export class ReportsService {
   ) {
     const col = (name: string) => Prisma.raw(`${tableAlias}."${name}"`);
     const statusText = Prisma.raw(`${tableAlias}."status"::text`);
+
+    // ⚠️ CARD 1.45, same reason as `rawConditions` above: every report that
+    // filters through this function now excludes soft-deleted tickets, rather
+    // than each one remembering to.
+    conditions.push(Prisma.sql`${col('deletedAt')} IS NULL`);
 
     if (scoped.teamId) {
       conditions.push(Prisma.sql`${col('assignedTeamId')} = ${scoped.teamId}`);
@@ -950,7 +971,11 @@ export class ReportsService {
   async getAgentWorkload(query: ReportQueryDto, user: AuthUser) {
     const scoped = this.scopeReportQuery(query, user);
     const statusText = Prisma.raw('t."status"::text');
-    const conditions: Prisma.Sql[] = [Prisma.sql`t."assigneeId" IS NOT NULL`];
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`t."assigneeId" IS NOT NULL`,
+      // Card 1.45: soft-deleted tickets are not desk activity.
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
 
     if (scoped.status) {
       conditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
@@ -1025,6 +1050,8 @@ export class ReportsService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`${dateColumn} >= ${fromDate}`,
       Prisma.sql`${dateColumn} < ${toEndExclusive}`,
+      // Card 1.45: soft-deleted tickets are not desk activity.
+      Prisma.sql`t."deletedAt" IS NULL`,
     ];
     if (scoped.status) {
       conditions.push(Prisma.sql`t."status"::text = ${scoped.status}`);
@@ -1097,6 +1124,8 @@ export class ReportsService {
       Prisma.sql`e."payload"->>'to' = 'REOPENED'`,
       Prisma.sql`e."createdAt" >= ${fromDate}`,
       Prisma.sql`e."createdAt" < ${toEndExclusive}`,
+      // Card 1.45: soft-deleted tickets are not desk activity.
+      Prisma.sql`t."deletedAt" IS NULL`,
     ];
     if (scoped.teamId) {
       conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
@@ -1513,6 +1542,8 @@ export class ReportsService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`${dateColumn} >= ${fromDate}`,
       Prisma.sql`${dateColumn} < ${toEndExclusive}`,
+      // Card 1.45: soft-deleted tickets are not desk activity.
+      Prisma.sql`t."deletedAt" IS NULL`,
     ];
     if (scoped.teamId) {
       conditions.push(Prisma.sql`t."assignedTeamId" = ${scoped.teamId}`);
@@ -1608,10 +1639,10 @@ export class ReportsService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`t."resolvedAt" >= ${fromDate}`,
       Prisma.sql`t."resolvedAt" < ${toEndExclusive}`,
-      // Soft-deleted tickets are not desk performance. The Prisma-side reports
-      // exclude them; every raw-SQL report in this file predates that and does
-      // not, which the card 1.17 handoff reports rather than changes here.
-      Prisma.sql`t."deletedAt" IS NULL`,
+      // The explicit `deletedAt` clause that used to sit here is gone: card
+      // 1.45 moved it into applyTicketFilterConditions, which every report in
+      // this file now shares. Card 1.17 added it here because at the time this
+      // was one of only three reports that had it at all.
     ];
     this.applyTicketFilterConditions(conditions, scoped, user, 't');
     const rows = await this.prisma.$queryRaw<
@@ -1666,7 +1697,6 @@ export class ReportsService {
     const conditions: Prisma.Sql[] = [
       Prisma.sql`${Prisma.raw(`t."${dateField}"`)} >= ${fromDate}`,
       Prisma.sql`${Prisma.raw(`t."${dateField}"`)} < ${toEndExclusive}`,
-      Prisma.sql`t."deletedAt" IS NULL`,
     ];
     this.applyTicketFilterConditions(conditions, scoped, user, 't');
     const rows = await this.prisma.$queryRaw<
@@ -1730,7 +1760,6 @@ export class ReportsService {
       Prisma.sql`e."type" = 'TICKET_STATUS_CHANGED'`,
       Prisma.sql`e."createdAt" >= ${fromDate}`,
       Prisma.sql`e."createdAt" < ${toEndExclusive}`,
-      Prisma.sql`t."deletedAt" IS NULL`,
     ];
     this.applyTicketFilterConditions(conditions, scoped, user, 't');
     const rows = await this.prisma.$queryRaw<
@@ -1790,7 +1819,10 @@ export class ReportsService {
       Prisma.sql`e."createdAt" >= ${fromDate}`,
       Prisma.sql`e."createdAt" < ${toEndExclusive}`,
     ];
-    const ticketConditions: Prisma.Sql[] = [];
+    const ticketConditions: Prisma.Sql[] = [
+      // Card 1.45: soft-deleted tickets are not desk activity.
+      Prisma.sql`t."deletedAt" IS NULL`,
+    ];
     if (scoped.teamId) {
       eventConditions.push(
         Prisma.sql`(e.payload->>'fromTeamId' = ${scoped.teamId} OR e.payload->>'toTeamId' = ${scoped.teamId})`,
@@ -1860,6 +1892,10 @@ export class ReportsService {
   async getTagAnalytics(days: number, user: AuthUser) {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
+    // Card 1.45: all three queries below join Ticket as `t`, and none of them
+    // excluded soft-deleted rows - so a deleted ticket's tags kept showing up
+    // in the tag analytics for ever.
+    const notDeletedSql = Prisma.sql`AND t."deletedAt" IS NULL`;
     // Scope: OWNER sees all; LEAD/TEAM_ADMIN limited to their team.
     let teamScopeSql = Prisma.empty;
     if (user.role === UserRole.TEAM_ADMIN && user.primaryTeamId) {
@@ -1876,6 +1912,7 @@ export class ReportsService {
       JOIN "Tag" tg ON tg.id = tt."tagId"
       JOIN "Ticket" t ON t.id = tt."ticketId"
       WHERE t."createdAt" >= ${since}
+        ${notDeletedSql}
         ${teamScopeSql}
       GROUP BY tg.name
       ORDER BY count DESC, tg.name ASC
@@ -1896,6 +1933,7 @@ export class ReportsService {
       JOIN "Ticket" t ON t.id = tt."ticketId"
       WHERE t."resolvedAt" IS NOT NULL
         AND t."resolvedAt" >= ${since}
+        ${notDeletedSql}
         ${teamScopeSql}
       GROUP BY tg.name
       HAVING COUNT(*) >= 3
@@ -1915,6 +1953,7 @@ export class ReportsService {
       JOIN "Ticket" t ON t.id = tt."ticketId"
       JOIN "Team" tm ON tm.id = t."assignedTeamId"
       WHERE t."createdAt" >= ${since}
+        ${notDeletedSql}
         ${teamScopeSql}
       GROUP BY tm.name, tg.name
       ORDER BY tm.name ASC, count DESC
