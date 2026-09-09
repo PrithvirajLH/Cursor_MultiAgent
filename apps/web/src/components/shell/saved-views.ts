@@ -1,11 +1,24 @@
 /**
  * Preset filter definitions for the sidebar's "Saved views" and primary nav.
  *
- * Each entry produces a query-string for /tickets-revamp that, when applied,
+ * Each entry produces a query-string for **`/tickets`** that, when applied,
  * triggers `useFilters` on the page to re-fetch with the corresponding filters.
+ * (This comment used to name `/tickets-revamp`, a prototype page deleted on
+ * 2026-06-08. `TicketsPage` is the only ticket list there is.)
  *
  * Adding a new preset: define it here, give it a unique `id`, and add it to
  * SAVED_VIEWS or PRIMARY_NAV. No other wiring needed.
+ *
+ * ⚠️ **`id` IS A CODE CONSTANT THAT OUTLIVES THIS FILE (card 1.53).** A team
+ * admin can switch presets off for their whole team, and the ids they chose are
+ * stored in `Team.hiddenPresetIds` in the database. So an id here is a value
+ * some rows already refer to:
+ *
+ *  - **Renaming or removing a preset is safe** - `visiblePresets` ignores a
+ *    stored id that matches nothing, silently. No ghost row, no crash, and
+ *    nothing to clean up afterwards.
+ *  - **Reusing a retired id for a different preset is NOT safe.** A team that
+ *    hid the old one would silently hide the new one. Pick a fresh id.
  */
 
 export type ToneKey = 'red' | 'amber' | 'green' | 'gray';

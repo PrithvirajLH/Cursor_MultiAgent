@@ -986,6 +986,26 @@ export function fetchSavedViews() {
   ).then((response) => unwrapDataEnvelope(response));
 }
 
+/**
+ * The built-in sidebar presets this caller's team has switched off (card 1.53).
+ *
+ * Ids only. They are code constants, so an id whose preset no longer exists is
+ * ignored by `visiblePresets` rather than cleaned up here.
+ */
+export function fetchHiddenPresets(options?: { signal?: AbortSignal }) {
+  return apiFetch<{ data: string[] }>("/saved-views/hidden-presets", {
+    signal: options?.signal,
+  });
+}
+
+/** Replace a team's hidden-preset list. Team admins and owners only. */
+export function setHiddenPresets(teamId: string, presetIds: string[]) {
+  return apiFetch<{ data: string[] }>(
+    `/saved-views/hidden-presets/${teamId}`,
+    { method: "PUT", body: JSON.stringify({ presetIds }) },
+  );
+}
+
 export function createSavedView(payload: {
   name: string;
   filters: Record<string, unknown>;
@@ -1004,6 +1024,8 @@ export function updateSavedView(
     name?: string;
     filters?: Record<string, unknown>;
     isDefault?: boolean;
+    /** Promote to the team, or `null` to make it personal again (card 1.53). */
+    teamId?: string | null;
   },
 ) {
   return apiFetch<SavedViewRecord>(`/saved-views/${id}`, {

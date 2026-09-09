@@ -204,6 +204,17 @@ model Team {
   /// Null falls back to AI_SENSITIVE_DEPT_THRESHOLD when isSensitive, else
   /// AI_CONFIDENCE_THRESHOLD.
   confidenceThreshold Float?
+  /// Built-in sidebar presets this team has switched off (card 1.53).
+  ///
+  /// Ids from `SAVED_VIEWS` in `apps/web/src/components/shell/saved-views.ts`,
+  /// which are CODE CONSTANTS rather than rows - so an id here whose preset has
+  /// since been renamed or removed is ignored silently. Never a ghost entry,
+  /// never a crash.
+  ///
+  /// Team-admin-only by design: a member cannot opt back in. Two mechanisms
+  /// answering "is this row visible" is the drift that produced cards 1.36,
+  /// 1.38, 1.47 and 1.50, so there is deliberately no personal override.
+  hiddenPresetIds     String[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 

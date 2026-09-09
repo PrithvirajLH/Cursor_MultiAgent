@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { visiblePresets } from "./shell/visible-presets";
+import { fetchHiddenPresets } from "../api/client";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { AtSign, CalendarClock, Eye, X } from "lucide-react";
 import {
@@ -143,8 +145,21 @@ export function SidebarTicketsSavedViews({
     (v) => (v.filters as Record<string, unknown>)?.viewType !== "reports",
   );
 
+  // ⚠️ CARD 1.53. The team's admin can switch built-in presets off for
+  // everyone. An id here that matches no live preset is ignored silently, so a
+  // renamed or retired preset needs no cleanup - see `visiblePresets`.
+  const { data: hiddenPresets } = useQuery({
+    queryKey: ["hidden-presets"],
+    queryFn: ({ signal }) => fetchHiddenPresets({ signal }),
+    staleTime: 5 * 60_000,
+    enabled: authReady,
+  });
+  const shownPresets = visiblePresets(SAVED_VIEWS, hiddenPresets?.data);
+  // ⚠️ The counts array must be built from the SAME list that renders, or the
+  // badges shift onto the wrong rows the moment anything is hidden - they are
+  // matched by index.
   const presetCounts = useViewCounts(
-    SAVED_VIEWS.map((v) => querystringToParams(v.buildQuery())),
+    shownPresets.map((v) => querystringToParams(v.buildQuery())),
     { enabled: authReady },
   );
 
@@ -220,7 +235,7 @@ export function SidebarTicketsSavedViews({
         );
       })}
 
-      {SAVED_VIEWS.map((v, i) => {
+      {shownPresets.map((v, i) => {
         const active = presetIsActive(v);
         const liveCount = presetCounts[i]?.count;
         return (
@@ -418,6 +433,23 @@ function UserSavedViewRow({
           style={{ backgroundColor: "hsl(var(--fg-faint))" }}
         />
         <span className="flex-1 min-w-0 truncate">{view.name}</span>
+        {/*
+          ⚠️ Card 1.53. People need to know WHICH view they are about to edit:
+          a team view is shared, and changing or deleting one affects every
+          colleague. An unmarked list of "my views" that quietly contains four
+          of the team's is how somebody deletes a shared view believing it is
+          theirs.
+        */}
+        {view.teamId ? (
+          <span
+            title="Shared with your team"
+            className={`flex-none rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide ${
+              dk ? "bg-white/10 text-white/65" : "bg-muted text-foreground/60"
+            }`}
+          >
+            Team
+          </span>
+        ) : null}
         {count !== undefined && (
           <span
             className={`text-[10px] tabular-nums font-semibold ${countTextClass(theme, active)}`}

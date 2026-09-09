@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Check } from "lucide-react";
 import { createSavedView } from "../api/client";
+import { useAuthSession } from "../hooks/useAuthSession";
+import { canShareViewWithTeam } from "./shell/can-share-view-with-team";
 import type { TicketFilters } from "../types";
 
 interface SaveViewButtonProps {
@@ -17,6 +19,14 @@ interface SaveViewButtonProps {
 export function SaveViewButton({ filters, disabled = false }: SaveViewButtonProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  // ⚠️ CARD 1.53. Only a team admin or an owner may publish a view into every
+  // colleague's sidebar. The checkbox is hidden rather than disabled for anyone
+  // else, because an inert control invites the question "why can't I?" - and
+  // the server refuses it regardless, which is the gate that actually matters.
+  const { user } = useAuthSession();
+  const [shareWithTeam, setShareWithTeam] = useState(false);
+  const teamId = user?.teamId ?? null;
+  const canShare = canShareViewWithTeam(user?.role, teamId);
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
@@ -26,10 +36,12 @@ export function SaveViewButton({ filters, disabled = false }: SaveViewButtonProp
       createSavedView({
         name: name.trim(),
         filters: filtersForPersistence(filters),
+        ...(canShare && shareWithTeam && teamId ? { teamId } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["saved-views"] });
       setName("");
+      setShareWithTeam(false);
       setOpen(false);
     },
   });
@@ -92,6 +104,17 @@ export function SaveViewButton({ filters, disabled = false }: SaveViewButtonProp
             placeholder="e.g. SEV1 + my team"
             className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30"
           />
+          {canShare && (
+            <label className="flex items-center gap-2 pt-1 text-[12px] text-foreground">
+              <input
+                type="checkbox"
+                checked={shareWithTeam}
+                onChange={() => setShareWithTeam((v) => !v)}
+                className="h-3.5 w-3.5 rounded border-border accent-primary"
+              />
+              Share with my team
+            </label>
+          )}
           {save.isError && (
             <span className="text-[11px] text-red-600">
               Save failed — try again

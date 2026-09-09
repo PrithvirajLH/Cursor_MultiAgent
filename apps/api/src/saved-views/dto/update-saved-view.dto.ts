@@ -4,6 +4,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -26,4 +27,16 @@ export class UpdateSavedViewDto {
   @Transform(({ value }) => toBoolean(value))
   @IsBoolean()
   isDefault?: boolean;
+
+  /**
+   * Promote a personal view to the team, or demote it back with `null`.
+   *
+   * ⚠️ `undefined` means "leave it alone" and `null` means "make it personal" -
+   * they are NOT the same, which is why the service checks for `undefined`
+   * explicitly. Without that distinction an ordinary rename would silently
+   * demote a team view.
+   */
+  @IsOptional()
+  @IsUUID()
+  teamId?: string | null;
 }

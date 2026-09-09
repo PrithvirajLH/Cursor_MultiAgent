@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { filterPeople } from "../utils/filterPeople";
+import { TeamPresetVisibility } from "../components/TeamPresetVisibility";
 import {
   AlertCircle,
   ChevronDown,
@@ -1062,6 +1063,13 @@ export function TeamPage({
           {selectedTeamId && !viewingInactive && !viewingInactiveTeams ? (
             <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
               <div>
+                {/* Card 1.53: which built-in sidebar presets this team uses. */}
+                <div className="mb-6">
+                  <TeamPresetVisibility
+                    teamId={selectedTeamId}
+                    canManage={isAdmin}
+                  />
+                </div>
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-foreground">
                     Members

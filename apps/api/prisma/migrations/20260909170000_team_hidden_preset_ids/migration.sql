@@ -1,0 +1,35 @@
+-- Team-level hiding of built-in sidebar presets (card 1.53). The 59th migration.
+--
+-- ONE additive column on one table. `TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]`,
+-- so every existing team reads as "hides nothing" with no backfill and no
+-- nullable-vs-empty ambiguity for the application to interpret.
+--
+-- The values are preset ids from SAVED_VIEWS in
+-- apps/web/src/components/shell/saved-views.ts. Those are CODE CONSTANTS, not
+-- rows, so there is deliberately no foreign key and nothing to cascade: an id
+-- whose preset is later renamed or deleted is ignored silently by the reader.
+-- A FK here would be a promise the code cannot keep.
+--
+-- No enum is touched, so this carries none of the enum-in-transaction hazard
+-- that migrations 54 and 56 documented.
+--
+-- HAND-WRITTEN rather than generated. `prisma migrate dev` additionally emits
+-- the standing twelve destructive statements, which are drift and are NOT part
+-- of this change:
+--
+--   * six DROP INDEX for the trigram GIN indexes from
+--     20260220150000_add_ticket_search_trigram_indexes and
+--     20260528_add_knowledge_base -- KbArticle_content/summary/title_trgm_idx
+--     and Ticket_description/displayId/subject_trgm_idx. Prisma cannot express
+--     `USING GIN (col gin_trgm_ops)`, so it reads them as drift on every
+--     generate. Applying them would destroy ticket and KB search performance
+--     against the stated sub-500ms requirement -- which card 0.9 measured in
+--     this same batch.
+--   * six ALTER COLUMN ... DROP DEFAULT on AutomationExecution.trigger and the
+--     updatedAt columns of SlaBusinessHoursSetting, SlaPolicyAssignment,
+--     SlaPolicyConfig, SlaPolicyConfigTarget and TicketEmailThread.
+--
+-- Verified: grep -cE '^(DROP|ALTER TABLE .* DROP)' migration.sql  =>  0
+
+-- AlterTable
+ALTER TABLE "Team" ADD COLUMN     "hiddenPresetIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
