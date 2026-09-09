@@ -9,6 +9,13 @@ import type {
   TicketScope,
 } from "../types";
 
+/**
+ * Statuses, priorities and ids. Case is preserved: these are enum values and
+ * uuids, so `NEW` must not become `new`. Tags go through `parseTagList`
+ * instead, which lowercases them (card 1.50).
+ */
+import { parseTagList } from "../utils/parseTagList";
+
 function parseArray(value: string | null): string[] {
   if (!value) return [];
   return value
@@ -53,7 +60,10 @@ function parseFilters(
     assigneeIds: parseArray(searchParams.get("assigneeIds")),
     requesterIds: parseArray(searchParams.get("requesterIds")),
     slaStatus: parseArray(searchParams.get("slaStatus")) as SlaStatusFilter[],
-    tags: parseArray(searchParams.get("tags")),
+    // Card 1.50: the ONE tag parser, shared with the chip control on the
+    // tickets list, so a tag typed into the box and a tag arriving in the URL
+    // are normalised identically.
+    tags: parseTagList(searchParams.get("tags")),
     createdFrom: parseDate(searchParams.get("createdFrom")),
     createdTo: parseDate(searchParams.get("createdTo")),
     updatedFrom: parseDate(searchParams.get("updatedFrom")),

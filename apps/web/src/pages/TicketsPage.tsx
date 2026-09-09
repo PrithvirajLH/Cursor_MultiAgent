@@ -1,3 +1,4 @@
+import { TagFilterInput } from "../components/TagFilterInput";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -1429,19 +1430,17 @@ export function TicketsPage({
               <option value="SEV4">SEV4</option>
             </select>
 
-            <input
-              type="text"
-              aria-label="Filter by tags (comma-separated)"
-              placeholder="Tags (csv)"
-              value={filters.tags.join(", ")}
-              onChange={(event) => {
-                const tags = event.target.value
-                  .split(",")
-                  .map((s) => s.trim().toLowerCase())
-                  .filter(Boolean);
-                setFilters({ tags });
-              }}
-              className="h-10 w-44 rounded-xl border border-border bg-card shadow-sm px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
+            {/*
+              Card 1.50. This was a text box labelled "Tags (csv)" that ate
+              every comma you typed - it split on change and re-joined for its
+              value, so the empty segment made by pressing "," was dropped and
+              React wrote the comma back out. Two tags fused into one, matched
+              nothing, and said nothing. The parser that did it is deleted; the
+              only one left is the one the URL already used.
+            */}
+            <TagFilterInput
+              tags={filters.tags}
+              onChange={(tags) => setFilters({ tags })}
             />
 
             <select
