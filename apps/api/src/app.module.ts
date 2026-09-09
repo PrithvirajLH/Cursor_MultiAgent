@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
+import { LOG_REDACTION_PATHS } from './common/log-redaction-paths.util';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -69,6 +70,14 @@ import { validateEnv } from './common/env.validation';
         return {
           pinoHttp: {
             level: isProd ? 'info' : 'debug',
+            // ⚠️ Card 1.54. Without this, pino's default serializer logs every
+            // request header - which meant a live bearer token on every
+            // authenticated request, and the intake shared secret on every
+            // Power Automate call, in a log that ships to Kudu.
+            redact: {
+              paths: [...LOG_REDACTION_PATHS],
+              censor: '[redacted]',
+            },
             transport: isProd
               ? undefined
               : {
