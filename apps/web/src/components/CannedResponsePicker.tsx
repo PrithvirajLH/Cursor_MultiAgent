@@ -22,6 +22,7 @@ import {
   type MacroAction,
   type MacroPreview,
 } from "../api/client";
+import { TagFilterInput } from "./TagFilterInput";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import {
   blankAction,
@@ -540,19 +541,32 @@ export function CannedResponsePicker({
                   )}
                   {(action.type === "add_tag" ||
                     action.type === "remove_tag") && (
-                    <input
-                      aria-label="Tags"
-                      value={(action.tags ?? []).join(", ")}
-                      onChange={(e) =>
-                        patchAction(index, {
-                          tags: e.target.value
-                            .split(",")
-                            .map((tag) => tag.trim())
-                            .filter(Boolean),
-                        })
-                      }
+                    /*
+                      ⚠️ CARD 1.56. This was a text input whose value was
+                      `(action.tags ?? []).join(", ")` and whose onChange split
+                      on comma and dropped empty segments - card 1.50's bug,
+                      in a second control:
+
+                        key ","  ->  box shows "password"      <- comma gone
+                        key "v"  ->  box shows "passwordv"     <- tags fuse
+                        result:      ["passwordvpn"]           <- one bad tag
+
+                      Its placeholder was "password, vpn": a two-tag example the
+                      control made impossible to type.
+
+                      Swapping the splitter for the shared `parseTagList` would
+                      NOT have fixed this. That parser also drops the empty
+                      segment, so React would still write the comma back out -
+                      the defect is the controlled round trip, not the parsing.
+                      Card 1.50 reached the same conclusion and replaced the
+                      control; this is that control.
+                    */
+                    <TagFilterInput
+                      tags={action.tags ?? []}
+                      onChange={(tags) => patchAction(index, { tags })}
+                      label="Tags"
                       placeholder="password, vpn"
-                      className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+                      className="min-w-0 flex-1"
                     />
                   )}
                   {action.type === "add_follower" && (

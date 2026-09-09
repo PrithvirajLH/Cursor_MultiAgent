@@ -29,13 +29,32 @@ import { parseTagList } from "../utils/parseTagList";
  *
  * Enter or comma commits what is typed; Backspace on an empty box removes the
  * last chip, which is what every chip control does.
+ *
+ * ⚠️ CARD 1.56 REUSES THIS FOR THE MACRO EDITOR'S TAG FIELD, which carried the
+ * identical round-trip bug. Swapping that field's parser for `parseTagList`
+ * would NOT have fixed it: the defect is the controlled round trip through
+ * `join(", ")`, not the splitting, so any parser that drops the empty segment
+ * a comma creates writes the comma straight back out. Replacing the control is
+ * the fix, which is what this card did for the tickets filter.
+ *
+ * The three props below exist only so a second caller can label and size it;
+ * their defaults reproduce the tickets filter exactly.
  */
 export function TagFilterInput({
   tags,
   onChange,
+  label = "Filter by tag",
+  placeholder,
+  className = "h-10 w-56",
 }: {
   tags: string[];
   onChange: (tags: string[]) => void;
+  /** Accessible name, and the default placeholder when none is given. */
+  label?: string;
+  /** Shown only while there are no chips. Falls back to `label`. */
+  placeholder?: string;
+  /** Sizing utilities; the border, padding and focus ring are fixed. */
+  className?: string;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -70,7 +89,9 @@ export function TagFilterInput({
   }
 
   return (
-    <div className="flex h-10 w-56 items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card px-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/30 transition-all">
+    <div
+      className={`flex items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card px-2 shadow-sm focus-within:ring-2 focus-within:ring-ring/30 transition-all ${className}`}
+    >
       {tags.map((tag) => (
         <span
           key={tag}
@@ -91,8 +112,8 @@ export function TagFilterInput({
         type="text"
         // Plain language, no "csv": the owner's standing preference, and the
         // control no longer needs the reader to know the trick.
-        aria-label="Filter by tag"
-        placeholder={tags.length === 0 ? "Filter by tag" : ""}
+        aria-label={label}
+        placeholder={tags.length === 0 ? (placeholder ?? label) : ""}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={handleKeyDown}
