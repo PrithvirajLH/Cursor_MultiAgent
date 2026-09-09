@@ -4,6 +4,7 @@ export const JOB_KEYS = [
   'retention',
   'automation-scheduler',
   'email-outbox',
+  'lead-digest',
 ] as const;
 
 export type JobKey = (typeof JOB_KEYS)[number];

@@ -33,6 +33,8 @@ type Overrides = {
   slaRunOnce?: jest.Mock;
   sweeperRunOnce?: jest.Mock;
   outboxCounts?: jest.Mock;
+  leadDigestEnabled?: () => boolean;
+  leadDigestRun?: jest.Mock;
 };
 
 function makeService(overrides: Overrides = {}) {
@@ -101,6 +103,19 @@ function makeService(overrides: Overrides = {}) {
   const health = {
     readiness: overrides.readiness ?? (() => Promise.resolve(READINESS)),
   };
+  // Card 1.16: off unless a test says otherwise, matching the shipped default.
+  const leadDigest = {
+    isEnabled: overrides.leadDigestEnabled ?? (() => false),
+    runOnce:
+      overrides.leadDigestRun ??
+      jest.fn().mockResolvedValue({
+        ranAt: '2026-09-09T07:00:00.000Z',
+        leadsConsidered: 0,
+        digestsQueued: 0,
+        leadsWithNothingToSay: 0,
+        enabled: false,
+      }),
+  };
   const service = new OperationsService(
     health as never,
     slaBreach as never,
@@ -108,6 +123,7 @@ function makeService(overrides: Overrides = {}) {
     scheduler as never,
     outboxSweeper as never,
     outbox as never,
+    leadDigest as never,
     new ConfigService({
       INTAKE_API_SECRET: 'set',
       SLA_BREACH_INTERVAL_MS: '60000',
@@ -123,7 +139,9 @@ describe('OperationsService.snapshot', () => {
     expect(snapshot.jobs.map((job) => job.key)).toEqual([
       'sla-breach',
       'retention',
-      // Card 1.32 added the sweeper between retention and the scheduler.
+      // Card 1.32 added the sweeper between retention and the scheduler;
+      // card 1.16 added the lead digest just before it.
+      'lead-digest',
       'email-outbox',
       'automation-scheduler',
     ]);
@@ -132,6 +150,7 @@ describe('OperationsService.snapshot', () => {
         'retention',
         'automation-scheduler',
         'sla-worker',
+        'lead-digest',
         'ai-pipeline',
         'realtime',
         'attachment-scanning',
@@ -168,12 +187,14 @@ describe('OperationsService.snapshot', () => {
       readiness: () => Promise.reject(new Error('redis down')),
     });
     const snapshot = await service.snapshot();
-    expect(snapshot.jobs).toHaveLength(4);
-    // The switch group keeps the three worker rows readiness does not own.
+    expect(snapshot.jobs).toHaveLength(5);
+    // The switch group keeps the worker rows readiness does not own.
+    // Card 1.16 added the lead digest to that set.
     expect(snapshot.switches?.map((row) => row.key)).toEqual([
       'retention',
       'automation-scheduler',
       'sla-worker',
+      'lead-digest',
     ]);
   });
 
@@ -190,7 +211,7 @@ describe('OperationsService.snapshot', () => {
       lastRunAt: null,
       nextRunAt: null,
     });
-    expect(snapshot.jobs).toHaveLength(4);
+    expect(snapshot.jobs).toHaveLength(5);
   });
 });
 

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AutomationSchedulerService } from '../automation/automation-scheduler.service';
 import { EmailOutboxSweeperService } from '../notifications/email-outbox-sweeper.service';
+import { LeadDigestService } from '../notifications/lead-digest.service';
 import { OutboxService } from '../notifications/outbox.service';
 import { HealthService } from '../health/health.service';
 import { RetentionService } from '../retention/retention.service';
@@ -43,6 +44,7 @@ export class OperationsService {
     private readonly scheduler: AutomationSchedulerService,
     private readonly outboxSweeper: EmailOutboxSweeperService,
     private readonly outbox: OutboxService,
+    private readonly leadDigest: LeadDigestService,
     private readonly config: ConfigService,
   ) {}
 
@@ -103,6 +105,11 @@ export class OperationsService {
     if (key === 'email-outbox') {
       return this.toRecord(await this.outboxSweeper.runOnce());
     }
+    if (key === 'lead-digest') {
+      // ⚠️ Safe while the switch is off: `runOnce` reports `enabled: false` and
+      // queues nothing, so Run now cannot send mail behind the switch's back.
+      return this.toRecord(await this.leadDigest.runOnce());
+    }
     return this.toRecord(await this.scheduler.runOnce());
   }
 
@@ -129,6 +136,7 @@ export class OperationsService {
       const retention = this.retention.getPolicy();
       const scheduler = this.scheduler.getPolicy();
       const sla = this.slaBreach.getWorkerState();
+      const digestEnabled = this.leadDigest.isEnabled();
       const rows: OperationsSwitch[] = [
         {
           key: 'retention',
@@ -160,6 +168,15 @@ export class OperationsService {
           on: sla.enabled,
           state: sla.enabled ? 'On' : 'Off',
           setting: 'SLA_BREACH_WORKER_ENABLED',
+        },
+        {
+          key: 'lead-digest',
+          label: 'Lead daily digest',
+          description:
+            'One email per lead per morning: what breached, what is at risk, what is unassigned on their team. Sends nothing to a lead with nothing to report. Off by default - card 1.42 removed staff email, and this is the one exception, so somebody has to choose it.',
+          on: digestEnabled,
+          state: digestEnabled ? 'On' : 'Off',
+          setting: 'LEAD_DIGEST_ENABLED',
         },
       ];
       if (readiness) {
@@ -268,6 +285,23 @@ export class OperationsService {
             lastRunAt: state.lastRunAt,
             lastRunOk: state.lastRunOk,
             lastSummary: state.lastSummary as Record<string, unknown> | null,
+          };
+        },
+      ),
+      this.jobRow(
+        'lead-digest',
+        'Lead daily digest',
+        'One morning email per lead: breached, at risk and unassigned on their team. Silent when a lead has nothing to report.',
+        () => {
+          const state = this.leadDigest.getLastRun();
+          return {
+            enabled: this.leadDigest.isEnabled(),
+            intervalMs: this.leadDigest.getIntervalMs(),
+            lastRunAt: state.at,
+            // A run that queued nothing is still a run that worked - the
+            // digest is silent by design when there is nothing to say.
+            lastRunOk: state.summary ? true : null,
+            lastSummary: state.summary as Record<string, unknown> | null,
           };
         },
       ),
