@@ -2533,6 +2533,8 @@ export function redactTicketMessage(ticketId: string, messageId: string) {
     emailedCount?: number;
     /** Card 1.47. How many queued emails this removal actually stopped. */
     emailsStopped?: number;
+    /** Card 1.48. How many pasted-in images went with the message. */
+    inlineAttachmentsRemoved?: number;
   }>(`/tickets/${ticketId}/messages/${messageId}`, { method: "DELETE" });
 }
 

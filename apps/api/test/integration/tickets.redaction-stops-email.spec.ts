@@ -305,6 +305,37 @@ describe('Redaction stops a queued email (card 1.47)', () => {
     });
   });
 
+  describe('a row that FAILED still holds the words', () => {
+    it('⚠️ scrubs a FAILED row too, which is what production always has', async () => {
+      // Found in the browser pass. A FAILED row was never delivered, but it
+      // keeps the rendered text just as long as a SENT one - and with no SMTP
+      // configured, production marks EVERY message email "SMTP not
+      // configured" and FAILED. Scrubbing only SENT rows would have left the
+      // text in the column on nearly every row that exists.
+      const ticket = await plantTicket();
+      const messageId = await postPublicReply(ticket.id);
+      await prisma.notificationOutbox.updateMany({
+        where: { ticketId: ticket.id, eventType: 'MESSAGE_ADDED' },
+        data: { status: OutboxStatus.FAILED, lastError: 'SMTP not configured' },
+      });
+
+      const res = await redact(ticket.id, messageId, fixtureEmails.lead).expect(
+        200,
+      );
+      // A failed send is not an email that went out, and not one we stopped.
+      expect(res.body.alreadyEmailed).toBe(false);
+      expect(res.body.emailsStopped).toBe(0);
+
+      const [row] = await outboxFor(ticket.id);
+      expect(row.status).toBe(OutboxStatus.FAILED);
+      expect(row.body).toBe('');
+      expect(JSON.stringify(row.payload)).not.toContain('90210');
+      // Still answerable: did we try, to whom.
+      expect(row.toEmail).toBe(fixtureEmails.requester);
+      expect(row.subject).not.toBe('');
+    });
+  });
+
   describe('the cases that must not change', () => {
     it('an internal note queues nothing and reports nothing', async () => {
       const ticket = await plantTicket();

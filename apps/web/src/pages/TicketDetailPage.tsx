@@ -1737,12 +1737,21 @@ export function TicketDetailPage({
       toast.success(redactionOutcomeMessage(result));
       // The timeline gains a "message removed" entry, so re-read it.
       void loadEventsPage(ticketId, true);
+      // ⚠️ Card 1.48, found in the browser pass: the Attachments tab reads
+      // `ticket.attachments`, so removing a pasted-in image left it still
+      // LISTED until the next page load. The row was already gone - clicking
+      // it 404s - but a file the redaction just deleted has no business
+      // sitting in the list, which is the whole "one click away" the card is
+      // about. Only when something was actually removed.
+      if ((result.inlineAttachmentsRemoved ?? 0) > 0) {
+        void loadTicketDetail(ticketId);
+      }
     } catch (error) {
       setActionError(handleApiError(error));
     } finally {
       setRedacting(false);
     }
-  }, [loadEventsPage, redactTarget, ticketId, toast]);
+  }, [loadEventsPage, loadTicketDetail, redactTarget, ticketId, toast]);
 
   const handleMessageInputBlur = useCallback(() => {
     stopTyping();

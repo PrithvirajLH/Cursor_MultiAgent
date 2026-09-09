@@ -60,3 +60,26 @@ export function ticketSelectionCellWiring(
     },
   };
 }
+
+/**
+ * Should a key press on a ticket row open the ticket (card 1.49)?
+ *
+ * ⚠️ ONLY WHEN THE ROW ITSELF HAS FOCUS. The row is a `role="button"`, so
+ * Space and Enter activate it — but the select-me checkbox lives inside that
+ * row, and Space on a focused checkbox is exactly how a keyboard user ticks
+ * it. Without this guard the key both toggled the box AND navigated away from
+ * the list, which is worse than the dead control it replaced: the selection
+ * was made and then instantly abandoned.
+ *
+ * Found by pressing Space in the browser after the click fix was already in.
+ * The two paths are different handlers on different elements, so fixing the
+ * click did nothing for the key.
+ */
+export function shouldRowKeyActivate(event: {
+  key: string;
+  target: unknown;
+  currentTarget: unknown;
+}): boolean {
+  if (event.target !== event.currentTarget) return false;
+  return event.key === "Enter" || event.key === " ";
+}

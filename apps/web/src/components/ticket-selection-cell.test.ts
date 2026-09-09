@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { ticketSelectionCellWiring } from "./ticket-selection-cell";
+import {
+  shouldRowKeyActivate,
+  ticketSelectionCellWiring,
+} from "./ticket-selection-cell";
 
 const clickEvent = () => ({
   stopPropagation: vi.fn(),
@@ -69,5 +72,44 @@ describe("ticket row selection wiring", () => {
     const event = clickEvent();
     wiring.cell.onClick(event);
     expect(event.stopPropagation).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Card 1.49, the keyboard half — found in the browser pass, after the click
+ * fix was already committed.
+ */
+describe("row key activation", () => {
+  const row = { tag: "tr" };
+  const box = { tag: "input" };
+
+  it("⚠️ does NOT open the ticket when Space came from the checkbox", () => {
+    // THE ASSERTION THAT FAILS IF THE BUG COMES BACK. Space on a focused
+    // checkbox both ticked it and navigated away, so the selection was made
+    // and instantly abandoned — worse than the dead control it replaced.
+    expect(
+      shouldRowKeyActivate({ key: " ", target: box, currentTarget: row }),
+    ).toBe(false);
+    expect(
+      shouldRowKeyActivate({ key: "Enter", target: box, currentTarget: row }),
+    ).toBe(false);
+  });
+
+  it("still opens the ticket from the row itself", () => {
+    expect(
+      shouldRowKeyActivate({ key: "Enter", target: row, currentTarget: row }),
+    ).toBe(true);
+    expect(
+      shouldRowKeyActivate({ key: " ", target: row, currentTarget: row }),
+    ).toBe(true);
+  });
+
+  it("ignores other keys, so typing never navigates", () => {
+    expect(
+      shouldRowKeyActivate({ key: "a", target: row, currentTarget: row }),
+    ).toBe(false);
+    expect(
+      shouldRowKeyActivate({ key: "Tab", target: row, currentTarget: row }),
+    ).toBe(false);
   });
 });

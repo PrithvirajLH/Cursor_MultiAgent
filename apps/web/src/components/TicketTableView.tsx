@@ -1,4 +1,7 @@
-import { ticketSelectionCellWiring } from "./ticket-selection-cell";
+import {
+  shouldRowKeyActivate,
+  ticketSelectionCellWiring,
+} from "./ticket-selection-cell";
 import { useState } from "react";
 import {
   assignTicket,
@@ -196,12 +199,24 @@ export function TicketTableView({
                 }}
                 onContextMenu={(e) => handleContextMenu(e, ticket)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    onRowClick(ticket, {
-                      newTab: event.metaKey || event.ctrlKey,
-                    });
+                  // ⚠️ Card 1.49, second half. The row is a button, so Space
+                  // and Enter open the ticket - but the select-me checkbox
+                  // lives INSIDE the row, and Space on a focused checkbox is
+                  // how a keyboard user ticks it. Without this guard the key
+                  // both toggled the box and navigated away from the list,
+                  // which is worse than the dead control it replaced: the
+                  // selection was made and then immediately abandoned.
+                  //
+                  // Found by pressing Space in the browser. The click fix
+                  // alone did not cover it, because this is a different
+                  // handler on a different element.
+                  if (!shouldRowKeyActivate(event)) {
+                    return;
                   }
+                  event.preventDefault();
+                  onRowClick(ticket, {
+                    newTab: event.metaKey || event.ctrlKey,
+                  });
                 }}
                 role="button"
                 tabIndex={0}

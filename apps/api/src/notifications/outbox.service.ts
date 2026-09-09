@@ -312,14 +312,20 @@ export class OutboxService {
   }
 
   /**
-   * Take the redacted text out of rows that were already sent (card 1.47).
+   * Take the redacted text out of rows that are done with (card 1.47).
    *
-   * The email is gone and nothing here changes that. What this removes is the
-   * COPY: `NotificationOutbox.body` holds the fully rendered message for ever,
-   * because the retention job that would delete it is off. Card 1.11 refused to
-   * preserve redacted text in a `TicketEvent` on the grounds that it moves PHI
-   * into a row with weaker read rules than the message it came from; that
+   * `NotificationOutbox.body` holds the fully rendered message for ever,
+   * because the retention job that would delete it is off. Card 1.11 refused
+   * to preserve redacted text in a `TicketEvent` on the grounds that it moves
+   * PHI into a row with weaker read rules than the message it came from; that
    * argument applies to this column word for word.
+   *
+   * ⚠️ SENT **AND** FAILED, and the second half was a gap the browser pass
+   * found. A FAILED row was never delivered, but it keeps the text just as
+   * long - and with no SMTP configured, production marks EVERY message email
+   * "SMTP not configured" and FAILED, so that is not the rare case, it is the
+   * only case. Scrubbing only SENT rows would have left the words sitting in
+   * the column on nearly every row there is.
    *
    * `subject`, `toEmail` and the timestamps stay, so "did we email this, to
    * whom, when" still has an answer. Only the words go.

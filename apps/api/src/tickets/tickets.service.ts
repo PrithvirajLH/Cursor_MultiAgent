@@ -3043,6 +3043,17 @@ export class TicketsService {
     const sentRows = outboxRows.filter(
       (row) => row.status === OutboxStatus.SENT,
     );
+    // ⚠️ Rows that are DONE WITH, whether they went or not.
+    //
+    // Found in the browser pass: a FAILED row keeps the rendered text exactly
+    // as long as a SENT one, and with no SMTP configured production marks
+    // every message email FAILED - so scrubbing only SENT rows would leave
+    // the words in the column on nearly every row that exists. FAILED is not
+    // counted as emailed (it never went), it just gets cleaned out too.
+    const terminalRows = outboxRows.filter(
+      (row) =>
+        row.status === OutboxStatus.SENT || row.status === OutboxStatus.FAILED,
+    );
     const unsentRows = outboxRows.filter(
       (row) => row.status === OutboxStatus.PENDING,
     );
@@ -3081,7 +3092,7 @@ export class TicketsService {
     // email is gone; the transcript of it does not have to live for ever in a
     // column the retention job is not deleting (card 1.11's own argument).
     await this.outbox.scrubSentBodyForRedaction(
-      sentRows.map((row) => row.id),
+      terminalRows.map((row) => row.id),
     );
     // "Already emailed" means SENT, or in flight and out of our hands: a row
     // the sweeper is sending right now, or one that was PENDING when we read
