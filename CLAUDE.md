@@ -65,32 +65,36 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
    in `prompts/` turned out to contain factual errors that only surfaced on
    execution. Verify, then say so when a document is wrong.
 
-## Current state (2026-09-08)
+## Current state (2026-09-09)
 
 - Branch `ui-redesign-and-api-hardening`. Remotes: `azure` (Azure DevOps, the
   deploy target), plus two **public** GitHub remotes.
-- Production App Service `TicketTicket` runs commit `f48452b` (deployed
-  2026-09-04 20:22 UTC, deployment `050a527c`; previous `d8811a7` 08-29,
-  `2df679d` 08-28, `d1d57bc` 08-27, `c2ff777` 08-26). Live since that deploy:
-  ticket links and merge (1.6), staff email removed so email now goes only to
-  requesters and CC'd outsiders (1.42), macros with actions and placeholders
-  (1.7 / 1.7b), and the intake acknowledgement fix. `POST /api/tickets/intake`
-  is **live** (secret set, path excluded from Easy Auth). The retention job
-  remains off. Two probe tickets (`PA_20260829_021`, `IT_20260829_022`) are
-  awaiting deletion by the owner.
-- **HEAD is ahead of production by seven code commits** — the six-card batch
-  (1.43, 1.18, 1.17, 1.12, 1.11, 1.44), **GREEN 2026-09-08**, carrying
-  **migration 58**. Deploy handoff:
-  `prompts/2026-09-08-deploy-six-card-batch.md`. ⚠️ **It names three
-  prerequisites and two of them are easy to miss** — this machine's IP is not on
-  the production database firewall, so `migrate deploy` cannot connect; and
-  production has **no email-action signing secret**, which would silently ship
-  card 1.44 with none of its seven links. Read that handoff before deploying.
-- Migration count: **58 in the tree**. Production was last verified at 54 on
-  08-29 and should be at 57 now (55–57 went out with the 09-04 deploy), but
-  **that was not re-confirmed** — the production database is unreachable from
-  this machine. `npx prisma migrate status` at deploy time is the gate. The six
-  trigram indexes were intact at the last check.
+- Production App Service `TicketTicket` runs commit `2d637f2` (deployed
+  2026-09-09; previous `f48452b` 09-04, `d8811a7` 08-29, `2df679d` 08-28).
+  Schema is at **58** migrations — confirmed by reading `_prisma_migrations`,
+  with **0 blocking rows** and all **6 trigram indexes** present.
+  `EMAIL_ACTION_SECRET` is set, so card 1.44's seven email links are live.
+- **Live since the 2026-09-09 deploy — sixteen cards in three batches.** The
+  headline ones: one-click close/reopen/rate from the resolved email (1.44),
+  redaction of a sent message including its pasted images and any copy not yet
+  sent (1.11, 1.47, 1.48), three new desk reports (1.17), bulk tags and macros
+  (1.12), an expired session that says so instead of *"Unable to load tickets"*
+  (1.54), and **the API no longer writing bearer tokens or shared secrets into
+  the log (1.57)**.
+- ⚠️ **Card 1.57 is only half closed.** The code stopped leaking, but the
+  logs already written still hold **2,064 full bearer tokens and 252 copies of
+  the intake shared secret** (measured across 09-07 to 09-09). Tokens expire in
+  about an hour so the historical ones are dead. **The intake secret does not
+  expire** — rotation is **deferred by the owner**, tracked as **card 1.59**,
+  which also records why deferring is defensible: that secret opens one route
+  whose only capability is creating a ticket. **Do not rotate it as a side
+  effect of anything, and do not re-raise it unprompted.**
+- The retention job remains off. Two probe tickets (`PA_20260829_021`,
+  `IT_20260829_022`) are still awaiting deletion — now part of card 0.10.
+- **In flight:** `prompts/2026-09-09-five-cards-batch.md` — 1.58, 1.53, 0.9,
+  1.16, 0.10. **Card 1.53 adds migration 59**, the only schema change in that
+  batch. Two of those five are not ordinary code work: 0.9 may produce no
+  production code, and 0.10's production half is run by the owner.
 - ⚠️ **Reports have never excluded soft-deleted tickets** (card 1.45). 20 of the
   23 raw-SQL reports in `reports.service.ts` have no `deletedAt` filter, and the
   comment at `:200` wrongly says they get one from `accessConditionSql` — which
