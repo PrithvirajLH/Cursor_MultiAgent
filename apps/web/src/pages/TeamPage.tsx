@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { filterPeople } from "../utils/filterPeople";
 import {
   AlertCircle,
   ChevronDown,
@@ -279,6 +280,9 @@ export function TeamPage({
 
   const [showTeamDropdown, setShowTeamDropdown] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  /** Card 1.52: what has been typed into the Add-member search box. */
+  const [userSearch, setUserSearch] = useState("");
+  const userSearchRef = useRef<HTMLInputElement>(null);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const usersRequestSeqRef = useRef(0);
   const membersRequestSeqRef = useRef(0);
@@ -778,6 +782,29 @@ export function TeamPage({
     }
   }, [availableUsers, selectedUserId]);
 
+  /**
+   * Card 1.52. 111 users in production, four visible in a 240px box.
+   *
+   * Matches display name AND email: several accounts have no display name and
+   * render their raw address, so a name-only filter would hide exactly the
+   * people somebody is searching for.
+   */
+  const filteredAvailableUsers = useMemo(
+    () => filterPeople(availableUsers, userSearch),
+    [availableUsers, userSearch],
+  );
+
+  // Opening the dropdown puts the cursor in the search box, so it can be typed
+  // into without a second click - and clears the last search, so the list does
+  // not open pre-filtered by something somebody typed a minute ago.
+  useEffect(() => {
+    if (!showUserDropdown) {
+      setUserSearch("");
+      return;
+    }
+    userSearchRef.current?.focus();
+  }, [showUserDropdown]);
+
   const selectedUser =
     availableUsers.find((user) => user.id === selectedUserId) ?? null;
   const addRoleOptions = useMemo(
@@ -1215,31 +1242,78 @@ export function TeamPage({
                           </button>
 
                           {showUserDropdown && availableUsers.length > 0 ? (
-                            <div
-                              role="listbox"
-                              aria-label="User"
-                              className="absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-lg border border-border bg-card shadow-lg"
-                            >
-                              {availableUsers.map((user) => (
-                                <button
-                                  key={user.id}
-                                  type="button"
-                                  role="option"
-                                  aria-selected={selectedUserId === user.id}
-                                  onClick={() => {
-                                    setSelectedUserId(user.id);
-                                    setShowUserDropdown(false);
-                                  }}
-                                  className="block w-full px-4 py-2 text-left text-sm hover:bg-accent"
-                                >
-                                  <div className="font-medium text-foreground">
-                                    {user.displayName}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {user.email}
-                                  </div>
-                                </button>
-                              ))}
+                            <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
+                              {/*
+                                Card 1.52. This list was rendered unfiltered
+                                into a 240px box. Production has 111 users, so
+                                about four were visible and reaching the end
+                                took roughly 28 scrolls.
+
+                                The input is the combobox and the list below is
+                                what it controls. Typed letters reach it because
+                                `handleListboxNav` returns early for anything
+                                that is not Escape or an arrow; ArrowDown from
+                                here moves real focus onto the first option, and
+                                Enter then activates it natively because the
+                                options are buttons.
+
+                                ⚠️ Deliberately NOT `aria-activedescendant`.
+                                That describes a virtual focus, and this
+                                codebase's listboxes move real DOM focus - which
+                                is why Enter works without any handler of our
+                                own. Claiming both would be a lie about where
+                                focus is.
+                              */}
+                              <div className="border-b border-border p-2">
+                                <input
+                                  ref={userSearchRef}
+                                  type="text"
+                                  role="combobox"
+                                  aria-expanded={showUserDropdown}
+                                  aria-controls="add-member-user-listbox"
+                                  aria-autocomplete="list"
+                                  aria-label="Search users by name or email"
+                                  placeholder="Search by name or email"
+                                  value={userSearch}
+                                  onChange={(event) =>
+                                    setUserSearch(event.target.value)
+                                  }
+                                  className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring/30"
+                                />
+                              </div>
+                              <div
+                                role="listbox"
+                                id="add-member-user-listbox"
+                                aria-label="User"
+                                className="max-h-60 overflow-y-auto"
+                              >
+                                {filteredAvailableUsers.length === 0 ? (
+                                  <p className="px-4 py-3 text-sm text-muted-foreground">
+                                    No one matches “{userSearch}”.
+                                  </p>
+                                ) : (
+                                  filteredAvailableUsers.map((user) => (
+                                    <button
+                                      key={user.id}
+                                      type="button"
+                                      role="option"
+                                      aria-selected={selectedUserId === user.id}
+                                      onClick={() => {
+                                        setSelectedUserId(user.id);
+                                        setShowUserDropdown(false);
+                                      }}
+                                      className="block w-full px-4 py-2 text-left text-sm hover:bg-accent"
+                                    >
+                                      <div className="font-medium text-foreground">
+                                        {user.displayName}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        {user.email}
+                                      </div>
+                                    </button>
+                                  ))
+                                )}
+                              </div>
                             </div>
                           ) : null}
                         </div>
