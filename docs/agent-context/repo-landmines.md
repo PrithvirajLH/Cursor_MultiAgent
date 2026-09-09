@@ -532,3 +532,53 @@ all deployed cleanly since. **All six trigram indexes exist** (verified
   blocking rows, this known row separately, and the trigram index count. Run it
   from `apps/api` so `@prisma/client` resolves. It needs the current IP on the
   database firewall.
+
+## A "killed" background integration run is often still running
+
+Discovered the hard way on 2026-09-09, after two runs reported failures that
+were not real.
+
+When a background integration run is stopped — a tool timeout, a harness
+`killed` status, an interrupt — **the jest child processes frequently survive.**
+The wrapper reports the task as stopped; `jest` keeps going, keeps resetting the
+test database in each suite's `beforeAll`, and keeps holding connections.
+
+Start a second run on top of that and the two fight over one database. On
+2026-09-09 that produced `security.rate-limit.spec.ts` failing after **150 s**
+and `tickets.inbound-email.spec.ts` failing — **both phantoms.** A clean run
+straight afterwards was 699 passed + 1 skipped, 69 of 70, with neither failing.
+This is the same hazard as the "81 phantom failures" note above, reached by a
+different route.
+
+- **Before starting any integration run, check for surviving jest processes** and
+  kill them. A harness saying the task is dead is not evidence:
+  ```
+  Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+    Where-Object { $_.CommandLine -like '*jest*' }
+  ```
+- **Never trust a failure from a run that overlapped another.** Re-run clean
+  before believing, and never report such a failure as real.
+- A full clean run is now about **13 minutes** (69 suites), up from ~6–10.
+
+## Stale node processes make each suite's reset fail with exit 127
+
+Same day, and the cause of three truncated runs before the overlap was noticed.
+
+Every integration suite resets the database in its own `beforeAll`, and each
+reset **spawns `npx` two or three times**. With enough stale node processes
+holding handles, those spawns start failing and `jest` exits **127** — after a
+variable number of suites (0, 24, then 21), with **no error message and no
+summary line**, which reads like a hang rather than a failure.
+
+On 2026-09-09 the machine had **eighteen node processes a week old** (from
+09-02, mostly abandoned MCP servers) plus a stray API server. Clearing anything
+created before today fixed it immediately.
+
+- **Exit 127 with no summary means spawn failure, not a test failure.** Do not
+  go looking for a broken test.
+- ⚠️ **Killing week-old node processes can take MCP servers with it** — the
+  Playwright MCP server went down that way, and it does not come back without
+  restarting the session. Check what you are killing if browser tooling matters
+  for the next step.
+- The repo-scoped filter misses a server started with a **relative** path
+  (`dist/src/main.js`), which is the trap already recorded above.
