@@ -29,6 +29,9 @@ UNION ALL SELECT 'CannedResponse',             count(*) FROM "CannedResponse"   
 UNION ALL SELECT 'CustomField',                count(*) FROM "CustomField"         WHERE "teamId"         = (SELECT id FROM src)
 UNION ALL SELECT 'AutomationRule',             count(*) FROM "AutomationRule"      WHERE "teamId"         = (SELECT id FROM src)
 UNION ALL SELECT 'AdminAuditEvent',            count(*) FROM "AdminAuditEvent"     WHERE "teamId"         = (SELECT id FROM src)
+-- Added 2026-09-09 (card 0.10): this table references Team and was missing from
+-- BOTH scripts, so the merge's own verification could not have caught it.
+UNION ALL SELECT 'SlaBusinessHoursSetting',     count(*) FROM "SlaBusinessHoursSetting" WHERE "teamId"     = (SELECT id FROM src)
 ORDER BY 1;
 
 \echo ''
@@ -52,7 +55,19 @@ SELECT 'SlaPolicyAssignment (hr already has one)', count(*)
   FROM "SlaPolicyAssignment" sa
  WHERE sa."teamId" = (SELECT id FROM src)
    AND EXISTS (SELECT 1 FROM "SlaPolicyAssignment" s2 WHERE s2."teamId" = (SELECT id FROM dst))
+UNION ALL
+SELECT 'SlaBusinessHoursSetting (hr already has one)', count(*)
+  FROM "SlaBusinessHoursSetting" bh
+ WHERE bh."teamId" = (SELECT id FROM src)
+   AND EXISTS (SELECT 1 FROM "SlaBusinessHoursSetting" b2 WHERE b2."teamId" = (SELECT id FROM dst))
 ORDER BY 1;
+
+\echo ''
+\echo '=== Hidden sidebar presets (card 1.53, migration 59) ==='
+\echo 'The SURVIVING team keeps its own list. Anything hr-operations hid is'
+\echo 'discarded by the merge - shown here so you can decide BEFORE running it.'
+SELECT slug, coalesce("hiddenPresetIds", ARRAY[]::text[]) AS hidden_presets
+  FROM "Team" WHERE slug IN ('hr', 'hr-operations') ORDER BY slug;
 
 \echo ''
 \echo '=== Sanity: tickets currently unassigned (should not change) ==='

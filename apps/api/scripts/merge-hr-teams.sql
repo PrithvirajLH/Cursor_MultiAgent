@@ -68,6 +68,17 @@ BEGIN
   GET DIAGNOSTICS dropped = ROW_COUNT;
   RAISE NOTICE '  dropped % SlaPolicyAssignment rows (hr already has one)', dropped;
 
+  -- **ADDED 2026-09-09 (card 0.10).** SlaBusinessHoursSetting references Team
+  -- and was handled NOWHERE in this script - not moved, and not counted by the
+  -- verification block below, so a merge would have reported "0 references
+  -- remain" while hr-operations' business hours still pointed at it. One row
+  -- per team, so hr's own setting wins and the source's is dropped.
+  DELETE FROM "SlaBusinessHoursSetting" bh
+   WHERE bh."teamId" = src
+     AND EXISTS (SELECT 1 FROM "SlaBusinessHoursSetting" b2 WHERE b2."teamId" = dst);
+  GET DIAGNOSTICS dropped = ROW_COUNT;
+  RAISE NOTICE '  dropped % SlaBusinessHoursSetting rows (hr already has one)', dropped;
+
   -- ── Move the survivors ────────────────────────────────────────────────
 
   UPDATE "Ticket" SET "assignedTeamId" = dst WHERE "assignedTeamId" = src;
@@ -100,6 +111,9 @@ BEGIN
   UPDATE "AutomationRule" SET "teamId" = dst WHERE "teamId" = src;
   GET DIAGNOSTICS moved = ROW_COUNT;  RAISE NOTICE '  moved % AutomationRule', moved;
 
+  UPDATE "SlaBusinessHoursSetting" SET "teamId" = dst WHERE "teamId" = src;
+  GET DIAGNOSTICS moved = ROW_COUNT;  RAISE NOTICE '  moved % SlaBusinessHoursSetting', moved;
+
   -- Audit history keeps pointing at the team it was recorded against, but the
   -- team must still exist for the FK. Repointing keeps the row readable.
   UPDATE "AdminAuditEvent" SET "teamId" = dst WHERE "teamId" = src;
@@ -114,6 +128,26 @@ BEGIN
    WHERE id = dst
      AND src_description IS NOT NULL
      AND (description IS NULL OR length(description) < length(src_description));
+
+  -- **ADDED 2026-09-09 (card 0.10)**, because card 1.53 added the column in
+  -- the same batch. `Team.hiddenPresetIds` is which built-in sidebar presets a
+  -- team switched off. Two merging teams have two lists; the merged team can
+  -- only have one.
+  --
+  -- THE SURVIVING TEAM'S LIST WINS and the source's is discarded. Unioning
+  -- would hide presets from the merged team that neither admin chose to lose,
+  -- and hiding something people rely on is worse than showing something they
+  -- had turned off - they can turn it off again in one click. The discarded
+  -- list is ANNOUNCED rather than dropped silently, so whoever runs this can
+  -- put it back if it mattered.
+  --
+  -- Note this team is deactivated, not deleted, so the row and its list
+  -- survive; nothing points at it once the moves above are done.
+  SELECT array_length("hiddenPresetIds", 1) INTO leftover FROM "Team" WHERE id = src;
+  IF coalesce(leftover, 0) > 0 THEN
+    RAISE NOTICE '  NOTE: hr-operations hid % sidebar preset(s); hr keeps its own list. Discarded: %',
+      leftover, (SELECT "hiddenPresetIds" FROM "Team" WHERE id = src);
+  END IF;
 
   UPDATE "Team" SET "isActive" = false WHERE id = src;
 
@@ -130,6 +164,7 @@ BEGIN
   + (SELECT count(*) FROM "CustomField"         WHERE "teamId"         = src)
   + (SELECT count(*) FROM "AutomationRule"      WHERE "teamId"         = src)
   + (SELECT count(*) FROM "AdminAuditEvent"     WHERE "teamId"         = src)
+  + (SELECT count(*) FROM "SlaBusinessHoursSetting" WHERE "teamId"     = src)
   INTO leftover;
 
   IF leftover <> 0 THEN
