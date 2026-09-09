@@ -1,3 +1,4 @@
+import { ticketSelectionCellWiring } from "./ticket-selection-cell";
 import { useState } from "react";
 import {
   assignTicket,
@@ -173,6 +174,10 @@ export function TicketTableView({
               ? extractOriginalMessage(ticket.description.trim())
               : ticket.category?.name || "No additional details";
             const selected = selection.isSelected(ticket.id);
+            const selectionWiring = ticketSelectionCellWiring(
+              ticket.id,
+              selection.toggle,
+            );
             const focused = focusedTicketId === ticket.id;
             return (
               <tr
@@ -210,19 +215,22 @@ export function TicketTableView({
                 }`}
               >
                 {showCheckbox ? (
-                  <td
-                    className="px-6 py-4"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      event.preventDefault();
-                      selection.toggle(ticket.id);
-                    }}
-                  >
+                  /*
+                    Card 1.49. The handlers come from
+                    `ticketSelectionCellWiring` rather than being written
+                    inline, because this control was DEAD and no test could
+                    see it: the input's onChange was `() => {}` and its
+                    onClick stopped the click before it reached the only
+                    handler that acted, so the box did nothing and Space did
+                    nothing, while the padding beside it worked. There is no
+                    jsdom in this project's vitest, so a plain function is
+                    what makes the wiring assertable at all.
+                  */
+                  <td className="px-6 py-4" {...selectionWiring.cell}>
                     <input
                       type="checkbox"
                       checked={selected}
-                      onChange={() => {}}
-                      onClick={(event) => event.stopPropagation()}
+                      {...selectionWiring.input}
                       className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30 transition accent-primary"
                       aria-label={`Select ticket ${ticket.subject}`}
                     />
