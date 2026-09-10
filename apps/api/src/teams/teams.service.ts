@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -10,6 +11,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { ListTeamsDto } from './dto/list-teams.dto';
+import { isReservedTeamSlug } from './is-reserved-team-slug.util';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { UpdateTeamMemberDto } from './dto/update-team-member.dto';
 
@@ -94,6 +96,7 @@ export class TeamsService {
   async create(payload: CreateTeamDto, user: AuthUser) {
     this.ensureOwner(user);
     const slug = payload.slug ?? this.slugify(payload.name);
+    this.assertSlugNotReserved(slug);
 
     const created = await this.prisma.team.create({
       data: {
@@ -117,6 +120,9 @@ export class TeamsService {
     this.ensureTeamAdminOrOwner(user, teamId);
 
     await this.ensureTeam(teamId);
+    if (payload.slug !== undefined) {
+      this.assertSlugNotReserved(payload.slug);
+    }
 
     const updated = await this.prisma.team.update({
       where: { id: teamId },
@@ -392,6 +398,23 @@ export class TeamsService {
       where: { id: userId },
       data: { role: desiredRole },
     });
+  }
+
+  /**
+   * Refuse a slug the inbound mailbox needs (card 1.24).
+   *
+   * ⚠️ Checked on BOTH create and update. Only guarding create would let
+   * somebody rename an existing team into the reserved space, which is the
+   * same ambiguity arriving by a different door.
+   */
+  private assertSlugNotReserved(slug: string): void {
+    if (isReservedTeamSlug(slug)) {
+      throw new BadRequestException(
+        'A team slug cannot begin with "ticket-": the inbound mailbox reads ' +
+          'that prefix as a reply token, so mail for this department would ' +
+          'be looked up as a ticket instead.',
+      );
+    }
   }
 
   private slugify(value: string) {
