@@ -231,6 +231,19 @@ describe('Email policy: only people outside the system', () => {
       // The word, never the enum.
       expect(resolved[0].body).toContain('resolved');
       expect(resolved[0].body).not.toContain('RESOLVED');
+      // ⚠️ CARD 1.68's GUARDRAIL, deliberately in THIS test rather than a new
+      // one: the footer had to go WITHOUT taking 1.44's links with it, and the
+      // two live in adjacent blocks of the same builder. Asserting both here
+      // means a future edit cannot satisfy one and quietly break the other.
+      // The seven links are counted above; these three lines are the footer.
+      expect(html).not.toContain('Reply to this email');
+      expect(html).not.toContain('view online');
+      expect(resolved[0].body).not.toContain('Reply to this email');
+      // ...and the text half must end on content, not on the blank line the
+      // links block used to push in front of the footer.
+      expect(resolved[0].body).toBe(resolved[0].body.trimEnd());
+      // The preheader is NOT part of the footer and stays (card 1.35).
+      expect(html).toContain('mso-hide:all');
     });
 
     it('rings the bell for the staff who no longer get the email', async () => {
@@ -443,7 +456,14 @@ describe('Email policy: only people outside the system', () => {
         );
         expect(html).not.toContain('View Ticket');
         expect(html).not.toContain('Best regards');
-        expect(html).toContain('view online');
+        // ⚠️ INVERTED BY CARD 1.68. This asserted the footer was on every
+        // outbound email. The owner removed it - the instruction was wrong for
+        // the resolved email (it says "reply" under seven one-click links) and
+        // "view online" sent a requester into a Microsoft sign-in. The rule
+        // above it went too: with nothing below, it was a line to nowhere.
+        expect(html).not.toContain('view online');
+        expect(html).not.toContain('Reply to this email');
+        expect(html).not.toContain('border-top:1px solid #e5e7eb');
         // The quoted font stack: unquoted, 'Segoe UI' is invalid CSS and
         // strict clients drop the whole stack.
         expect(html).toContain(`font-family:'Segoe UI', Arial, sans-serif`);

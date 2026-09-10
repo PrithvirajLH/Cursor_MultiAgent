@@ -64,13 +64,18 @@ const MESSAGE =
   'Thanks Dana — so 08-31 is right but the punch is missing. Can you send a corrected timesheet?';
 
 describe('the reply email body', () => {
-  it('carries the message, the instruction and one text link, and nothing else', () => {
+  it('⚠️ carries the message and the author, and NO footer (card 1.68)', () => {
+    // INVERTED by card 1.68. This asserted the footer was present; the owner
+    // asked for it to go, so it now asserts the opposite - which is what keeps
+    // the decision visible and stops the footer quietly coming back.
     const rendered = html(MESSAGE);
     expect(rendered).toContain('Vi Le');
     expect(rendered).toContain('corrected timesheet');
-    expect(rendered).toContain('Reply to this email');
-    expect(rendered).toContain('view online');
-    expect(rendered).toContain('https://tickets.csnhc.com/tickets/ticket-1');
+    expect(rendered).not.toContain('Reply to this email');
+    expect(rendered).not.toContain('view online');
+    // The horizontal rule went with it - with nothing below, it was a line to
+    // nowhere.
+    expect(rendered).not.toContain('border-top:1px solid #e5e7eb');
   });
 
   it('leaks no ticket status to the person who is waiting', () => {
@@ -203,23 +208,27 @@ describe('the reply email body', () => {
 
   describe('the plain-text half', () => {
     it('has the same parts in the same order', () => {
+      // ⚠️ REWRITTEN, not inverted, by card 1.68. This test was about ORDER -
+      // it named the footer only to assert what followed what. With the footer
+      // gone there is no "after" to check, so it now pins the order of what
+      // remains: the author, then the message, and nothing after it.
       const rendered = text(MESSAGE);
       const lines = rendered.split('\n');
       expect(lines[0]).toBe('Vi Le');
       expect(rendered.indexOf(MESSAGE)).toBeGreaterThan(0);
-      expect(rendered.indexOf('Reply to this email')).toBeGreaterThan(
-        rendered.indexOf(MESSAGE),
-      );
-      expect(rendered.indexOf('https://tickets.csnhc.com')).toBeGreaterThan(
-        rendered.indexOf('Reply to this email'),
-      );
+      expect(rendered.trimEnd().endsWith(MESSAGE)).toBe(true);
     });
 
-    it('puts the URL on a line of its own', () => {
+    it('⚠️ ends on the message, with no trailing link or blank (card 1.68)', () => {
+      // INVERTED. This asserted the last line WAS the ticket URL. The text
+      // half's bare URL was the plain-text equivalent of "view online", so it
+      // went with the footer - and what is left has to end cleanly rather than
+      // on a separator or an empty line a reader takes for truncation.
       const lines = text(MESSAGE).split('\n');
-      expect(lines[lines.length - 1]).toBe(
-        'https://tickets.csnhc.com/tickets/ticket-1',
-      );
+      const last = lines[lines.length - 1];
+      expect(last).not.toBe('');
+      expect(last).not.toContain('https://');
+      expect(last).toContain('corrected timesheet');
     });
 
     it('draws no ASCII-art borders', () => {

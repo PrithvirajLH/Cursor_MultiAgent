@@ -235,7 +235,11 @@ describe('Inbound email ingestion', () => {
     expect(html).not.toContain('Request received');
     expect(html).not.toContain('What happens next');
     expect(html).not.toContain('View Ticket');
-    expect(html).toContain('view online');
+    // ⚠️ INVERTED BY CARD 1.68. The footer is gone from all five emails. The
+    // preheader assertion below is NOT part of it and stays - that is card
+    // 1.35, and it is the whole inbox preview.
+    expect(html).not.toContain('view online');
+    expect(html).not.toContain('Reply to this email');
     expect(html).toContain(
       'display:none;font-size:0;line-height:0;max-height:0;overflow:hidden;mso-hide:all;',
     );
@@ -398,7 +402,9 @@ describe('Inbound email ingestion', () => {
     for (const html of [ackHtml, replyHtml]) {
       expect(html).not.toContain('View Ticket');
       expect(html).not.toContain('Best regards');
-      expect(html).toContain('view online');
+      // ⚠️ INVERTED BY CARD 1.68, across both emails in the loop.
+      expect(html).not.toContain('view online');
+      expect(html).not.toContain('Reply to this email');
       expect(html).toContain('display:none;font-size:0;line-height:0');
     }
   });
@@ -687,17 +693,27 @@ describe('Inbound email ingestion', () => {
       `${created.subject} [${created.displayId ?? created.id}]`,
     );
     expect(outbox?.body).toContain(agentReply);
-    expect(outbox?.body).toContain('Reply to this email');
+    // ⚠️ INVERTED BY CARD 1.68 - three assertions here, the text half and both
+    // halves of the footer in the HTML.
+    expect(outbox?.body).not.toContain('Reply to this email');
     const html = getOutboxHtml(outbox?.payload);
     const emailMetadata = getOutboxEmailMetadata(outbox?.payload);
-    // Card 1.34 rewrote this body. It used to assert the heading, the "Ticket
-    // details" block and the View Ticket button - all three removed on purpose:
-    // the first two repeated the subject line, and the details block printed
-    // ticket.status raw, so a requester was shown WAITING_ON_REQUESTER. What
-    // the body must carry now is the message, the instruction and the link.
+    // Card 1.34 rewrote this body: it used to assert the heading, the "Ticket
+    // details" block and the View Ticket button - all three removed on purpose,
+    // the first two repeating the subject line and the details block printing
+    // ticket.status raw, so a requester was shown WAITING_ON_REQUESTER.
+    //
+    // ⚠️ CARD 1.68 THEN REVERSED THE REST OF THAT DECISION. 1.34's note read
+    // "what the body must carry now is the message, the instruction and the
+    // link"; the owner has since cut the instruction and the link too, so the
+    // body is the author's name and the message and nothing else. Replying
+    // still works - it always did, and the Reply-To header is what makes it
+    // work, not a sentence telling the reader to. This comment is updated
+    // rather than deleted so the reversal is legible instead of looking like
+    // an assertion someone dropped.
     expect(html).toContain('please restart your VPN client');
-    expect(html).toContain('Reply to this email');
-    expect(html).toContain('view online');
+    expect(html).not.toContain('Reply to this email');
+    expect(html).not.toContain('view online');
     expect(html).toContain('mso-hide:all');
     expect(html).not.toContain('Update on your request');
     expect(html).not.toContain('Ticket details');

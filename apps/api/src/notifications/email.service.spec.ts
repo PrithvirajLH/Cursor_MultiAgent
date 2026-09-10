@@ -283,6 +283,14 @@ describe('EmailService', () => {
     // above the FIRST marker it finds - so whether the preheader survives
     // depends entirely on whether the quoting client adds an attribution line
     // of its own above the quote.
+    //
+    // ⚠️ CARD 1.68 LEFT THIS LINE ALONE, on purpose. The footer is gone from
+    // what we SEND, but this array is a fixture of an email coming BACK - a
+    // requester's client quoting a message we sent them earlier. Every
+    // acknowledgement already sitting in a mailbox still carries the footer,
+    // so replies quoting one will keep arriving for months. Deleting it would
+    // make the fixture less like the traffic, not more; and nothing here
+    // asserts on the line, it is only the tail of the quoted copy.
     const quotedCopy = [
       PREHEADER_TEXT,
       REPLY_ABOVE_MARKER,

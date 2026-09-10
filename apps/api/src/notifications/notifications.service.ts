@@ -22,13 +22,6 @@ import {
 } from './outbox.service';
 import { TicketEmailThreadService } from './ticket-email-thread.service';
 
-/**
- * The one instruction in a reply email. The owner's exact wording - an earlier
- * draft read "Reply to this email and your answer goes onto the ticket" and the
- * shorter line is the decision. Do not lengthen it.
- */
-const REPLY_INSTRUCTION = 'Reply to this email';
-
 /** Roughly what an inbox preview shows before it truncates anyway. */
 const PREHEADER_MAX_LENGTH = 90;
 
@@ -138,8 +131,6 @@ export class NotificationsService {
       'We have logged your request and the team will pick it up.',
       '',
       `Your reference is ${reference}.`,
-      '',
-      REPLY_INSTRUCTION,
     ].join('\n');
     await this.queueEmails([requester], {
       eventType: 'TICKET_CREATED',
@@ -489,8 +480,13 @@ export class NotificationsService {
     }
     const emailContext = await this.buildTicketEmailContext(ticket);
     // Card 1.44. Null when no signing secret is configured, and the email then
-    // falls back to the plain "view online" link rather than carrying links
-    // that would answer "this link is not valid" when clicked.
+    // carries no action links at all rather than links that would answer
+    // "this link is not valid" when clicked.
+    //
+    // ⚠️ This comment used to say it "falls back to the plain view online
+    // link". Card 1.68 removed that link, so there is no fallback now - the
+    // email is simply shorter. Corrected rather than left describing a link
+    // that no longer exists.
     const links = this.buildResolvedEmailLinks(ticket.id);
     await this.queueEmails([requester], {
       eventType: 'TICKET_STATUS_CHANGED',
@@ -545,8 +541,11 @@ export class NotificationsService {
       });
       lines.push('');
     }
-    lines.push(REPLY_INSTRUCTION, this.ticketLink(ticketId));
-    return lines.join('\n');
+    // trimEnd because each block above pushes a trailing '' to separate
+    // itself from the footer that used to follow. With the footer gone
+    // (card 1.68) that blank became the last thing in the body, which a
+    // mail client shows as an empty line a reader takes for truncation.
+    return lines.join('\n').trimEnd();
   }
 
   /**
@@ -555,7 +554,6 @@ export class NotificationsService {
    * sentence, never `RESOLVED` in a details block.
    */
   private buildResolvedHtmlBody(ticketId: string, links: ResolvedEmailLinks) {
-    const link = this.escapeHtml(this.ticketLink(ticketId));
     const preheader = this.escapeHtml('Tell us if this is fixed, or reopen it.');
     const actionStyle =
       'font-size:15px;line-height:1.7;color:#2563eb;text-decoration:underline;';
@@ -603,9 +601,6 @@ export class NotificationsService {
       '                <div style="font-size:16px;line-height:1.7;color:#111827;margin-bottom:20px;">We have marked your request as resolved.</div>',
       ...actions,
       ...stars,
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;">${REPLY_INSTRUCTION}</div>`,
-      '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
-      `                <div><a href="${link}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
       '              </td>',
       '            </tr>',
       '          </table>',
@@ -1134,9 +1129,6 @@ export class NotificationsService {
       actor.displayName || actor.email,
       '',
       messageBody,
-      '',
-      REPLY_INSTRUCTION,
-      this.ticketLink(ticket.id),
     ].join('\n');
   }
 
@@ -1178,7 +1170,6 @@ export class NotificationsService {
     // Escaped like everything else. Easy to forget precisely because it is
     // invisible, which is why there is a test for it.
     const preheader = this.escapeHtml(this.buildPreheader(messageBody));
-    const ticketUrl = this.escapeHtml(this.ticketLink(ticket.id));
 
     return [
       '<!DOCTYPE html>',
@@ -1205,9 +1196,6 @@ export class NotificationsService {
       '                    </td>',
       '                  </tr>',
       '                </table>',
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;margin:28px 0 0 0;">${REPLY_INSTRUCTION}</div>`,
-      '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
-      `                <div><a href="${ticketUrl}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
       '              </td>',
       '            </tr>',
       '          </table>',
@@ -1262,9 +1250,6 @@ export class NotificationsService {
       'We have your email and opened a ticket for it.',
       '',
       `Your reference is ${ticketId}.`,
-      '',
-      REPLY_INSTRUCTION,
-      this.ticketLink(details.ticketId),
     ].join('\n');
   }
 
@@ -1280,7 +1265,6 @@ export class NotificationsService {
     const ticketId = this.escapeHtml(
       details.ticketDisplayId ?? details.ticketId,
     );
-    const ticketUrl = this.escapeHtml(this.ticketLink(details.ticketId));
     // Escaped like everything else, and easy to forget precisely because it is
     // invisible - hence a test for it.
     const preheader = this.escapeHtml(
@@ -1305,9 +1289,6 @@ export class NotificationsService {
       `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:16px;">Hello ${requesterName},</div>`,
       '                <div style="font-size:16px;line-height:1.7;color:#111827;margin-bottom:20px;">We have your email and opened a ticket for it.</div>',
       `                <div style="font-size:15px;line-height:1.7;color:#374151;margin-bottom:20px;">Your reference is <strong>${ticketId}</strong>.</div>`,
-      `                <div style="font-size:15px;line-height:1.7;color:#374151;">${REPLY_INSTRUCTION}</div>`,
-      '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
-      `                <div><a href="${ticketUrl}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
       '              </td>',
       '            </tr>',
       '          </table>',
@@ -1334,9 +1315,6 @@ export class NotificationsService {
    * See docs/email-conversation.md before adding anything back.
    */
   private buildDefaultNotificationHtmlBody(details: QueuedEmailDetails) {
-    const ticketUrl = details.ticketId
-      ? this.escapeHtml(this.ticketLink(details.ticketId))
-      : null;
     const contentBlocks = this.buildHtmlContentBlocks(
       details.body,
       details.ticketId,
@@ -1357,12 +1335,6 @@ export class NotificationsService {
       '            <tr>',
       '              <td style="padding:32px;">',
       ...contentBlocks,
-      ...(ticketUrl
-        ? [
-            '                <div style="border-top:1px solid #e5e7eb;margin:10px 0 10px 0;"></div>',
-            `                <div><a href="${ticketUrl}" style="font-size:13px;color:#6b7280;text-decoration:underline;">view online</a></div>`,
-          ]
-        : []),
       '              </td>',
       '            </tr>',
       '          </table>',
