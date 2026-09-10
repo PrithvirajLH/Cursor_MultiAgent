@@ -1,5 +1,14 @@
 # Card 1.24 — the go-live checklist
 
+> ⚠️ **Address corrected 2026-09-10 by the planner: the mailbox is
+> `glovebox@csnhc.com`, not `helpdesk@`.** Read live from the App Service, where
+> `INBOUND_MAILBOX_ADDRESS`, `SMTP_FROM` and `SMTP_REPLY_TO` are all `glovebox@` —
+> so the address people are told to reply to **is** the one the worker polls, which is
+> the thing that had to be true. Every command below now names the real mailbox; running
+> them against `helpdesk@` would have tested a mailbox that does not exist and reported
+> a pass.
+
+
 **Run this the minute the Graph permission lands.** Everything is already
 built, tested and off. Nothing below needs the handoff open beside it.
 
@@ -12,19 +21,19 @@ built, tested and off. Nothing below needs the handoff open beside it.
 Three things, in **one** request — retrofitting any of them is harder than
 asking now.
 
-1. **`Mail.ReadWrite`, SCOPED to the single helpdesk mailbox** via an
+1. **`Mail.ReadWrite`, SCOPED to the single shared mailbox** via an
    **Application Access Policy**. Unscoped, the app registration can read
    **every mailbox in the tenant**. This is the security decision on this card.
    The policy command IT runs looks like:
    ```powershell
    New-ApplicationAccessPolicy -AppId <AZURE_CLIENT_ID> `
-     -PolicyScopeGroupId helpdesk@csnhc.com `
+     -PolicyScopeGroupId glovebox@csnhc.com `
      -AccessRight RestrictAccess `
-     -Description "Ticketing inbound worker - helpdesk mailbox only"
-   Test-ApplicationAccessPolicy -Identity helpdesk@csnhc.com -AppId <AZURE_CLIENT_ID>
+     -Description "Ticketing inbound worker - glovebox mailbox only"
+   Test-ApplicationAccessPolicy -Identity glovebox@csnhc.com -AppId <AZURE_CLIENT_ID>
    ```
 2. **The shared mailbox must exist and accept plus-addressing**
-   (`helpdesk+ticket-abc@…` must deliver to `helpdesk@…`). That is card 1.25
+   (`glovebox+ticket-abc@…` must deliver to `glovebox@…`). That is card 1.25
    and an M365 task, not a code one. `Mail.ReadWrite` is useless without it.
 3. **A directory-read scope** (`User.Read.All`), in the same request. Different
    permission from `Mail.ReadWrite`. It closes card 1.30 §5.1: somebody who has
@@ -38,7 +47,7 @@ asking now.
 | Variable | Value for go-live | Notes |
 |---|---|---|
 | `INBOUND_MAILBOX_ENABLED` | `true` | **The switch. Off by default.** |
-| `INBOUND_MAILBOX_ADDRESS` | `helpdesk@csnhc.com` | Defaults to `SMTP_REPLY_TO` / `SMTP_FROM` if unset. |
+| `INBOUND_MAILBOX_ADDRESS` | `glovebox@csnhc.com` | Defaults to `SMTP_REPLY_TO` / `SMTP_FROM` if unset. |
 | `INBOUND_MAILBOX_POLL_INTERVAL_MS` | leave unset | Default **30000** (30 s). |
 | `INBOUND_MAILBOX_BATCH_SIZE` | leave unset | Default 50 messages per poll. |
 | `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` | already set | Reused; no new secret. |
@@ -47,7 +56,7 @@ Set them without a restart loop:
 
 ```bash
 az webapp config appsettings set --name TicketTicket --resource-group csnhc-ai \
-  --settings INBOUND_MAILBOX_ENABLED=true INBOUND_MAILBOX_ADDRESS=helpdesk@csnhc.com
+  --settings INBOUND_MAILBOX_ENABLED=true INBOUND_MAILBOX_ADDRESS=glovebox@csnhc.com
 ```
 
 ⚠️ **Deploy migration 60 first** (`20260910120000_inbound_mailbox_cursor`).
@@ -58,7 +67,7 @@ The worker cannot persist its cursor without it.
 ## 1. Confirm the permission is SCOPED
 
 ```powershell
-Test-ApplicationAccessPolicy -Identity helpdesk@csnhc.com -AppId <AZURE_CLIENT_ID>   # expect: AccessCheckResult = Granted
+Test-ApplicationAccessPolicy -Identity glovebox@csnhc.com -AppId <AZURE_CLIENT_ID>   # expect: AccessCheckResult = Granted
 Test-ApplicationAccessPolicy -Identity <any-other-mailbox>@csnhc.com -AppId <AZURE_CLIENT_ID>  # expect: Denied
 ```
 
@@ -69,8 +78,8 @@ owner before pointing the worker at anything.**
 
 ## 2. Confirm the mailbox accepts plus-addressing
 
-- [ ] From an **external** account, send to `helpdesk+test@csnhc.com`.
-- [ ] It arrives in `helpdesk@csnhc.com`.
+- [ ] From an **external** account, send to `glovebox+test@csnhc.com`.
+- [ ] It arrives in `glovebox@csnhc.com`.
 
 ⚠️ **If the tenant strips or rejects it, stop.** The fallback order is a
 catch-all subdomain (`anything@tickets.csnhc.com`), then one mailbox per
@@ -144,15 +153,15 @@ The ticket's status must be **unchanged** afterwards.
 
 ## 10. An unrouted inbound ticket — **owner decision**
 
-- [ ] Send to bare `helpdesk@csnhc.com` with no matching routing rule.
+- [ ] Send to bare `glovebox@csnhc.com` with no matching routing rule.
 - [ ] It gets **no team**, so **no email and no bell** — discoverable only from
       the Unassigned queue.
 
 ⚠️ **Decide now: a fallback department, or rely on card 1.16's digest.**
 The planner's view and mine agree: **a fallback**. It is small, and it means
 nothing can arrive with no owner. Department addressing
-(`helpdesk+payroll@`) covers the normal case, so this is only about bare
-`helpdesk@`.
+(`glovebox+payroll@`) covers the normal case, so this is only about bare
+`glovebox@`.
 
 ## 11. Email redirection
 
