@@ -69,11 +69,18 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
 
 - Branch `ui-redesign-and-api-hardening`. Remotes: `azure` (Azure DevOps, the
   deploy target), plus two **public** GitHub remotes.
-- Production App Service `TicketTicket` runs commit `2d637f2` (deployed
-  2026-09-09; previous `f48452b` 09-04, `d8811a7` 08-29, `2df679d` 08-28).
-  Schema is at **58** migrations — confirmed by reading `_prisma_migrations`,
+- Production App Service `TicketTicket` runs commit `79e49e9` (deployed
+  2026-09-10; previous `2d637f2` 09-09, `f48452b` 09-04, `d8811a7` 08-29).
+  Schema is at **59** migrations — confirmed by reading `_prisma_migrations`,
   with **0 blocking rows** and all **6 trigram indexes** present.
   `EMAIL_ACTION_SECRET` is set, so card 1.44's seven email links are live.
+- **The 2026-09-10 deploy shipped the five-card batch** — 1.58, 1.53, 0.9,
+  1.16, 0.10 — including **migration 59** (`Team.hiddenPresetIds`). So
+  team-managed saved views and preset hiding are **live**, and the owner found
+  a gap in them within the hour: **card 1.61**, the four sidebar rows that come
+  from a second list and cannot be hidden. The leads' digest (1.16) is live but
+  **switched off** (`LEAD_DIGEST_ENABLED`), and email is the owner's settled
+  choice of transport for it.
 - **Live since the 2026-09-09 deploy — sixteen cards in three batches.** The
   headline ones: one-click close/reopen/rate from the resolved email (1.44),
   redaction of a sent message including its pasted images and any copy not yet

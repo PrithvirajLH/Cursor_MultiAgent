@@ -582,3 +582,18 @@ created before today fixed it immediately.
   for the next step.
 - The repo-scoped filter misses a server started with a **relative** path
   (`dist/src/main.js`), which is the trap already recorded above.
+
+## The Operations job list is pinned in two specs, and only one fails fast
+
+`operations.service.spec.ts` (unit) and `test/integration/operations.spec.ts`
+both assert the **number of background jobs** on the Operations console. Add a
+job, update the unit spec, and everything looks green — the integration spec
+fails **fourteen minutes later**, at the end of a full run.
+
+This has now happened **twice**: card 1.16 and card 1.24, both 2026-09-10.
+
+- **Adding a job means updating both**, in the same edit. The implementer has
+  left a comment in each file saying so.
+- More generally: **an assertion on a count is cheap to write and expensive to
+  find.** If you are pinning "how many of X", check whether something else
+  already pins it.
