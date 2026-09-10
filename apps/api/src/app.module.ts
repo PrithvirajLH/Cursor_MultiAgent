@@ -18,6 +18,7 @@ import { KbModule } from './kb/kb.module';
 import { CommonModule } from './common/common.module';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module';
 import { HealthModule } from './health/health.module';
+import { InboundMailboxModule } from './inbound-mailbox/inbound-mailbox.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -113,6 +114,7 @@ import { validateEnv } from './common/env.validation';
     EmailActionsModule,
     CustomFieldsModule,
     HealthModule,
+    InboundMailboxModule,
     NotificationsModule,
     OperationsModule,
     PrismaModule,
