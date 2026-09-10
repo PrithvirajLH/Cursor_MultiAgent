@@ -106,7 +106,7 @@ is a department slug.
       `medicaid-pending`, `payroll`, `white-gloves` — and **`hr-operations` is
       INACTIVE, never target it.** Nobody will type
       `helpdesk+it-service-desk@csnhc.com`, so carry a small alias map (`it`,
-      `pay`, `hr`, …). `resolveTeamIdBySlug` already does the lookup (`intake.service.ts:199`) 2014 but note it is **private to `IntakeService`**, so lift it rather than copying it.
+      `pay`, `hr`, …). `resolveTeamIdBySlug` already does the lookup (`intake.service.ts:199`) — but note it is **private to `IntakeService`**, so lift it rather than copying it.
 - [ ] **Department addressing applies to the first message only.** Once the ticket
       exists, outbound sets `Reply-To` to the `+ticket-` address — already built in
       `ticket-email-thread.service.ts` — so the thread moves onto the ticket by
