@@ -698,6 +698,32 @@ model TicketTag {
   @@index([ticketId])
 }
 
+/// The Graph delta cursor for one polled mailbox (card 1.24).
+///
+/// ⚠️ THE WHOLE REASON THIS CARD POLLS RATHER THAN USING A WEBHOOK. The delta
+/// link is a durable cursor: if the app is down for a deploy or an outage, the
+/// next poll collects everything that arrived meanwhile. Holding it in memory
+/// would silently lose every message that arrived during a restart - which is
+/// the exact failure a push subscription has, and the reason polling was
+/// chosen over one.
+///
+/// One row per mailbox address. There is expected to be exactly one, but the
+/// address is the key rather than a singleton flag so that pointing the worker
+/// at a different mailbox starts a fresh cursor instead of resuming somebody
+/// else's.
+model InboundMailboxCursor {
+  id        String   @id @default(uuid())
+  /// The mailbox this cursor belongs to, lower-cased.
+  mailbox   String   @unique
+  /// Opaque Graph `@odata.deltaLink`. Null means "never synced": the next poll
+  /// starts a new delta and takes whatever the initial page returns.
+  deltaLink String?
+  /// When a poll last completed, successfully or not. Operations reads this.
+  lastSyncedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model NotificationOutbox {
   id        String              @id @default(uuid())
   channel   NotificationChannel @default(EMAIL)
