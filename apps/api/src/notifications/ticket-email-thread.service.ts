@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   buildOutboundMessageId,
   buildTicketRootMessageId,
+  buildThreadIndex,
   isUnroutableMessageId,
 } from './email-threading.util';
 import type { EmailOutboxMetadata } from './outbox.service';
@@ -46,6 +47,10 @@ export class TicketEmailThreadService {
     // The one id that never changes for this ticket, and deliberately FIRST so
     // the cap below can never be the thing that drops it.
     const root = buildTicketRootMessageId(thread.replyToken, replyTo);
+    // Card 1.66: the Outlook half of threading. `References` below is the RFC
+    // 5322 answer and live headers proved it correct; Outlook groups on this
+    // and on Thread-Topic instead, and neither was being sent.
+    const threadIndex = buildThreadIndex(thread.replyToken);
     const ancestry = await this.rebuildAncestry(params.ticketId, replyTo);
     // Card 1.43: bracket ONCE, here, and use the result for BOTH headers below.
     //
@@ -112,6 +117,10 @@ export class TicketEmailThreadService {
       ),
       emailMetadata: {
         replyTo,
+        // Canonical, so the topic matches the requester's own original mail.
+        // The Subject above keeps the [PA_...] tag; only the topic drops it.
+        threadTopic: thread.canonicalSubject,
+        threadIndex,
         inReplyTo: inReplyTo || null,
         references: references.length > 0 ? references : null,
       },

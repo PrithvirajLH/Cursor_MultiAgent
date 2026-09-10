@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 const OUTBOX_MESSAGE_ID_PREFIX = 'outbox';
 /** Prefix of the synthetic per-ticket root id (card 1.33). */
 const TICKET_ROOT_MESSAGE_ID_PREFIX = 'ticket';
@@ -116,4 +118,42 @@ export function extractOutboxIdsFromThreadHeaders(
   }
 
   return Array.from(outboxIds);
+}
+
+/** Bytes in a ConversationIndex root block: 1 header + 5 time + 16 GUID. */
+const THREAD_INDEX_ROOT_BYTES = 22;
+/** The only ConversationIndex version Outlook has ever emitted. */
+const THREAD_INDEX_VERSION = 1;
+
+/**
+ * The Microsoft conversation header, derived so every email about a ticket
+ * carries the same one.
+ *
+ * `References` is the RFC 5322 answer and ours has always been correct - proven
+ * from live headers on 2026-09-10, where both emails carried the same
+ * `<ticket.…>` root and the second referenced the first. **Outlook does not use
+ * it.** It groups on `Thread-Index` (ConversationIndex), and when that header is
+ * absent Exchange has to infer a conversation instead. That inference is what
+ * fails here: the tenant's security gateway re-injects each message separately,
+ * so two correctly-threaded emails arrived as two conversations.
+ *
+ * Derived from `replyToken` by the same reasoning as `buildTicketRootMessageId`:
+ * no new column, no second piece of state that can drift, and a send that failed
+ * leaves no pointer behind. Deterministic, so every message on the ticket
+ * produces an identical value.
+ *
+ * Every message gets the ROOT block rather than a per-message child block.
+ * Outlook groups on the 22-byte root prefix, so identical roots is what makes a
+ * conversation; ordering inside it then falls back to `Date`, which is the
+ * correct order anyway. Child blocks would need a parent-position we do not
+ * store, and getting them wrong nests replies under the wrong parent - worse
+ * than not nesting at all.
+ */
+export function buildThreadIndex(replyToken: string): string {
+  const digest = createHash('sha256').update(replyToken).digest();
+  const block = Buffer.alloc(THREAD_INDEX_ROOT_BYTES);
+  block[0] = THREAD_INDEX_VERSION;
+  digest.copy(block, 1, 0, 5);
+  digest.copy(block, 6, 5, 21);
+  return block.toString('base64');
 }

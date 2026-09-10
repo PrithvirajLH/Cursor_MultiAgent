@@ -151,6 +151,10 @@ export class EmailService {
     messageId?: string;
     inReplyTo?: string;
     references?: string[];
+    /** Canonical ticket subject, untagged (card 1.66). */
+    threadTopic?: string;
+    /** Stable per-ticket ConversationIndex (card 1.66). */
+    threadIndex?: string;
   }) {
     if (!this.transporter) {
       throw new Error('SMTP not configured');
@@ -213,7 +217,24 @@ export class EmailService {
       inReplyTo: payload.inReplyTo,
       references: payload.references,
       headers: {
-        'Thread-Topic': payload.subject,
+        // ⚠️ CARD 1.66. THESE TWO ARE WHY OUTLOOK THREADS, NOT `References`.
+          //
+          // Our RFC 5322 headers were correct the whole time - live headers on
+          // 2026-09-10 showed both emails carrying the same `<ticket.…>` root
+          // with the second referencing the first - and Outlook still split
+          // them into two conversations. It groups on ConversationTopic and
+          // ConversationIndex, which come from the two headers below.
+          //
+          // Thread-Topic is the CANONICAL subject, never `payload.subject`.
+          // Outlook strips `RE:`/`FW:` when deriving the topic but NOT a
+          // bracketed suffix, so sending the tagged subject put every reply in
+          // a different conversation from the requester's own original mail.
+          // The fallback keeps rows queued before this shipped working - it
+          // reproduces the old behaviour rather than sending nothing.
+          'Thread-Topic': payload.threadTopic ?? payload.subject,
+          ...(payload.threadIndex
+            ? { 'Thread-Index': payload.threadIndex }
+            : {}),
       },
     });
     // Recipients the server named as rejected while still accepting the

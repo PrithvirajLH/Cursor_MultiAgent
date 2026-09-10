@@ -30,6 +30,18 @@ export type EmailOutboxMetadata = {
    * per-message headers.
    */
   cc?: string[] | null;
+  /**
+   * The CANONICAL ticket subject, without the `[PA_…]` tag (card 1.66).
+   *
+   * Outlook derives its ConversationTopic from `Thread-Topic`, and it strips
+   * `RE:`/`FW:` prefixes but NOT a bracketed suffix. Sending the tagged subject
+   * put our replies in a different conversation from the requester's own
+   * original mail, which carries the untagged one. `Subject` keeps the tag; only
+   * the topic drops it.
+   */
+  threadTopic?: string | null;
+  /** Stable per-ticket ConversationIndex (card 1.66). */
+  threadIndex?: string | null;
 };
 
 export type EmailOutboxContent = {
