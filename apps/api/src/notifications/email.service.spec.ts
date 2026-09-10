@@ -43,6 +43,8 @@ function lastCall() {
     cc?: string[];
     text: string;
     html?: string;
+    from?: string;
+    replyTo?: string;
   };
 }
 
@@ -329,6 +331,76 @@ describe('EmailService', () => {
       expect(shown).toContain('Yes, sending it now.');
       expect(shown).toContain(PREHEADER_TEXT);
       expect(shown).not.toContain('The visible message.');
+    });
+  });
+
+  describe('the named Reply-To (card 1.67 ①)', () => {
+    // The per-ticket address a real send uses. `glovebox` is the production
+    // mailbox and the token is the shape `buildReplyToAddress` emits.
+    const TICKET_REPLY_TO =
+      'glovebox+ticket-6f2a91c47b3d8e05a1@csnhc.com';
+
+    it('⚠️ names the mailbox and leaves the address byte-identical', async () => {
+      // THE REGRESSION ASSERTION. The address carries the ticket token; one
+      // mangled byte and the requester's reply resolves to no ticket and is
+      // filed as a brand-new one. So this checks the whole header literally,
+      // and then checks the bracketed address against the input string on its
+      // own - a `toContain` alone would pass on a truncated token.
+      await buildService().sendEmail({
+        to: 'dana@csnhc.com',
+        subject: 'Ticket update',
+        text: 'Hello',
+        replyTo: TICKET_REPLY_TO,
+      });
+      const { replyTo } = lastCall();
+      expect(replyTo).toBe(`CSNHC Helpdesk <${TICKET_REPLY_TO}>`);
+      const inBrackets = (replyTo as string).match(/<([^<>]+)>/)?.[1];
+      expect(inBrackets).toBe(TICKET_REPLY_TO);
+      // Not double-wrapped, and no stray quoting: `CSNHC Helpdesk` is two
+      // atoms and needs none. One pair of brackets, one address.
+      expect((replyTo as string).match(/</g)).toHaveLength(1);
+      expect(replyTo).not.toContain('"');
+    });
+
+    it('⚠️ never carries the agent name, however the From is addressed', async () => {
+      // The mailbox is the desk's. `Sarah Chen (CSNHC Helpdesk)` in a Reply-To
+      // would claim a shared address belongs to one person - and every reply
+      // to the ticket goes to the same place regardless of who last wrote.
+      await buildService().sendEmail({
+        to: 'dana@csnhc.com',
+        subject: 'Ticket update',
+        text: 'Hello',
+        agentDisplayName: 'Sarah Chen',
+        replyTo: TICKET_REPLY_TO,
+      });
+      const { from, replyTo } = lastCall();
+      expect(from).toBe('"Sarah Chen (CSNHC Helpdesk)" <helpdesk@csnhc.com>');
+      expect(replyTo).toBe(`CSNHC Helpdesk <${TICKET_REPLY_TO}>`);
+      expect(replyTo).not.toContain('Sarah');
+    });
+
+    it('names the configured fallback when the caller passes no reply address', async () => {
+      // SMTP_REPLY_TO is unset here, so replyToAddress is SMTP_FROM.
+      await buildService().sendEmail({
+        to: 'dana@csnhc.com',
+        subject: 'Ticket update',
+        text: 'Hello',
+      });
+      expect(lastCall().replyTo).toBe('CSNHC Helpdesk <helpdesk@csnhc.com>');
+    });
+
+    it('emits no display name rather than an empty mailbox for a blank address', async () => {
+      // `??` does not catch `''`, so without the blank check this would have
+      // sent `CSNHC Helpdesk <>` - a malformed header, and the failure mode
+      // the owner asked to be sure of, since a client cannot reply to it.
+      await buildService().sendEmail({
+        to: 'dana@csnhc.com',
+        subject: 'Ticket update',
+        text: 'Hello',
+        replyTo: '   ',
+      });
+      expect(lastCall().replyTo).toBe('');
+      expect(lastCall().replyTo).not.toContain('CSNHC');
     });
   });
 

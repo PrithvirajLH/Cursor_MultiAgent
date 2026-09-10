@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { OutboxStatus } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
+import { buildFromIdentity } from './from-identity.util';
 import { TicketEmailThreadService } from './ticket-email-thread.service';
 
 const TICKET_ID = 'ticket-1';
@@ -207,5 +208,54 @@ describe('recordOutboundEmail', () => {
       messageId: '   ',
     });
     expect(harness.updates).toHaveLength(0);
+  });
+});
+
+/**
+ * Card 1.67 ① — the round trip. The check the owner asked for by name:
+ * after naming the Reply-To, a reply still has to land on its ticket.
+ */
+describe('the named Reply-To still resolves to its ticket (card 1.67 ①)', () => {
+  it('⚠️ round-trips the header EmailService actually emits', async () => {
+    // Built with the same formatter the send path uses, not a hand-typed
+    // string - a test that types the header itself proves only that the test
+    // author can type. If the emitted shape ever changes, this changes with
+    // it and the assertion below still has to hold.
+    const harness = buildHarness({});
+    const address = harness.service.buildReplyToAddress(TOKEN);
+    const header = buildFromIdentity({ address });
+    expect(header).toBe(`CSNHC Helpdesk <helpdesk+ticket-${TOKEN}@csnhc.com>`);
+    expect(harness.service.extractReplyToken(header)).toBe(TOKEN);
+    expect(await harness.service.resolveTicketIdByReplyAddress(header)).toBe(
+      TICKET_ID,
+    );
+  });
+
+  it('resolves the bare address identically, which is what a client sends back', async () => {
+    // A replying client addresses the mailbox inside the brackets, so the
+    // bare form is the one that arrives. Both paths must agree; a difference
+    // between them would be a reply that resolves in the test and not in
+    // production.
+    const harness = buildHarness({});
+    const address = harness.service.buildReplyToAddress(TOKEN);
+    expect(harness.service.extractReplyToken(address)).toBe(TOKEN);
+    expect(await harness.service.resolveTicketIdByReplyAddress(address)).toBe(
+      TICKET_ID,
+    );
+  });
+
+  it('⚠️ is not fooled by a display name that itself looks like an address', async () => {
+    // Theoretical here - the Reply-To display name is a constant in code, not
+    // user input - but worth pinning, because the extractor takes the FIRST
+    // bracketed group and a name containing an address is exactly where a
+    // parser picks the wrong one. A quoted name has no brackets of its own,
+    // so the first pair is the real mailbox and the token comes from it.
+    const address = `helpdesk+ticket-${TOKEN}@csnhc.com`;
+    const harness = buildHarness({});
+    expect(
+      harness.service.extractReplyToken(
+        `"someone+ticket-deadbeefdeadbeefdead@evil.example" <${address}>`,
+      ),
+    ).toBe(TOKEN);
   });
 });

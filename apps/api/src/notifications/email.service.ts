@@ -196,6 +196,7 @@ export class EmailService {
     // THE PILOT INVARIANT, restated for CC: in pilot mode the allowed list IS
     // the pilot list, so To takes it and CC is emptied. There is no branch here
     // that can put an intended address in either field.
+    const replyToAddress = (payload.replyTo ?? this.replyToAddress).trim();
     const toAddresses = isPilot ? allowed : this.pickTo(intendedTo, allowed);
     const ccAddresses = isPilot
       ? []
@@ -207,7 +208,23 @@ export class EmailService {
         agentDisplayName: payload.agentDisplayName,
         address: this.fromAddress,
       }),
-      replyTo: payload.replyTo ?? this.replyToAddress,
+      // ⚠️ CARD 1.67 ①. Named, so a requester's client shows "CSNHC Helpdesk"
+      // instead of `glovebox+ticket-6f2a...@csnhc.com` - which reads as a
+      // machine address and is the thing people were declining to reply to.
+      //
+      // NAMED ONLY AT THE WIRE, deliberately. The bare address stays the
+      // stored `emailMetadata.replyTo`, because two things downstream parse
+      // it: `buildOutboundMessageId` takes the domain off it for every
+      // Message-ID, and the integration suite's `expectedReplyToPattern` is
+      // anchored `^...$` on the bare form. Naming it upstream would have put
+      // a display name through the Message-ID sanitiser.
+      //
+      // The blank check keeps the old behaviour for a caller that passes an
+      // empty string: `??` does not catch `''`, and naming nothing would
+      // emit `CSNHC Helpdesk <>`.
+      replyTo: replyToAddress
+        ? buildFromIdentity({ address: replyToAddress })
+        : replyToAddress,
       to: toAddresses,
       ...(ccAddresses.length > 0 ? { cc: ccAddresses } : {}),
       subject: payload.subject,

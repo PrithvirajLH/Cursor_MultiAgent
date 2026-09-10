@@ -15,7 +15,13 @@ const SPECIALS = /[()<>[\]:;@\\,."]/;
 export type FromIdentityInput = {
   /** The agent whose reply this is; omit for the generic team identity. */
   readonly agentDisplayName?: string | null;
-  /** Overrides SMTP_FROM; mainly for tests. */
+  /**
+   * The mailbox to name. Overrides SMTP_FROM.
+   *
+   * Card 1.67 gave this a second caller: `Reply-To` passes the per-ticket
+   * plus address here and omits `agentDisplayName`, because that mailbox
+   * belongs to the desk and not to whichever agent happened to reply.
+   */
   readonly address?: string | null;
 };
 
@@ -34,14 +40,23 @@ function encodeDisplayName(displayName: string): string {
 }
 
 /**
- * Build the From header.
+ * Build an RFC 5322 mailbox: a display name and an address in angle brackets.
  *
  * `Sarah Chen (CSNHC Helpdesk) <helpdesk@csnhc.com>` for an agent's reply, and
  * the generic `CSNHC Helpdesk <helpdesk@csnhc.com>` when no agent is named -
  * a notification raised by a worker has no person behind it.
  *
  * The agent form always ends up quoted, because the parentheses that make it
- * readable are themselves RFC specials.
+ * readable are themselves RFC specials. The generic form does not: `CSNHC
+ * Helpdesk` is two atoms and needs no quoting, which is why the emitted
+ * `Reply-To` reads `CSNHC Helpdesk <...>` rather than `"CSNHC Helpdesk" <...>`.
+ * Both are the same header to a parser; quoting what needs no quoting is the
+ * kind of thing a strict client is entitled to dislike.
+ *
+ * ⚠️ Card 1.67: this now builds `Reply-To` as well as `From`, and it is the
+ * ONLY formatter that may. A second one would be a second place for the
+ * quoting to be wrong, and the address it wraps has a ticket token in it -
+ * one mangled byte and the reply lands nowhere.
  */
 export function buildFromIdentity(input: FromIdentityInput = {}): string {
   const address = (
