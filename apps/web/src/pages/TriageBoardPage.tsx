@@ -30,6 +30,7 @@ import {
   type TeamRef,
   type TicketRecord,
 } from "../api/client";
+import { isAbortError } from "../api/is-abort-error";
 import { RelativeTime } from "../components/RelativeTime";
 import { TopBar } from "../components/TopBar";
 import { useHeaderContext } from "../contexts/HeaderContext";
@@ -329,6 +330,12 @@ export function TriageBoardPage({
       setTickets(response.data);
     } catch (err) {
       if (loadRequestIdRef.current !== requestId) {
+        return;
+      }
+      // ⚠️ CARD 1.65: a cancelled request is not a failed one - see the note in
+      // `is-abort-error.ts`. The board is superseded on every scope and team
+      // change, so this fires here more than anywhere.
+      if (isAbortError(err)) {
         return;
       }
       setError("Unable to load triage tickets.");

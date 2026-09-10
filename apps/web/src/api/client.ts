@@ -1,3 +1,4 @@
+import { isAbortError } from "./is-abort-error";
 import { sessionExpiryStore } from "./session-expiry-store";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -869,10 +870,6 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   apiGetInflight.set(cacheKey, requestPromise as Promise<unknown>);
   return requestPromise;
-}
-
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === "AbortError";
 }
 
 type DataEnvelope<T> = { data: T };

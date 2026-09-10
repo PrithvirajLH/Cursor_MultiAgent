@@ -39,6 +39,7 @@ import { downloadCsvContent } from "../utils/download-csv";
 import { handleApiError } from "../utils/handleApiError";
 import { useSessionExpired } from "../hooks/use-session-expired";
 import { ApiError } from "../api/client";
+import { isAbortError } from "../api/is-abort-error";
 import {
   REALTIME_TICKET_CHANGED_EVENT,
   type RealtimeTicketChangedEventPayload,
@@ -848,6 +849,15 @@ export function TicketsPage({
           setTickets([]);
           return;
         }
+        // ⚠️ CARD 1.65, and the same mistake as the 401 above: a cancelled
+        // request is not a failed one. The browser aborts whatever is in flight
+        // when this list is superseded or torn down, and the server has often
+        // already answered it - the two production aborts that produced this
+        // fix were a 200 in 20ms and a 304 in 42ms. Leave the rows alone: either
+        // a newer load is coming, or nobody is here to read the error anyway.
+        // A timeout is NOT this case - it arrives as ApiError 408 and still
+        // reaches the user below, which is correct.
+        if (isAbortError(err)) return;
         setTicketError("Unable to load tickets.");
         setListMeta(null);
         setTickets([]);
