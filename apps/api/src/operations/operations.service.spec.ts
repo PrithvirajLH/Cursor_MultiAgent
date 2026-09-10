@@ -35,6 +35,8 @@ type Overrides = {
   outboxCounts?: jest.Mock;
   leadDigestEnabled?: () => boolean;
   leadDigestRun?: jest.Mock;
+  inboundMailboxEnabled?: () => boolean;
+  inboundMailboxRun?: jest.Mock;
 };
 
 function makeService(overrides: Overrides = {}) {
@@ -116,6 +118,26 @@ function makeService(overrides: Overrides = {}) {
         enabled: false,
       }),
   };
+  // Card 1.24: off unless a test says otherwise, matching the shipped default.
+  const inboundMailbox = {
+    isEnabled: overrides.inboundMailboxEnabled ?? (() => false),
+    getMailbox: () => 'helpdesk@company.com',
+    getIntervalMs: () => 30_000,
+    describeGraph: () => 'missing AZURE_TENANT_ID',
+    getLastRun: () => ({ at: null, summary: null }),
+    runOnce:
+      overrides.inboundMailboxRun ??
+      jest.fn().mockResolvedValue({
+        ranAt: '2026-09-10T07:00:00.000Z',
+        enabled: false,
+        fetched: null,
+        ingested: 0,
+        movedToProcessed: 0,
+        skippedNotAddressedToUs: 0,
+        failed: 0,
+        error: 'Switch is off (INBOUND_MAILBOX_ENABLED is not true)',
+      }),
+  };
   const service = new OperationsService(
     health as never,
     slaBreach as never,
@@ -124,6 +146,7 @@ function makeService(overrides: Overrides = {}) {
     outboxSweeper as never,
     outbox as never,
     leadDigest as never,
+    inboundMailbox as never,
     new ConfigService({
       INTAKE_API_SECRET: 'set',
       SLA_BREACH_INTERVAL_MS: '60000',
@@ -141,6 +164,7 @@ describe('OperationsService.snapshot', () => {
       'retention',
       // Card 1.32 added the sweeper between retention and the scheduler;
       // card 1.16 added the lead digest just before it.
+      'inbound-mailbox',
       'lead-digest',
       'email-outbox',
       'automation-scheduler',
@@ -150,6 +174,7 @@ describe('OperationsService.snapshot', () => {
         'retention',
         'automation-scheduler',
         'sla-worker',
+        'inbound-mailbox',
         'lead-digest',
         'ai-pipeline',
         'realtime',
@@ -187,13 +212,14 @@ describe('OperationsService.snapshot', () => {
       readiness: () => Promise.reject(new Error('redis down')),
     });
     const snapshot = await service.snapshot();
-    expect(snapshot.jobs).toHaveLength(5);
+    expect(snapshot.jobs).toHaveLength(6);
     // The switch group keeps the worker rows readiness does not own.
     // Card 1.16 added the lead digest to that set.
     expect(snapshot.switches?.map((row) => row.key)).toEqual([
       'retention',
       'automation-scheduler',
       'sla-worker',
+      'inbound-mailbox',
       'lead-digest',
     ]);
   });
@@ -211,7 +237,7 @@ describe('OperationsService.snapshot', () => {
       lastRunAt: null,
       nextRunAt: null,
     });
-    expect(snapshot.jobs).toHaveLength(5);
+    expect(snapshot.jobs).toHaveLength(6);
   });
 });
 

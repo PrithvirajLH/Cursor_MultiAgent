@@ -64,7 +64,14 @@ describe('Operations console (card 1.21)', () => {
       'sla-breach',
       'retention',
       // Card 1.32 added the outbox sweeper as a fourth job; card 1.16 added the
-      // lead digest as a fifth, just before it.
+      // lead digest as a fifth and card 1.24 the inbound mailbox worker as a
+      // sixth, both just before it.
+      //
+      // ⚠️ THIS LIST IS PINNED IN TWO PLACES: here and in
+      // `src/operations/operations.service.spec.ts`. Adding a job and updating
+      // only one of them passes the unit run and fails the integration run
+      // fourteen minutes later - which has now happened twice (1.16, 1.24).
+      'inbound-mailbox',
       'lead-digest',
       'email-outbox',
       'automation-scheduler',

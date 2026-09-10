@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AutomationSchedulerService } from '../automation/automation-scheduler.service';
 import { EmailOutboxSweeperService } from '../notifications/email-outbox-sweeper.service';
+import { InboundMailboxService } from '../inbound-mailbox/inbound-mailbox.service';
 import { LeadDigestService } from '../notifications/lead-digest.service';
 import { OutboxService } from '../notifications/outbox.service';
 import { HealthService } from '../health/health.service';
@@ -45,6 +46,7 @@ export class OperationsService {
     private readonly outboxSweeper: EmailOutboxSweeperService,
     private readonly outbox: OutboxService,
     private readonly leadDigest: LeadDigestService,
+    private readonly inboundMailbox: InboundMailboxService,
     private readonly config: ConfigService,
   ) {}
 
@@ -105,6 +107,10 @@ export class OperationsService {
     if (key === 'email-outbox') {
       return this.toRecord(await this.outboxSweeper.runOnce());
     }
+    if (key === 'inbound-mailbox') {
+      // Safe while the switch is off: `runOnce` reports it and polls nothing.
+      return this.toRecord(await this.inboundMailbox.runOnce());
+    }
     if (key === 'lead-digest') {
       // ⚠️ Safe while the switch is off: `runOnce` reports `enabled: false` and
       // queues nothing, so Run now cannot send mail behind the switch's back.
@@ -137,6 +143,7 @@ export class OperationsService {
       const scheduler = this.scheduler.getPolicy();
       const sla = this.slaBreach.getWorkerState();
       const digestEnabled = this.leadDigest.isEnabled();
+      const mailboxEnabled = this.inboundMailbox.isEnabled();
       const rows: OperationsSwitch[] = [
         {
           key: 'retention',
@@ -168,6 +175,17 @@ export class OperationsService {
           on: sla.enabled,
           state: sla.enabled ? 'On' : 'Off',
           setting: 'SLA_BREACH_WORKER_ENABLED',
+        },
+        {
+          key: 'inbound-mailbox',
+          label: 'Inbound mailbox worker',
+          description:
+            `Polls ${this.inboundMailbox.getMailbox()} with a Graph delta query and files each ` +
+            'consumed message under Processed. Off by default; needs Mail.ReadWrite scoped to ' +
+            `that one mailbox. Graph: ${this.inboundMailbox.describeGraph()}.`,
+          on: mailboxEnabled,
+          state: mailboxEnabled ? 'On' : 'Off',
+          setting: 'INBOUND_MAILBOX_ENABLED',
         },
         {
           key: 'lead-digest',
@@ -285,6 +303,23 @@ export class OperationsService {
             lastRunAt: state.lastRunAt,
             lastRunOk: state.lastRunOk,
             lastSummary: state.lastSummary as Record<string, unknown> | null,
+          };
+        },
+      ),
+      this.jobRow(
+        'inbound-mailbox',
+        'Inbound mailbox worker',
+        'Polls the helpdesk mailbox and turns new mail into tickets and replies.',
+        () => {
+          const state = this.inboundMailbox.getLastRun();
+          return {
+            enabled: this.inboundMailbox.isEnabled(),
+            intervalMs: this.inboundMailbox.getIntervalMs(),
+            lastRunAt: state.at,
+            // A run that reports an error is NOT ok. This is the card where a
+            // silent failure loses mail, so the console must show it red.
+            lastRunOk: state.summary ? state.summary.error === null : null,
+            lastSummary: state.summary as Record<string, unknown> | null,
           };
         },
       ),

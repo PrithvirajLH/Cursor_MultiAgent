@@ -5,6 +5,7 @@ export const JOB_KEYS = [
   'automation-scheduler',
   'email-outbox',
   'lead-digest',
+  'inbound-mailbox',
 ] as const;
 
 export type JobKey = (typeof JOB_KEYS)[number];
