@@ -52,13 +52,21 @@ export type LeadDigestRunSummary = {
  * One email per lead per morning: what breached, what is at risk, what is
  * unassigned on their team (card 1.16).
  *
- * ⚠️ THIS CARD SITS AGAINST CARD 1.42, WHICH REMOVED STAFF EMAIL ENTIRELY -
+ * ⚠️ THIS SITS AGAINST CARD 1.42, WHICH REMOVED STAFF EMAIL ENTIRELY -
  * *"agents, leads and owners get no email at all; they work on the platform."*
- * A digest emailed to a lead is staff email. The planner's reading, which this
- * is built under, is that 1.42 was aimed at PER-TICKET noise - an email per
- * message and per status change - and that one scheduled summary is a different
- * animal. **The owner can veto that reading**, which is why the switch is OFF
- * by default: shipping this sends nothing until somebody chooses otherwise.
+ * A digest emailed to a lead is staff email, so the exception is deliberate:
+ * 1.42 was aimed at PER-TICKET noise, an email per message and per status
+ * change, and one scheduled summary is a different animal.
+ *
+ * ✅ **DECIDED BY THE OWNER, 2026-09-10: keep the email digest.** An in-app
+ * digest on the operations console was offered as the alternative and was not
+ * taken. Do not reopen this - it is a settled product decision, not an
+ * oversight, and the argument has already been had in both directions.
+ *
+ * The switch stays OFF by default regardless. That is now a deployment
+ * question rather than a design one: production has no SMTP configured at all
+ * (`docs/azure-env-inventory.md`), so enabling it before that is resolved
+ * would queue mail that cannot leave.
  *
  * ⚠️ **It does not touch 1.42's staff exclusion.** `notifications.service.ts`
  * filters staff out of per-ticket recipients and is untouched: this is a wholly
@@ -66,10 +74,18 @@ export type LeadDigestRunSummary = {
  * email back to an agent.
  *
  * ⚠️ **The CONTENT is computed separately from the DELIVERY**, deliberately.
- * `collectDigests()` returns data and sends nothing. If the owner prefers an
- * in-app digest on the operations console - a real alternative, and arguably the
- * better one given production has no SMTP configured at all - that is a new
- * reader of the same method, not a rewrite.
+ * `collectDigests()` returns data and sends nothing, so a second surface would
+ * be a new reader rather than a rewrite. Worth keeping even now the email is
+ * settled: it is what makes the three sections below reusable.
+ *
+ * 📝 **KNOWN FOLLOW-UP, deferred on purpose (owner, 2026-09-10).** Those three
+ * sections - breached, at risk, unassigned - are a SECOND definition of "what
+ * needs attention"; the sidebar counts are the first. Two definitions of one
+ * rule is the drift behind cards 1.36, 1.38, 1.47, 1.50 and 1.55, so this
+ * should eventually read from the same helpers the sidebar uses. Not urgent
+ * while the switch is off and nothing consumes it. **If you are about to turn
+ * this on for real, do that first** - the moment leads act on these numbers,
+ * two definitions that disagree become a support question.
  *
  * Scope comes from `AccessControlService.operationalTeamIds`, the one
  * chokepoint, rather than a second definition of "my team". Card 1.55 is the
