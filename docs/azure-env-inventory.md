@@ -7,6 +7,22 @@ appears in this file, treat it as a leak: rotate it and scrub history.
 
 Re-capture after any settings change or deploy that touches an integration.
 
+> ⚠️ **STALE — partially re-checked 2026-09-10. Two rows below are now WRONG,
+> and one of them caused an implementer to reach a wrong conclusion about card 1.16.**
+>
+> - **Email (SMTP) is NOT `missing`.** All seven `SMTP_*` settings are present on the
+>   App Service (`SMTP_HOST` points at SocketLabs), and `NotificationOutbox` holds
+>   **274 `SENT` rows**, twelve of them `MESSAGE_ADDED`. **Email does leave
+>   production.** The "Decision needed" in that row is closed, and the two cards it
+>   names are both resolved differently: **1.14 was closed by card 1.42**, and 1.16 is
+>   a live decision on transport rather than on whether SMTP exists.
+> - **The schema is not at 48 migrations.** It is at **58** as of the 2026-09-09
+>   deploy (`2d637f2`), verified against `_prisma_migrations`.
+>
+> Everything else here was accurate on 2026-08-26 and has **not** been re-verified.
+> **Read a live setting before relying on any row in this file.** Redis is still
+> absent and the attachment scanner is still blocked, both confirmed 2026-09-09.
+
 ## What production has switched on
 
 Verbatim response from `GET /api/health/ready`:
