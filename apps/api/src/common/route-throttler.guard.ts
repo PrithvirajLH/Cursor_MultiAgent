@@ -13,6 +13,20 @@ import {
   type ThrottleTrackerSource,
 } from './throttle-tracker.util';
 
+/**
+ * The metadata-key prefix `@SkipThrottle()` writes, per named throttler.
+ *
+ * ⚠️ PINNED TO A LIBRARY INTERNAL. @nestjs/throttler declares
+ * `THROTTLER_SKIP = 'THROTTLER:SKIP'` in throttler.constants.d.ts but does NOT
+ * re-export it from the package root, so there is nothing importable to use.
+ * Verified against the installed 6.5.0. If a future version changes the value,
+ * this check stops matching and a `@SkipThrottle()` on a webhook or high-write
+ * route silently stops working again - which is why
+ * rate-limit.per-user.spec.ts asserts the decorator actually exempts such a
+ * route rather than trusting the string.
+ */
+const THROTTLER_SKIP_PREFIX = 'THROTTLER:SKIP';
+
 const DEFAULT_WEBHOOK_LIMIT = 30;
 const DEFAULT_WEBHOOK_TTL_MS = 60_000;
 const DEFAULT_HIGH_WRITE_LIMIT = 60;
@@ -66,6 +80,36 @@ export class RouteThrottlerGuard extends Throttler.ThrottlerGuard {
       context.getHandler(),
     );
     if (policy === 'webhook' || policy === 'highWrite') {
+      // ⚠️ CARD 1.69, STEP 3. This branch used to return before anything
+      // looked at the skip metadata, so `@SkipThrottle()` on a webhook or
+      // high-write route was silently ignored - the decorator would be there,
+      // read as exempt by anyone reviewing it, and do nothing. It fails safe
+      // (the route stays limited) which is exactly why it could sit here
+      // unnoticed; the cost would have been paid by whoever exempted a route,
+      // deployed, and then had to work out why nothing changed. Checked here
+      // rather than left for step 3's health routes to avoid by luck: they
+      // carry no policy, so they reach `super.canActivate` and were always
+      // honoured.
+      //
+      // BOTH KEYS, and the first is the one that matters. A bare
+      // `@SkipThrottle()` writes `THROTTLER:SKIPdefault` - the library's
+      // default argument is `{ default: true }` - so checking only the policy
+      // name would have honoured `@SkipThrottle({ webhook: true })` and still
+      // ignored the plain form, which is the form anyone would write and read
+      // as "this route is not rate limited".
+      const skipKeys = [
+        `${THROTTLER_SKIP_PREFIX}default`,
+        `${THROTTLER_SKIP_PREFIX}${policy}`,
+      ];
+      const targets = [context.getHandler(), context.getClass()];
+      const skipped = skipKeys.some((key) =>
+        Boolean(
+          this.reflector.getAllAndOverride<boolean | undefined>(key, targets),
+        ),
+      );
+      if (skipped) {
+        return true;
+      }
       const limit = this.getPolicyLimit(policy);
       const ttl = this.getPolicyTtl(policy);
       const syntheticThrottler = {

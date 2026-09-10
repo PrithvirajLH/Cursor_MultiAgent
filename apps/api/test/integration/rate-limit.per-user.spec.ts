@@ -160,6 +160,42 @@ describe('rate limiting is per user, not per application (card 1.69)', () => {
     await request(server).get('/api/').expect(429);
   });
 
+  describe('step 3 — the health probe', () => {
+    it('⚠️ /api/health is exempt, and carries no rate-limit headers at all', async () => {
+      // THE ASSERTION FOR STEP 3. `siteConfig.healthCheckPath` is `/api/health`
+      // and the platform calls it about once a minute; in a quiet window that
+      // was essentially all the traffic, spending from the same bucket as real
+      // users. A 429 here reads to Azure as an unhealthy instance and takes the
+      // site out to fix a problem that does not exist.
+      //
+      // Asserted on the ABSENCE OF THE HEADERS rather than by exhausting a
+      // budget, which is both faster and stricter: `setHeaders: true` means any
+      // route the throttler actually handled comes back with
+      // `x-ratelimit-limit`. No header means the guard returned before the
+      // counter, so the probe cannot consume anyone's allowance either.
+      const first = await request(server).get('/api/health').expect(200);
+      expect(first.headers['x-ratelimit-limit']).toBeUndefined();
+      expect(first.headers['x-ratelimit-remaining']).toBeUndefined();
+      // And it does not 429 however often it is called - LIMIT + 2 here, where
+      // any limited route would already have been refused.
+      for (let i = 0; i < LIMIT + 2; i += 1) {
+        await request(server).get('/api/health').expect(200);
+      }
+    });
+
+    it('⚠️ /api/health/ready is DELIBERATELY still limited', async () => {
+      // Left limited on purpose, and this test is what records that as a
+      // decision rather than an oversight. The platform does not call it
+      // (`healthCheckPath` is `/api/health`), it fans out to every configured
+      // integration so it is far more expensive, and it is `@Public()` with
+      // `HEALTH_READY_TOKEN` unset in production - an unlimited unauthenticated
+      // endpoint that touches every dependency is a free amplifier.
+      const response = await request(server).get('/api/health/ready');
+      expect(response.status).toBeLessThan(500);
+      expect(response.headers['x-ratelimit-limit']).toBe(String(LIMIT));
+    });
+  });
+
   it('⚠️ a request with no usable identity does not consume a signed-in user’s budget', async () => {
     // The failure mode that would make the fix cosmetic: if an unidentifiable
     // request fell into the same bucket as an identified one, the anonymous
