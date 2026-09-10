@@ -90,11 +90,43 @@ export class InboundEmailService {
     private readonly ticketsService: TicketsService,
   ) {}
 
+  /**
+   * The HTTP entry point: check the shared secret, then ingest.
+   *
+   * Kept as the controller's method so nothing about the webhook contract
+   * moves. The secret belongs at the HTTP edge and nowhere else.
+   */
   async ingestInboundEmail(
     payload: IngestInboundEmailDto,
     inboundSecret: string | undefined,
   ) {
     this.assertInboundEmailWebhookSecret(inboundSecret);
+    return this.ingestInboundEmailMessage(payload);
+  }
+
+  /**
+   * Ingest one message. **THE ONE INGESTION PATH** (card 1.24).
+   *
+   * ⚠️ Split out of `ingestInboundEmail` so the mailbox worker can call
+   * exactly this, in-process, rather than growing a second implementation.
+   * One rule answered in two places is the drift behind cards 1.36, 1.38,
+   * 1.47, 1.50 and 1.55 - and for inbound mail the two copies would disagree
+   * about threading, idempotency and loop protection, which is the worst
+   * possible place for it.
+   *
+   * The webhook secret is deliberately NOT checked here: it authenticates an
+   * HTTP caller, and the worker is not one. Requiring it in-process would mean
+   * the worker could not run until an unrelated secret was configured.
+   *
+   * @param payload The message, in the same shape the webhook accepts.
+   * @param options `assignedTeamId` routes a NEW ticket to a department
+   *   (card 1.24's plus-addressing). Ignored when the mail threads onto an
+   *   existing ticket - department addressing is for the first message only.
+   */
+  async ingestInboundEmailMessage(
+    payload: IngestInboundEmailDto,
+    options?: { assignedTeamId?: string | null },
+  ) {
     const messageId = payload.messageId.trim();
     const reservation = await this.reserveInboundEmailReceipt(
       messageId,
@@ -213,6 +245,7 @@ export class InboundEmailService {
                 ),
               );
           }
+          await this.addLoopedInFollowers(existing.id, payload.ccEmails);
 
           // The message first, and only then the status.
           //
@@ -339,17 +372,32 @@ export class InboundEmailService {
           priority: payload.priority ?? TicketPriority.SEV3,
           channel: TicketChannel.EMAIL,
           requesterId: requester.id,
+          // Card 1.24: `helpdesk+payroll@` opens this in Payroll. Undefined
+          // when the mail came to the bare address, which leaves routing to
+          // the rules exactly as before.
+          ...(options?.assignedTeamId
+            ? { assignedTeamId: options.assignedTeamId }
+            : {}),
         },
         requesterAuth,
         // Card 1.42 §3: the acknowledgement queued further down is the better
         // of the two emails, so the created-email is suppressed rather than the
         // acknowledgement dropped. The team's new-ticket bell still fires.
-        { suppressCreatedEmail: true },
+        //
+        // ⚠️ CARD 1.24: `skipRequiredCustomFields` is DEFENCE IN DEPTH. An
+        // email cannot supply a form field, so a required custom field on the
+        // target team would reject the create and the ticket would never
+        // exist - mail silently swallowed. Production has zero required custom
+        // fields today (owner, verified 2026-09-04), so this changes nothing
+        // now; it stops the next required field anybody adds from doing it.
+        // `ai/tools/ticket-tools.service.ts:51` sets it for the same reason.
+        { suppressCreatedEmail: true, skipRequiredCustomFields: true },
       );
       persistedMutation = {
         ticketId: created.id,
         threaded: false,
       };
+      await this.addLoopedInFollowers(created.id, payload.ccEmails);
       await this.ticketEmailThreads.recordInboundEmail({
         ticketId: created.id,
         ticketSubject: created.subject ?? payload.subject,
@@ -758,6 +806,75 @@ export class InboundEmailService {
       !timingSafeEqual(expected, received)
     ) {
       throw new ForbiddenException('Invalid inbound email webhook secret');
+    }
+  }
+
+  /**
+   * Auto-watch the people copied on an inbound email (card 1.24).
+   *
+   * The owner's "auto-watching" ask. The SENDER is already handled - card 1.40
+   * added `ensureTicketFollower` on the reply path (commit 2c76697), and on a
+   * new ticket the sender is the requester - so what was actually missing is
+   * everyone on `Cc`.
+   *
+   * ⚠️ **EXISTING USERS ONLY. This never provisions anybody**, and that is a
+   * deliberate narrowing of "add any looped-in third party".
+   * `findOrCreateInboundRequester` would happily mint a `User` row per Cc'd
+   * address, which means every distribution list, every external vendor and
+   * every mistyped address in a reply-all becomes an account. Card 1.30 is
+   * open precisely because inbound mail is already the main creator of
+   * duplicate users, so making it create one per Cc would make that worse in
+   * the same week somebody is trying to fix it.
+   *
+   * A colleague who has emailed us before, or signed in, is therefore
+   * auto-watched. One who is genuinely new is not - and the moment they REPLY,
+   * card 1.40's path adds them properly, with a real identity behind it.
+   *
+   * ⚠️ Adding a follower is about VISIBILITY, not delivery. Card 1.42 removed
+   * staff email and `notifications.service.ts:741` filters followers by
+   * `isStaffRole`; nothing here touches that, so a staff follower still gets
+   * no email.
+   *
+   * Never throws: a failure to auto-watch must not fail the ingestion of the
+   * mail itself.
+   */
+  private async addLoopedInFollowers(
+    ticketId: string,
+    ccEmails: string[] | undefined,
+  ): Promise<void> {
+    if (!ccEmails?.length) {
+      return;
+    }
+    const normalized = [
+      ...new Set(
+        ccEmails
+          .map((address) => address.trim().toLowerCase())
+          .filter((address) => address !== ''),
+      ),
+    ].slice(0, 50);
+    if (normalized.length === 0) {
+      return;
+    }
+    try {
+      const existing = await this.prisma.user.findMany({
+        where: { email: { in: normalized }, isActive: true },
+        select: { id: true },
+      });
+      for (const user of existing) {
+        await this.ticketsService
+          .ensureTicketFollower(ticketId, user.id)
+          .catch((error: unknown) =>
+            this.logger.error(
+              `Failed to auto-watch ${user.id} on ${ticketId}`,
+              (error as Error).stack,
+            ),
+          );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to resolve looped-in followers for ${ticketId}`,
+        (error as Error).stack,
+      );
     }
   }
 

@@ -34,6 +34,10 @@ import { TicketsService } from './tickets.service';
     TicketsService,
     TicketSlaCalculationService,
     TicketAttachmentService,
+    // Card 1.24: the inbound mailbox worker feeds THIS service rather than
+    // growing a second ingestion path, so it has to be reachable from outside
+    // this module.
+    InboundEmailService,
   ],
 })
 export class TicketsModule {}

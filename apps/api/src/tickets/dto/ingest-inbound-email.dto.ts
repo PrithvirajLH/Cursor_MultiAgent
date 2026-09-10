@@ -51,6 +51,19 @@ export class IngestInboundEmailDto {
   @IsEmail()
   toEmail?: string;
 
+  /**
+   * Everyone else the message was addressed to (card 1.24's auto-watching).
+   *
+   * Optional and absent by default, so an existing caller is unaffected. Used
+   * only to add EXISTING users as followers - see `addLoopedInFollowers`,
+   * which deliberately does not provision anybody from this list.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsEmail({}, { each: true })
+  ccEmails?: string[];
+
   @IsOptional()
   @IsString()
   @MaxLength(160)
