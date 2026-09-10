@@ -28,6 +28,10 @@ import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
 import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
+import {
+  sameCountBoundaries,
+  type TicketCountBoundaries,
+} from './ticket-count-boundaries.util';
 import { canManageOtherFollowers } from '../common/can-manage-followers.util';
 import { AiObservabilityService } from '../common/ai-observability.service';
 import { AutomationQueueService } from '../common/automation-queue.service';
@@ -169,6 +173,18 @@ type MessageOutboxRow = {
   id: string;
   status: OutboxStatus;
   reached: number;
+};
+
+/**
+ * What `tickets:counts:<userId>` holds.
+ *
+ * The boundaries travel WITH the counts rather than in the key - see the note
+ * in getCounts. Not exported: nothing outside this file may depend on the
+ * cache's private shape.
+ */
+type CachedTicketCounts = {
+  boundaries: TicketCountBoundaries | null;
+  counts: Awaited<ReturnType<TicketsService['getCounts']>>;
 };
 
 @Injectable()
@@ -710,8 +726,32 @@ export class TicketsService {
     return result;
   }
 
-  /** Returns ticket counts for the user; result is cached briefly (PERF-02, see CACHE_SUMMARY_TTL_MS). */
-  async getCounts(user: AuthUser): Promise<{
+  /**
+   * Returns ticket counts for the user; result is cached briefly (PERF-02, see
+   * CACHE_SUMMARY_TTL_MS).
+   *
+   * CARD 1.69 STEP 4 added eight counts so the sidebar can stop issuing nine
+   * separate `GET /tickets?pageSize=1` calls. Every one of them goes through
+   * `accessConditionSql` exactly as the original ten do - which is the whole
+   * reason the sidebar could be moved onto this endpoint at all.
+   *
+   * NOT-A-FILTER-ENDPOINT, deliberately. `boundaries` carries three DATES and
+   * nothing else, each one validated as `YYYY-MM-DD` by the DTO. It cannot
+   * express a requester, an assignee or a team, so it cannot be used to count
+   * tickets the caller may not read - the exfiltration oracle the card rules
+   * out. The dates are here because the three counts that need them derive
+   * their boundary in the BROWSER (`todayIso()`, `isoDaysAgo(1)`,
+   * `isoDaysAgo(7)` in saved-views.ts) from the user's local clock. Recomputing
+   * them server-side in UTC would have shifted three badge numbers, which is
+   * the one outcome step 4 is not allowed to produce.
+   *
+   * @param user The caller; every count is scoped to what they may read.
+   * @param boundaries Client-derived day boundaries, `YYYY-MM-DD`.
+   */
+  async getCounts(
+    user: AuthUser,
+    boundaries?: TicketCountBoundaries,
+  ): Promise<{
     assignedToMe: number;
     triage: number;
     open: number;
@@ -722,18 +762,38 @@ export class TicketsService {
     createdByMeResolved: number;
     atRisk: number;
     overdue: number;
+    sev1Today: number;
+    awaitingReplyOver24h: number;
+    unassignedAnyStatus: number;
+    breachRisk: number;
+    resolvedThisWeek: number;
+    reopened: number;
+    watching: number;
+    mentions: number;
+    followUpsDueToday: number;
   }> {
     const ttlMs = parsePositiveInt(process.env.CACHE_SUMMARY_TTL_MS, 45_000);
     const key = `tickets:counts:${user.id}`;
-    const cached =
-      await this.cache.get<Awaited<ReturnType<TicketsService['getCounts']>>>(
-        key,
-      );
-    if (cached != null) return cached;
+    // The BOUNDARIES ARE STORED IN THE VALUE, not in the key, and that is the
+    // whole reason `invalidateCountsCache` below needed no change. Three of
+    // these counts depend on a day boundary the browser computed, so a key
+    // that ignored them would serve one client's numbers to another; a key
+    // that included them would multiply the entries per user, and
+    // cache-manager exposes no prefix delete, so BUG-11's invalidation would
+    // have silently started missing them. One entry per user, checked on
+    // read: a mismatch is a miss, which is correct rather than merely cheap.
+    const cached = await this.cache.get<CachedTicketCounts>(key);
+    if (cached != null && sameCountBoundaries(cached.boundaries, boundaries)) {
+      return cached.counts;
+    }
 
-    const result = await this.getCountsUncached(user);
-    await this.cache.set(key, result, ttlMs);
-    return result;
+    const counts = await this.getCountsUncached(user, boundaries);
+    await this.cache.set(
+      key,
+      { boundaries: boundaries ?? null, counts } satisfies CachedTicketCounts,
+      ttlMs,
+    );
+    return counts;
   }
 
   /**
@@ -752,7 +812,10 @@ export class TicketsService {
     );
   }
 
-  private async getCountsUncached(user: AuthUser): Promise<{
+  private async getCountsUncached(
+    user: AuthUser,
+    boundaries?: TicketCountBoundaries,
+  ): Promise<{
     assignedToMe: number;
     triage: number;
     open: number;
@@ -763,6 +826,15 @@ export class TicketsService {
     createdByMeResolved: number;
     atRisk: number;
     overdue: number;
+    sev1Today: number;
+    awaitingReplyOver24h: number;
+    unassignedAnyStatus: number;
+    breachRisk: number;
+    resolvedThisWeek: number;
+    reopened: number;
+    watching: number;
+    mentions: number;
+    followUpsDueToday: number;
   }> {
     const now = new Date();
     const atRiskThresholdMinutes = parsePositiveInt(
@@ -770,6 +842,24 @@ export class TicketsService {
       120,
     );
     const riskEnd = new Date(now.getTime() + atRiskThresholdMinutes * 60_000);
+    // The list endpoint's `slaStatus=at_risk` window is a HARD-CODED four
+    // hours (buildListWhere), not SLA_AT_RISK_THRESHOLD_MINUTES, and it also
+    // requires `completedAt IS NULL`. See the `breachRisk` column below for
+    // why both definitions now live here.
+    const listRiskEnd = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    // `scope=followups` computes this server-side in buildListWhere, so it is
+    // reproduced the same way here rather than passed in.
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    const todayFrom = boundaries?.todayFrom
+      ? new Date(boundaries.todayFrom)
+      : null;
+    const awaitingBefore = boundaries?.awaitingUpdatedTo
+      ? this.toEndExclusive(boundaries.awaitingUpdatedTo)
+      : null;
+    const resolvedFrom = boundaries?.resolvedUpdatedFrom
+      ? new Date(boundaries.resolvedUpdatedFrom)
+      : null;
     const accessCondition = this.accessConditionSql(user, 't');
     const rows = await this.prisma.$queryRaw<
       {
@@ -783,6 +873,15 @@ export class TicketsService {
         createdByMeResolved: bigint;
         atRisk: bigint;
         overdue: bigint;
+        sev1Today: bigint;
+        awaitingReplyOver24h: bigint;
+        unassignedAnyStatus: bigint;
+        breachRisk: bigint;
+        resolvedThisWeek: bigint;
+        reopened: bigint;
+        watching: bigint;
+        mentions: bigint;
+        followUpsDueToday: bigint;
       }[]
     >`
       SELECT
@@ -835,6 +934,88 @@ export class TicketsService {
             AND t."dueAt" IS NOT NULL
             AND t."dueAt" < ${now}
           THEN 1 ELSE 0 END) AS "overdue"
+        ,
+        -- CARD 1.69 STEP 4. The nine below replace the sidebar's nine
+        -- GET /tickets?pageSize=1 calls. Each mirrors the PRISMA predicate
+        -- buildListWhere produces for the same query string, because the badge
+        -- has to equal the number of rows you get when you click it.
+        SUM(CASE
+          WHEN (t."priority")::text = ${TicketPriority.SEV1}
+            AND ${todayFrom === null ? Prisma.sql`FALSE` : Prisma.sql`t."createdAt" >= ${todayFrom}`}
+          THEN 1 ELSE 0 END) AS "sev1Today"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
+            AND ${awaitingBefore === null ? Prisma.sql`FALSE` : Prisma.sql`t."updatedAt" < ${awaitingBefore}`}
+          THEN 1 ELSE 0 END) AS "awaitingReplyOver24h"
+        ,
+        -- NOT THE SAME AS "unassigned" ABOVE, and found by the test rather
+        -- than by reading. The sidebar preset links to scope=unassigned, which
+        -- in buildListWhere is assigneeId IS NULL and NOTHING ELSE, while the
+        -- older "unassigned" count also requires the ticket to be open. They
+        -- differ by exactly the unassigned resolved/closed tickets - one row
+        -- in the fixture, and the badge would have dropped by that much on the
+        -- day this shipped. DashboardPage and getSidebarChildBadge both read
+        -- the open-only one, so it could not simply be widened.
+        SUM(CASE
+          WHEN t."assigneeId" IS NULL
+          THEN 1 ELSE 0 END) AS "unassignedAnyStatus"
+        ,
+        -- ⚠️ NOT THE SAME AS "atRisk" ABOVE, AND THAT IS NOT A MISTAKE. This
+        -- one reproduces the LIST's slaStatus=at_risk: a four-hour window
+        -- and completedAt IS NULL. atRisk uses
+        -- SLA_AT_RISK_THRESHOLD_MINUTES (default 120) and ignores
+        -- completedAt, and DashboardPage has been showing that number for
+        -- months. The two have therefore always disagreed; step 4 was not
+        -- allowed to change either one, so it names both. Which definition is
+        -- right is an owner decision, recorded in the card 1.69 report.
+        SUM(CASE
+          WHEN t."completedAt" IS NULL
+            AND t."dueAt" IS NOT NULL
+            AND t."dueAt" >= ${now}
+            AND t."dueAt" <= ${listRiskEnd}
+            AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
+          THEN 1 ELSE 0 END) AS "breachRisk"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND ${resolvedFrom === null ? Prisma.sql`FALSE` : Prisma.sql`t."updatedAt" >= ${resolvedFrom}`}
+          THEN 1 ELSE 0 END) AS "resolvedThisWeek"
+        ,
+        SUM(CASE
+          WHEN (t."status")::text = ${TicketStatus.REOPENED}
+          THEN 1 ELSE 0 END) AS "reopened"
+        ,
+        -- ⚠️ The two NOT clauses are written null-safely on purpose. Prisma's
+        -- NOT: [{ assigneeId: user.id }] is null-safe; a literal
+        -- t."assigneeId" <> $1 is NOT - it evaluates to NULL for an
+        -- unassigned ticket, so the row would silently drop out and this badge
+        -- would read lower than the list it links to.
+        SUM(CASE
+          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+            AND EXISTS (
+              SELECT 1 FROM "TicketFollower" tf
+              WHERE tf."ticketId" = t."id" AND tf."userId" = ${user.id}
+            )
+            AND (t."assigneeId" IS NULL OR t."assigneeId" <> ${user.id})
+            AND (t."requesterId" IS NULL OR t."requesterId" <> ${user.id})
+          THEN 1 ELSE 0 END) AS "watching"
+        ,
+        SUM(CASE
+          WHEN EXISTS (
+            SELECT 1 FROM "Notification" n
+            WHERE n."ticketId" = t."id"
+              AND n."userId" = ${user.id}
+              AND (n."type")::text = ${NotificationType.TICKET_MENTIONED}
+              AND n."isRead" = FALSE
+          )
+          THEN 1 ELSE 0 END) AS "mentions"
+        ,
+        SUM(CASE
+          WHEN t."assigneeId" = ${user.id}
+            AND t."followUpAt" IS NOT NULL
+            AND t."followUpAt" <= ${endOfToday}
+          THEN 1 ELSE 0 END) AS "followUpsDueToday"
       FROM "Ticket" t
       WHERE ${accessCondition}
     `;
@@ -850,6 +1031,15 @@ export class TicketsService {
       createdByMeResolved: 0n,
       atRisk: 0n,
       overdue: 0n,
+      sev1Today: 0n,
+      awaitingReplyOver24h: 0n,
+      unassignedAnyStatus: 0n,
+      breachRisk: 0n,
+      resolvedThisWeek: 0n,
+      reopened: 0n,
+      watching: 0n,
+      mentions: 0n,
+      followUpsDueToday: 0n,
     };
     const assignedToMe = Number(row.assignedToMe ?? 0);
     // Agents see their own triage board (scope=assigned), so the sidebar badge
@@ -868,6 +1058,15 @@ export class TicketsService {
       createdByMeResolved: Number(row.createdByMeResolved ?? 0),
       atRisk: Number(row.atRisk ?? 0),
       overdue: Number(row.overdue ?? 0),
+      sev1Today: Number(row.sev1Today ?? 0),
+      awaitingReplyOver24h: Number(row.awaitingReplyOver24h ?? 0),
+      unassignedAnyStatus: Number(row.unassignedAnyStatus ?? 0),
+      breachRisk: Number(row.breachRisk ?? 0),
+      resolvedThisWeek: Number(row.resolvedThisWeek ?? 0),
+      reopened: Number(row.reopened ?? 0),
+      watching: Number(row.watching ?? 0),
+      mentions: Number(row.mentions ?? 0),
+      followUpsDueToday: Number(row.followUpsDueToday ?? 0),
     };
   }
 

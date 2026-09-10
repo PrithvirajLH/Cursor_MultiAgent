@@ -16,11 +16,10 @@ import {
   type SidebarPreset,
   type ToneKey,
 } from "./shell/saved-views";
-import {
-  querystringToParams,
-  useViewCounts,
-  viewFiltersToParams,
-} from "./shell/use-view-count";
+import { useViewCounts, viewFiltersToParams } from "./shell/use-view-count";
+import { useTicketCountsQuery } from "../hooks/useTicketCountsQuery";
+import { PRESET_COUNT_FIELD } from "./shell/sidebar-count-fields";
+import { useSessionExpired } from "../hooks/use-session-expired";
 
 const TONE_COLOR: Record<ToneKey, string> = {
   red: "hsl(var(--status-red))",
@@ -155,13 +154,26 @@ export function SidebarTicketsSavedViews({
     enabled: authReady,
   });
   const shownPresets = visiblePresets(SAVED_VIEWS, hiddenPresets?.data);
-  // ⚠️ The counts array must be built from the SAME list that renders, or the
-  // badges shift onto the wrong rows the moment anything is hidden - they are
-  // matched by index.
-  const presetCounts = useViewCounts(
-    shownPresets.map((v) => querystringToParams(v.buildQuery())),
-    { enabled: authReady },
-  );
+  // ⚠️ CARD 1.69 STEP 4. This was `useViewCounts(shownPresets.map(...))` - six
+  // parallel `?pageSize=1` requests, matched to rows BY INDEX, which is why
+  // the old comment here warned that hiding a preset would shift every badge
+  // onto the wrong row. Looking each row up by its own id removes that hazard
+  // as well as the requests.
+  //
+  // The same hook App.tsx already uses, with the same key, so React Query
+  // serves both from ONE request.
+  // The SAME key App.tsx builds (`auth.user.email` reaches it as
+  // `currentEmail`), which is what makes React Query serve both from one
+  // request instead of two.
+  const { data: liveCounts } = useTicketCountsQuery(user?.email ?? "");
+  const sessionExpired = useSessionExpired();
+  // Card 1.54's contradiction, kept: a confident number beside a signed-out
+  // page reads as "one query broke", not "you are signed out".
+  const counts = sessionExpired ? undefined : liveCounts;
+  const countFor = (id: string): number | undefined => {
+    const field = PRESET_COUNT_FIELD[id];
+    return field ? counts?.[field] : undefined;
+  };
 
   // System views — Watching (followed tickets) and Mentions
   // (tickets where the user has been @mentioned). Both lean on the
@@ -192,11 +204,6 @@ export function SidebarTicketsSavedViews({
       params: { scope: "followups" } as Record<string, string>,
     },
   ];
-  const systemCounts = useViewCounts(
-    systemViews.map((v) => v.params),
-    { enabled: authReady },
-  );
-
   const userViewCounts = useViewCounts(
     ticketSavedViews.map((v) => viewFiltersToParams(v.filters)),
     { enabled: authReady && ticketSavedViews.length > 0 },
@@ -209,9 +216,9 @@ export function SidebarTicketsSavedViews({
     <>
       {/* System views: Watching + Mentions. Render with lucide icons
           to distinguish from the tone-dot saved-view presets below. */}
-      {systemViews.map((v, i) => {
+      {systemViews.map((v) => {
         const active = onTickets && searchParams.get("scope") === v.id;
-        const liveCount = systemCounts[i]?.count;
+        const liveCount = countFor(v.id);
         const Icon = v.icon;
         return (
           <button
@@ -235,9 +242,9 @@ export function SidebarTicketsSavedViews({
         );
       })}
 
-      {shownPresets.map((v, i) => {
+      {shownPresets.map((v) => {
         const active = presetIsActive(v);
-        const liveCount = presetCounts[i]?.count;
+        const liveCount = countFor(v.id);
         return (
           <button
             key={v.id}

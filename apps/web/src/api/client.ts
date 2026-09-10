@@ -907,7 +907,21 @@ export function fetchTickets(
   return apiFetch<TicketListResponse>(`/tickets${suffix}`, options);
 }
 
-export function fetchTicketCounts() {
+/**
+ * Every sidebar and dashboard count in one call.
+ *
+ * Card 1.69 step 4 grew this from ten to nineteen so the sidebar could stop
+ * firing nine uncached `GET /tickets?pageSize=1` requests. `boundaries`
+ * carries three dates and nothing else - the endpoint deliberately refuses
+ * anything that selects tickets, so it cannot be used to count what the caller
+ * may not read.
+ */
+export function fetchTicketCounts(boundaries?: {
+  todayFrom: string;
+  awaitingUpdatedTo: string;
+  resolvedUpdatedFrom: string;
+}) {
+  const query = boundaries ? `?${new URLSearchParams(boundaries)}` : "";
   return apiFetch<{
     assignedToMe: number;
     triage: number;
@@ -919,7 +933,16 @@ export function fetchTicketCounts() {
     createdByMeResolved: number;
     atRisk: number;
     overdue: number;
-  }>("/tickets/counts");
+    sev1Today: number;
+    awaitingReplyOver24h: number;
+    unassignedAnyStatus: number;
+    breachRisk: number;
+    resolvedThisWeek: number;
+    reopened: number;
+    watching: number;
+    mentions: number;
+    followUpsDueToday: number;
+  }>(`/tickets/counts${query}`);
 }
 
 export type TicketMetricsResponse = {

@@ -39,6 +39,7 @@ import { MessageType } from '@prisma/client';
 import { ListTicketMessagesDto } from './dto/list-ticket-messages.dto';
 import { MessageRecipientsDto } from './dto/message-recipients.dto';
 import { ListTicketsDto } from './dto/list-tickets.dto';
+import { TicketCountsDto } from './dto/ticket-counts.dto';
 import { TicketActivityDto } from './dto/ticket-activity.dto';
 import { TicketStatusDto } from './dto/ticket-status.dto';
 import { TicketTypingDto } from './dto/ticket-typing.dto';
@@ -83,9 +84,19 @@ export class TicketsController {
     return this.ticketsService.list(query, user);
   }
 
+  /**
+   * Ten counts became eighteen in card 1.69 step 4, so the sidebar can ask
+   * once instead of firing nine `GET /tickets?pageSize=1` calls.
+   *
+   * The query carries three DATES and nothing else - see TicketCountsDto for
+   * why that is not the filter-taking count endpoint the card rules out.
+   */
   @Get('counts')
-  async getCounts(@CurrentUser() user: AuthUser) {
-    return this.ticketsService.getCounts(user);
+  async getCounts(
+    @Query() query: TicketCountsDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.getCounts(user, query);
   }
 
   @Get('activity')

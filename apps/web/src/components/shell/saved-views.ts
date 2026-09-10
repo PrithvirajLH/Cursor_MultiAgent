@@ -21,6 +21,11 @@
  *    hid the old one would silently hide the new one. Pick a fresh id.
  */
 
+// Card 1.69 step 4: these moved to count-boundaries.ts so the query strings
+// below and the counts request share ONE definition of "today". Two copies of
+// a date boundary is how a badge and the list it opens drift apart.
+import { isoDaysAgo, todayIso } from './count-boundaries';
+
 export type ToneKey = 'red' | 'amber' | 'green' | 'gray';
 
 export interface SidebarPreset {
@@ -38,16 +43,6 @@ export interface SidebarPreset {
   matches: (params: URLSearchParams) => boolean;
 }
 
-const todayIso = (): string => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
-};
-
-const isoDaysAgo = (days: number): string => {
-  const d = new Date(Date.now() - days * 86_400_000);
-  return d.toISOString().slice(0, 10);
-};
 
 function qs(params: Record<string, string | undefined>): string {
   const sp = new URLSearchParams();

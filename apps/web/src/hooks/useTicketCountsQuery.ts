@@ -6,12 +6,30 @@ import {
   type ReportQuery,
 } from "../api/client";
 import type { Role } from "../types";
+import { countBoundaries } from "../components/shell/count-boundaries";
 
+/**
+ * The single source of every fixed ticket count in the shell.
+ *
+ * ⚠️ CARD 1.69 STEP 4 MADE THIS THE ONLY ONE. The sidebar used to fill nine
+ * badges with nine uncached `GET /tickets?pageSize=1` calls while this hook
+ * answered ten other questions in one cached call - two count systems that
+ * cards 1.16, 1.53 and 1.65 each ran into separately, and that 1.65 hit as a
+ * nav badge stuck on a stale number because it came from the other source.
+ * The sidebar now calls THIS hook, and React Query dedupes it against App's
+ * call to the same key, so the pair is one request rather than ten.
+ *
+ * ⚠️ THE BOUNDARIES ARE IN THE KEY, not just the request. Three badges are
+ * defined against the user's local midnight; if the key ignored the dates, a
+ * tab left open past midnight would keep serving yesterday's "today" out of
+ * cache. A changed date is a new key and refetches by itself.
+ */
 export function useTicketCountsQuery(currentEmail: string) {
+  const boundaries = countBoundaries();
   return useQuery({
     // Include currentEmail in the key so each persona gets an isolated cache.
-    queryKey: ["ticketCounts", currentEmail],
-    queryFn: () => fetchTicketCounts(),
+    queryKey: ["ticketCounts", currentEmail, boundaries],
+    queryFn: () => fetchTicketCounts(boundaries),
     // Ticket count aggregates are cheap to refetch and should feel fresh.
     staleTime: 5_000,
   });
