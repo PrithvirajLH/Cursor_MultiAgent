@@ -27,19 +27,28 @@ functions. There is no AGENTS.md here; `.cursorrules` is it.
 
 ## Baseline — do not regress these
 
-**598 unit tests (59 suites), 735 integration + 1 skipped, 239 web unit tests (38 files)**
-⚠️ **These figures include card 1.24's work, which is in the working tree and NOT
-COMMITTED as of 2026-09-10.** Committed `HEAD` is **560 / 725 / 239**. If the tree is
-discarded, revert this line too., both typechecks clean.
+**615 unit tests (61 suites), 739 integration + 1 skipped, 247 web unit tests (39 files)**
+
+⚠️ **Measured 2026-09-10 with TWO uncommitted workstreams in the tree, from two
+different sessions. Do not treat these as a committed baseline until both land.**
+
+- The **api** figures (615 / 739) are card **1.62**'s — six API files plus a fixture.
+- The **web** figure (247 / 39) includes card **1.65**'s five `is-abort-error` tests,
+  which belong to the other session. Committed `HEAD` for web is **242 / 39**.
+- ⚠️ **Neither session should commit with `git add -A`** — the two sets of files
+  do not overlap, so explicit paths keep the history honest. 1.62 owns
+  `inbound-mailbox/*`, `graph-mail.http-client.ts`, `tickets.service.ts` and
+  `test/integration/inbound-mailbox.spec.ts`; 1.65 owns `api/is-abort-error.*`,
+  `client.ts`, `TicketsPage.tsx` and `TriageBoardPage.tsx`., both typechecks clean.
 
 ```bash
 cd apps/api && npx tsc --noEmit
 cd apps/web && npx tsc --noEmit
-cd apps/api && npx jest                       # 598, 59 suites
-cd apps/web && npx vitest run                 # 239, 38 files
+cd apps/api && npx jest                       # 615, 61 suites
+cd apps/web && npx vitest run                 # 247, 39 files
 
 export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
-cd apps/api && npm run test:integration       # 735 + 1 skipped, 72 of 73 suites, ~15 min
+cd apps/api && npm run test:integration       # 739 + 1 skipped, 72 of 73 suites, ~11-16 min
 ```
 
 The consent variable is mandatory — every integration suite resets the database
