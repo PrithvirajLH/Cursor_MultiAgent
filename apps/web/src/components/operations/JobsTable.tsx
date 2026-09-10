@@ -3,9 +3,30 @@ import { RelativeTime } from "../RelativeTime";
 
 const NEVER_RUN_HINT = "Not run since the app last restarted";
 
+/** How much of a failure reason to show before it stops being a summary. */
+const MAX_ERROR_CHARS = 90;
+
 /** "Purged 3 tickets" style one-liner from whatever the worker reported. */
 export function summarize(job: OperationsJobRow): string {
   if (job.lastRunOk === false) {
+    // ⚠️ NAME THE CAUSE, not just the fact (found in card 1.24's browser pass).
+    //
+    // This used to return a bare "Failed" and throw the reason away, even
+    // though the API sends it. For the inbound mailbox worker that is the
+    // difference between the two outcomes an operator most needs to tell
+    // apart: a 403 means the Graph permission is missing or was granted
+    // UNSCOPED, a 404 means the mailbox does not exist yet. Both rendered
+    // identically, so the console sent you to the container log to learn
+    // which - on the one card where a silent failure loses mail.
+    const reason = job.lastSummary?.error;
+    if (typeof reason === "string" && reason.trim()) {
+      const trimmed = reason.trim();
+      return `Failed: ${
+        trimmed.length > MAX_ERROR_CHARS
+          ? `${trimmed.slice(0, MAX_ERROR_CHARS)}…`
+          : trimmed
+      }`;
+    }
     return "Failed";
   }
   const summary = job.lastSummary;

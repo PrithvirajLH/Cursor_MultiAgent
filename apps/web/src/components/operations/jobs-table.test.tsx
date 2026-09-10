@@ -77,6 +77,52 @@ describe("summarize", () => {
       ),
     ).toBe("Failed");
   });
+
+  it('⚠️ names the cause of a failure, not just that there was one', () => {
+    // THE ASSERTION THAT FAILS IF THE BUG COMES BACK. Found in card 1.24's
+    // browser pass: a failed run rendered a bare "Failed" and discarded the
+    // reason the API had already sent. For the inbound mailbox worker that is
+    // the difference between "the permission is missing or unscoped" (403)
+    // and "the mailbox does not exist yet" (404) - the two outcomes the
+    // go-live checklist asks the operator to tell apart.
+    expect(
+      summarize(
+        buildJob({
+          lastRunAt: "2026-09-10T10:00:00.000Z",
+          lastRunOk: false,
+          lastSummary: {
+            error: 'Graph GET 404: {"code":"ErrorInvalidUser"}',
+          },
+        }),
+      ),
+    ).toBe('Failed: Graph GET 404: {"code":"ErrorInvalidUser"}');
+  });
+
+  it('truncates a very long failure rather than filling the row', () => {
+    const long = `Graph GET 403: ${'x'.repeat(200)}`;
+    const result = summarize(
+      buildJob({
+        lastRunAt: "2026-09-10T10:00:00.000Z",
+        lastRunOk: false,
+        lastSummary: { error: long },
+      }),
+    );
+    expect(result.startsWith('Failed: Graph GET 403:')).toBe(true);
+    expect(result.endsWith('…')).toBe(true);
+    expect(result.length).toBeLessThan(110);
+  });
+
+  it('still says plain "Failed" when the worker reported no reason', () => {
+    expect(
+      summarize(
+        buildJob({
+          lastRunAt: "2026-09-10T10:00:00.000Z",
+          lastRunOk: false,
+          lastSummary: { error: '   ' },
+        }),
+      ),
+    ).toBe("Failed");
+  });
 });
 
 describe("JobsTable", () => {
