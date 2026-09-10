@@ -27,7 +27,7 @@ functions. There is no AGENTS.md here; `.cursorrules` is it.
 
 ## Baseline — do not regress these
 
-**615 unit tests (61 suites), 739 integration + 1 skipped, 247 web unit tests (39 files)**
+**649 unit tests (64 suites), 782 integration + 1 skipped, 254 web unit tests (40 files)**
 
 ⚠️ **Measured 2026-09-10 with TWO uncommitted workstreams in the tree, from two
 different sessions. Do not treat these as a committed baseline until both land.**
@@ -44,11 +44,14 @@ different sessions. Do not treat these as a committed baseline until both land.*
 ```bash
 cd apps/api && npx tsc --noEmit
 cd apps/web && npx tsc --noEmit
-cd apps/api && npx jest                       # 615, 61 suites
-cd apps/web && npx vitest run                 # 247, 39 files
+cd apps/api && npx jest                       # 649, 64 suites
+cd apps/web && npx vitest run                 # 254, 40 files
 
 export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
-cd apps/api && npm run test:integration       # 739 + 1 skipped, 72 of 73 suites, ~11-16 min
+cd apps/api && npm run test:integration       # 782 + 1 skipped, 74 of 75 suites, ~16 min
+# ⚠️ Exceeds the 10-minute Bash cap - it CANNOT be run in the foreground. Background it.
+# ⚠️ And touch NOTHING in apps/api while it runs, reads included: each suite's reset
+#    renames .env, and an open handle on Windows blocks that rename and fails the suite.
 ```
 
 The consent variable is mandatory — every integration suite resets the database

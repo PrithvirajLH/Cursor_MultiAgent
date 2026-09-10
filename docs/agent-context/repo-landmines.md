@@ -597,3 +597,30 @@ This has now happened **twice**: card 1.16 and card 1.24, both 2026-09-10.
 - More generally: **an assertion on a count is cheap to write and expensive to
   find.** If you are pinning "how many of X", check whether something else
   already pins it.
+
+## Reading a file in `apps/api` during an integration run can fail a suite
+
+Every suite's `beforeAll` calls `resetTestDb()`, which runs
+`scripts/reset-test-db.cjs`, which **renames `apps/api/.env` → `.env.bak`** for
+the duration of the reset. **On Windows an open file handle blocks a rename.**
+
+So a `grep`, `cat` or editor read of `apps/api/.env` while a run is in flight can
+make that rename throw, which fails the reset, which fails the suite:
+
+```
+Command failed: node scripts/reset-test-db.cjs
+    at resetTestDb (test/utils/reset-test-db.ts:5:11)
+```
+
+Every test in that suite then reports as failed — **24 of them on 2026-09-10**,
+from one blocked rename. A clean re-run immediately afterwards was
+**782 passed + 1 skipped, 74 of 75, zero failures.**
+
+- ⚠️ **The existing rule is "never EDIT source during a run." Widen it: do not
+  READ anything in `apps/api` either.** The planner broke this while quoting the
+  rule to somebody else.
+- **A failure whose message is `Command failed: node scripts/reset-test-db.cjs`
+  is environmental. Re-run before believing it**, and do not report it as a
+  defect.
+- Related: the same script's `finally` restores `.env`, so a **hard-killed** run
+  leaves it as `.env.bak` — see the earlier landmine.
