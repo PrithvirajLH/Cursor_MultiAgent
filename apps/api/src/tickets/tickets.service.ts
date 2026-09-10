@@ -44,6 +44,7 @@ import { InboundEmailService } from './inbound-email.service';
 import { OutboxService } from '../notifications/outbox.service';
 import { inlineAttachmentIds } from './inline-attachment-ids.util';
 import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
+import { stripQuotedReply } from '../notifications/quoted-reply.util';
 import { TagsService } from '../tags/tags.service';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { parsePositiveInt } from '../common/config.utils';
@@ -1181,6 +1182,25 @@ export class TicketsService {
     return {
       data: page.reverse().map((message) => ({
         ...message,
+        // ⚠️ CARD 1.62. THE DISPLAY PATH, AND THE ONLY CALLER OF THIS UTIL.
+        //
+        // `stripQuotedReply` was written, given twelve passing tests and a
+        // careful doc comment describing a two-part contract - "email.service
+        // writes the marker, stripQuotedReply reads it" - and then never
+        // wired to anything. Half the contract existed. A reply arrived
+        // carrying our entire outbound email quoted underneath it, including
+        // the pilot-mode notice, and an agent read all of it.
+        //
+        // ⚠️ DISPLAY ONLY, and that is deliberate: the whole body stays on the
+        // record, so nothing an audit needs is discarded. Trimming before
+        // storing would throw away the one copy.
+        //
+        // ⚠️ This does nothing useful unless the body is really TEXT. Every
+        // marker is anchored `^...$` with the `m` flag, and a real Outlook
+        // reply carries ours as `<p>----- Reply above this line -----</p>`.
+        // Card 1.62's fault A - converting HTML at the Graph boundary - is
+        // what makes this line have an effect at all.
+        body: stripQuotedReply(message.body),
         delivery: {
           ...(delivery.get(message.id) ?? { emailed: 0, refused: 0 }),
           internal: message.type === MessageType.INTERNAL,

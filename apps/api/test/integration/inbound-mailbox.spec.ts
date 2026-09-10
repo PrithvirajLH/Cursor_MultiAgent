@@ -1,5 +1,9 @@
 import { INestApplication } from '@nestjs/common';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { fixtureEmails, fixtureTeamIds, fixtureUserIds } from '../utils/fixtures';
+import { TicketsService } from '../../src/tickets/tickets.service';
+import { selectBodyText } from '../../src/inbound-mailbox/select-body-text.util';
 import { disconnectPrisma, getPrisma } from '../utils/prisma';
 import { resetTestDb } from '../utils/reset-test-db';
 import { createTestApp } from '../utils/test-app';
@@ -310,5 +314,157 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
       where: { subject: mail.subject },
     });
     expect(tickets).toBe(0);
+  });
+
+  /**
+   * Card 1.62 — the real Outlook reply, end to end.
+   *
+   * ⚠️ The body here is produced by the REAL `selectBodyText`, which is
+   * exactly what `GraphMailHttpClient.toMessage` calls. The scripted client
+   * hands over an already-reduced `GraphMailMessage`, so composing the real
+   * conversion here is what keeps this honest rather than feeding the
+   * pipeline text it flattened by hand.
+   */
+  describe('an Outlook HTML reply (card 1.62)', () => {
+    const RAW_HTML = readFileSync(
+      join(__dirname, '..', '..', 'src', 'inbound-mailbox', '__fixtures__', 'outlook-reply.html'),
+      'utf8',
+    );
+    const CONVERTED = selectBodyText(
+      { contentType: 'html', content: RAW_HTML },
+      'Ticket acknowledgement received.',
+    );
+
+    it('⚠️ a NEW email ticket gets text as its description, not markup', async () => {
+      // THE ASSERTION THAT FAILS IF FAULT C COMES BACK. `description` carries
+      // `Ticket_description_trgm_idx`, so markup landing here puts
+      // `font-family` and a confidentiality footer into ticket search for
+      // every email ticket ever opened.
+      const mail = message({
+        subject: `C162 html description ${Date.now()}`,
+        bodyText: CONVERTED,
+      });
+      graph.pages = [{ messages: [mail], deltaLink: 'delta-1' }];
+      await worker.runOnce();
+      const ticket = await prisma.ticket.findFirstOrThrow({
+        where: { subject: mail.subject },
+        select: { description: true },
+      });
+      expect(ticket.description).not.toContain('<html');
+      expect(ticket.description).not.toContain('font-family');
+      expect(ticket.description).not.toContain('<style');
+      expect(ticket.description).toContain('Ticket acknowledgement received.');
+    });
+
+    it('⚠️ ticket search for "font-family" finds nothing', async () => {
+      // The consequence of the above, asserted the way a user would hit it.
+      const mail = message({
+        subject: `C162 search hygiene ${Date.now()}`,
+        bodyText: CONVERTED,
+      });
+      graph.pages = [{ messages: [mail], deltaLink: 'delta-1' }];
+      await worker.runOnce();
+      const poisoned = await prisma.ticket.count({
+        where: { description: { contains: 'font-family', mode: 'insensitive' } },
+      });
+      expect(poisoned).toBe(0);
+    });
+
+    it('⚠️ the quoted block is GONE from the display and PRESENT on the record', async () => {
+      // THE ASSERTION THAT FAILS IF `stripQuotedReply` IS UNWIRED AGAIN.
+      // It had twelve passing tests and no production caller; this is the one
+      // that notices. Both halves matter: trimming on display, and the whole
+      // body still on the record so nothing an audit needs is discarded.
+      const root = message({ subject: `C162 threading root ${Date.now()}` });
+      graph.pages = [{ messages: [root], deltaLink: 'delta-1' }];
+      await worker.runOnce();
+      const ticket = await prisma.ticket.findFirstOrThrow({
+        where: { subject: root.subject },
+        select: { id: true },
+      });
+      const thread = await prisma.ticketEmailThread.findFirstOrThrow({
+        where: { ticketId: ticket.id },
+        select: { replyToken: true },
+      });
+      graph.pages = [
+        {
+          messages: [
+            message({
+              subject: 'Re: whatever the sender renamed it',
+              bodyText: CONVERTED,
+              toRecipients: [
+                { address: `helpdesk+ticket-${thread.replyToken}@company.com` },
+              ],
+            }),
+          ],
+          deltaLink: 'delta-2',
+        },
+      ];
+      await worker.runOnce();
+
+      const stored = await prisma.ticketMessage.findFirstOrThrow({
+        where: { ticketId: ticket.id },
+        orderBy: { createdAt: 'desc' },
+        select: { body: true },
+      });
+      // Stored: the whole thing, quoted block and all.
+      expect(stored.body).toContain('Reply above this line');
+      expect(stored.body).toContain('Ticket acknowledgement received.');
+
+      // Displayed: only what the sender typed.
+      const owner = await prisma.user.findFirstOrThrow({
+        where: { email: fixtureEmails.owner },
+        select: { id: true, email: true, displayName: true, role: true },
+      });
+      const shown = await app
+        .get(TicketsService)
+        .listMessages(ticket.id, owner as never, 50);
+      const last = shown.data[shown.data.length - 1];
+      expect(last.body).toContain('Ticket acknowledgement received.');
+      expect(last.body).not.toContain('Reply above this line');
+      expect(last.body).not.toContain('pilot mode');
+      expect(last.body.length).toBeLessThan(stored.body.length);
+    });
+
+    it('a reply that is ENTIRELY quoted text still shows something', async () => {
+      // The util's "kept.length === 0" guard, which must survive being wired
+      // up: an empty message is worse than a quoted one.
+      const root = message({ subject: `C162 all quoted ${Date.now()}` });
+      graph.pages = [{ messages: [root], deltaLink: 'delta-1' }];
+      await worker.runOnce();
+      const ticket = await prisma.ticket.findFirstOrThrow({
+        where: { subject: root.subject },
+        select: { id: true },
+      });
+      const thread = await prisma.ticketEmailThread.findFirstOrThrow({
+        where: { ticketId: ticket.id },
+        select: { replyToken: true },
+      });
+      graph.pages = [
+        {
+          messages: [
+            message({
+              subject: 'Re: nothing of my own',
+              bodyText: '----- Reply above this line -----\nOnly quoted text.',
+              toRecipients: [
+                { address: `helpdesk+ticket-${thread.replyToken}@company.com` },
+              ],
+            }),
+          ],
+          deltaLink: 'delta-2',
+        },
+      ];
+      await worker.runOnce();
+      const owner = await prisma.user.findFirstOrThrow({
+        where: { email: fixtureEmails.owner },
+        select: { id: true, email: true, displayName: true, role: true },
+      });
+      const shown = await app
+        .get(TicketsService)
+        .listMessages(ticket.id, owner as never, 50);
+      const last = shown.data[shown.data.length - 1];
+      expect(last.body.trim().length).toBeGreaterThan(0);
+      expect(last.body).toContain('Only quoted text.');
+    });
   });
 });
