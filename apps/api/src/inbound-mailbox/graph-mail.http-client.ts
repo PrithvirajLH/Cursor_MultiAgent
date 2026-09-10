@@ -7,6 +7,7 @@ import {
   GraphMailMessage,
   GraphRecipient,
 } from './graph-mail.client';
+import { selectBodyText } from './select-body-text.util';
 
 /** Where the consumed mail is filed, so the mailbox shows what was taken. */
 const PROCESSED_FOLDER = 'Processed';
@@ -142,10 +143,27 @@ export class GraphMailHttpClient extends GraphMailClient {
     }
     const headers = this.readHeaders(item.internetMessageHeaders);
     const body = item.body as { content?: unknown; contentType?: unknown } | undefined;
-    const bodyText =
-      typeof item.bodyPreview === 'string' && item.bodyPreview.trim()
-        ? String(body?.content ?? item.bodyPreview)
-        : String(body?.content ?? '');
+    // ⚠️ CARD 1.62. THE FIELD IS CALLED `bodyText` AND MUST ACTUALLY BE TEXT.
+    //
+    // It used to be `body.content` regardless, and for anything sent from
+    // Outlook that is a complete HTML document - so the first real reply this
+    // worker ingested showed an agent 5,325 characters of markup where one
+    // sentence should have been. `contentType` was read into scope on the line
+    // above and then never used; it is the thing to branch on.
+    //
+    // ⚠️ Converting HERE, at the boundary, is what also fixes the ticket
+    // DESCRIPTION (fault C): `inbound-email.service.ts` writes `payload.body`
+    // into a column carrying `Ticket_description_trgm_idx`, so markup landing
+    // there would put `font-family` and a confidentiality footer into ticket
+    // search for every email ticket. One conversion, before the value leaves
+    // this class, and neither the message nor the description can be markup.
+    //
+    // The old expression was a ternary on `bodyPreview.trim()` that looked
+    // like a choice and was not - both arms took `body.content` first, so the
+    // preview was reached only when content was missing. That behaviour is
+    // KEPT, because a body with no content and a usable preview is still worth
+    // showing; it is just written so it says so.
+    const bodyText = selectBodyText(body, item.bodyPreview);
     return {
       id,
       internetMessageId,
