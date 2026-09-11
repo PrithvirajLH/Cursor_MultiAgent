@@ -12,6 +12,20 @@ import {
 import { createPortal } from "react-dom";
 import { LogOut, Menu, Moon, Search, Sun } from "lucide-react";
 import type { CurrentUserSession, NotificationRecord } from "../api/client";
+import {
+  bulkUnassignTickets,
+  getMyAvailability,
+  getMyOpenTickets,
+  setMyAvailability,
+} from "../api/client";
+import {
+  backOnInputValue,
+  backOnToIso,
+  isAwayNow,
+  type AvailabilityState,
+} from "../utils/availability";
+import { handleApiError } from "../utils/handleApiError";
+import { AvailabilityControl } from "./AvailabilityControl";
 import { useHeaderContext } from "../contexts/HeaderContext";
 import { initialsFor } from "../utils/format";
 import { modKeyLabel } from "../utils/platform";
@@ -48,6 +62,8 @@ type ProfilePopoverPanelProps = {
   displayName: string;
   email: string;
   profileRows: ProfileRow[];
+  /** Card 2.2's availability block. A slot, so this panel stays presentational. */
+  availability?: ReactNode;
   onSignOut?: () => void;
 };
 
@@ -62,6 +78,7 @@ export function ProfilePopoverPanel({
   displayName,
   email,
   profileRows,
+  availability,
   onSignOut,
 }: ProfilePopoverPanelProps) {
   return (
@@ -125,6 +142,9 @@ export function ProfilePopoverPanel({
           </div>
         ))}
       </div>
+
+      {/* Availability (card 2.2) */}
+      {availability}
 
       {/* Sign out */}
       {onSignOut && (
@@ -208,7 +228,129 @@ export function TopBar({
     { label: "Department / Team", value: departmentOrTeam },
   ];
 
+  // ⚠️ CARD 2.2 - AVAILABILITY, LOADED ONLY WHEN THE MENU OPENS. Two
+  // small decisions worth writing down. It is fetched on open rather than with
+  // the session, because this bar renders on every page and nobody needs two
+  // more requests per navigation to answer a question they ask once a fortnight.
+  // And it is staff-only: a requester is never in an assignment rotation, so
+  // the control would be a switch wired to nothing.
+  const [availability, setAvailability] = useState<AvailabilityState | null>(
+    null,
+  );
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(
+    null,
+  );
+  const [backOn, setBackOn] = useState("");
+  const [openTickets, setOpenTickets] = useState<{
+    count: number;
+    truncated: boolean;
+  } | null>(null);
+  const [reassigned, setReassigned] = useState<number | null>(null);
+  const showAvailability = Boolean(
+    resolvedUser && resolvedUser.role !== "EMPLOYEE",
+  );
+
   const handleCloseUserMenu = useCallback(() => setUserMenuOpen(false), []);
+
+  useEffect(() => {
+    if (!userMenuOpen || !showAvailability) return;
+    let cancelled = false;
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+    setReassigned(null);
+    void (async () => {
+      try {
+        const state = await getMyAvailability();
+        if (cancelled) return;
+        setAvailability(state);
+        setBackOn(backOnInputValue(state.awayUntil));
+        if (isAwayNow(state)) {
+          const open = await getMyOpenTickets();
+          if (!cancelled) {
+            setOpenTickets({ count: open.count, truncated: open.truncated });
+          }
+        } else {
+          setOpenTickets(null);
+        }
+      } catch (error) {
+        if (!cancelled) setAvailabilityError(handleApiError(error));
+      } finally {
+        if (!cancelled) setAvailabilityLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userMenuOpen, showAvailability]);
+
+  const handleGoAway = useCallback(async () => {
+    setAvailabilityBusy(true);
+    setAvailabilityError(null);
+    setReassigned(null);
+    try {
+      const state = await setMyAvailability({
+        isAvailable: false,
+        awayUntil: backOnToIso(backOn),
+      });
+      setAvailability(state);
+      setBackOn(backOnInputValue(state.awayUntil));
+      // Only now is the count worth asking for: it answers "what happens to
+      // what I am already holding", which nobody asks until they go.
+      const open = await getMyOpenTickets();
+      setOpenTickets({ count: open.count, truncated: open.truncated });
+    } catch (error) {
+      setAvailabilityError(handleApiError(error));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }, [backOn]);
+
+  const handleComeBack = useCallback(async () => {
+    setAvailabilityBusy(true);
+    setAvailabilityError(null);
+    setReassigned(null);
+    try {
+      const state = await setMyAvailability({ isAvailable: true });
+      setAvailability(state);
+      setBackOn("");
+      setOpenTickets(null);
+    } catch (error) {
+      setAvailabilityError(handleApiError(error));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }, []);
+
+  const handleReassign = useCallback(async () => {
+    setAvailabilityBusy(true);
+    setAvailabilityError(null);
+    try {
+      const open = await getMyOpenTickets();
+      if (open.ticketIds.length === 0) {
+        setOpenTickets({ count: 0, truncated: false });
+        return;
+      }
+      const result = await bulkUnassignTickets(open.ticketIds);
+      setReassigned(result.success);
+      // Re-read rather than subtracting: a batch can partly fail, and a number
+      // this UI computed would then be a number nobody can reconcile with the
+      // queue.
+      const after = await getMyOpenTickets();
+      setOpenTickets({ count: after.count, truncated: after.truncated });
+      if (result.failed > 0) {
+        setAvailabilityError(
+          `${result.failed} could not be handed over; they are still yours.`,
+        );
+      }
+    } catch (error) {
+      setAvailabilityError(handleApiError(error));
+    } finally {
+      setAvailabilityBusy(false);
+    }
+  }, []);
+
 
   useLayoutEffect(() => {
     if (!userMenuOpen || !triggerRef.current) return;
@@ -384,6 +526,23 @@ export function TopBar({
                 }
                 email={resolvedUser?.email ?? currentEmail}
                 profileRows={profileRows}
+                availability={
+                  showAvailability ? (
+                    <AvailabilityControl
+                      state={availability}
+                      loading={availabilityLoading}
+                      busy={availabilityBusy}
+                      error={availabilityError}
+                      backOn={backOn}
+                      onBackOnChange={setBackOn}
+                      onGoAway={() => void handleGoAway()}
+                      onComeBack={() => void handleComeBack()}
+                      openTickets={openTickets}
+                      onReassign={() => void handleReassign()}
+                      reassigned={reassigned}
+                    />
+                  ) : undefined
+                }
                 onSignOut={
                   resolvedSignOut
                     ? () => {

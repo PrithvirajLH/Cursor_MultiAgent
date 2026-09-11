@@ -11,6 +11,7 @@ import {
 import { UserRole } from '@prisma/client';
 import { CurrentUser, type AuthUser } from '../auth/current-user.decorator';
 import { ListUsersDto } from './dto/list-users.dto';
+import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UsersService } from './users.service';
 
@@ -21,6 +22,23 @@ export class UsersController {
   @Get()
   async list(@Query() query: ListUsersDto, @CurrentUser() actor: AuthUser) {
     return this.usersService.list(query, actor);
+  }
+
+  /**
+   * Card 2.2. Declared before the `:id` routes so "me" is never read as an id -
+   * the same ordering rule as `export.csv` on the tickets controller.
+   */
+  @Get('me/availability')
+  async getMyAvailability(@CurrentUser() actor: AuthUser) {
+    return this.usersService.getAvailability(actor);
+  }
+
+  @Patch('me/availability')
+  async setMyAvailability(
+    @Body() payload: UpdateAvailabilityDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.usersService.setAvailability(actor, payload);
   }
 
   @Patch(':id/role')

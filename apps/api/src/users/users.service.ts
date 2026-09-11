@@ -10,11 +10,78 @@ import { randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListUsersDto } from './dto/list-users.dto';
+import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** The caller's own availability, for the avatar menu (card 2.2). */
+  async getAvailability(actor: AuthUser): Promise<{
+    isAvailable: boolean;
+    awayUntil: string | null;
+  }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: actor.id },
+      select: { isAvailable: true, awayUntil: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return {
+      isAvailable: user.isAvailable,
+      awayUntil: user.awayUntil ? user.awayUntil.toISOString() : null,
+    };
+  }
+
+  /**
+   * Set the caller's own availability (card 2.2).
+   *
+   * ⚠️ SELF ONLY, AND THAT IS THE AUTHORISATION. There is no user id in the
+   * route, so there is no "can I do this to them" question to get wrong. Marking
+   * somebody else as away is a different decision with a different audit story,
+   * and this card does not make it.
+   *
+   * Coming back clears the date: "I am here, and here is when I return" is not a
+   * state, and leaving a stale date behind would have the sweeper report the same
+   * person as returned forever.
+   *
+   * A return date in the past is refused rather than stored. It would mean
+   * "already back" the moment it was saved - `availableUserFilter` treats a
+   * passed date as back - so the screen would say away while tickets kept
+   * arriving, which is precisely the confusion this card exists to end.
+   *
+   * @param actor The signed-in user.
+   * @param payload Desired availability and optional return date.
+   * @returns The stored state, with `awayUntil` as an ISO string or null.
+   */
+  async setAvailability(
+    actor: AuthUser,
+    payload: UpdateAvailabilityDto,
+  ): Promise<{ isAvailable: boolean; awayUntil: string | null }> {
+    let awayUntil: Date | null = null;
+    if (!payload.isAvailable && payload.awayUntil) {
+      awayUntil = new Date(payload.awayUntil);
+      if (Number.isNaN(awayUntil.getTime())) {
+        throw new BadRequestException('awayUntil is not a valid date');
+      }
+      if (awayUntil.getTime() <= Date.now()) {
+        throw new BadRequestException(
+          'A return date in the past would mean you are already back',
+        );
+      }
+    }
+    const updated = await this.prisma.user.update({
+      where: { id: actor.id },
+      data: { isAvailable: payload.isAvailable, awayUntil },
+      select: { isAvailable: true, awayUntil: true },
+    });
+    return {
+      isAvailable: updated.isAvailable,
+      awayUntil: updated.awayUntil ? updated.awayUntil.toISOString() : null,
+    };
+  }
 
   async list(query: ListUsersDto, actor: AuthUser) {
     const page = query.page ?? 1;

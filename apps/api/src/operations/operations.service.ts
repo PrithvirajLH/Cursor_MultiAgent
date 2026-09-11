@@ -8,6 +8,7 @@ import { OutboxService } from '../notifications/outbox.service';
 import { HealthService } from '../health/health.service';
 import { RetentionService } from '../retention/retention.service';
 import { SlaBreachService } from '../slas/sla-breach.service';
+import { AvailabilityReturnService } from '../users/availability-return.service';
 import { JOB_KEYS, type JobKey } from './job-key.const';
 import type {
   OperationsDataIn,
@@ -47,6 +48,7 @@ export class OperationsService {
     private readonly outbox: OutboxService,
     private readonly leadDigest: LeadDigestService,
     private readonly inboundMailbox: InboundMailboxService,
+    private readonly availabilityReturn: AvailabilityReturnService,
     private readonly config: ConfigService,
   ) {}
 
@@ -115,6 +117,9 @@ export class OperationsService {
       // ⚠️ Safe while the switch is off: `runOnce` reports `enabled: false` and
       // queues nothing, so Run now cannot send mail behind the switch's back.
       return this.toRecord(await this.leadDigest.runOnce());
+    }
+    if (key === 'availability-return') {
+      return this.toRecord(await this.availabilityReturn.runOnce());
     }
     return this.toRecord(await this.scheduler.runOnce());
   }
@@ -368,6 +373,25 @@ export class OperationsService {
             intervalMs: policy.intervalMs,
             lastRunAt: state.lastRunAt,
             lastRunOk: state.lastRunOk,
+            lastSummary: state.lastSummary as Record<string, unknown> | null,
+          };
+        },
+      ),
+      this.jobRow(
+        'availability-return',
+        'Availability return',
+        'Brings agents back from leave when their away date has passed.',
+        () => {
+          const state = this.availabilityReturn.getWorkerState();
+          return {
+            // ⚠️ Always enabled, unlike most rows here: there is no switch
+            // for it because it cannot send anything or touch a ticket. The
+            // worst it does is set a boolean that assignment already ignores -
+            // see AvailabilityReturnService for why it is cosmetic by design.
+            enabled: true,
+            intervalMs: 15 * 60_000,
+            lastRunAt: state.lastSummary?.ranAt ?? null,
+            lastRunOk: state.lastError === null,
             lastSummary: state.lastSummary as Record<string, unknown> | null,
           };
         },

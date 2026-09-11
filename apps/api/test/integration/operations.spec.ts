@@ -75,6 +75,8 @@ describe('Operations console (card 1.21)', () => {
       'lead-digest',
       'email-outbox',
       'automation-scheduler',
+      // Card 2.2 appended the availability-return sweep as a seventh.
+      'availability-return',
     ]);
     // Card 1.32: outbox depth, numbers only.
     expect(Object.keys(body.outbox ?? {}).sort()).toEqual([

@@ -6,6 +6,7 @@ export const JOB_KEYS = [
   'email-outbox',
   'lead-digest',
   'inbound-mailbox',
+  'availability-return',
 ] as const;
 
 export type JobKey = (typeof JOB_KEYS)[number];

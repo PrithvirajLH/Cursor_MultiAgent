@@ -28,6 +28,7 @@ import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
 import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
+import { availableUserFilter } from './available-user-filter.util';
 import {
   sameCountBoundaries,
   type TicketCountBoundaries,
@@ -59,6 +60,8 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTagsDto } from './dto/bulk-tags.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
+import { BulkUnassignDto } from './dto/bulk-unassign.dto';
+import { BULK_TICKET_LIMIT } from './bulk-ticket-limit.const';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { DeleteTicketDto } from './dto/delete-ticket.dto';
 import { IngestInboundEmailDto } from './dto/ingest-inbound-email.dto';
@@ -2457,6 +2460,79 @@ export class TicketsService {
     return updated;
   }
 
+  /**
+   * Take the assignee off a ticket, leaving it with its team (card 2.2).
+   *
+   * ⚠️ THIS API HAD NO UNASSIGN BEFORE THIS CARD. The handoff said bulk
+   * unassign already existed from card 1.12 and to reuse it rather than write a
+   * second one. It does not exist: `assign` reads `payload.assigneeId ?? user.id`,
+   * so an absent assignee means "give it to me", and `applyAssigneeInTx` takes a
+   * required string and throws on a user it cannot find. Neither could ever clear
+   * the column. This is the one place that does, and the bulk form below is the
+   * only caller pattern the card needs.
+   *
+   * ⚠️ THE TEAM IS LEFT IN PLACE ON PURPOSE. Clearing it as well would drop
+   * the ticket out of every queue view - assigned to nobody and visible to
+   * nobody. Unassigned-but-still-routed is the same call this card makes for a
+   * team whose members are all away.
+   *
+   * Idempotent: a ticket that already has no assignee is returned untouched
+   * rather than gathering a timeline event per click.
+   *
+   * @param ticketId Ticket to clear.
+   * @param user The actor; needs the same permission as assigning.
+   * @returns The ticket, with requester, assignee and team loaded.
+   */
+  async unassign(ticketId: string, user: AuthUser) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!this.canAssignTicket(user, ticket)) {
+      throw new ForbiddenException('Not allowed to assign this ticket');
+    }
+    if (ticket.assigneeId === null) {
+      return this.prisma.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        include: { requester: true, assignee: true, assignedTeam: true },
+      });
+    }
+    const previousAssigneeId = ticket.assigneeId;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: { assigneeId: null },
+      });
+      await tx.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'TICKET_UNASSIGNED',
+          payload: { previousAssigneeId },
+          createdById: user.id,
+        },
+      });
+      return tx.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        include: { requester: true, assignee: true, assignedTeam: true },
+      });
+    });
+    await this.invalidateCountsCache([
+      user.id,
+      updated.requesterId,
+      previousAssigneeId,
+    ]);
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId: updated.id,
+        reason: 'assigned',
+        actorId: user.id,
+      }),
+    );
+    return updated;
+  }
+
   async applyAssigneeInTx(
     tx: Prisma.TransactionClient,
     ticket: TeamAssignmentTicketSnapshot,
@@ -3647,6 +3723,60 @@ export class TicketsService {
     );
   }
 
+  /**
+   * Hand a batch of tickets back to their teams' queues (card 2.2).
+   *
+   * The same runner and the same 100-id ceiling as every other bulk operation;
+   * `unassign` above carries the permission check, so a batch containing a
+   * ticket this actor cannot assign reports that one as failed rather than
+   * refusing the whole call.
+   */
+  async bulkUnassign(payload: BulkUnassignDto, user: AuthUser) {
+    return this.runBulkWithConcurrency(payload.ticketIds, (ticketId) =>
+      this.unassign(ticketId, user),
+    );
+  }
+
+  /**
+   * What this person still has to finish, for the "going away" prompt (card 2.2).
+   *
+   * ⚠️ "OPEN" HERE IS `notFinishedFilter()`, card 1.72's single definition -
+   * NOT the list endpoint's `statusGroup=open`, which is status-only and counts
+   * a pre-2026-01-23 RESOLVED row with no `completedAt` as still open. The card
+   * was explicit that this must not become a fourth spelling.
+   *
+   * Ids are capped at the bulk ceiling so the caller can pass them straight to
+   * `bulkUnassign`; `count` is the true total, and `truncated` says when the two
+   * disagree so the UI can be honest about it instead of silently doing less.
+   */
+  async myOpenTickets(user: AuthUser): Promise<{
+    count: number;
+    ticketIds: string[];
+    truncated: boolean;
+  }> {
+    const where: Prisma.TicketWhereInput = {
+      AND: [
+        { assigneeId: user.id },
+        this.notFinishedFilter(),
+        this.accessControl.buildTicketAccessFilter(user),
+      ],
+    };
+    const [count, rows] = await Promise.all([
+      this.prisma.ticket.count({ where }),
+      this.prisma.ticket.findMany({
+        where,
+        select: { id: true },
+        orderBy: { createdAt: 'asc' },
+        take: BULK_TICKET_LIMIT,
+      }),
+    ]);
+    return {
+      count,
+      ticketIds: rows.map((row) => row.id),
+      truncated: count > rows.length,
+    };
+  }
+
   /** Bulk transfer tickets to a team. */
   async bulkTransfer(payload: BulkTransferDto, user: AuthUser) {
     return this.runBulkWithConcurrency(payload.ticketIds, (ticketId) =>
@@ -4714,11 +4844,34 @@ export class TicketsService {
         return null;
       }
 
+      // ⚠️ CARD 2.2. A RELATION FILTER, INSIDE THE LOCK. Two things about
+      // this are deliberate.
+      //
+      // It filters through the `user` relation rather than reading members and
+      // intersecting in JavaScript: availability lives on `User`, memberships
+      // are `TeamMember` rows, and a second query intersected afterwards would
+      // be a read taken outside the decision.
+      //
+      // And it stays inside the `FOR UPDATE` transaction above. That lock is
+      // what stops two tickets arriving together from both taking the same
+      // round-robin slot; a member list fetched outside it is stale in exactly
+      // the case the lock exists for.
+      //
+      // ⚠️ NO `isActive` FILTER HERE, on purpose. Deactivating a user deletes
+      // their TeamMember rows (`users.service.ts`), so they are already out of
+      // rotation - an isActive check would be dead code that reads like a fix.
       const members = await client.teamMember.findMany({
-        where: { teamId },
+        where: { teamId, user: availableUserFilter() },
         orderBy: { createdAt: 'asc' },
       });
 
+      // ⚠️ AND THIS IS THE BEHAVIOUR CHANGE THE CARD TURNS ON. Before card 2.2
+      // this list could not be empty and somebody always got the ticket. Now a
+      // team whose every member is away returns null, and the caller leaves the
+      // ticket UNASSIGNED - still routed to the team, so it sits in that team's
+      // queue where somebody can see it and pick it up. An unassigned ticket in
+      // a queue is visible; one assigned to somebody on leave is invisible
+      // until they come back.
       if (members.length === 0) {
         return null;
       }

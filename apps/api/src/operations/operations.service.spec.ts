@@ -147,6 +147,15 @@ function makeService(overrides: Overrides = {}) {
     outbox as never,
     leadDigest as never,
     inboundMailbox as never,
+    // Card 2.2's availability-return sweep. A stub, because this spec is about
+    // the snapshot's shape rather than what any one job does.
+    {
+      runOnce: jest.fn().mockResolvedValue({
+        returned: 0,
+        ranAt: '2026-09-11T07:00:00.000Z',
+      }),
+      getWorkerState: () => ({ lastSummary: null, lastError: null }),
+    } as never,
     new ConfigService({
       INTAKE_API_SECRET: 'set',
       SLA_BREACH_INTERVAL_MS: '60000',
@@ -168,6 +177,8 @@ describe('OperationsService.snapshot', () => {
       'lead-digest',
       'email-outbox',
       'automation-scheduler',
+      // Card 2.2 appended the availability-return sweep.
+      'availability-return',
     ]);
     expect(snapshot.switches?.map((row) => row.key)).toEqual(
       expect.arrayContaining([
@@ -212,7 +223,8 @@ describe('OperationsService.snapshot', () => {
       readiness: () => Promise.reject(new Error('redis down')),
     });
     const snapshot = await service.snapshot();
-    expect(snapshot.jobs).toHaveLength(6);
+    // Every row survives. Card 2.2 made it seven with availability-return.
+    expect(snapshot.jobs).toHaveLength(7);
     // The switch group keeps the worker rows readiness does not own.
     // Card 1.16 added the lead digest to that set.
     expect(snapshot.switches?.map((row) => row.key)).toEqual([
@@ -237,7 +249,8 @@ describe('OperationsService.snapshot', () => {
       lastRunAt: null,
       nextRunAt: null,
     });
-    expect(snapshot.jobs).toHaveLength(6);
+    // Every row survives. Card 2.2 made it seven with availability-return.
+    expect(snapshot.jobs).toHaveLength(7);
   });
 });
 

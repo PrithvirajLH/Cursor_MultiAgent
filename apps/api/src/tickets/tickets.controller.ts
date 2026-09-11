@@ -28,6 +28,7 @@ import { BulkPriorityDto } from './dto/bulk-priority.dto';
 import { BulkStatusDto } from './dto/bulk-status.dto';
 import { BulkTagsDto } from './dto/bulk-tags.dto';
 import { BulkTransferDto } from './dto/bulk-transfer.dto';
+import { BulkUnassignDto } from './dto/bulk-unassign.dto';
 import { CreateIntakeTicketDto } from './dto/create-intake-ticket.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { DeleteTicketDto } from './dto/delete-ticket.dto';
@@ -120,6 +121,16 @@ export class TicketsController {
     return this.ticketsService.getMetrics(user);
   }
 
+  /**
+   * The caller's own unfinished tickets, ids included (card 2.2).
+   *
+   * Declared before @Get(':id') for the same reason export.csv is, below.
+   */
+  @Get('my-open')
+  async myOpenTickets(@CurrentUser() user: AuthUser) {
+    return this.ticketsService.myOpenTickets(user);
+  }
+
   // Declared before @Get(':id') — otherwise "export.csv" is swallowed as a ticket id.
   @Get('export.csv')
   exportCsv(@Query() query: ListTicketsDto, @CurrentUser() user: AuthUser) {
@@ -183,6 +194,22 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.bulkAssign(payload, user);
+  }
+
+  /**
+   * Hand tickets back to their teams' queues (card 2.2).
+   *
+   * ⚠️ NOT `bulk/assign` WITH NO ASSIGNEE - that assigns them to the caller,
+   * because `assign` reads `payload.assigneeId ?? user.id`. Nothing in this API
+   * could clear an assignee before this card.
+   */
+  @Post('bulk/unassign')
+  @ThrottlePolicy('highWrite')
+  async bulkUnassign(
+    @Body() payload: BulkUnassignDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.bulkUnassign(payload, user);
   }
 
   @Post('bulk/transfer')

@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { HealthModule } from '../health/health.module';
 import { InboundMailboxModule } from '../inbound-mailbox/inbound-mailbox.module';
 import { RetentionModule } from '../retention/retention.module';
+import { UsersModule } from '../users/users.module';
 import { SlasModule } from '../slas/slas.module';
 import { OperationsController } from './operations.controller';
 import { OperationsService } from './operations.service';
@@ -15,6 +16,8 @@ import { OperationsService } from './operations.service';
     HealthModule,
     SlasModule,
     RetentionModule,
+    // Card 2.2: the availability-return sweep is an operations job.
+    UsersModule,
     AutomationModule,
     // For the email suppression list (card 1.23).
     NotificationsModule,

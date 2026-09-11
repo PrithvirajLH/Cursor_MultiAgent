@@ -1,5 +1,6 @@
 import { isAbortError } from "./is-abort-error";
 import { sessionExpiryStore } from "./session-expiry-store";
+import type { AvailabilityState } from "../utils/availability";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const DEFAULT_EMAIL = import.meta.env.VITE_DEMO_USER_EMAIL as
@@ -2559,6 +2560,49 @@ export function bulkAssignTickets(ticketIds: string[], assigneeId?: string) {
       body: JSON.stringify({ ticketIds, assigneeId }),
     },
   ).then((response) => unwrapDataEnvelope(response));
+}
+
+/**
+ * Hand tickets back to their teams' queues (card 2.2).
+ *
+ * ⚠️ NOT `bulkAssignTickets(ids)` WITH NO ASSIGNEE. That assigns them to
+ * you: the API reads `payload.assigneeId ?? user.id`. Nothing could clear an
+ * assignee before card 2.2 added this route.
+ */
+export function bulkUnassignTickets(ticketIds: string[]) {
+  return apiFetch<BulkResult | DataEnvelope<BulkResult>>(
+    "/tickets/bulk/unassign",
+    {
+      method: "POST",
+      body: JSON.stringify({ ticketIds }),
+    },
+  ).then((response) => unwrapDataEnvelope(response));
+}
+
+/** What the signed-in user still has to finish, ids included (card 2.2). */
+export type MyOpenTickets = {
+  count: number;
+  ticketIds: string[];
+  truncated: boolean;
+};
+
+export function getMyOpenTickets() {
+  return apiFetch<MyOpenTickets>("/tickets/my-open");
+}
+
+/** The signed-in user's own availability (card 2.2). Self only - no id. */
+export function getMyAvailability() {
+  return apiFetch<AvailabilityState>("/users/me/availability");
+}
+
+export function setMyAvailability(payload: {
+  isAvailable: boolean;
+  awayUntil?: string | null;
+}) {
+  return apiFetch<AvailabilityState>("/users/me/availability", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function bulkTransferTickets(

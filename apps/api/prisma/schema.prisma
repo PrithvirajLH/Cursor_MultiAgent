@@ -153,6 +153,22 @@ model User {
   primaryTeamId String? // for TEAM_ADMIN: the team they administer
   isActive      Boolean   @default(true)
   deactivatedAt DateTime?
+  /// Whether this person is currently taking auto-assigned work (card 2.2).
+  ///
+  /// ⚠️ DISTINCT FROM `isActive`, and the difference matters. `isActive`
+  /// false means the account is deactivated, and `users.service.ts` deletes the
+  /// person's TeamMember rows at that moment, so they are already out of every
+  /// rotation. `isAvailable` false means a working account on leave: the
+  /// memberships stay, the sidebar still shows them, and only auto-assignment
+  /// skips them.
+  isAvailable   Boolean   @default(true)
+  /// When an absence ends, or null for "away indefinitely".
+  ///
+  /// A return date is not a promise the scheduler has to keep: the availability
+  /// check treats a past `awayUntil` as back, so if the job does not run the
+  /// person returns to rotation anyway. The job (`availability-return`) exists
+  /// to flip the stored flag so the UI agrees with the behaviour.
+  awayUntil     DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
