@@ -3,6 +3,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EyeOff } from "lucide-react";
 import { fetchHiddenPresets, setHiddenPresets } from "../api/client";
 import { SAVED_VIEWS } from "./shell/saved-views";
+import { SYSTEM_VIEWS } from "./shell/system-views";
+
+/**
+ * Every built-in sidebar row a team admin may switch off, in display order.
+ *
+ * ⚠️ CARD 1.61. This panel was built from `SAVED_VIEWS` alone, so it offered
+ * six checkboxes and said "6 of 6 shown" while three more rows sat above them
+ * in the sidebar with no way to hide them. The owner hit that within an hour
+ * of 1.53 shipping. The system views come first because that is the order the
+ * sidebar renders them.
+ *
+ * *Assigned to Me* is deliberately absent - it comes from App.tsx's nav
+ * children and the owner decided it stays permanent.
+ */
+const HIDEABLE_ROWS: ReadonlyArray<{ id: string; label: string }> = [
+  ...SYSTEM_VIEWS.map(({ id, label }) => ({ id, label })),
+  ...SAVED_VIEWS.map(({ id, label }) => ({ id, label })),
+];
 
 /**
  * Which built-in sidebar presets this team uses (card 1.53).
@@ -54,7 +72,13 @@ export function TeamPresetVisibility({
     save.mutate(next);
   }
 
-  const shownCount = SAVED_VIEWS.length - hidden.length;
+  // ⚠️ DERIVED, NOT SUBTRACTED. This was `SAVED_VIEWS.length - hidden.length`,
+  // which is wrong the moment `hidden` holds an id this panel does not list -
+  // a retired preset, or (before card 1.61) any of the three system views. It
+  // could read "3 of 6" with all six ticked, or go negative. Counting the rows
+  // actually shown cannot drift from what is on screen, and the next row added
+  // needs no change here.
+  const shownRows = HIDEABLE_ROWS.filter((row) => !hidden.includes(row.id));
 
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -66,14 +90,16 @@ export function TeamPresetVisibility({
       </div>
       <p className="mb-3 text-xs text-muted-foreground">
         Which built-in views this team sees. Unticking one hides it for
-        everybody on the team.{" "}
-        {/* Worth saying: each badge is its own count query, so this is a real
-            saving on a busy sidebar, not only tidiness. */}
-        Each visible preset fetches its own count, so showing fewer also makes
-        the sidebar load faster.
+        everybody on the team. Anyone with a direct link still reaches the view.
+        {/* ⚠️ CARD 1.61 DELETED A SENTENCE HERE that promised showing fewer
+            presets made the sidebar load faster. That was true under card 1.53,
+            when every badge was its own count query; card 1.69 step 4 moved
+            them all onto one cached request, so hiding a row now saves nothing.
+            Replaced with the thing an admin actually needs to know - hiding is
+            not permission. */}
       </p>
       <ul className="space-y-1.5">
-        {SAVED_VIEWS.map((preset) => (
+        {HIDEABLE_ROWS.map((preset) => (
           <li key={preset.id}>
             <label className="flex items-center gap-2 text-[13px] text-foreground">
               <input
@@ -90,7 +116,7 @@ export function TeamPresetVisibility({
         ))}
       </ul>
       <p className="mt-3 text-[11px] text-muted-foreground">
-        {shownCount} of {SAVED_VIEWS.length} shown
+        {shownRows.length} of {HIDEABLE_ROWS.length} shown
         {canManage ? "" : " — only a team admin can change this"}
       </p>
       {save.isError ? (

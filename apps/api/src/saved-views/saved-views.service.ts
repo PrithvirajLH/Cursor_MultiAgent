@@ -119,9 +119,14 @@ export class SavedViewsService {
   /**
    * The built-in presets this user's team has switched off (card 1.53).
    *
-   * Returns the ids only. They are code constants from the web app's
-   * `SAVED_VIEWS`, so the server neither validates them against a list nor
-   * cares whether they still exist - a stale id is ignored by the reader.
+   * Returns the ids only. They are code constants from the web app - since
+   * card 1.61, from `SAVED_VIEWS` AND `SYSTEM_VIEWS`, which share this one
+   * array as a single namespace. The server neither validates them against a
+   * list nor cares whether they still exist: a stale id is ignored by the
+   * reader, so retiring a row needs no cleanup here.
+   *
+   * That the server validates nothing is why card 1.61 needed no API change at
+   * all - three new hideable ids were already storable.
    */
   async listHiddenPresets(user: AuthUser) {
     if (!user.teamId) {

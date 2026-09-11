@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { visiblePresets } from "./shell/visible-presets";
 import { fetchHiddenPresets } from "../api/client";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { AtSign, CalendarClock, Eye, X } from "lucide-react";
+import { X } from "lucide-react";
 import {
   deleteSavedView,
   fetchSavedViews,
@@ -20,6 +20,7 @@ import { useViewCounts, viewFiltersToParams } from "./shell/use-view-count";
 import { useTicketCountsQuery } from "../hooks/useTicketCountsQuery";
 import { PRESET_COUNT_FIELD } from "./shell/sidebar-count-fields";
 import { formatAtRiskThreshold } from "./shell/at-risk-label";
+import { SYSTEM_VIEWS } from "./shell/system-views";
 import { useSessionExpired } from "../hooks/use-session-expired";
 
 const TONE_COLOR: Record<ToneKey, string> = {
@@ -186,35 +187,11 @@ export function SidebarTicketsSavedViews({
       ? `${preset.label} · ${atRiskSuffix}`
       : preset.label;
 
-  // System views — Watching (followed tickets) and Mentions
-  // (tickets where the user has been @mentioned). Both lean on the
-  // server-side scope filter we added; counts come from the same
-  // useViewCounts hook so they auto-refresh on ticket mutations.
-  const systemViews = [
-    {
-      id: "watching" as const,
-      label: "Watching",
-      icon: Eye,
-      query: "?scope=watching",
-      params: { scope: "watching" } as Record<string, string>,
-    },
-    {
-      id: "mentions" as const,
-      label: "Mentions",
-      icon: AtSign,
-      query: "?scope=mentions",
-      params: { scope: "mentions" } as Record<string, string>,
-    },
-    {
-      // Card 1.10. Everything already due plus the rest of today, so the view
-      // is useful first thing rather than only at the moment one fires.
-      id: "followups" as const,
-      label: "Follow-ups due today",
-      icon: CalendarClock,
-      query: "?scope=followups",
-      params: { scope: "followups" } as Record<string, string>,
-    },
-  ];
+  // ⚠️ CARD 1.61. These three used to be declared inline right here, which is
+  // precisely why a team admin could not hide them: `TeamPresetVisibility` was
+  // built from `SAVED_VIEWS` and never saw this array. One shared definition
+  // now, filtered by the same `visiblePresets` the presets use.
+  const systemViews = visiblePresets(SYSTEM_VIEWS, hiddenPresets?.data);
   const userViewCounts = useViewCounts(
     ticketSavedViews.map((v) => viewFiltersToParams(v.filters)),
     { enabled: authReady && ticketSavedViews.length > 0 },
