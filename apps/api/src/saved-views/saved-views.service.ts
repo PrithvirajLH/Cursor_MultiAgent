@@ -48,15 +48,17 @@ export class SavedViewsService {
   async create(dto: CreateSavedViewDto, user: AuthUser) {
     const teamId = this.resolveTeamId(dto.teamId ?? null, user);
     const isDefault = this.resolveDefault(dto.isDefault ?? false, teamId);
+    const viewType = dto.viewType ?? 'tickets';
     const view = await this.prisma.$transaction(async (tx) => {
       if (isDefault) {
-        await this.clearOtherDefaults(tx, user.id);
+        await this.clearOtherDefaults(tx, user.id, viewType);
       }
       return tx.savedView.create({
         data: {
           name: dto.name,
           filters: dto.filters as object,
           isDefault,
+          viewType,
           userId: user.id,
           teamId,
         },
@@ -88,9 +90,13 @@ export class SavedViewsService {
       dto.isDefault === undefined
         ? this.resolveDefault(existing.isDefault, nextTeamId)
         : this.resolveDefault(dto.isDefault, nextTeamId);
+    // A view does not change kind on an edit unless the caller says so; a
+    // rename must not silently move a report view into the tickets namespace
+    // and take that default with it.
+    const nextViewType = dto.viewType ?? existing.viewType;
     const view = await this.prisma.$transaction(async (tx) => {
       if (nextDefault && !existing.isDefault) {
-        await this.clearOtherDefaults(tx, user.id);
+        await this.clearOtherDefaults(tx, user.id, nextViewType);
       }
       return tx.savedView.update({
         where: { id },
@@ -98,6 +104,7 @@ export class SavedViewsService {
           ...(dto.name != null && { name: dto.name }),
           ...(dto.filters != null && { filters: dto.filters as object }),
           isDefault: nextDefault,
+          viewType: nextViewType,
           teamId: nextTeamId,
         },
       });
@@ -212,41 +219,44 @@ export class SavedViewsService {
   }
 
   /**
-   * Clear this user's other defaults before setting a new one.
+   * Clear this user's other defaults OF THE SAME KIND before setting a new one.
    *
-   * ⚠️ CARD 1.53 ASKED FOR THIS TO BE SCOPED PER VIEW KIND, AND IT CANNOT BE.
+   * ⚠️ CARD 1.53 ASKED FOR THIS AND CARD 1.60 DELIVERED IT; the note that
+   * used to sit here explained why it could not be done, and that reasoning is
+   * worth keeping because it was correct at the time.
    *
-   * The card records a live bug: making a REPORT view the default also clears
-   * the default TICKET view, because both kinds share this table and this
-   * `updateMany` spans them. That is real. But the fix is not available at this
-   * layer, because the database enforces the same rule one level down:
+   * The bug: making a REPORT view your default also cleared your default TICKET
+   * view, because both kinds share this table and this `updateMany` spanned
+   * them. 1.53's implementer scoped it per kind, got
+   * `Unique constraint failed on the fields: (userId)`, and backed it out -
+   * because the database enforced the same rule one level down:
    *
    *     CREATE UNIQUE INDEX "SavedView_default_per_user"
    *       ON "SavedView" ("userId")
    *       WHERE "isDefault" = true AND "userId" IS NOT NULL;
    *
-   * -- migration 20260213140000_schema_hardening, which predates the
-   * `viewType` discriminator that split reports from tickets.
+   * ONE DEFAULT PER USER was a database invariant, not a service choice, so
+   * scoping here alone converted a working flow into a 500. Backing it out was
+   * right.
    *
-   * So ONE DEFAULT PER USER is a database invariant, not a service choice.
-   * Scoping this clear to one kind makes the second default violate that index
-   * and the request 500s - it converts a working flow into an error, which is
-   * strictly worse than the behaviour being complained about. Verified: doing
-   * exactly that produced
-   * `Unique constraint failed on the fields: (userId)`.
+   * They also warned that putting the discriminator into SQL would make a
+   * second copy of a rule already living in TypeScript - the drift behind cards
+   * 1.36, 1.38, 1.47 and 1.50. That objection is why migration 61 STRIPS
+   * `viewType` out of `filters` rather than leaving it in both places: there is
+   * one discriminator, and it is the column.
    *
-   * Fixing it properly means replacing that index with one keyed on the user
-   * AND the kind, which is a second schema change this batch does not allow -
-   * and it would put the JSON discriminator into SQL as a second copy of a rule
-   * that already lives in TypeScript, which is the drift behind cards 1.36,
-   * 1.38, 1.47 and 1.50. Reported rather than improvised.
+   * Migration 61 replaces that index with the same guarantee keyed on
+   * `(userId, viewType)`, so this clear is now scoped to match it exactly. The
+   * service and the index must keep agreeing: widening one without the other
+   * brings back either the cross-kind clobber or the 500.
    */
   private async clearOtherDefaults(
     tx: Prisma.TransactionClient,
     userId: string,
+    viewType: string,
   ): Promise<void> {
     await tx.savedView.updateMany({
-      where: { userId, isDefault: true },
+      where: { userId, isDefault: true, viewType },
       data: { isDefault: false },
     });
   }

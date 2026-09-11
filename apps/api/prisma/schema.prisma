@@ -836,6 +836,20 @@ model SavedView {
   id        String   @id @default(uuid())
   name      String
   filters   Json
+  /// Which kind of view this is: "tickets" or "reports" (card 1.60).
+  ///
+  /// A REAL COLUMN, not a key inside `filters`, and not an expression index
+  /// over the JSON. `viewType` was only ever written on report views
+  /// (ReportsPage), so `filters->>'viewType'` is NULL for every ticket view -
+  /// and a unique index treats NULLs as distinct, so it would not have
+  /// constrained ticket views at all. COALESCE would work and would bury the
+  /// default inside an index expression where nobody would find it.
+  ///
+  /// It REPLACES the JSON key rather than sitting beside it. Migration 61
+  /// strips `viewType` out of `filters`, because two copies of one
+  /// discriminator is the drift behind cards 1.36, 1.38, 1.47 and 1.50 - the
+  /// objection card 1.53's implementer raised, and they were right.
+  viewType  String   @default("tickets")
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
   teamId    String?

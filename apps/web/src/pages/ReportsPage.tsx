@@ -246,10 +246,17 @@ function defaultFilters(): ReportsFilters {
   };
 }
 
+/**
+ * ⚠️ CARD 1.60: THE KIND IS NO LONGER IN `filters`. The caller checks
+ * `record.viewType` - the column - before calling this, so this function now
+ * only parses. It used to reject anything without `viewType: "reports"` inside
+ * the blob, and migration 61 stripped that key from every row, so keeping the
+ * check would have made every saved report view unreadable.
+ */
 function parseSavedReportFilters(
   raw: Record<string, unknown> | null | undefined,
 ): ReportsFilters | null {
-  if (!raw || raw.viewType !== "reports") return null;
+  if (!raw) return null;
   const base = defaultFilters();
   const range = raw.range;
   const teamId = raw.teamId;
@@ -284,11 +291,16 @@ function parseSavedReportFilters(
   };
 }
 
+/**
+ * ⚠️ CARD 1.60 REMOVED `viewType` FROM WHAT THIS WRITES. It is sent as a
+ * top-level field on the request instead, and stored in a column. Writing it
+ * here as well would recreate the second source of truth the card exists to
+ * remove - and the two would drift the first time one of them was edited.
+ */
 function serializeSavedReportFilters(
   filters: ReportsFilters,
 ): Record<string, unknown> {
   return {
-    viewType: "reports",
     range: filters.range,
     teamId: filters.teamId,
     channel: filters.channel,
@@ -644,7 +656,10 @@ export function ReportsPage({ role }: { role: Role }) {
       const records = await fetchSavedViews();
       const views = records
         .map((record) => {
-          const parsed = parseSavedReportFilters(record.filters);
+          const parsed =
+            record.viewType === "reports"
+              ? parseSavedReportFilters(record.filters)
+              : null;
           if (!parsed) return null;
           return {
             id: record.id,
@@ -1461,6 +1476,7 @@ export function ReportsPage({ role }: { role: Role }) {
 
     try {
       const created = await createSavedView({
+        viewType: "reports",
         name,
         filters: serializeSavedReportFilters(filters),
       });

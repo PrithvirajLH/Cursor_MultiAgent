@@ -993,6 +993,16 @@ export type SavedViewRecord = {
   id: string;
   name: string;
   filters: Record<string, unknown>;
+  /**
+   * Which kind of view this is (card 1.60).
+   *
+   * ⚠️ READ THIS, NOT `filters.viewType`. It was a key inside the filters
+   * blob, which made it invisible to SQL - so "one default per user" could not
+   * be scoped per kind and setting a default report view cleared your default
+   * ticket view. Migration 61 promoted it to a column and stripped the key, so
+   * `filters.viewType` no longer exists on any row.
+   */
+  viewType: 'tickets' | 'reports';
   isDefault: boolean;
   userId: string | null;
   teamId: string | null;
@@ -1029,6 +1039,8 @@ export function setHiddenPresets(teamId: string, presetIds: string[]) {
 export function createSavedView(payload: {
   name: string;
   filters: Record<string, unknown>;
+  /** Card 1.60: omitted means `tickets`, which is what the sidebar creates. */
+  viewType?: 'tickets' | 'reports';
   isDefault?: boolean;
   teamId?: string;
 }) {
@@ -1043,6 +1055,8 @@ export function updateSavedView(
   payload: {
     name?: string;
     filters?: Record<string, unknown>;
+    /** Card 1.60. Omitted leaves the kind alone; a rename must not move it. */
+    viewType?: 'tickets' | 'reports';
     isDefault?: boolean;
     /** Promote to the team, or `null` to make it personal again (card 1.53). */
     teamId?: string | null;

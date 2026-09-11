@@ -143,7 +143,10 @@ export function SidebarTicketsSavedViews({
   // params (range/compare/…), not ticket query filters, so they'd navigate
   // to a meaningless /tickets URL. Exclude them here.
   const ticketSavedViews = (userSavedViews ?? []).filter(
-    (v) => (v.filters as Record<string, unknown>)?.viewType !== "reports",
+    // ⚠️ CARD 1.60: the COLUMN, not a key in the filters blob. Migration 61
+    // stripped `viewType` out of `filters`, so the old check would have matched
+    // nothing and every report view would have appeared in the tickets sidebar.
+    (v) => v.viewType !== "reports",
   );
 
   // ⚠️ CARD 1.53. The team's admin can switch built-in presets off for
