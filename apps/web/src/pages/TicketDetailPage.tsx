@@ -87,6 +87,7 @@ import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationCon
 import { handleApiError } from "../utils/handleApiError";
 import type { Role } from "../types";
 import { copyToClipboard } from "../utils/clipboard";
+import { isUuid, ticketUrl } from "../utils/ticket-ref";
 import { getUiZoom } from "../utils/uiZoom";
 import { formatStatus, formatTicketId } from "../utils/format";
 import {
@@ -195,8 +196,15 @@ export function TicketDetailPage({
   ) => void;
 }) {
   const headerCtx = useHeaderContext();
-  const { ticketId: ticketIdParam } = useParams();
-  const ticketId = ticketIdProp ?? ticketIdParam;
+  const { ticketRef: ticketRefParam } = useParams();
+  // ⚠️ CARD 2.12. THE ROUTE NOW ACCEPTS EITHER FORM - /tickets/IT-0042 as
+  // well as /tickets/<uuid> - because a display id is what survives being
+  // pasted into Teams or an email. Everything below still speaks UUIDs:
+  // roughly twenty sub-resource calls (messages, events, followers, viewing)
+  // take the ticket's real id, and the realtime payloads carry it too. So the
+  // route reference is resolved once, just below, and `ticketId` goes on
+  // meaning exactly what it has always meant.
+  const routeRef = ticketIdProp ?? ticketRefParam;
   const location = useLocation();
   const navigate = useNavigate();
   const ticketTabs = useTicketTabs();
@@ -206,6 +214,22 @@ export function TicketDetailPage({
   /* ——— State ——— */
 
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  // The resolved id, or undefined while a display-id route is still loading.
+  //
+  // ⚠️ UNDEFINED, NOT THE DISPLAY ID. Every guard below reads
+  // `if (!ticketId) return`, so holding it back is what stops a sub-resource
+  // call going out as /tickets/IT-0042/viewing and 404ing.
+  //
+  // ⚠️ AND IT IS ONLY RESOLVED WHEN THE LOADED TICKET IS THE ONE THE ROUTE
+  // NAMES. Without that check, navigating from one display-id link to another
+  // would keep serving the previous ticket's id and the new one would never
+  // load.
+  const ticketId =
+    !routeRef || isUuid(routeRef)
+      ? routeRef
+      : ticket?.displayId === routeRef
+        ? ticket.id
+        : undefined;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [messageCursor, setMessageCursor] = useState<string | null>(null);
   const [messagesHasMore, setMessagesHasMore] = useState(false);
@@ -882,12 +906,16 @@ export function TicketDetailPage({
         const detail = await fetchTicketById(id);
         if (detailRequestSeqRef.current !== requestSeq) return;
         setTicket(detail);
-        // Mirror into the React Query cache so re-visiting this ticket
-        // is an instant cache hit rather than another cold fetch.
-        queryClient.setQueryData(["ticket", id], detail);
+        // ⚠️ CARD 2.12: `detail.id`, NOT `id`. This function is the only one
+        // that takes either form, and the sub-resource endpoints take the real
+        // id - /tickets/IT-0042/messages is a 404. The cache is keyed the same
+        // way, so a display-id visit and a uuid visit share one entry; the
+        // lookup above can still miss on the first display-id visit, which
+        // costs a loading state and nothing else.
+        queryClient.setQueryData(["ticket", detail.id], detail);
         await Promise.all([
-          loadMessagesPage(id, true),
-          loadEventsPage(id, true),
+          loadMessagesPage(detail.id, true),
+          loadEventsPage(detail.id, true),
         ]);
       } catch (error) {
         if (detailRequestSeqRef.current !== requestSeq) return;
@@ -924,8 +952,10 @@ export function TicketDetailPage({
   /* ——— Effects ——— */
 
   useEffect(() => {
-    if (ticketId) void loadTicketDetail(ticketId);
-  }, [ticketId]);
+    // Keyed on the route reference: this is the one call that accepts either
+    // form, and keying it on the resolved id would mean fetching twice.
+    if (routeRef) void loadTicketDetail(routeRef);
+  }, [routeRef]);
 
   useEffect(() => {
     if (!ticketId) {
@@ -1582,14 +1612,16 @@ export function TicketDetailPage({
   /* ——— Event handlers (memoized, 6.3) ——— */
 
   const handleCopyLink = useCallback(async () => {
-    if (!ticketId) return;
-    const url = `${window.location.origin}/tickets/${ticketId}`;
+    // Card 2.12: IT-0042, not the uuid - and the uuid when a ticket has no
+    // display id, because the column is nullable.
+    if (!ticket) return;
+    const url = ticketUrl(window.location.origin, ticket);
     const copied = await copyToClipboard(url);
     setCopyToast({
       message: copied ? "Link copied to clipboard" : "Could not copy link",
       type: copied ? "success" : "error",
     });
-  }, [ticketId]);
+  }, [ticket]);
 
   const startTextEdit = useCallback(() => {
     if (!ticket) return;

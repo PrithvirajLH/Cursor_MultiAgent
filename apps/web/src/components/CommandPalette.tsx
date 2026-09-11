@@ -23,7 +23,7 @@ import {
 } from "./command-palette-navigation";
 import { useModalFocusTrap } from "../hooks/useModalFocusTrap";
 import type { RecentSearch } from "../hooks/useCommandPalette";
-import { formatTicketId } from "../utils/format";
+import { formatStatus, formatTicketId } from "../utils/format";
 import { modKeyLabel } from "../utils/platform";
 import { priorityBadgeClass } from "../utils/statusColors";
 
@@ -571,7 +571,7 @@ export function CommandPalette({
                         {ticket.subject}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatTicketId(ticket)} · {ticket.status} ·{" "}
+                        {formatTicketId(ticket)} · {formatStatus(ticket.status)} ·{" "}
                         {ticket.assignedTeam?.name ?? "Unassigned"}
                       </p>
                     </div>

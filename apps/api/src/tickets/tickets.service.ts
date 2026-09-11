@@ -30,6 +30,7 @@ import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
 import { availableUserFilter } from './available-user-filter.util';
 import { leastLoadedMember } from './least-loaded-member.util';
+import { ticketRefWhere } from './ticket-ref.util';
 import {
   sameCountBoundaries,
   type TicketCountBoundaries,
@@ -1299,9 +1300,20 @@ export class TicketsService {
     };
   }
 
-  async getById(id: string, user: AuthUser) {
+  /**
+   * One ticket, by UUID or by display id (card 2.12).
+   *
+   * ⚠️ THE COLUMN IS CHOSEN BY THE SHAPE OF THE REFERENCE, in
+   * `ticketRefWhere`, not by trying one and falling back to the other. Every
+   * `IT-0042` link would pay for the failed lookup first, on the hottest read
+   * path there is.
+   *
+   * Old UUID links keep working - people have them in email and in Teams - and
+   * a test pins that.
+   */
+  async getById(reference: string, user: AuthUser) {
     const ticket = await this.prisma.ticket.findUnique({
-      where: { id },
+      where: ticketRefWhere(reference),
       include: {
         requester: true,
         assignee: true,
@@ -1328,6 +1340,8 @@ export class TicketsService {
       throw new ForbiddenException('No access to this ticket');
     }
 
+    // Everything below reads by the real id, whichever form came in.
+    const id = ticket.id;
     const [followers, attachments, customFieldValues, links] =
       await Promise.all([
         this.prisma.ticketFollower.findMany({

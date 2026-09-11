@@ -1,9 +1,14 @@
+import { statusLabel } from "./status-label";
+
+/**
+ * The screen label for a status enum.
+ *
+ * Card 2.12 moved the words into `status-label.ts` and left this as the entry
+ * point every caller already uses - one change rather than a sweep through a
+ * dozen components, and no second spelling of the same idea.
+ */
 export function formatStatus(value: string) {
-  return value
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return statusLabel(value);
 }
 
 export function formatDate(value: string | null | undefined) {

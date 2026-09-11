@@ -1,3 +1,4 @@
+import { formatStatus } from "../utils/format";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -746,7 +747,7 @@ function RuleEditorModal({
                       <option value="">Select status...</option>
                       {STATUS_OPTIONS.map((status) => (
                         <option key={status} value={status}>
-                          {status}
+                          {formatStatus(status)}
                         </option>
                       ))}
                     </select>

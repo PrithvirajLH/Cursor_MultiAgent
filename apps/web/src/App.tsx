@@ -1228,7 +1228,8 @@ function AuthenticatedShell({
                       }
                     />
                     <Route
-                      path="/tickets/:ticketId"
+                      // Card 2.12: either a uuid or a display id (IT-0042).
+                      path="/tickets/:ticketRef"
                       element={
                         <TicketDetailPage
                           currentEmail={currentEmail}

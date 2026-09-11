@@ -15,6 +15,7 @@ import {
 import { AutomationQueueService } from '../common/automation-queue.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ticketLink } from '../notifications/ticket-link.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketRealtimeService } from '../tickets/ticket-realtime.service';
 import { SlaEngineService } from './sla-engine.service';
@@ -554,7 +555,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       `Due: ${dueAt?.toISOString() ?? 'Unknown'}`,
       bumpedPriority ? `Priority bumped to ${priority}.` : null,
       '',
-      `View: ${this.ticketLink(ticket.id)}`,
+      `View: ${ticketLink(this.config.get<string>('WEB_APP_URL'), ticket)}`,
     ]
       .filter(Boolean)
       .join('\n');
@@ -669,7 +670,7 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
       `Due: ${dueAt.toISOString()}`,
       `Time remaining: ${timeRemaining}`,
       '',
-      `View: ${this.ticketLink(ticket.id)}`,
+      `View: ${ticketLink(this.config.get<string>('WEB_APP_URL'), ticket)}`,
     ].join('\n');
 
     const payload: Prisma.InputJsonValue = {
@@ -874,10 +875,4 @@ export class SlaBreachService implements OnModuleInit, OnModuleDestroy {
     return ticket.displayId ?? `#${ticket.number}`;
   }
 
-  private ticketLink(ticketId: string) {
-    const base = (
-      this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:5173'
-    ).replace(/\/$/, '');
-    return `${base}/tickets/${ticketId}`;
-  }
 }

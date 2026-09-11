@@ -8,6 +8,7 @@ import {
   type ResolvedEmailLinks,
 } from '../email-actions/email-action-link.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { ticketLink } from './ticket-link.util';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
 import { resolveOutboundRecipients } from './outbound-recipients.util';
@@ -56,6 +57,8 @@ type QueuedEmailDetails = {
   preheader?: string;
   eventType: string;
   ticketId?: string;
+  /** Card 2.12: what the link in the email says. Falls back to the UUID. */
+  ticketDisplayId?: string | null;
   payload?: Prisma.InputJsonValue;
   emailMetadata?: EmailOutboxMetadata;
   emailContent?: EmailOutboxContent;
@@ -138,6 +141,7 @@ export class NotificationsService {
       body,
       preheader: `Logged as ${reference}. We will be in touch.`,
       ticketId: fullTicket.id,
+      ticketDisplayId: fullTicket.displayId,
       // The payload is the outbox audit row, never shown to a recipient, so the
       // enums stay here where reporting can still read them.
       payload: {
@@ -496,6 +500,7 @@ export class NotificationsService {
       // subject; whether they need to do something about it is not.
       preheader: 'Tell us if this is fixed, or reopen it.',
       ticketId: ticket.id,
+      ticketDisplayId: ticket.displayId,
       payload: {
         from: previousStatus,
         to: TicketStatus.RESOLVED,
@@ -640,6 +645,7 @@ export class NotificationsService {
       subject: emailContext.subject,
       body,
       ticketId: details.ticketId,
+      ticketDisplayId: details.ticketDisplayId,
       payload: {
         inboundMessageId: details.inboundMessageId,
       },
@@ -992,6 +998,7 @@ export class NotificationsService {
       subject: emailContext.subject,
       body: this.buildPublicReplyTextBody(ticket, actor, message.body),
       ticketId: ticket.id,
+      ticketDisplayId: ticket.displayId,
       payload: {
         messageId: message.id,
         type: message.type,
@@ -1318,6 +1325,7 @@ export class NotificationsService {
     const contentBlocks = this.buildHtmlContentBlocks(
       details.body,
       details.ticketId,
+      details.ticketDisplayId,
     );
     const preheader = this.escapeHtml(
       this.buildPreheader(details.preheader ?? details.body),
@@ -1346,8 +1354,18 @@ export class NotificationsService {
     ].join('\n');
   }
 
-  private buildHtmlContentBlocks(body: string, ticketId?: string) {
-    const ticketUrl = ticketId ? this.ticketLink(ticketId) : null;
+  private buildHtmlContentBlocks(
+    body: string,
+    ticketId?: string,
+    ticketDisplayId?: string | null,
+  ) {
+    // Card 2.12: the shared builder, and the display id when the caller has one.
+    const ticketUrl = ticketId
+      ? ticketLink(this.config.get<string>('WEB_APP_URL'), {
+          id: ticketId,
+          displayId: ticketDisplayId,
+        })
+      : null;
     const cleanedLines = body
       .split(/\r?\n/)
       .filter((line) => {
@@ -1396,10 +1414,4 @@ export class NotificationsService {
     return ticket.displayId ?? `#${ticket.number}`;
   }
 
-  private ticketLink(ticketId: string) {
-    const base = (
-      this.config.get<string>('WEB_APP_URL') ?? 'http://localhost:5173'
-    ).replace(/\/$/, '');
-    return `${base}/tickets/${ticketId}`;
-  }
 }
