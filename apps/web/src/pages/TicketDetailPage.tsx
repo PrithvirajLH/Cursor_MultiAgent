@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { isTransientLayerOpen } from "../utils/transient-layer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type RichTextEditorRef } from "../components/RichTextEditor";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
@@ -1523,7 +1524,13 @@ export function TicketDetailPage({
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      // ⚠️ CARD 1.76. This asked only for a MODAL dialog, so it stood down for
+      // the Remove confirmation and the image lightbox but not for the context
+      // menu or any of the four non-modal popovers - pressing Escape to dismiss
+      // one of those navigated the reader off the ticket. See
+      // `isTransientLayerOpen` for why the answer is a role check rather than
+      // stopPropagation, which cannot work against a capture-phase listener.
+      if (isTransientLayerOpen()) return;
       const target = event.target as HTMLElement | null;
       if (
         target &&
