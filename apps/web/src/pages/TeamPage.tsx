@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { isAbortError } from "../api/is-abort-error";
 import { filterPeople } from "../utils/filterPeople";
 import { TeamPresetVisibility } from "../components/TeamPresetVisibility";
 import {
@@ -450,8 +451,20 @@ export function TeamPage({
       const response = await fetchAllUsers();
       if (usersRequestSeqRef.current !== requestSeq) return;
       setAllUsers(response.data);
-    } catch {
+    } catch (err) {
       if (usersRequestSeqRef.current !== requestSeq) return;
+      // ⚠️ CARD 1.65. The ONE site in this sweep that can actually receive an
+      // AbortError, and it is not obvious: this page passes no signal at all.
+      // `apiFetch` shares one in-flight promise per path, and the command
+      // palette's `searchAll` fetches the SAME path - `fetchAllUsers()` with no
+      // params, via `getCachedUsers(signal)` - aborting on every keystroke. Join
+      // that request while it is in flight and you inherit its abort. Opening
+      // the palette while this page loads its roster would clear the list and
+      // show a failure for a request nobody was in trouble with.
+      //
+      // A timeout is NOT this case: `fetchWithTimeout` rethrows its own
+      // deadline as ApiError 408, which still reaches the user below.
+      if (isAbortError(err)) return;
       setActionError("Unable to load users.");
     } finally {
       if (usersRequestSeqRef.current !== requestSeq) return;
