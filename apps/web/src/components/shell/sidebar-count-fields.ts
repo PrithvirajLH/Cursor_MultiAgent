@@ -9,8 +9,8 @@
 export type SidebarCountField =
   | 'sev1Today'
   | 'awaitingReplyOver24h'
-  | 'breachRisk'
-  | 'unassignedAnyStatus'
+  | 'atRisk'
+  | 'unassigned'
   | 'resolvedThisWeek'
   | 'reopened'
   | 'watching'
@@ -32,20 +32,23 @@ export type SidebarCountField =
  * that does not equal the list behind it is worse than the request storm it
  * replaced: the storm was only slow.
  *
- * ⚠️ TWO OF THESE LOOK WRONG AND ARE NOT.
+ * ⚠️ CARD 1.70 RESOLVED THE TWO THAT USED TO LOOK WRONG HERE.
  *
- * - `unassigned` → `unassignedAnyStatus`, not `unassigned`. The preset links
- *   to `scope=unassigned`, which the list reads as `assigneeId IS NULL` and
- *   nothing else; the older `unassigned` count also requires the ticket to be
- *   open. They differ by the unassigned resolved/closed tickets.
- * - `sla-at-risk` → `breachRisk`, not `atRisk`. The list's `slaStatus=at_risk`
- *   uses a hard-coded FOUR-hour window and requires `completedAt IS NULL`;
- *   `atRisk` uses `SLA_AT_RISK_THRESHOLD_MINUTES` (default two hours) and
- *   ignores `completedAt`.
+ * Card 1.69 step 4 had to point these at duplicate fields — `unassignedAnyStatus`
+ * and `breachRisk` — because each definition disagreed with the other and
+ * choosing either moved a number somebody was already reading. That was the
+ * right call at the time and the wrong place to leave it: two names for one
+ * idea is the drift behind cards 1.36, 1.38, 1.47 and 1.50.
  *
- * In both cases DashboardPage has been showing the narrower number for
- * months, so neither could be widened and neither badge could be pointed at
- * it. Do not "simplify" these two — there is a test that fails if you do.
+ * The owner has now decided both, so the duplicates are gone:
+ *
+ * - **Unassigned means unassigned AND open.** An unassigned *resolved* ticket
+ *   needs nobody; the badge exists to surface work no one has picked up. The
+ *   sidebar adopts the count's definition, which DashboardPage has shown for
+ *   months.
+ * - **Breach risk uses `SLA_AT_RISK_THRESHOLD_MINUTES`** and respects
+ *   `completedAt`, in the list and the count alike — and the label is rendered
+ *   from that same value rather than hard-coded beside it.
  *
  * Keyed by preset id so a hidden preset (card 1.53) cannot shift a badge onto
  * the wrong row, which the previous index-matched array could.
@@ -56,8 +59,8 @@ export const PRESET_COUNT_FIELD: Record<
 > = {
   'p1-today': 'sev1Today',
   'awaiting-24h': 'awaitingReplyOver24h',
-  'sla-at-risk': 'breachRisk',
-  unassigned: 'unassignedAnyStatus',
+  'sla-at-risk': 'atRisk',
+  unassigned: 'unassigned',
   'recent-resolved': 'resolvedThisWeek',
   reopened: 'reopened',
   watching: 'watching',

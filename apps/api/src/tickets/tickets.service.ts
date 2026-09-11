@@ -365,6 +365,24 @@ export class TicketsService {
   }
 
   /** Delegates to shared AccessControlService */
+  /**
+   * Minutes before a due date at which a ticket counts as at risk of breach.
+   *
+   * ⚠️ CARD 1.70 ② MADE THIS THE ONLY DEFINITION. There were three: this
+   * setting (default 120) in `getCounts`, a hard-coded four hours in
+   * `buildListWhere`, and the literal "1h" in the sidebar label. A badge, the
+   * list it opens and the words on it disagreed - and had drifted twice
+   * already, which is how three appeared. The value is also returned by
+   * `getCounts` so the label is rendered from it rather than typed again.
+   *
+   * Read from `process.env` per call rather than cached at construction, so a
+   * changed setting takes effect on restart without a code change and tests can
+   * set it per case.
+   */
+  private atRiskThresholdMinutes(): number {
+    return parsePositiveInt(process.env.SLA_AT_RISK_THRESHOLD_MINUTES, 120);
+  }
+
   private accessConditionSql(user: AuthUser, alias = 't'): Prisma.Sql {
     return this.accessControl.accessConditionSql(user, alias);
   }
@@ -519,7 +537,13 @@ export class TicketsService {
 
     if (slaStatus.length) {
       const now = new Date();
-      const riskEnd = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+      // ⚠️ CARD 1.70 ②. This was a HARD-CODED four hours while `getCounts`
+      // used SLA_AT_RISK_THRESHOLD_MINUTES and the sidebar label said "1h" -
+      // three numbers for one idea. The setting is now the single definition,
+      // so the list, the count and the label cannot disagree again.
+      const riskEnd = new Date(
+        now.getTime() + this.atRiskThresholdMinutes() * 60_000,
+      );
       const slaConditions: Prisma.TicketWhereInput[] = [];
       const notWaiting = { status: { notIn: this.WAITING_STATUSES } };
       if (slaStatus.includes('breached')) {
@@ -764,13 +788,13 @@ export class TicketsService {
     overdue: number;
     sev1Today: number;
     awaitingReplyOver24h: number;
-    unassignedAnyStatus: number;
-    breachRisk: number;
+
     resolvedThisWeek: number;
     reopened: number;
     watching: number;
     mentions: number;
     followUpsDueToday: number;
+    atRiskThresholdMinutes: number;
   }> {
     const ttlMs = parsePositiveInt(process.env.CACHE_SUMMARY_TTL_MS, 45_000);
     const key = `tickets:counts:${user.id}`;
@@ -828,25 +852,25 @@ export class TicketsService {
     overdue: number;
     sev1Today: number;
     awaitingReplyOver24h: number;
-    unassignedAnyStatus: number;
-    breachRisk: number;
+
     resolvedThisWeek: number;
     reopened: number;
     watching: number;
     mentions: number;
     followUpsDueToday: number;
+    atRiskThresholdMinutes: number;
   }> {
     const now = new Date();
-    const atRiskThresholdMinutes = parsePositiveInt(
-      process.env.SLA_AT_RISK_THRESHOLD_MINUTES,
-      120,
-    );
+    // ⚠️ CARD 1.70 ② REPLACED THE NOTE THAT WAS HERE. It used to record that
+    // the list's window was a hard-coded four hours while this one used the
+    // setting, and that only the list respected `completedAt` - a mismatch
+    // card 1.69 step 4 was not allowed to resolve because either way round
+    // moved a number somebody was already reading. The owner has now decided:
+    // the setting wins, `completedAt` is respected, and the label is derived
+    // from the same value. There is one definition, and `atRiskThresholdMinutes`
+    // below is it.
+    const atRiskThresholdMinutes = this.atRiskThresholdMinutes();
     const riskEnd = new Date(now.getTime() + atRiskThresholdMinutes * 60_000);
-    // The list endpoint's `slaStatus=at_risk` window is a HARD-CODED four
-    // hours (buildListWhere), not SLA_AT_RISK_THRESHOLD_MINUTES, and it also
-    // requires `completedAt IS NULL`. See the `breachRisk` column below for
-    // why both definitions now live here.
-    const listRiskEnd = new Date(now.getTime() + 4 * 60 * 60 * 1000);
     // `scope=followups` computes this server-side in buildListWhere, so it is
     // reproduced the same way here rather than passed in.
     const endOfToday = new Date();
@@ -875,8 +899,7 @@ export class TicketsService {
         overdue: bigint;
         sev1Today: bigint;
         awaitingReplyOver24h: bigint;
-        unassignedAnyStatus: bigint;
-        breachRisk: bigint;
+
         resolvedThisWeek: bigint;
         reopened: bigint;
         watching: bigint;
@@ -923,6 +946,10 @@ export class TicketsService {
         SUM(CASE
           WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
             AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
+            -- CARD 1.70 (2): a completed ticket cannot breach. The list has
+            -- always required this and this count did not, which is half of
+            -- why the two disagreed.
+            AND t."completedAt" IS NULL
             AND t."dueAt" IS NOT NULL
             AND t."dueAt" >= ${now}
             AND t."dueAt" <= ${riskEnd}
@@ -948,34 +975,6 @@ export class TicketsService {
           WHEN (t."status")::text IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
             AND ${awaitingBefore === null ? Prisma.sql`FALSE` : Prisma.sql`t."updatedAt" < ${awaitingBefore}`}
           THEN 1 ELSE 0 END) AS "awaitingReplyOver24h"
-        ,
-        -- NOT THE SAME AS "unassigned" ABOVE, and found by the test rather
-        -- than by reading. The sidebar preset links to scope=unassigned, which
-        -- in buildListWhere is assigneeId IS NULL and NOTHING ELSE, while the
-        -- older "unassigned" count also requires the ticket to be open. They
-        -- differ by exactly the unassigned resolved/closed tickets - one row
-        -- in the fixture, and the badge would have dropped by that much on the
-        -- day this shipped. DashboardPage and getSidebarChildBadge both read
-        -- the open-only one, so it could not simply be widened.
-        SUM(CASE
-          WHEN t."assigneeId" IS NULL
-          THEN 1 ELSE 0 END) AS "unassignedAnyStatus"
-        ,
-        -- ⚠️ NOT THE SAME AS "atRisk" ABOVE, AND THAT IS NOT A MISTAKE. This
-        -- one reproduces the LIST's slaStatus=at_risk: a four-hour window
-        -- and completedAt IS NULL. atRisk uses
-        -- SLA_AT_RISK_THRESHOLD_MINUTES (default 120) and ignores
-        -- completedAt, and DashboardPage has been showing that number for
-        -- months. The two have therefore always disagreed; step 4 was not
-        -- allowed to change either one, so it names both. Which definition is
-        -- right is an owner decision, recorded in the card 1.69 report.
-        SUM(CASE
-          WHEN t."completedAt" IS NULL
-            AND t."dueAt" IS NOT NULL
-            AND t."dueAt" >= ${now}
-            AND t."dueAt" <= ${listRiskEnd}
-            AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
-          THEN 1 ELSE 0 END) AS "breachRisk"
         ,
         SUM(CASE
           WHEN (t."status")::text IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
@@ -1033,8 +1032,7 @@ export class TicketsService {
       overdue: 0n,
       sev1Today: 0n,
       awaitingReplyOver24h: 0n,
-      unassignedAnyStatus: 0n,
-      breachRisk: 0n,
+
       resolvedThisWeek: 0n,
       reopened: 0n,
       watching: 0n,
@@ -1060,13 +1058,20 @@ export class TicketsService {
       overdue: Number(row.overdue ?? 0),
       sev1Today: Number(row.sev1Today ?? 0),
       awaitingReplyOver24h: Number(row.awaitingReplyOver24h ?? 0),
-      unassignedAnyStatus: Number(row.unassignedAnyStatus ?? 0),
-      breachRisk: Number(row.breachRisk ?? 0),
+
       resolvedThisWeek: Number(row.resolvedThisWeek ?? 0),
       reopened: Number(row.reopened ?? 0),
       watching: Number(row.watching ?? 0),
       mentions: Number(row.mentions ?? 0),
       followUpsDueToday: Number(row.followUpsDueToday ?? 0),
+      // ⚠️ CARD 1.70 ②, AND THE PART MOST EASILY SKIPPED. The sidebar's
+      // "Breach risk" label hard-coded "1h" beside a configurable threshold,
+      // which is exactly how it drifted to a third value. Returning the number
+      // the counts were computed with means the label is RENDERED from the
+      // same value rather than typed again next to it. Carried on this
+      // endpoint because the sidebar already calls it after card 1.69 step 4 -
+      // no new request, no new endpoint.
+      atRiskThresholdMinutes,
     };
   }
 

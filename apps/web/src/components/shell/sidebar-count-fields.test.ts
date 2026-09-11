@@ -62,22 +62,32 @@ describe('the sidebar asks once, not nine times (card 1.69 step 4)', () => {
     expect(new Set(fields).size).toBe(fields.length);
   });
 
-  describe('the two mappings that look wrong and are not', () => {
-    it('⚠️ Unassigned reads unassignedAnyStatus, NOT unassigned', () => {
-      // `scope=unassigned` in the list is `assigneeId IS NULL` and nothing
-      // else; the older `unassigned` count also requires the ticket to be
-      // open, and DashboardPage plus getSidebarChildBadge both read that one.
-      // Pointing the badge at it drops the number by the unassigned
-      // resolved/closed tickets - measured as a real difference in the API's
-      // consolidation spec, not a theoretical one.
-      expect(PRESET_COUNT_FIELD.unassigned).toBe('unassignedAnyStatus');
+  describe('the two duplicate fields card 1.70 retired', () => {
+    it('⚠️ Unassigned reads unassigned — the OPEN-only definition', () => {
+      // INVERTED BY CARD 1.70 ①, not deleted, so the decision stays legible.
+      // Card 1.69 step 4 pointed this at `unassignedAnyStatus` because the
+      // sidebar list and the count disagreed and choosing either moved a
+      // number. The owner decided: unassigned means unassigned AND open, since
+      // an unassigned *resolved* ticket needs nobody. The duplicate field is
+      // gone, so this must never name it again.
+      expect(PRESET_COUNT_FIELD.unassigned).toBe('unassigned');
     });
 
-    it('⚠️ Breach risk reads breachRisk, NOT atRisk', () => {
-      // The list's window is a hard-coded four hours and requires
-      // completedAt IS NULL; atRisk's is SLA_AT_RISK_THRESHOLD_MINUTES
-      // (default two hours) and ignores completedAt.
-      expect(PRESET_COUNT_FIELD['sla-at-risk']).toBe('breachRisk');
+    it('⚠️ Breach risk reads atRisk — the one configurable definition', () => {
+      // INVERTED BY CARD 1.70 ②. `breachRisk` existed only to hold the list's
+      // hard-coded four-hour window; the list now uses
+      // SLA_AT_RISK_THRESHOLD_MINUTES and respects completedAt, so the two
+      // definitions became one and the duplicate was removed.
+      expect(PRESET_COUNT_FIELD['sla-at-risk']).toBe('atRisk');
+    });
+
+    it('⚠️ names neither retired field anywhere in the map', () => {
+      // The guard against one of them creeping back in under a new row. Both
+      // were removed from the API response, so a mapping naming either would
+      // render an empty badge rather than failing loudly.
+      const fields = Object.values(PRESET_COUNT_FIELD);
+      expect(fields).not.toContain('unassignedAnyStatus');
+      expect(fields).not.toContain('breachRisk');
     });
   });
 

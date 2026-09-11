@@ -935,13 +935,13 @@ export function fetchTicketCounts(boundaries?: {
     overdue: number;
     sev1Today: number;
     awaitingReplyOver24h: number;
-    unassignedAnyStatus: number;
-    breachRisk: number;
     resolvedThisWeek: number;
     reopened: number;
     watching: number;
     mentions: number;
     followUpsDueToday: number;
+    /** Card 1.70 ②: what the "Breach risk" label is rendered from. */
+    atRiskThresholdMinutes: number;
   }>(`/tickets/counts${query}`);
 }
 

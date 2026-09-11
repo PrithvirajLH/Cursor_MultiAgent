@@ -19,6 +19,7 @@ import {
 import { useViewCounts, viewFiltersToParams } from "./shell/use-view-count";
 import { useTicketCountsQuery } from "../hooks/useTicketCountsQuery";
 import { PRESET_COUNT_FIELD } from "./shell/sidebar-count-fields";
+import { formatAtRiskThreshold } from "./shell/at-risk-label";
 import { useSessionExpired } from "../hooks/use-session-expired";
 
 const TONE_COLOR: Record<ToneKey, string> = {
@@ -174,6 +175,16 @@ export function SidebarTicketsSavedViews({
     const field = PRESET_COUNT_FIELD[id];
     return field ? counts?.[field] : undefined;
   };
+  // ⚠️ CARD 1.70 ②. The threshold is rendered, never typed. `getCounts` returns
+  // the exact value its at-risk figure was computed with, so the words on the
+  // badge cannot drift away from the number beside them the way they did twice
+  // before. No suffix at all is better than a stale one, so an absent value
+  // leaves the bare label.
+  const atRiskSuffix = formatAtRiskThreshold(counts?.atRiskThresholdMinutes);
+  const labelFor = (preset: SidebarPreset): string =>
+    preset.id === "sla-at-risk" && atRiskSuffix
+      ? `${preset.label} · ${atRiskSuffix}`
+      : preset.label;
 
   // System views — Watching (followed tickets) and Mentions
   // (tickets where the user has been @mentioned). Both lean on the
@@ -260,7 +271,7 @@ export function SidebarTicketsSavedViews({
               className="h-1.5 w-1.5 rounded-full flex-none"
               style={{ backgroundColor: TONE_COLOR[v.tone ?? "gray"] }}
             />
-            <span className="flex-1 text-left truncate">{v.label}</span>
+            <span className="flex-1 text-left truncate">{labelFor(v)}</span>
             {liveCount !== undefined && (
               <span
                 className={`text-[10px] tabular-nums font-semibold ${countTextClass(theme, active)}`}

@@ -142,6 +142,20 @@ describe('the sidebar counts match the list they link to (card 1.69)', () => {
       },
     });
 
+    // CARD 1.70 ②: due inside the at-risk window but COMPLETED, so it must not
+    // be counted. Before this card the count ignored completedAt and the list
+    // did not, which is how the two definitions disagreed.
+    await prisma.ticket.create({
+      data: {
+        ...base,
+        subject: 'c170 completed but due soon',
+        status: 'IN_PROGRESS',
+        assigneeId: fixtureUserIds.agent,
+        dueAt: new Date(now.getTime() + 30 * 60_000),
+        completedAt: now,
+      },
+    });
+
     // resolvedThisWeek — resolved, updated just now, so within seven days.
     await prisma.ticket.create({
       data: {
@@ -260,15 +274,14 @@ describe('the sidebar counts match the list they link to (card 1.69)', () => {
       field: 'awaitingReplyOver24h',
       query: `statuses=WAITING_ON_REQUESTER,WAITING_ON_VENDOR&updatedTo=${BOUNDARIES.awaitingUpdatedTo}`,
     },
-    {
-      label: 'Breach risk · 1h',
-      field: 'breachRisk',
-      query: 'slaStatus=at_risk',
-    },
+    { label: 'Breach risk', field: 'atRisk', query: 'slaStatus=at_risk' },
     {
       label: 'Unassigned',
-      field: 'unassignedAnyStatus',
-      query: 'scope=unassigned',
+      // ⚠️ CARD 1.70 ①: the OPEN-only definition, and the query changes with
+      // it. The badge and the list it opens have to mean the same thing, so
+      // both now say "unassigned AND open".
+      field: 'unassigned',
+      query: 'scope=unassigned&statusGroup=open',
     },
     {
       label: 'Resolved this week',
@@ -322,7 +335,6 @@ describe('the sidebar counts match the list they link to (card 1.69)', () => {
       // getSidebarChildBadge both read the open-only one, so widening it was
       // not available either.
       const counts = await countsFor(fixtureEmails.owner);
-      expect(counts.unassignedAnyStatus).toBeGreaterThan(counts.unassigned);
       expect(counts.unassigned).toBe(
         await listTotal(
           fixtureEmails.owner,
@@ -330,25 +342,79 @@ describe('the sidebar counts match the list they link to (card 1.69)', () => {
         ),
       );
     });
+
+    it('⚠️ does NOT count an unassigned resolved ticket', async () => {
+      // THE REGRESSION ASSERTION FOR CARD 1.70 ①. The fixture seeds exactly
+      // one such row ('c169 resolved this week': no assignee, status
+      // RESOLVED). An unassigned resolved ticket needs nobody, and the badge
+      // exists to surface work no one has picked up - so counting it was the
+      // defect. The any-status figure would include it; this one must not.
+      const counts = await countsFor(fixtureEmails.owner);
+      const anyStatus = await listTotal(
+        fixtureEmails.owner,
+        'scope=unassigned',
+      );
+      expect(anyStatus).toBeGreaterThan(counts.unassigned);
+    });
   });
 
-  describe('the two at-risk definitions', () => {
-    it('⚠️ breachRisk follows the LIST, and atRisk is deliberately different', async () => {
-      // RECORDED, NOT FIXED. The list's `slaStatus=at_risk` uses a hard-coded
-      // FOUR-hour window and requires completedAt IS NULL; `atRisk` uses
-      // SLA_AT_RISK_THRESHOLD_MINUTES (default 120) and ignores completedAt.
-      // They have therefore always disagreed, and DashboardPage has been
-      // showing the second one for months - so step 4 could not unify them
-      // without changing a number it was told not to change. Both are here,
-      // named, and which one is right is an owner decision.
+  describe('the at-risk definition, now singular', () => {
+    it('⚠️ the count and the list agree, because they read one setting', async () => {
+      // INVERTED BY CARD 1.70 ②. This used to assert that the two DISAGREED
+      // and that the disagreement was deliberate - the list on a hard-coded
+      // four hours, the count on SLA_AT_RISK_THRESHOLD_MINUTES, and only the
+      // list respecting completedAt. Card 1.69 step 4 was not allowed to pick
+      // one; the owner has now picked the setting. Equality here is the fix.
       const counts = await countsFor(fixtureEmails.owner);
-      expect(counts.breachRisk).toBe(
+      expect(counts.atRisk).toBe(
         await listTotal(fixtureEmails.owner, 'slaStatus=at_risk'),
       );
-      // Both are numbers, and breachRisk's window is the wider one, so it can
-      // never be the smaller of the two for the same data.
-      expect(typeof counts.atRisk).toBe('number');
-      expect(counts.breachRisk).toBeGreaterThanOrEqual(0);
+      // ...and both are the pinned value, so this cannot pass by both sides
+      // being wrong in the same direction - which is exactly what happened
+      // when only the comparison was asserted.
+      expect(counts.atRisk).toBe(1);
+    });
+
+    it('⚠️ does NOT count a completed ticket as at risk', async () => {
+      // THE REGRESSION ASSERTION FOR CARD 1.70 ②'s second part. The fixture
+      // seeds a ticket due inside the window with `completedAt` set: a
+      // completed ticket cannot breach. The list has always excluded it and
+      // this count did not, which is half of why the two disagreed.
+      // ⚠️ PINNED TO AN EXACT NUMBER, not compared to the list, and that
+      // matters. Comparing count-to-list looked sufficient and was not:
+      // reverting BOTH halves of this card moves both sides to 2, so the
+      // comparison passes while the fix is gone. Measured, not assumed.
+      //
+      // Exactly three tickets in the fixture carry a due date:
+      //   +2h,  not completed  -> counted          (the only one)
+      //   +3h,  not completed  -> outside the 120-minute window
+      //   +30m, COMPLETED      -> completed tickets cannot breach
+      // So the answer is 1, and it discriminates every way of getting this
+      // wrong: ignoring completedAt gives 2, a four-hour window gives 2, and
+      // ignoring the window altogether gives 3.
+      const counts = await countsFor(fixtureEmails.owner);
+      const prisma = getPrisma();
+      const dueRows = await prisma.ticket.count({
+        where: { dueAt: { not: null } },
+      });
+      expect(dueRows).toBe(3);
+      expect(counts.atRisk).toBe(1);
+      expect(counts.atRisk).toBe(
+        await listTotal(fixtureEmails.owner, 'slaStatus=at_risk'),
+      );
+    });
+
+    it('⚠️ reports the threshold the numbers were computed with', async () => {
+      // THE ASSERTION THAT STOPS THE LABEL ROTTING. The sidebar renders
+      // `Breach risk · <this>` rather than a literal, so if this stops
+      // following the setting the words on the badge go stale again - which is
+      // how one idea ended up with three values. Asserted against the env var
+      // rather than a constant, so it cannot pass by coincidence.
+      const configured = Number(
+        process.env.SLA_AT_RISK_THRESHOLD_MINUTES ?? 120,
+      );
+      const counts = await countsFor(fixtureEmails.owner);
+      expect(counts.atRiskThresholdMinutes).toBe(configured);
     });
   });
 
@@ -371,13 +437,21 @@ describe('the sidebar counts match the list they link to (card 1.69)', () => {
       expect(zeroEverywhere).toEqual([]);
     });
 
-    it('⚠️ proves the two at-risk windows are different numbers, not equal by luck', async () => {
-      // One ticket is due in two hours and one in three. The list's window is
-      // four hours, `atRisk`'s default is two - so breachRisk must be the
-      // larger. Equal numbers here would mean the fixture cannot tell the two
-      // definitions apart and the test above proves nothing.
+    it('⚠️ has a ticket on each side of the window, so the threshold is testable', async () => {
+      // REPURPOSED BY CARD 1.70. It used to prove the four-hour and two-hour
+      // windows produced different numbers. With one definition left, the same
+      // two rows now prove the fixture can still tell INSIDE the window from
+      // OUTSIDE it - due in two hours and in three, against a 120-minute
+      // default. Without that, an at-risk count that returned everything with
+      // a due date would pass every assertion above.
       const counts = await countsFor(fixtureEmails.owner);
-      expect(counts.breachRisk).toBeGreaterThan(counts.atRisk);
+      const prisma = getPrisma();
+      const withDueDate = await prisma.ticket.count({
+        where: { subject: { startsWith: 'c169 breach risk' } },
+      });
+      expect(withDueDate).toBe(2);
+      expect(counts.atRisk).toBeLessThan(withDueDate);
+      expect(counts.atRisk).toBeGreaterThan(0);
     });
 
     it('does not count a mention that has been read', async () => {

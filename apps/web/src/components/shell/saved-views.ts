@@ -87,7 +87,11 @@ export const SAVED_VIEWS: SidebarPreset[] = [
   },
   {
     id: 'sla-at-risk',
-    label: 'Breach risk · 1h',
+    // ⚠️ CARD 1.70 ②: the threshold suffix is NOT here any more. It read
+    // "· 1h" beside a configurable setting that defaults to two hours, and the
+    // list used four - three numbers for one idea. The sidebar appends the real
+    // value from `getCounts`; see `at-risk-label.ts`.
+    label: 'Breach risk',
     tone: 'amber',
     buildQuery: () => qs({ slaStatus: 'at_risk' }),
     matches: p => paramsMatch(p, { slaStatus: 'at_risk' }),
