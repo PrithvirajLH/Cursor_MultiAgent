@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useState } from "react";
 import {
   UserPlus,
   Activity,
@@ -15,7 +14,7 @@ import type {
   TicketPriority,
 } from "../api/client";
 import { formatStatus, formatTicketId } from "../utils/format";
-import { getUiZoom } from "../utils/uiZoom";
+import { ContextMenuShell } from "./shell/context-menu-shell";
 
 export type TicketContextMenuAction =
   | "open_new_tab"
@@ -66,77 +65,21 @@ export function TicketContextMenu({
   onClose,
   onAction,
 }: TicketContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
   const [openSub, setOpenSub] = useState<"status" | "priority" | null>(null);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [onClose]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  // Focus the first menu item on open so keyboard users land inside the menu.
-  useEffect(() => {
-    const first = menuRef.current?.querySelector<HTMLElement>(
-      '[role="menuitem"]',
-    );
-    first?.focus();
-  }, []);
-
-  // ArrowUp/ArrowDown move focus between the currently-visible menu items
-  // (roving focus). Submenu options become focusable once expanded.
-  function handleMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [],
-    );
-    if (items.length === 0) return;
-    event.preventDefault();
-    const currentIndex = items.indexOf(
-      document.activeElement as HTMLElement,
-    );
-    const delta = event.key === "ArrowDown" ? 1 : -1;
-    const nextIndex =
-      currentIndex < 0
-        ? event.key === "ArrowDown"
-          ? 0
-          : items.length - 1
-        : (currentIndex + delta + items.length) % items.length;
-    items[nextIndex]?.focus();
-  }
-
-  // x/y are visual cursor coords; a fixed element renders at value*zoom, so
-  // divide by the zoom to place the menu under the cursor. See getUiZoom().
-  const z = getUiZoom();
-  const style: React.CSSProperties = {
-    position: "fixed",
-    top: Math.min(y, window.innerHeight - 360) / z,
-    left: Math.min(x, window.innerWidth - 250) / z,
-    zIndex: 100,
-  };
-
-  return createPortal(
-    <div
-      ref={menuRef}
-      role="menu"
-      aria-label="Ticket actions"
-      onKeyDown={handleMenuKeyDown}
-      style={style}
-      className="flex max-h-[calc(80vh/var(--ui-zoom))] w-56 flex-col gap-0.5 overflow-y-auto rounded-xl border border-border bg-popover/95 p-1.5 shadow-xl backdrop-blur-md animate-fade-in origin-top-left"
+  // ⚠️ CARD 1.73 MOVED THE SHELL OUT, AND NOTHING ELSE. Portal rendering,
+  // outside-click and Escape dismissal, focus-the-first-item, roving Arrow
+  // focus and the zoom-aware placement all now live in `ContextMenuShell`,
+  // unchanged - the same code, in one place, so the message menu added by this
+  // card shares it rather than copying it. The items, the header and the
+  // submenu state below are untouched, and the defaults passed here (360/250
+  // clamp, `w-56`, "Ticket actions") are the values this menu already used.
+  return (
+    <ContextMenuShell
+      x={x}
+      y={y}
+      ariaLabel="Ticket actions"
+      onClose={onClose}
     >
       <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-b border-border mb-1 truncate">
         {formatTicketId(ticket)}
@@ -269,7 +212,6 @@ export function TicketContextMenu({
         <Copy className="h-4 w-4 text-slate-400 shrink-0" />
         Copy Ticket ID
       </button>
-    </div>,
-    document.body,
+    </ContextMenuShell>
   );
 }

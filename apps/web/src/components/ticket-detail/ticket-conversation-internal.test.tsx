@@ -244,7 +244,9 @@ describe("1.28 6c — what actually happened, per message", () => {
         message({
           id: "e",
           type: "PUBLIC",
-          delivery: { emailed: 3, refused: 0, internal: false },
+          delivery: { emailed: 3, pending: 0,
+        refused: 0, recipients: [],
+        internal: false },
         }),
       ],
     });
@@ -257,7 +259,9 @@ describe("1.28 6c — what actually happened, per message", () => {
         message({
           id: "r",
           type: "PUBLIC",
-          delivery: { emailed: 2, refused: 1, internal: false },
+          delivery: { emailed: 2, pending: 0,
+        refused: 1, recipients: [],
+        internal: false },
         }),
       ],
     });
@@ -273,7 +277,9 @@ describe("1.28 6c — what actually happened, per message", () => {
         message({
           id: "p",
           type: "PUBLIC",
-          delivery: { emailed: 0, refused: 0, internal: false },
+          delivery: { emailed: 0, pending: 0,
+        refused: 0, recipients: [],
+        internal: false },
         }),
       ],
     });
@@ -287,7 +293,9 @@ describe("1.28 6c — what actually happened, per message", () => {
         message({
           id: "i",
           type: "INTERNAL",
-          delivery: { emailed: 0, refused: 0, internal: true },
+          delivery: { emailed: 0, pending: 0,
+        refused: 0, recipients: [],
+        internal: true },
         }),
       ],
     });

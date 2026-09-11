@@ -16,7 +16,9 @@ import {
 describe("redaction email caveat", () => {
   it("warns for a public reply that really went out", () => {
     const caveat = redactionEmailCaveat({
-      delivery: { emailed: 3, refused: 0, internal: false },
+      delivery: { emailed: 3, pending: 0,
+      refused: 0, recipients: [],
+      internal: false },
     });
     expect(caveat).toContain("3 people");
     expect(caveat).toContain("does not take the email back");
@@ -25,7 +27,9 @@ describe("redaction email caveat", () => {
   it("uses the singular for one recipient", () => {
     expect(
       redactionEmailCaveat({
-        delivery: { emailed: 1, refused: 0, internal: false },
+        delivery: { emailed: 1, pending: 0,
+      refused: 0, recipients: [],
+      internal: false },
       }),
     ).toContain("1 person");
   });
@@ -35,7 +39,9 @@ describe("redaction email caveat", () => {
     // a caveat that does not apply is how the ones that do stop being read.
     expect(
       redactionEmailCaveat({
-        delivery: { emailed: 0, refused: 0, internal: true },
+        delivery: { emailed: 0, pending: 0,
+      refused: 0, recipients: [],
+      internal: true },
       }),
     ).toBeNull();
   });
@@ -46,7 +52,9 @@ describe("redaction email caveat", () => {
     // received anything.
     expect(
       redactionEmailCaveat({
-        delivery: { emailed: 0, refused: 2, internal: false },
+        delivery: { emailed: 0, pending: 0,
+      refused: 2, recipients: [],
+      internal: false },
       }),
     ).toBeNull();
   });
@@ -60,7 +68,8 @@ describe("redaction email caveat", () => {
     // produce NO caveat at all - `emailed` was 0 because the row was still
     // PENDING - and then the original text was emailed a moment later.
     const caveat = redactionEmailCaveat({
-      delivery: { emailed: 0, refused: 0, pending: 1, internal: false },
+      delivery: { emailed: 0, refused: 0, pending: 1, recipients: [],
+      internal: false },
     });
     expect(caveat).not.toBeNull();
     expect(caveat).toContain("still queued");
@@ -71,14 +80,16 @@ describe("redaction email caveat", () => {
     // At dialog time nothing has been stopped yet. Saying "we have stopped it"
     // here would be a nicer-sounding version of the defect.
     const caveat = redactionEmailCaveat({
-      delivery: { emailed: 0, refused: 0, pending: 1, internal: false },
+      delivery: { emailed: 0, refused: 0, pending: 1, recipients: [],
+      internal: false },
     });
     expect(caveat).not.toContain("have stopped");
   });
 
   it("prefers the sent wording when something both sent and is queued", () => {
     const caveat = redactionEmailCaveat({
-      delivery: { emailed: 2, refused: 0, pending: 1, internal: false },
+      delivery: { emailed: 2, refused: 0, pending: 1, recipients: [],
+      internal: false },
     });
     expect(caveat).toContain("does not take the email back");
   });
@@ -86,7 +97,8 @@ describe("redaction email caveat", () => {
   it("still says nothing for a queued INTERNAL note", () => {
     expect(
       redactionEmailCaveat({
-        delivery: { emailed: 0, refused: 0, pending: 1, internal: true },
+        delivery: { emailed: 0, refused: 0, pending: 1, recipients: [],
+      internal: true },
       }),
     ).toBeNull();
   });

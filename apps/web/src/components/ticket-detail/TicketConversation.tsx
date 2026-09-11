@@ -1,5 +1,6 @@
 import {
   memo,
+  useState,
   type ChangeEvent,
   type ReactNode,
   type RefObject,
@@ -7,6 +8,8 @@ import {
 import { Loader2, Paperclip, Send, Shield } from "lucide-react";
 import type { TicketDetail, TicketMessage, UserRef } from "../../api/client";
 import { MessageBody } from "../MessageBody";
+import { MessageContextMenu } from "./MessageContextMenu";
+import { copyToClipboard } from "../../utils/clipboard";
 import {
   RichTextEditor,
   type RichTextEditorRef,
@@ -63,16 +66,26 @@ function formatConversationDay(iso: string) {
  *
  * Null for an internal note: the amber marker card 1.37 puts on every internal
  * bubble already says it is not sent, and two notices side by side read as two
- * competing warnings. Null too when the outbox has nothing to report yet — with
- * Redis off the processor runs at queue time, so that window is momentary, and
- * saying nothing beats guessing.
+ * competing warnings.
+ *
+ * ⚠️ CARD 1.73 CORRECTED THIS COMMENT AND THE CODE UNDER IT. It used to say
+ * the no-label case was momentary because "with Redis off the processor runs at
+ * queue time". That was true of a dev machine and false of production, where
+ * there is no Redis and the sweeper runs on a SIXTY-SECOND interval - the same
+ * wrong belief card 1.47 had already corrected in `tickets.service.ts`. The
+ * effect was that a queued email rendered nothing at all, which reads exactly
+ * like an internal note. `pending` was in the API response the whole time and
+ * this type simply omitted it.
  */
 function deliveryLabel(
-  delivery: { emailed: number; refused: number; internal: boolean } | undefined,
+  delivery:
+    | { emailed: number; refused: number; pending: number; internal: boolean }
+    | undefined,
 ): string | null {
   if (!delivery || delivery.internal) return null;
   const parts: string[] = [];
   if (delivery.emailed > 0) parts.push(`emailed to ${delivery.emailed}`);
+  if (delivery.pending > 0) parts.push(`${delivery.pending} queued`);
   if (delivery.refused > 0) parts.push(`${delivery.refused} refused`);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -93,11 +106,20 @@ function isImageOnlyBody(body: string): boolean {
   return withoutImgs.length === 0;
 }
 
+/**
+ * The message shape this component renders.
+ *
+ * ⚠️ Named rather than repeated inline because card 1.73's menu handlers
+ * take it too, and an inline intersection written twice is one edit away from
+ * two different shapes.
+ */
+type ConversationMessage = TicketMessage & {
+  localStatus?: "sending" | "sent" | "failed";
+};
+
 export type TicketConversationProps = {
   ticket: TicketDetail;
-  messages: Array<
-    TicketMessage & { localStatus?: "sending" | "sent" | "failed" }
-  >;
+  messages: Array<ConversationMessage>;
   messagesHasMore: boolean;
   messagesLoading: boolean;
   messagesError: string | null;
@@ -209,6 +231,61 @@ export const TicketConversation = memo(function TicketConversation({
   void ticket;
   void onAttachmentDownload;
   void onAttachmentView;
+
+  // ⚠️ CARD 1.73. The owner asked for the per-message actions on right-click.
+  // `messageMenu` holds the pointer position and the message; the same state
+  // serves all three openers, because a right-click, the ⋯ button and Shift+F10
+  // must reach exactly the same menu - a mouse-only menu would be a step
+  // backwards from the link it replaces.
+  const [messageMenu, setMessageMenu] = useState<{
+    x: number;
+    y: number;
+    message: ConversationMessage;
+  } | null>(null);
+
+  const messageMenuAvailable = (message: ConversationMessage) =>
+    !message.redactedAt;
+
+  const canRemoveMessage = (message: ConversationMessage) =>
+    Boolean(onRedactMessage && canRedactMessage?.(message) && !message.redactedAt);
+
+  const openMessageMenu = (
+    event: { preventDefault: () => void; clientX: number; clientY: number },
+    message: ConversationMessage,
+  ) => {
+    if (!messageMenuAvailable(message)) return;
+    event.preventDefault();
+    setMessageMenu({ x: event.clientX, y: event.clientY, message });
+  };
+
+  // The button and the keyboard route have no pointer coordinates, so the menu
+  // opens at the control itself. Without this the menu would appear in the
+  // top-left corner for every keyboard user.
+  const openMessageMenuFromButton = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    message: ConversationMessage,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMessageMenu({ x: rect.left, y: rect.bottom, message });
+  };
+
+  // Shift+F10 and the Menu key are the standard keyboard route to a context
+  // menu, and the reason this card is not mouse-only.
+  const handleMessageKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    message: ConversationMessage,
+  ) => {
+    const isMenuKey =
+      event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
+    if (!isMenuKey || !messageMenuAvailable(message)) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setMessageMenu({ x: rect.left, y: rect.bottom, message });
+  };
+
+  const copyMessageText = (message: { body: string }) => {
+    void copyToClipboard(message.body);
+  };
 
   const typingText = (() => {
     if (typingUsers.length === 0) {
@@ -333,6 +410,8 @@ export const TicketConversation = memo(function TicketConversation({
                   </div>
                 ) : null}
                 <div
+                  onContextMenu={(event) => openMessageMenu(event, message)}
+                  onKeyDown={(event) => handleMessageKeyDown(event, message)}
                   className={`group/message flex items-end gap-2 py-0.5 ${isCurrentUser ? "justify-end" : "justify-start"}`}
                 >
                   {!isCurrentUser ? (
@@ -449,24 +528,29 @@ export const TicketConversation = memo(function TicketConversation({
                       )}
                     </div>
                     {/*
-                      Card 1.11. Sits under the bubble beside the delivery
-                      label rather than inside it: a control layered over the
+                      Card 1.11, and card 1.73 moved its conclusion without
+                      discarding its reasoning. The note here said the control
+                      sits UNDER the bubble because a control layered over the
                       text would cover the very words somebody is deciding
-                      about. Shown on hover and on keyboard focus - focus
-                      matters, or the only way to reach it is a mouse.
+                      about. That is still right - and a context menu answers it
+                      better than a permanent link did, because it opens at the
+                      pointer and closes again. The link became a ⋯ button so
+                      the menu has an opener that is not a right-click: a
+                      right-click alone is unreachable by keyboard and by touch.
+                      It keeps `focus:opacity-100` for the same reason 1.11 gave
+                      - without it the only way to reach this is a mouse.
                     */}
-                    {onRedactMessage &&
-                    canRedactMessage?.(message) &&
-                    !message.redactedAt ? (
+                    {messageMenuAvailable(message) ? (
                       <button
                         type="button"
-                        onClick={() => onRedactMessage(message)}
-                        aria-label="Remove this message"
-                        className={`mt-0.5 text-[10px] text-muted-foreground underline opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover/message:opacity-100 ${
+                        onClick={(event) => openMessageMenuFromButton(event, message)}
+                        aria-label="Message actions"
+                        aria-haspopup="menu"
+                        className={`mt-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 group-hover/message:opacity-100 ${
                           isCurrentUser ? "text-right" : "text-left"
                         }`}
                       >
-                        Remove
+                        ⋯
                       </button>
                     ) : null}
                     {deliveryLabel(message.delivery) ? (
@@ -483,6 +567,25 @@ export const TicketConversation = memo(function TicketConversation({
             );
           })}
         </AnimatedList>
+        {/*
+          ⚠️ CARD 1.73. One menu for the whole list rather than one per bubble:
+          only ever one is open, and rendering hundreds of closed menus is the
+          kind of thing that makes a long conversation scroll badly.
+        */}
+        {messageMenu ? (
+          <MessageContextMenu
+            x={messageMenu.x}
+            y={messageMenu.y}
+            message={messageMenu.message}
+            canRemove={canRemoveMessage(messageMenu.message)}
+            onCopy={copyMessageText}
+            onRemove={(message) => {
+              const full = messages.find((row) => row.id === message.id);
+              if (full && onRedactMessage) onRedactMessage(full);
+            }}
+            onClose={() => setMessageMenu(null)}
+          />
+        ) : null}
 
         {typingText ? (
           <div className="mt-1 flex animate-fade-in items-end gap-2 justify-start">

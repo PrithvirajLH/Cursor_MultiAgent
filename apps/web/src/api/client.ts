@@ -309,10 +309,20 @@ export type TicketMessage = {
    * redaction dialog needs to know, or it says nothing was emailed and then
    * the email goes out.
    */
+  /**
+   * What happened to this message's email.
+   *
+   * ⚠️ CARD 1.73 MADE `pending` REQUIRED AND ADDED `recipients`. `pending`
+   * was optional here while the API always returned it, so the conversation's
+   * label dropped it and a queued email rendered as nothing at all - identical
+   * to an internal note. `recipients` was read from the outbox and discarded;
+   * the menu needed who, not just how many.
+   */
   delivery?: {
     emailed: number;
     refused: number;
-    pending?: number;
+    pending: number;
+    recipients: string[];
     internal: boolean;
   };
   /**
