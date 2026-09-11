@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MessageType, Prisma, TeamRole, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
+import { stripQuotedReply } from '../notifications/quoted-reply.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   RealtimeService,
@@ -179,7 +180,24 @@ export class TicketRealtimeService {
   }): NonNullable<TicketChangedPayload['message']> {
     return {
       id: message.id,
-      body: message.body,
+      // ⚠️ CARD 1.75. THE SECOND READ PATH, AND IT MUST TRIM LIKE THE FIRST.
+      //
+      // Card 1.62 wired `stripQuotedReply` into `listMessages`, describing it as
+      // "the single message-read path". It is not. This socket push is the other
+      // one, and it was left raw - so a reply arrived on an OPEN ticket carrying
+      // the entire quoted thread, both signatures, our own pilot-mode notice and
+      // the tenant's confidentiality footer, and then silently corrected itself
+      // on the next page load. Observed in production 2026-09-11 on
+      // PA_20260910_381: 1655 characters pushed where 192 were fetched.
+      //
+      // Whoever has the ticket OPEN sees the ugly copy; whoever opens it later
+      // sees the clean one. Two places that must agree - the same shape as cards
+      // 1.36, 1.38, 1.47, 1.50, 1.61 and 1.70.
+      //
+      // ⚠️ Display only, exactly as on the fetch path: this transforms what is
+      // SENT to a viewer, never what is stored. `TicketMessage.body` keeps the
+      // whole thing, so nothing an audit needs is lost.
+      body: stripQuotedReply(message.body),
       type: message.type,
       createdAt: message.createdAt.toISOString(),
       author: {
