@@ -169,10 +169,46 @@ function formatStatusLabel(value: string): string {
  * single row carrying `to` and `cc`, so the number of people it reaches lives
  * on the row rather than in a count of rows.
  */
+/**
+ * What the conversation is told about one message's delivery (card 1.73).
+ *
+ * ⚠️ `pending` WAS ALREADY COMPUTED AND THEN DROPPED ON THE FLOOR. The API
+ * returned it, the client's type omitted it, and the fallback below spelled
+ * `{ emailed: 0, refused: 0 }` - three shapes for one idea. A message whose
+ * email is still queued therefore rendered NO label at all, which reads exactly
+ * like an internal note that was never emailed. Production has no Redis, so the
+ * sweeper runs on a 60-second interval and that state is real, not momentary.
+ */
+type MessageDeliveryLabel = {
+  emailed: number;
+  refused: number;
+  pending: number;
+  recipients: string[];
+};
+
+/** The shape a message with no outbox row reports. See MessageDeliveryLabel. */
+const EMPTY_DELIVERY_LABEL: MessageDeliveryLabel = {
+  emailed: 0,
+  refused: 0,
+  pending: 0,
+  recipients: [],
+};
+
 type MessageOutboxRow = {
   id: string;
   status: OutboxStatus;
   reached: number;
+  /**
+   * Who this outbox row was addressed to (card 1.73).
+   *
+   * ⚠️ THESE WERE BEING READ AND THROWN AWAY. `messageOutboxRows` opened the
+   * payload for `email.cc`, counted `1 + cc.length`, and kept only the number -
+   * so the conversation could say "emailed to 2" and had no way to say who. The
+   * owner asked for exactly that, and no new query or endpoint was needed: the
+   * primary address is `NotificationOutbox.toEmail`, a top-level column, and
+   * the copies are already in the payload.
+   */
+  recipients: string[];
 };
 
 /**
@@ -1449,7 +1485,11 @@ export class TicketsService {
         // what makes this line have an effect at all.
         body: stripQuotedReply(message.body),
         delivery: {
-          ...(delivery.get(message.id) ?? { emailed: 0, refused: 0 }),
+          // ⚠️ CARD 1.73: the fallback used to be `{ emailed: 0, refused: 0 }` -
+          // no `pending`, no `recipients` - so a message with no outbox row came
+          // back a different shape from one that had them. Spelled from the type
+          // now, so the two cannot drift apart again.
+          ...(delivery.get(message.id) ?? EMPTY_DELIVERY_LABEL),
           internal: message.type === MessageType.INTERNAL,
         },
       })),
@@ -1490,7 +1530,7 @@ export class TicketsService {
   ): Promise<Map<string, MessageOutboxRow[]>> {
     const rows = await this.prisma.notificationOutbox.findMany({
       where: { ticketId, eventType: 'MESSAGE_ADDED' },
-      select: { id: true, status: true, payload: true },
+      select: { id: true, status: true, toEmail: true, payload: true },
     });
     const byMessage = new Map<string, MessageOutboxRow[]>();
     for (const row of rows) {
@@ -1503,9 +1543,23 @@ export class TicketsService {
         continue;
       }
       const cc = envelope.email?.cc;
+      // ⚠️ CARD 1.73. `reached` is still `1 + cc.length` and deliberately
+      // NOT `recipients.length`: the two can differ if a payload ever carries a
+      // malformed cc entry, and the displayed count has been that arithmetic
+      // since card 1.47. Changing what the number means was not asked for.
+      const ccAddresses = Array.isArray(cc)
+        ? cc.filter((entry): entry is string => typeof entry === 'string')
+        : [];
       const reached = 1 + (Array.isArray(cc) ? cc.length : 0);
       const list = byMessage.get(messageId) ?? [];
-      list.push({ id: row.id, status: row.status, reached });
+      list.push({
+        id: row.id,
+        status: row.status,
+        reached,
+        recipients: [row.toEmail, ...ccAddresses].filter(
+          (address) => typeof address === 'string' && address.trim() !== '',
+        ),
+      });
       byMessage.set(messageId, list);
     }
     return byMessage;
@@ -1525,16 +1579,26 @@ export class TicketsService {
    */
   private async messageDeliveryLabels(
     ticketId: string,
-  ): Promise<
-    Map<string, { emailed: number; refused: number; pending: number }>
-  > {
+  ): Promise<Map<string, MessageDeliveryLabel>> {
     const byMessage = await this.messageOutboxRows(ticketId);
-    const labels = new Map<
-      string,
-      { emailed: number; refused: number; pending: number }
-    >();
+    const labels = new Map<string, MessageDeliveryLabel>();
     for (const [messageId, rows] of byMessage) {
-      const label = { emailed: 0, refused: 0, pending: 0 };
+      const label: MessageDeliveryLabel = {
+        emailed: 0,
+        refused: 0,
+        pending: 0,
+        recipients: [],
+      };
+      const seen = new Set<string>();
+      for (const row of rows) {
+        for (const address of row.recipients) {
+          const key = address.trim().toLowerCase();
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            label.recipients.push(address.trim());
+          }
+        }
+      }
       for (const row of rows) {
         if (row.status === OutboxStatus.SENT) {
           label.emailed += row.reached;

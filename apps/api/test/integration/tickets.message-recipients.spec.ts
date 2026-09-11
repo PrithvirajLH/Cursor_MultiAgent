@@ -162,7 +162,13 @@ describe('Message recipient preview', () => {
       listed.body as {
         data: {
           id: string;
-          delivery?: { emailed: number; refused: number; internal: boolean };
+          delivery?: {
+            emailed: number;
+            refused: number;
+            pending: number;
+            recipients: string[];
+            internal: boolean;
+          };
         }[];
       }
     ).data;
@@ -170,9 +176,17 @@ describe('Message recipient preview', () => {
 
     const publicId = (publicPost.body as { id: string }).id;
     const internalId = (internalPost.body as { id: string }).id;
+    // ⚠️ UPDATED BY CARD 1.73, and this exact-shape assertion is why the
+    // update is visible rather than silent. The label gained `pending` and
+    // `recipients`: the API had always computed `pending` and the client type
+    // dropped it, so a queued email rendered as nothing at all - identical to
+    // an internal note. An internal note sends no email, so it carries zeros
+    // and nobody.
     expect(byId.get(internalId)).toEqual({
       emailed: 0,
       refused: 0,
+      pending: 0,
+      recipients: [],
       internal: true,
     });
 
