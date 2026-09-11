@@ -383,6 +383,49 @@ export class TicketsService {
     return parsePositiveInt(process.env.SLA_AT_RISK_THRESHOLD_MINUTES, 120);
   }
 
+  /**
+   * "Not finished" — the single definition of it (card 1.72).
+   *
+   * ⚠️ THERE WERE TWO SPELLINGS AND THEY PICKED DIFFERENT HALVES. The counts
+   * said `status NOT IN (RESOLVED, CLOSED)`; the list's `slaStatus` branches
+   * said `completedAt IS NULL`. Those agree only while the invariant
+   * "completedAt is set exactly when a ticket is finished" holds, and that
+   * invariant has two holes:
+   *
+   *   - `20260123151500_add_completed_at` added the column with NO backfill, so
+   *     anything finished before 2026-01-23 is RESOLVED with a null stamp. The
+   *     count excludes it; the list counted it as breached.
+   *   - nothing stops a row carrying a stamp while its status is open. The list
+   *     excludes it; the count did not.
+   *
+   * So neither spelling alone is right, and this is why the handoff's
+   * suggestion of `completedAt IS NULL` as the single form could not be taken:
+   * its own required test asks that a legacy RESOLVED row with a null stamp be
+   * excluded by BOTH, and `completedAt IS NULL` alone includes it. Finished
+   * means EITHER signal; not finished means neither.
+   *
+   * The planner measured production on 2026-09-11 - 427 tickets, 6 finished, 0
+   * missing the stamp - so this is a refactor today and a guard against the day
+   * it is not. If any number moves, the measurement missed something.
+   *
+   * Expressed twice because the two call sites speak different languages - raw
+   * SQL for the counts, a Prisma filter for the list - and `notFinishedFilter`
+   * below is its counterpart. `sla-finished-parity.spec.ts` asserts they agree.
+   */
+  private notFinishedSql(alias = 't'): Prisma.Sql {
+    const status = Prisma.raw(`(${alias}."status")::text`);
+    const completedAt = Prisma.raw(`${alias}."completedAt"`);
+    return Prisma.sql`(${status} NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED}) AND ${completedAt} IS NULL)`;
+  }
+
+  /** The Prisma-filter counterpart of `notFinishedSql`. See its doc comment. */
+  private notFinishedFilter(): Prisma.TicketWhereInput {
+    return {
+      status: { notIn: [TicketStatus.RESOLVED, TicketStatus.CLOSED] },
+      completedAt: null,
+    };
+  }
+
   private accessConditionSql(user: AuthUser, alias = 't'): Prisma.Sql {
     return this.accessControl.accessConditionSql(user, alias);
   }
@@ -546,19 +589,20 @@ export class TicketsService {
       );
       const slaConditions: Prisma.TicketWhereInput[] = [];
       const notWaiting = { status: { notIn: this.WAITING_STATUSES } };
+      // ⚠️ CARD 1.72: `notFinishedFilter()` rather than a bare
+      // `{ completedAt: null }`. These three branches used the stamp alone,
+      // which counts a pre-2026-01-23 RESOLVED ticket as breached forever - it
+      // has no stamp because the column was added without a backfill.
+      const notFinished = this.notFinishedFilter();
       if (slaStatus.includes('breached')) {
         slaConditions.push({
-          AND: [
-            { completedAt: null },
-            { dueAt: { not: null, lt: now } },
-            notWaiting,
-          ],
+          AND: [notFinished, { dueAt: { not: null, lt: now } }, notWaiting],
         });
       }
       if (slaStatus.includes('at_risk')) {
         slaConditions.push({
           AND: [
-            { completedAt: null },
+            notFinished,
             { dueAt: { not: null, gte: now, lte: riskEnd } },
             notWaiting,
           ],
@@ -566,11 +610,7 @@ export class TicketsService {
       }
       if (slaStatus.includes('on_track')) {
         slaConditions.push({
-          AND: [
-            { completedAt: null },
-            { dueAt: { not: null, gt: riskEnd } },
-            notWaiting,
-          ],
+          AND: [notFinished, { dueAt: { not: null, gt: riskEnd } }, notWaiting],
         });
       }
       if (slaConditions.length) {
@@ -884,6 +924,7 @@ export class TicketsService {
     const resolvedFrom = boundaries?.resolvedUpdatedFrom
       ? new Date(boundaries.resolvedUpdatedFrom)
       : null;
+    const notFinished = this.notFinishedSql('t');
     const accessCondition = this.accessConditionSql(user, 't');
     const rows = await this.prisma.$queryRaw<
       {
@@ -944,19 +985,21 @@ export class TicketsService {
           THEN 1 ELSE 0 END) AS "createdByMeResolved"
         ,
         SUM(CASE
-          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+          -- CARD 1.72: one definition of "not finished", shared with the list's
+          -- slaStatus branches. Card 1.70 added the completedAt half here; this
+          -- card made both sides say the same thing in the same place.
+          WHEN ${notFinished}
             AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
-            -- CARD 1.70 (2): a completed ticket cannot breach. The list has
-            -- always required this and this count did not, which is half of
-            -- why the two disagreed.
-            AND t."completedAt" IS NULL
             AND t."dueAt" IS NOT NULL
             AND t."dueAt" >= ${now}
             AND t."dueAt" <= ${riskEnd}
           THEN 1 ELSE 0 END) AS "atRisk"
         ,
         SUM(CASE
-          WHEN (t."status")::text NOT IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
+          -- CARD 1.72. This one used the STATUS alone, so a ticket carrying a
+          -- completedAt stamp with an open status counted as overdue while the
+          -- list excluded it. Same definition as everything else now.
+          WHEN ${notFinished}
             AND (t."status")::text NOT IN (${TicketStatus.WAITING_ON_REQUESTER}, ${TicketStatus.WAITING_ON_VENDOR})
             AND t."dueAt" IS NOT NULL
             AND t."dueAt" < ${now}
