@@ -5,6 +5,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useTicketTabs } from "../contexts/TicketTabsContext";
 import { TicketTabBar } from "../components/TicketTabBar";
 import { TicketDetailPage } from "./TicketDetailPage";
+import { isTransientLayerOpen } from "../utils/transient-layer";
 import {
   bulkAssignTickets,
   bulkPriorityTickets,
@@ -1062,7 +1063,20 @@ export function TicketsPage({
         return;
       }
 
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) {
+      // ⚠️ CARD 1.77. This was the last inline copy of the old narrow selector,
+      // `[role="dialog"][aria-modal="true"]`. Card 1.76 made
+      // `isTransientLayerOpen` the single definition and converted the ticket
+      // DETAIL page; this call site kept spelling the rule itself, which is the
+      // one-rule-two-places shape behind cards 1.36, 1.38, 1.47, 1.50, 1.61,
+      // 1.70, 1.71, 1.75 and 1.76 itself.
+      //
+      // Not theoretical here. Two of the four deliberately non-modal popovers
+      // card 1.76 found live on THIS page - `SaveViewButton` (:1592) and the
+      // sidebar's saved-view delete confirmation. With one of those open, the
+      // old guard did not see it and a focused button is not a typing context,
+      // so Enter both confirmed the dialog AND opened a ticket behind it. `x`
+      // toggled a row's selection and `j`/`k` moved the cursor the same way.
+      if (isTransientLayerOpen()) {
         return;
       }
 

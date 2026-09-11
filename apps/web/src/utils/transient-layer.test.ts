@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isTransientLayerOpen } from './transient-layer';
 
@@ -109,5 +111,47 @@ describe('isTransientLayerOpen (card 1.76)', () => {
     });
     isTransientLayerOpen();
     expect(seen[0]).not.toContain('aria-modal');
+  });
+});
+
+/**
+ * Card 1.77 — every page-level shortcut asks the helper, nobody re-spells it.
+ *
+ * ⚠️ CARD 1.76 CREATED THE SINGLE DEFINITION AND CONVERTED ONE OF ITS TWO CALL
+ * SITES. `TicketsPage` kept the old inline selector, so the bug 1.76 fixed on
+ * the ticket DETAIL page stayed alive on the ticket LIST page — where two of
+ * the four non-modal popovers it identified actually live (`SaveViewButton`,
+ * rendered at `TicketsPage.tsx:1592`, and the sidebar's saved-view delete
+ * confirmation). That page's shortcuts are `j`, `k`, `x` and `Enter`, and a
+ * focused button is not a typing context, so Enter confirmed the dialog AND
+ * opened a ticket behind it.
+ *
+ * ⚠️ Comments are stripped before matching, using the same `codeOnly` approach
+ * as `context-menu-shell.test.ts`. Without it this suite would pass on prose:
+ * `transient-layer.ts` quotes the old selector in its own doc comment on
+ * purpose, and so does the call site this card fixed.
+ */
+describe('no page re-spells the transient-layer rule (card 1.77)', () => {
+  const codeOnly = (source: string): string =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  const PAGES = ['TicketsPage.tsx', 'TicketDetailPage.tsx'] as const;
+
+  it.each(PAGES)('%s asks the helper rather than querying for a dialog', page => {
+    const source = codeOnly(
+      readFileSync(join(__dirname, '..', 'pages', page), 'utf8'),
+    );
+    expect(source).toContain('isTransientLayerOpen(');
+    // THE REGRESSION ASSERTION: either SELECTOR reappearing means a page has
+    // gone back to answering the question itself.
+    //
+    // ⚠️ Matched in their BRACKETED form on purpose. A first draft of this
+    // banned the bare string `aria-modal` and failed immediately - `TicketsPage`
+    // renders two legitimate modal dialogs whose JSX carries
+    // `aria-modal="true"`. Only a CSS selector brackets an attribute, so the
+    // brackets are what separate "this page queries for a dialog" from "this
+    // page renders one".
+    expect(source).not.toContain('[aria-modal');
+    expect(source).not.toContain('[role="dialog"]');
   });
 });
