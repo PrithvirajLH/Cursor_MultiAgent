@@ -37,6 +37,9 @@ const INACTIVE_TEAMS_SENTINEL = "__inactive_teams__";
 const ASSIGNMENT_STRATEGY_OPTIONS = [
   { value: "QUEUE_ONLY", label: "Queue only (manual pickup)" },
   { value: "ROUND_ROBIN", label: "Round robin (auto-rotate)" },
+  // Card 2.1. Ties fall back to the round-robin pointer, so a level team still
+  // rotates; only a lopsided one behaves differently.
+  { value: "LEAST_LOADED", label: "Least loaded (fewest open tickets)" },
 ] as const;
 
 type TeamFormState = {

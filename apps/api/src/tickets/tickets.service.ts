@@ -29,6 +29,7 @@ import { AuthUser } from '../auth/current-user.decorator';
 import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
 import { availableUserFilter } from './available-user-filter.util';
+import { leastLoadedMember } from './least-loaded-member.util';
 import {
   sameCountBoundaries,
   type TicketCountBoundaries,
@@ -4840,7 +4841,14 @@ export class TicketsService {
         return null;
       }
 
-      if (team.assignmentStrategy !== TeamAssignmentStrategy.ROUND_ROBIN) {
+      // ⚠️ CARD 2.1 TURNED THIS GUARD INTO A BRANCH. QUEUE_ONLY still
+      // returns null and still means "nobody is auto-assigned, the team picks
+      // it up"; that is two thirds of the strategies and none of it moves.
+      const strategy = team.assignmentStrategy as TeamAssignmentStrategy;
+      if (
+        strategy !== TeamAssignmentStrategy.ROUND_ROBIN &&
+        strategy !== TeamAssignmentStrategy.LEAST_LOADED
+      ) {
         return null;
       }
 
@@ -4876,23 +4884,66 @@ export class TicketsService {
         return null;
       }
 
-      let nextMember = members[0];
-      if (team.lastAssignedUserId) {
-        const currentIndex = members.findIndex(
-          (member) => member.userId === team.lastAssignedUserId,
-        );
-        if (currentIndex >= 0) {
-          nextMember = members[(currentIndex + 1) % members.length];
+      let nextUserId: string | null = null;
+      if (strategy === TeamAssignmentStrategy.LEAST_LOADED) {
+        // ⚠️ CARD 2.1. THE COUNT IS TAKEN INSIDE THE LOCK, through `client`,
+        // for the same reason the member list is: two tickets arriving together
+        // is exactly the case this strategy exists for, and a load read outside
+        // the transaction is stale precisely then - both would see the same
+        // quietest person and both would go to them.
+        //
+        // ⚠️ "OPEN" IS `notFinishedFilter()`, card 1.72's single definition.
+        // This is the third card running where a fresh count of "open" could
+        // have been invented; a fourth spelling is how the sidebar and the list
+        // came to disagree in the first place.
+        const memberIds = members.map((member) => member.userId);
+        const loads = await client.ticket.groupBy({
+          by: ['assigneeId'],
+          where: {
+            assigneeId: { in: memberIds },
+            ...this.notFinishedFilter(),
+            deletedAt: null,
+          },
+          _count: { _all: true },
+        });
+        const openCounts = new Map<string, number>();
+        for (const row of loads) {
+          if (row.assigneeId) {
+            openCounts.set(row.assigneeId, row._count._all);
+          }
         }
+        nextUserId = leastLoadedMember(
+          members,
+          openCounts,
+          team.lastAssignedUserId,
+        );
+      } else {
+        let nextMember = members[0];
+        if (team.lastAssignedUserId) {
+          const currentIndex = members.findIndex(
+            (member) => member.userId === team.lastAssignedUserId,
+          );
+          if (currentIndex >= 0) {
+            nextMember = members[(currentIndex + 1) % members.length];
+          }
+        }
+        nextUserId = nextMember.userId;
       }
 
-      // Update round-robin state atomically within the same transaction
+      if (!nextUserId) {
+        return null;
+      }
+
+      // ⚠️ THE POINTER IS UPDATED IN BOTH MODES. Not just round robin's: a
+      // team switched to LEAST_LOADED and back would otherwise resume from
+      // members[0] with a pointer frozen weeks ago, and one person would take a
+      // double share. It is also what LEAST_LOADED breaks its ties on.
       await client.team.update({
         where: { id: teamId },
-        data: { lastAssignedUserId: nextMember.userId },
+        data: { lastAssignedUserId: nextUserId },
       });
 
-      return nextMember.userId;
+      return nextUserId;
     };
 
     if (tx) {

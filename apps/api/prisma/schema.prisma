@@ -76,6 +76,8 @@ enum TeamRole {
 enum TeamAssignmentStrategy {
   QUEUE_ONLY
   ROUND_ROBIN
+  /// Card 2.1: the available member holding the fewest unfinished tickets.
+  LEAST_LOADED
 }
 
 enum UserRole {
