@@ -33,8 +33,6 @@ export interface SidebarPreset {
   id: string;
   /** Human label rendered in the sidebar */
   label: string;
-  /** Optional count badge (e.g. "4") */
-  count?: string;
   /** Tone of the leading dot (saved views) */
   tone?: ToneKey;
   /** Builds a `?key=value` query string applied on click */
@@ -155,44 +153,11 @@ export const SAVED_VIEWS: SidebarPreset[] = [
  *
  * Returns an empty string for an unknown id, which is the existing
  * unknown-id-is-ignored rule (see `visible-presets.ts`) rather than a throw.
+ * `App.tsx` depends on that: it interpolates the result straight into a path.
  *
- * @param id A `SAVED_VIEWS` or `PRIMARY_NAV_PRESETS` id.
+ * @param id A `SAVED_VIEWS` id.
  */
 export function presetQueryById(id: string): string {
-  const preset =
-    SAVED_VIEWS.find((v) => v.id === id) ??
-    PRIMARY_NAV_PRESETS.find((v) => v.id === id);
+  const preset = SAVED_VIEWS.find((v) => v.id === id);
   return preset ? preset.buildQuery() : '';
 }
-
-export const PRIMARY_NAV_PRESETS: SidebarPreset[] = [
-  {
-    id: 'inbox',
-    label: 'Inbox',
-    count: '142',
-    buildQuery: () => qs({ statusGroup: 'open' }),
-    matches: p =>
-      p.get('statusGroup') === 'open' && !p.get('scope') && !p.get('priorities'),
-  },
-  {
-    id: 'my-tickets',
-    label: 'My tickets',
-    count: '14',
-    buildQuery: () => qs({ scope: 'assigned' }),
-    matches: p => p.get('scope') === 'assigned',
-  },
-  {
-    id: 'team-queue',
-    label: 'Team queue',
-    count: '38',
-    buildQuery: () => qs({ scope: 'unassigned', statusGroup: 'open' }),
-    matches: p => p.get('scope') === 'unassigned',
-  },
-  {
-    id: 'created-by-me',
-    label: 'Created by me',
-    count: '7',
-    buildQuery: () => qs({ scope: 'created' }),
-    matches: p => p.get('scope') === 'created',
-  },
-];

@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { PRIMARY_NAV_PRESETS, SAVED_VIEWS, presetQueryById } from './saved-views';
+import { SAVED_VIEWS, presetQueryById } from './saved-views';
 
 const APP_SOURCE = readFileSync(join(__dirname, '..', '..', 'App.tsx'), 'utf8');
 
@@ -50,10 +50,24 @@ describe('the Unassigned preset states its own filter (card 1.71)', () => {
   });
 
   describe('presetQueryById', () => {
-    it('reads both built-in lists', () => {
+    it('reads the built-in presets', () => {
       expect(presetQueryById('p1-today')).toContain('priorities=SEV1');
-      expect(presetQueryById('my-tickets')).toContain('scope=assigned');
-      expect(PRIMARY_NAV_PRESETS.some((v) => v.id === 'my-tickets')).toBe(true);
+      expect(presetQueryById('unassigned')).toContain('scope=unassigned');
+    });
+
+    it('⚠️ returns "" for an id that no longer exists', () => {
+      // REPLACES an assertion that `PRIMARY_NAV_PRESETS` contained
+      // `my-tickets`. Card 1.76 deleted that array - it rendered nowhere, and
+      // this lookup's fallback branch had never once been taken - so the
+      // behaviour worth pinning is what `App.tsx:735` actually depends on: an
+      // unknown id yields an empty string rather than throwing, because the
+      // result is interpolated straight into a path. `my-tickets` is now
+      // exactly such an id, which is why it is the one used here.
+      expect(presetQueryById('my-tickets')).toBe('');
+      expect(presetQueryById('inbox')).toBe('');
+      expect(presetQueryById('team-queue')).toBe('');
+      expect(presetQueryById('created-by-me')).toBe('');
+      expect(() => presetQueryById('anything')).not.toThrow();
     });
 
     it('returns an empty string for an unknown id rather than throwing', () => {
