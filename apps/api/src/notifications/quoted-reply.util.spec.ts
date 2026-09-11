@@ -61,14 +61,45 @@ describe('stripQuotedReply', () => {
     expect(stripQuotedReply(body)).toBe('Yes please go ahead.');
   });
 
-  it('cuts an underscore rule', () => {
+  it('⚠️ leaves an underscore rule alone (card 1.66 removed that marker)', () => {
+    // INVERTED, not deleted, so the old behaviour stays on the record.
+    //
+    // ⚠️ AND THIS FIXTURE IS ITSELF THE ARGUMENT FOR THE CHANGE. It looks
+    // like an email - it has a `From:` line - but marker 3 requires `Sent:` or
+    // `Date:` on the line immediately after, and there is none. So with the
+    // underscore marker gone this body carries NO email signal at all, and the
+    // trimmer correctly declines to cut it. A body that ambiguous is far more
+    // likely to be an agent's note with a divider in it than a quoted reply.
     const body = ['Done.', '', '________________________________', 'From: x'].join('\n');
-    expect(stripQuotedReply(body)).toBe('Done.');
+    expect(stripQuotedReply(body)).toBe(body);
   });
 
-  it('cuts the RFC signature delimiter', () => {
+  it('⚠️ leaves an RFC signature delimiter alone (card 1.66)', () => {
+    // The signature now stays. Showing an agent four extra lines of somebody's
+    // sign-off is a far smaller harm than silently eating the second half of a
+    // note they typed, and the util's own doc comment already said it does not
+    // guess at signature blocks.
     const body = ['Thanks for the help.', '', '-- ', 'Sarah Chen', 'Service Desk'].join('\n');
-    expect(stripQuotedReply(body)).toBe('Thanks for the help.');
+    expect(stripQuotedReply(body)).toBe(body);
+  });
+
+  it('⚠️ returns an agent note containing a divider byte-identical', () => {
+    // THE ASSERTION THAT FAILS IF EITHER MARKER COMES BACK. This is the defect
+    // card 1.62 introduced: an internal note is written in the app, never
+    // travels through a mail client, and carries no email artefacts - so every
+    // one of the remaining markers correctly declines it. Both removed markers
+    // would have cut it, and the agent would have lost everything below their
+    // own divider with no indication anything was missing.
+    const note = [
+      'Checked with the vendor.',
+      '',
+      '________________________________',
+      '',
+      'Next steps:',
+      '-- ',
+      'ring them back Thursday if no reply',
+    ].join('\n');
+    expect(stripQuotedReply(note)).toBe(note);
   });
 
   it('returns a body with no marker byte-identical', () => {

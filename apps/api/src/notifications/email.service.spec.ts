@@ -312,7 +312,21 @@ describe('EmailService', () => {
         'Outlook header block',
         ['From: CSNHC Helpdesk <helpdesk@csnhc.com>', 'Sent: Wednesday 2 September'],
       ],
-      ['Outlook rule', ['________________________________']],
+      // ⚠️ CARD 1.66 MADE THIS FIXTURE REALISTIC, and it was wrong before.
+      // It used to be the underscore rule ALONE, which matched the bare
+      // `/^_{5,}$/m` marker 1.66 removed. Real Outlook never sends the rule on
+      // its own - it always follows it with the From:/Sent: header block, which
+      // is what marker 3 matches and what actually does the cutting here now.
+      // So the client shape this case is named for still trims; the old fixture
+      // simply was not that shape.
+      [
+        'Outlook rule',
+        [
+          '________________________________',
+          'From: CSNHC Helpdesk <helpdesk@csnhc.com>',
+          'Sent: Wednesday 2 September',
+        ],
+      ],
       ['Original Message', ['-----Original Message-----']],
     ])('drops the preheader when %s quotes our email', (_client, lead) => {
       const shown = stripQuotedReply(
