@@ -50,6 +50,7 @@ import {
   type HeaderContextValue,
 } from "./contexts/HeaderContext";
 import { useCommandPalette } from "./hooks/useCommandPalette";
+import { presetQueryById } from "./components/shell/saved-views";
 import { useAuthSession } from "./hooks/useAuthSession";
 import { useTheme } from "./hooks/useTheme";
 import { shouldEnableNotificationPolling } from "./hooks/notification-fallback";
@@ -728,7 +729,10 @@ function AuthenticatedShell({
         case "unassigned":
           setTicketPresetStatus("open");
           setTicketPresetScope("unassigned");
-          navigate("/tickets?scope=unassigned&statusGroup=open");
+          // ⚠️ CARD 1.71: derived from the sidebar preset rather than spelled
+          // again. These two routes reach the same view and used to disagree -
+          // this one carried `statusGroup=open` and the preset did not.
+          navigate(`/tickets${presetQueryById("unassigned")}`);
           return;
         case "created":
           setTicketPresetStatus("all");

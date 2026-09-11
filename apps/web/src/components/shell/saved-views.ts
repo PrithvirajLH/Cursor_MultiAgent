@@ -100,7 +100,22 @@ export const SAVED_VIEWS: SidebarPreset[] = [
     id: 'unassigned',
     label: 'Unassigned',
     tone: 'gray',
-    buildQuery: () => qs({ scope: 'unassigned' }),
+    // ⚠️ CARD 1.71: `statusGroup` IS STATED, NOT INHERITED. Without it the
+    // list falls back to `presetStatus` (useFilters.ts:42-45), which is ambient
+    // React state, not part of the link - so this one row meant three different
+    // things depending on what you last clicked. From a fresh load it is "open"
+    // and the badge agreed; after *Created by me* it is "all" (badge 5, list 6)
+    // and after *Completed* it is "resolved" (badge 5, list 1).
+    //
+    // `statusGroup=open` is `status NOT IN (RESOLVED, CLOSED)` at
+    // buildListWhere:429 - the same predicate `getCounts.unassigned` uses, so
+    // the link now means exactly what the badge counts. The list moves to meet
+    // the badge, never the other way: card 1.70 settled that definition and
+    // DashboardPage has shown it for months.
+    //
+    // `matches` is deliberately NOT widened: paramsMatch is a subset check, so
+    // the row still highlights on the wider URL.
+    buildQuery: () => qs({ scope: 'unassigned', statusGroup: 'open' }),
     matches: p => paramsMatch(p, { scope: 'unassigned' }),
   },
   {
@@ -128,6 +143,28 @@ export const SAVED_VIEWS: SidebarPreset[] = [
  * Primary nav items that map to scope/status preset filters.
  * "Inbox" = all open; "My tickets" = assigned to me; etc.
  */
+/**
+ * The query string a built-in row navigates to, by id.
+ *
+ * ⚠️ CARD 1.71 ADDED THIS SO THERE IS ONE DEFINITION, NOT TWO. The left nav
+ * in `App.tsx` spelled `?scope=unassigned&statusGroup=open` out by hand while
+ * the sidebar preset emitted `?scope=unassigned` - two routes to one view, which
+ * is the drift shape behind cards 1.36, 1.38, 1.47, 1.50, 1.66 and this one. A
+ * test comparing the two literals would have caught them diverging; deriving one
+ * from the other means they cannot.
+ *
+ * Returns an empty string for an unknown id, which is the existing
+ * unknown-id-is-ignored rule (see `visible-presets.ts`) rather than a throw.
+ *
+ * @param id A `SAVED_VIEWS` or `PRIMARY_NAV_PRESETS` id.
+ */
+export function presetQueryById(id: string): string {
+  const preset =
+    SAVED_VIEWS.find((v) => v.id === id) ??
+    PRIMARY_NAV_PRESETS.find((v) => v.id === id);
+  return preset ? preset.buildQuery() : '';
+}
+
 export const PRIMARY_NAV_PRESETS: SidebarPreset[] = [
   {
     id: 'inbox',

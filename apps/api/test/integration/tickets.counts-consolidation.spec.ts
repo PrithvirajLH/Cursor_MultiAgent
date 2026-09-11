@@ -262,7 +262,22 @@ describe('the sidebar counts match the list they link to (card 1.69)', () => {
     return (response.body as { meta: { total: number } }).meta.total;
   };
 
-  /** Every sidebar badge, with the query string its row navigates to. */
+  /**
+   * Every sidebar badge, with the query string its row navigates to.
+   *
+   * ⚠️ THESE STRINGS ARE WRITTEN OUT ON PURPOSE. Deriving them from
+   * `SAVED_VIEWS.buildQuery()` looks tidier and would make this test WORSE,
+   * because the browser's effective request is `buildQuery()` PLUS the
+   * `presetStatus` fallback in useFilters.ts:42-45 - ambient React state that no
+   * amount of reading `saved-views.ts` reveals. A table derived from
+   * `buildQuery()` alone would stop modelling what the browser actually sends.
+   *
+   * Card 1.71 made `unassigned` state `statusGroup=open` in its own link, so for
+   * that row the two now coincide. `sla-at-risk` still emits no status filter
+   * and relies on the fallback, so they do not coincide for it. Written out,
+   * this table keeps saying what the request IS rather than what one file
+   * suggests it might be.
+   */
   const BADGES: Array<{ label: string; field: string; query: string }> = [
     {
       label: 'SEV1 today',

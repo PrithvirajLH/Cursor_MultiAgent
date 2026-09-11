@@ -1,3 +1,4 @@
+-- allow-drop: replaces SavedView_default_per_user with the (userId, viewType) form (card 1.60)
 -- Card 1.60 — one default saved view per user PER KIND.
 --
 -- Making a report view your default silently cleared your default ticket view,
