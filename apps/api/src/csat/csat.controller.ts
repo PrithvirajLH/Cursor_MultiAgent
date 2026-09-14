@@ -15,9 +15,17 @@ export class CsatController {
     return this.csatService.submit(dto, user);
   }
 
+  /**
+   * ⚠️ CARD 1.79: `@CurrentUser` HERE IS THE FIX. Without it this endpoint
+   * served any ticket's rating and comment to anybody signed in - and the
+   * `@Post` beside it has always taken the caller.
+   */
   @Get(':ticketId')
-  async get(@Param('ticketId') ticketId: string) {
-    const data = await this.csatService.getForTicket(ticketId);
+  async get(
+    @Param('ticketId') ticketId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const data = await this.csatService.getForTicket(ticketId, user);
     return { data };
   }
 }
