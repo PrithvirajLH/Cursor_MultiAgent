@@ -255,3 +255,144 @@ describe('AuthGuard rejection logging (card 1.54)', () => {
     expect(line).toContain('exp=');
   });
 });
+
+/**
+ * Card 1.78 — "Deactivate" never touched authentication.
+ *
+ * `users.service.ts` set `isActive: false`, deleted the roster rows and nulled
+ * `primaryTeamId`; the guard resolved the user by oid or address and carried
+ * on. The September audit confirmed at runtime that a deactivated agent still
+ * answered GET /auth/me with a 200, listed tickets and created one.
+ */
+describe('⚠️ AuthGuard refuses a deactivated account (card 1.78)', () => {
+  const SECRET_KEY = 'unit-test-secret';
+
+  type Doubles = {
+    guard: AuthGuard;
+    update: jest.Mock;
+    create: jest.Mock;
+  };
+
+  function buildGuard(
+    row: { id: string; email: string; isActive: boolean } | null,
+    lookup: 'findFirst' | 'findUnique' = 'findFirst',
+  ): Doubles {
+    const update = jest.fn();
+    const create = jest.fn();
+    const full = row
+      ? {
+          ...row,
+          displayName: row.email,
+          role: 'AGENT',
+          department: null,
+          location: null,
+          entraObjectId: null,
+          primaryTeamId: null,
+        }
+      : null;
+    const prisma = {
+      user: {
+        findFirst: jest.fn().mockResolvedValue(lookup === 'findFirst' ? full : null),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue(lookup === 'findUnique' ? full : null),
+        update,
+        create,
+      },
+      teamMember: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as unknown as PrismaService;
+    const guard = new AuthGuard(
+      prisma,
+      { getAllAndOverride: () => false } as unknown as Reflector,
+      {
+        get: (key: string) =>
+          ({
+            AUTH_ALLOW_INSECURE_HEADERS: 'true',
+            NODE_ENV: 'test',
+            AUTH_JWT_SECRET: SECRET_KEY,
+          })[key],
+      } as unknown as ConfigService,
+      { flag: jest.fn() } as unknown as DuplicateAccountService,
+      { recordAddresses: jest.fn() } as unknown as UserIdentityService,
+    );
+    return { guard, update, create };
+  }
+
+  const contextFor = (headers: Record<string, string>) =>
+    ({
+      switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+      getHandler: () => undefined,
+      getClass: () => undefined,
+    }) as unknown as ExecutionContext;
+
+  let warnSpy: jest.SpyInstance;
+  beforeEach(() => {
+    warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => warnSpy.mockRestore());
+
+  it('⚠️ rejects a deactivated account on the header path', async () => {
+    const { guard } = buildGuard({
+      id: 'u1',
+      email: 'gone@company.com',
+      isActive: false,
+    });
+    await expect(
+      guard.canActivate(contextFor({ 'x-user-email': 'gone@company.com' })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('⚠️ STILL ADMITS AN ACTIVE ACCOUNT OF THE SAME SHAPE', async () => {
+    // The non-vacuity half. A guard that rejected everybody would pass the test
+    // above and lock the whole desk out.
+    const { guard } = buildGuard({
+      id: 'u2',
+      email: 'here@company.com',
+      isActive: true,
+    });
+    await expect(
+      guard.canActivate(contextFor({ 'x-user-email': 'here@company.com' })),
+    ).resolves.toBe(true);
+  });
+
+  it('⚠️ rejects on the token path WITHOUT writing to the row', async () => {
+    // The provisioning path refreshes the profile and records directory
+    // addresses. Doing that for a deactivated row would quietly maintain an
+    // account somebody switched off, so the refusal comes first.
+    const { guard, update, create } = buildGuard(
+      { id: 'u3', email: 'gone@company.com', isActive: false },
+      'findUnique',
+    );
+    const token = makeToken(
+      { email: 'gone@company.com', exp: FUTURE, iat: PAST },
+      SECRET_KEY,
+    );
+    await expect(
+      guard.canActivate(contextFor({ authorization: `Bearer ${token}` })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('names the reason, so the log can tell this from the other twenty 401s', async () => {
+    // Card 1.54's property: every rejection says which one it is.
+    const messages: string[] = [];
+    warnSpy.mockImplementation((message: unknown) => {
+      messages.push(String(message));
+    });
+    const { guard } = buildGuard({
+      id: 'u4',
+      email: 'gone@company.com',
+      isActive: false,
+    });
+    await expect(
+      guard.canActivate(contextFor({ 'x-user-email': 'gone@company.com' })),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(messages.join(' ')).toContain('deactivated');
+    // ...and never the credential itself.
+    expect(messages.join(' ')).not.toContain('Bearer');
+  });
+});

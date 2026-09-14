@@ -306,10 +306,33 @@ export class TeamsService {
     }
   }
 
+  /**
+   * The user being added to a team (card 1.89).
+   *
+   * ⚠️ A DEACTIVATED ACCOUNT CANNOT BE PUT BACK ON A ROSTER. Deactivation
+   * deletes the roster rows; without this check anybody could add the account
+   * straight back and it would start receiving auto-assigned work again, which
+   * is what made card 1.78's fix incomplete on its own.
+   *
+   * ⚠️ AND THIS IS WHY THE FIX BELONGS HERE RATHER THAN IN THE PICKER. Card
+   * 2.2's `availableUserFilter` deliberately says nothing about `isActive`, on
+   * the stated grounds that deactivation removes the roster rows - correct
+   * reasoning whose premise this hole was breaking. Repairing it at the add
+   * keeps that comment true; adding an isActive filter to the picker would have
+   * made it a lie.
+   *
+   * Only `addMember` calls this, so nothing else is affected - removing a
+   * deactivated member from a team does not pass through here.
+   */
   private async ensureUser(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+    if (!user.isActive) {
+      throw new BadRequestException(
+        `${user.displayName || user.email} is deactivated. Reactivate the account before adding them to a team.`,
+      );
     }
     return user;
   }

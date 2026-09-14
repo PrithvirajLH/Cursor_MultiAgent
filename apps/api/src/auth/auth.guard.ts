@@ -97,6 +97,20 @@ export class AuthGuard implements CanActivate {
    * @param detail Safe, named scalars only — claim names and checked values.
    * @returns The exception to throw, so a call site reads `throw this.reject(…)`.
    */
+  /**
+   * Refuse a deactivated account (card 1.78).
+   *
+   * One message for both the guard and the provisioning path, so the audit log
+   * reads the same however the request arrived.
+   */
+  private assertActive(user: { id: string; isActive: boolean }): void {
+    if (!user.isActive) {
+      throw this.reject('This account has been deactivated', {
+        userId: user.id,
+      });
+    }
+  }
+
   private reject(
     reason: string,
     detail?: Record<string, unknown>,
@@ -146,6 +160,17 @@ export class AuthGuard implements CanActivate {
     if (!user) {
       throw this.reject('Unknown user');
     }
+
+    // ⚠️ CARD 1.78. THE ONE CHECK THAT MAKES "DEACTIVATE" MEAN ANYTHING.
+    // `users.service.ts` set `isActive: false`, deleted the roster rows and
+    // nulled `primaryTeamId` - and never touched authentication, so a
+    // deactivated agent went on answering GET /auth/me with a 200, listing
+    // tickets and creating them. Verified at runtime by the September audit.
+    //
+    // It sits AFTER resolution and BEFORE the membership work below, so a
+    // deactivated account gets the same answer whichever way it authenticated:
+    // bearer token, Easy Auth header, or the dev header path.
+    this.assertActive(user);
 
     let membership =
       user.primaryTeamId != null
@@ -368,6 +393,10 @@ export class AuthGuard implements CanActivate {
       ? await this.prisma.user.findUnique({ where: { entraObjectId } })
       : null;
     if (byObject) {
+      // ⚠️ CARD 1.78: REFUSED BEFORE ANY WRITE. The calls below record
+      // addresses and update the profile; running them for a deactivated row
+      // would quietly maintain an account somebody switched off.
+      this.assertActive(byObject);
       // The address on this token may differ from the one stored. It is NOT
       // overwritten and no second row is made: the row is the human, and the
       // address is one of their labels. The alternate form is recorded below
@@ -404,6 +433,10 @@ export class AuthGuard implements CanActivate {
       await this.duplicateAccounts.flag(created.email, created.role);
       return created;
     }
+
+    // ⚠️ CARD 1.78 again, for the address match: a deactivated account must
+    // not be re-provisioned, re-stamped or have its profile refreshed.
+    this.assertActive(existing);
 
     // Matched on the address. If the token brought a directory id and this row
     // has none, stamp it - that is how the existing accounts acquire their
