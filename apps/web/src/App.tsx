@@ -68,6 +68,7 @@ import {
   REALTIME_TICKET_VIEWING_EVENT,
   type RealtimeTicketViewingEventPayload,
 } from "./realtime/events";
+import { AnnouncementBanner } from "./components/AnnouncementBanner";
 import { guardRoute } from "./route-access";
 import { getSidebarBadge, getSidebarChildBadge } from "./sidebar-badges";
 import { useSessionExpired } from "./hooks/use-session-expired";
@@ -997,6 +998,14 @@ function AuthenticatedShell({
               onToggleTheme={onToggleTheme}
             />
           )}
+
+          {/* ⚠️ CARD 2.7: OUTSIDE THE PATHNAME-KEYED WRAPPER BELOW, and outside
+              the TopBar's own conditional so it shows on the shell-layout pages
+              too. Inside that div it would remount on every navigation - the
+              fade-in would replay and a dismissal held in state would come back.
+              One placement covers /submit as well, which is routed in the same
+              <Routes>. */}
+          <AnnouncementBanner />
 
           {/* HeaderProvider eliminates headerProps prop drilling (6.2) */}
           <TicketTabsProvider>
