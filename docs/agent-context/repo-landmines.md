@@ -624,3 +624,66 @@ from one blocked rename. A clean re-run immediately afterwards was
   defect.
 - Related: the same script's `finally` restores `.env`, so a **hard-killed** run
   leaves it as `.env.bak` — see the earlier landmine.
+
+## Two sessions, one test database (found 2026-09-11, twice)
+
+**A second session's integration run will reset the shared test database out from
+under yours, mid-pass.** It wipes the seed and can leave the schema part-migrated,
+so your failures look like code defects and are not. Every integration suite resets
+the database in its own `beforeAll`; nothing coordinates between sessions.
+
+- **A browser pass must not share `TEST_DATABASE_URL` with a running suite.** Card
+  1.70's implementer fixed the cause rather than retrying: the browser pass now runs
+  against its own `ticketing_browser` database with all migrations applied.
+- **Check for a live run before starting anything:** a `node` process whose command
+  line contains `jest` means hands off. ⚠️ **Including reads** — each suite's reset
+  renames `apps/api/.env`, and an open handle on Windows blocks the rename and fails
+  the suite. **Read from the git object store instead** (`git show <sha>:<path>`,
+  `git grep <sha> -- <path>`), which never touches the working tree.
+
+## WSL idles its VM out and kills Postgres between commands (found 2026-09-11)
+
+**The first connection works and the next one does not**, with nothing in between to
+explain it — WSL shut the VM down for being idle and took the cluster with it. It
+cost a day before the pattern was recognised.
+
+- **A keepalive fixes it.** Do not treat the first failure as a database problem.
+- ⚠️ **`.env.test` points at `127.0.0.1`, not `localhost`, deliberately.** `localhost`
+  resolves to an IPv6 address here whose handshake never completes. **Do not tidy it
+  back**; `.env.test` is gitignored, so this note is the only record outside that file.
+
+## `check-migrations.sh` cannot see an uncommitted migration (found 2026-09-11)
+
+**The guard diffs against a git ref, so a migration file you have not committed is
+not in the diff and the script reports clean.** Run it before committing and you get
+a false pass on the one check that stands between a regenerated migration and the
+six trigram GIN indexes.
+
+- **Commit first, then run the guard.** Reported by card 2.1's implementer.
+- A clean result that says `0 new migration file(s) checked` is not a pass, it is a
+  no-op. **Read the count, not just the exit code.**
+
+## WSL kills Postgres mid-run, and it looks exactly like 17 broken suites (2026-09-11)
+
+**Seen twice in one day.** A full integration run came back **17 suites / 146 tests
+failed** and none of it was code. The signature, in this order:
+
+- Every suite-level failure is `TypeError: Cannot read properties of undefined
+  (reading 'close')` in `afterAll` — the app never booted, so `app` is undefined.
+  **That is a symptom. Do not debug it.**
+- The cause is further up: `Command failed: node scripts/reset-test-db.cjs`, and
+  underneath that **`P1001: Can't reach database server at 127.0.0.1:5433`**,
+  **`P1017`**, or Postgres `57P01 "terminating connection due to administrator
+  command"` / `FATAL: the database system is shutting down`.
+- **Grep the log for `P1001|P1017|57P01` before believing any red run.** Assertion
+  failures look nothing like this.
+
+**The fix is to hold the VM open for the whole run** — background a blocking
+`wsl -d Ubuntu-22.04 -- sleep 1500` and leave it running; a keepalive started with
+`nohup ... &` inside `wsl -- bash -c` does NOT survive, because wsl.exe reaps the
+children when the session ends. Restart the cluster with
+`wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start` and **wait for
+`pg_isready` before starting jest** — a suite launched while the cluster is still
+coming up fails alone and the rest of the run is fine, which is what happened to
+`security.authorization.spec.ts`. **Re-running that one suite is a valid way to
+complete the tally; say so when you do.**

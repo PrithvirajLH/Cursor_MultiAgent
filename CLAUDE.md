@@ -27,28 +27,18 @@ functions. There is no AGENTS.md here; `.cursorrules` is it.
 
 ## Baseline — do not regress these
 
-**649 unit tests (64 suites), 782 integration + 1 skipped, 254 web unit tests (40 files)**
+**683 unit tests (69 suites), 876 integration + 1 skipped (85 of 86 suites), 372 web unit tests (54 files)** — **64 migrations.**
 
-⚠️ **Measured 2026-09-10 with TWO uncommitted workstreams in the tree, from two
-different sessions. Do not treat these as a committed baseline until both land.**
-
-- The **api** figures (615 / 739) are card **1.62**'s — six API files plus a fixture.
-- The **web** figure (247 / 39) includes card **1.65**'s five `is-abort-error` tests,
-  which belong to the other session. Committed `HEAD` for web is **242 / 39**.
-- ⚠️ **Neither session should commit with `git add -A`** — the two sets of files
-  do not overlap, so explicit paths keep the history honest. 1.62 owns
-  `inbound-mailbox/*`, `graph-mail.http-client.ts`, `tickets.service.ts` and
-  `test/integration/inbound-mailbox.spec.ts`; 1.65 owns `api/is-abort-error.*`,
-  `client.ts`, `TicketsPage.tsx` and `TriageBoardPage.tsx`., both typechecks clean.
+✅ **Measured 2026-09-14 after the four-fixes batch. Clean first run, 0 environment markers**, with the WSL keepalive held open for the whole run.
 
 ```bash
 cd apps/api && npx tsc --noEmit
 cd apps/web && npx tsc --noEmit
-cd apps/api && npx jest                       # 649, 64 suites
-cd apps/web && npx vitest run                 # 254, 40 files
+cd apps/api && npx jest                       # 683, 69 suites
+cd apps/web && npx vitest run                 # 372, 54 files
 
 export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
-cd apps/api && npm run test:integration       # 782 + 1 skipped, 74 of 75 suites, ~16 min
+cd apps/api && npm run test:integration       # 876 + 1 skipped, 85 of 86 suites, ~12 min
 # ⚠️ Exceeds the 10-minute Bash cap - it CANNOT be run in the foreground. Background it.
 # ⚠️ And touch NOTHING in apps/api while it runs, reads included: each suite's reset
 #    renames .env, and an open handle on Windows blocks that rename and fails the suite.
@@ -84,11 +74,46 @@ wsl -d Ubuntu-22.04 -- sudo pg_ctlcluster 16 main start
 
 - Branch `ui-redesign-and-api-hardening`. Remotes: `azure` (Azure DevOps, the
   deploy target), plus two **public** GitHub remotes.
-- Production App Service `TicketTicket` runs commit `79e49e9` (deployed
-  2026-09-10; previous `2d637f2` 09-09, `f48452b` 09-04, `d8811a7` 08-29).
-  Schema is at **59** migrations — confirmed by reading `_prisma_migrations`,
-  with **0 blocking rows** and all **6 trigram indexes** present.
-  `EMAIL_ACTION_SECRET` is set, so card 1.44's seven email links are live.
+- Production App Service `TicketTicket` runs commit **`6f127cb`** — measured
+  2026-09-14, and it equals local `HEAD`. **Schema is at 63 applied migrations,
+  0 blocking.** Phase 2 batch one is LIVE: `User.isAvailable` and `awayUntil`
+  both present, `LEAST_LOADED` in the `TeamAssignmentStrategy` enum, and all **6
+  trigram indexes** intact after both migrations. ✅ **Two deploys in a row have
+  shipped exactly the commits their handoff named**, because both pinned the
+  commit instead of taking HEAD.
+- ⚠️ **Card 2.1 is deployed but OFF.** `LEAST_LOADED` is a per-team setting and
+  no team has been switched to it. **Check before assuming least-loaded
+  assignment is in use:** `select name, "assignmentStrategy" from "Team";`
+- ✅ **Easy Auth `excludedPaths` verified live 2026-09-14** (`az rest` on
+  `authsettingsV2`): `/api/tickets/inbound-email`, `/api/tickets/intake`,
+  **`/api/email-actions` AND `/api/email-actions/*`**. ⚠️ **This DISPROVES the
+  2026-09-13 audit's F-052 worry that card 1.44's one-click email links may be
+  dead in production — they are reachable.** The audit was right to mark it
+  *Suspected*; it lacked Azure access. **The scanner callback is genuinely not
+  excluded**, but no scanner exists (card 0.7 is an open owner decision), so that
+  half is true and moot. **Do not re-raise F-052 as a defect.**
+- **A deep audit was run 2026-09-13** — `audit-output/TICKETING_SYSTEM_AUDIT.md`,
+  115 findings, 0 Critical / 10 High. **Nine were re-verified true by the planner
+  on 2026-09-14 and are cards 1.78–1.86.** ⚠️ **The Medium and Low findings
+  (105 of them) have NOT been verified one by one** — treat any of them as a
+  claim to check, not a fact, exactly as with the older `BUgs.txt` audit.
+- ⚠️ **FIVE audit findings were checked and found FALSE or materially
+  overstated. Do not re-raise them.** **F-052** — `/api/email-actions` IS in the
+  live Easy Auth exclusion list. **F-016** — the SLA breach worker DOES filter
+  `deletedAt` (`sla-breach.service.ts:263`), as does the agent profile
+  (`agents-admin.service.ts:84,211,224`). **F-050** — FAILED outbox rows not
+  being retried is a DELIBERATE documented decision (`outbox.service.ts:124`),
+  not a defect. **F-058** — “no rate control on the AI routes” is wrong; the
+  global throttler from card 1.69 covers them. **F-041** — keying the rate limit
+  on an unverified token claim is card 1.69's deliberate design, documented in
+  `throttle-tracker.util.ts` as bucketing-only and explicitly not authorization.
+- **Verified TRUE from the Medium set → cards 1.87–1.92.** The remaining Mediums
+  and all 54 Lows are still unverified.
+- ⚠️ **`az webapp log download` returns a PARTIAL window, not a day.** A
+  download on 2026-09-11 covered roughly twenty minutes and reported **0 × 429 and
+  0 × 5xx across 891 responses** — but the same query returns 0 for 09-09 and
+  09-10, the days card 1.69 measured **288** refusals. **Do not use it for a
+  before-and-after claim.** Whether the rate-limit fix worked is still unproven.
 - **The 2026-09-10 deploy shipped the five-card batch** — 1.58, 1.53, 0.9,
   1.16, 0.10 — including **migration 59** (`Team.hiddenPresetIds`). So
   team-managed saved views and preset hiding are **live**, and the owner found
