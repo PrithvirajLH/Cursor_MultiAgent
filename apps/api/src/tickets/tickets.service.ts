@@ -609,6 +609,17 @@ export class TicketsService {
     if (query.updatedFrom) {
       filters.push({ updatedAt: { gte: new Date(query.updatedFrom) } });
     }
+    // ⚠️ CARD 1.88. THE LIST BEHIND "RESOLVED THIS WEEK" HAS TO ASK THE SAME
+    // QUESTION THE BADGE ASKS. The count used to key on `updatedAt` and so did
+    // this list, so both were wrong together and at least agreed; moving only
+    // the count would have left the badge saying 3 while the list showed 7,
+    // which is the drift card 1.70 existed to remove.
+    if (query.resolvedFrom) {
+      filters.push({ resolvedAt: { gte: new Date(query.resolvedFrom) } });
+    }
+    if (query.resolvedTo) {
+      filters.push({ resolvedAt: { lt: this.toEndExclusive(query.resolvedTo) } });
+    }
     if (query.updatedTo) {
       filters.push({ updatedAt: { lt: this.toEndExclusive(query.updatedTo) } });
     }
@@ -962,6 +973,21 @@ export class TicketsService {
     const awaitingBefore = boundaries?.awaitingUpdatedTo
       ? this.toEndExclusive(boundaries.awaitingUpdatedTo)
       : null;
+    // ⚠️ CARD 1.88: THIS BOUNDS `resolvedAt`, NOT `updatedAt`.
+    //
+    // It used to bound `updatedAt`, so editing a ticket resolved two months ago
+    // dragged it into this week's figure and a bulk touch inflated the number
+    // for everybody at once.
+    //
+    // ⚠️ AND NOT `completedAt` EITHER, which the card first asked for. That
+    // column is REWRITTEN when a ticket closes (`transition`), so closing an old
+    // resolved ticket would drag it into this week exactly as `updatedAt` did -
+    // swapping one wrong field for another. `resolvedAt` is set on RESOLVED,
+    // cleared on REOPENED and preserved through CLOSED, which is the question
+    // "when was this resolved" actually being asked.
+    //
+    // Card 1.72's `notFinishedSql` still uses `completedAt` and is still right:
+    // it asks only whether the stamp is null, never when it was set.
     const resolvedFrom = boundaries?.resolvedUpdatedFrom
       ? new Date(boundaries.resolvedUpdatedFrom)
       : null;
@@ -1062,7 +1088,7 @@ export class TicketsService {
         ,
         SUM(CASE
           WHEN (t."status")::text IN (${TicketStatus.RESOLVED}, ${TicketStatus.CLOSED})
-            AND ${resolvedFrom === null ? Prisma.sql`FALSE` : Prisma.sql`t."updatedAt" >= ${resolvedFrom}`}
+            AND ${resolvedFrom === null ? Prisma.sql`FALSE` : Prisma.sql`t."resolvedAt" >= ${resolvedFrom}`}
           THEN 1 ELSE 0 END) AS "resolvedThisWeek"
         ,
         SUM(CASE

@@ -120,13 +120,17 @@ export const SAVED_VIEWS: SidebarPreset[] = [
     id: 'recent-resolved',
     label: 'Resolved this week',
     tone: 'green',
+    // Card 1.88: `resolvedFrom`, not `updatedFrom`. The badge counts tickets
+    // by when they were RESOLVED, so the list behind it has to ask the same
+    // question - otherwise the number and the rows disagree, which is the
+    // drift card 1.70 existed to remove.
     buildQuery: () =>
       qs({
         statusGroup: 'resolved',
-        updatedFrom: isoDaysAgo(7),
+        resolvedFrom: isoDaysAgo(7),
       }),
     matches: p =>
-      paramsMatch(p, { statusGroup: 'resolved', updatedFrom: isoDaysAgo(7) }),
+      paramsMatch(p, { statusGroup: 'resolved', resolvedFrom: isoDaysAgo(7) }),
   },
   {
     id: 'reopened',

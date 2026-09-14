@@ -131,6 +131,15 @@ export class ListTicketsDto extends PaginationDto {
   @IsISO8601()
   updatedTo?: string;
 
+  /** Card 1.88: bounds `resolvedAt`, which is what "resolved this week" means. */
+  @IsOptional()
+  @IsISO8601()
+  resolvedFrom?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  resolvedTo?: string;
+
   @IsOptional()
   @IsISO8601()
   dueFrom?: string;
