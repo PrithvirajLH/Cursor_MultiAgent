@@ -80,6 +80,27 @@ enum TeamAssignmentStrategy {
   LEAST_LOADED
 }
 
+/// How loudly an announcement shouts (card 2.7).
+///
+/// The ONLY reason severity exists: it drives the banner's treatment. OUTAGE is
+/// impossible to miss and cannot be dismissed for good, INFO is quiet and can.
+enum AnnouncementSeverity {
+  INFO
+  WARNING
+  OUTAGE
+}
+
+/// Who sees an announcement (card 2.7).
+///
+/// ⚠️ TEAM IS A SECURITY BOUNDARY, not a display hint. A TEAM announcement is
+/// filtered out IN THE QUERY for anyone outside that team - see
+/// `announcements.service.ts`. Filtering it in the component would mean shipping
+/// every team's announcements to every browser, which is not a filter at all.
+enum AnnouncementAudience {
+  ALL
+  TEAM
+}
+
 enum UserRole {
   EMPLOYEE
   AGENT
@@ -188,6 +209,7 @@ model User {
   actedNotifications      Notification[]       @relation("NotificationActor")
   savedViews              SavedView[]
   cannedResponses         CannedResponse[]
+  announcementsCreated    Announcement[]       @relation("AnnouncementCreatedBy")
   automationRulesCreated  AutomationRule[]
   routingRulesAssigned    RoutingRule[]        @relation("RoutingRuleAssignee")
   slaPolicyConfigsCreated SlaPolicyConfig[]    @relation("SlaPolicyConfigCreatedBy")
@@ -246,6 +268,7 @@ model Team {
   lastAssignedUser     User?                    @relation("TeamLastAssigned", fields: [lastAssignedUserId], references: [id])
   savedViews           SavedView[]
   cannedResponses      CannedResponse[]
+  announcements        Announcement[]
   customFields         CustomField[]
   automationRules      AutomationRule[]
   adminAuditEvents     AdminAuditEvent[]        @relation("AdminAuditEventTeam")
@@ -375,6 +398,7 @@ model Ticket {
   tags                 TicketTag[]
   linksFrom            TicketLink[]          @relation("TicketLinkFrom")
   linksTo              TicketLink[]          @relation("TicketLinkTo")
+  announcements        Announcement[]
 
   /// The scheduler sweeps for due follow-ups on every tick (card 1.10).
   @@index([followUpAt])
@@ -730,16 +754,16 @@ model TicketTag {
 /// at a different mailbox starts a fresh cursor instead of resuming somebody
 /// else's.
 model InboundMailboxCursor {
-  id        String   @id @default(uuid())
+  id           String    @id @default(uuid())
   /// The mailbox this cursor belongs to, lower-cased.
-  mailbox   String   @unique
+  mailbox      String    @unique
   /// Opaque Graph `@odata.deltaLink`. Null means "never synced": the next poll
   /// starts a new delta and takes whatever the initial page returns.
-  deltaLink String?
+  deltaLink    String?
   /// When a poll last completed, successfully or not. Operations reads this.
   lastSyncedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 model NotificationOutbox {
@@ -848,6 +872,48 @@ model IdempotencyRequest {
   @@unique([key, method, route, actorId])
   @@index([expiresAt])
   @@index([state, updatedAt])
+}
+
+/// A notice shown to everyone, or to one team, for a window of time (card 2.7).
+///
+/// Exists so that "the VPN is down, don't raise tickets" reaches people BEFORE
+/// they raise the fortieth duplicate ticket about it.
+///
+/// ⚠️ `endsAt` IS NULLABLE AND THAT MEANS "UNTIL I SAY OTHERWISE". An outage
+/// nobody can put a time on is the normal case, and a sentinel far-future date
+/// would be a lie every query then has to special-case - the same reasoning as
+/// card 2.2's `awayUntil`.
+///
+/// `createdById` is nullable and SET NULL on delete, following TicketLink: an
+/// announcement outlives the account that wrote it, and card 1.30 established
+/// that accounts do get merged away.
+model Announcement {
+  id             String               @id @default(uuid())
+  title          String
+  body           String               @db.Text
+  severity       AnnouncementSeverity @default(INFO)
+  audience       AnnouncementAudience @default(ALL)
+  /// Required when audience is TEAM; enforced in the service, since no database
+  /// constraint can express "required only for one enum value".
+  teamId         String?
+  team           Team?                @relation(fields: [teamId], references: [id])
+  /// Card 1.6's ticket links, the other way round: the ticket tracking the outage.
+  linkedTicketId String?
+  linkedTicket   Ticket?              @relation(fields: [linkedTicketId], references: [id])
+  startsAt       DateTime
+  endsAt         DateTime?
+  createdById    String?
+  createdBy      User?                @relation("AnnouncementCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  /// The hot path: GET /active runs on every page load for every signed-in user
+  /// and must not table-scan. Both halves of "active" are time columns, so they
+  /// are indexed together.
+  @@index([startsAt, endsAt])
+  @@index([teamId])
+  @@index([createdById])
+  @@index([linkedTicketId])
 }
 
 model SavedView {
