@@ -267,13 +267,23 @@ describe('AI', () => {
     expect(body.data).toBeNull();
   });
 
-  it('GET /ai/analysis/:ticketId returns { data: null } for an unknown ticketId', async () => {
-    const res = await request(server)
+  it('⚠️ GET /ai/analysis/:ticketId 404s for an unknown ticketId (card 1.79)', async () => {
+    // CHANGED BY CARD 1.79, deliberately. This used to answer 200 with
+    // { data: null }, which was fine while the endpoint checked nothing - it
+    // now resolves the ticket through the visibility filter first.
+    //
+    // ⚠️ AND AN UNKNOWN ID MUST ANSWER EXACTLY AS AN INVISIBLE ONE DOES. If
+    // this stayed 200 while a ticket you cannot see returned 404, the two
+    // would be distinguishable and the 404 rule would accomplish nothing: an
+    // outsider could tell "exists but not yours" from "does not exist" by the
+    // status code alone.
+    //
+    // A ticket you CAN see with no analysis on it still answers 200 with
+    // { data: null } - the test above pins that, and it is what the AI panel
+    // actually meets.
+    await request(server)
       .get('/api/ai/analysis/00000000-0000-4000-8000-000000000000')
       .set(authHeader(fixtureEmails.admin))
-      .expect(200);
-
-    const body = res.body as AnalysisResponse;
-    expect(body.data).toBeNull();
+      .expect(404);
   });
 });
