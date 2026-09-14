@@ -91,6 +91,11 @@ rollback.ps1
 # lived on one machine. Verified before re-including: no live credentials, only
 # placeholder connection strings and fake CI test values.
 
+# Browser-pass screenshots. Evidence for one report, not repo content - kept on
+# disk, out of git. Deliberately NOT a blanket *.png: the app's own assets are
+# tracked.
+p4-*.png
+
 # Loose docs / cruft (kept locally)
 DATABASE.md
 PROJECT_DOCUMENTATION.md
