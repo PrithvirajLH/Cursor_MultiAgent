@@ -6,7 +6,6 @@ import {
   type ActiveAnnouncement,
   type AnnouncementSeverity,
 } from "../api/client";
-import { isAbortError } from "../api/is-abort-error";
 import {
   COLLAPSED_STORAGE_KEY,
   DISMISSED_STORAGE_KEY,
@@ -156,25 +155,33 @@ export function AnnouncementBanner() {
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setInterval> | null = null;
+    // ⚠️ A CANCELLED FLAG, NOT AN AbortController, AND THIS IS NOT AN
+    // OVERSIGHT. `apiFetch` de-duplicates in-flight GETs BY PATH and hands the
+    // second caller the first caller's promise, ignoring their signal. So the
+    // usual mount -> cleanup(abort) -> mount sequence (React StrictMode does
+    // exactly this in development, and any remount can) makes the second load
+    // inherit the first one's AbortError - and the banner then sits empty
+    // forever. Found by opening the page, not by reading the code.
+    let cancelled = false;
     const load = async () => {
       try {
-        setAnnouncements(await getActiveAnnouncements(controller.signal));
-      } catch (error) {
-        // A banner is a courtesy: it must never surface an error into the shell
-        // it sits above. Card 1.65's helper keeps an abort from being mistaken
-        // for a failure.
-        if (!isAbortError(error)) {
+        const rows = await getActiveAnnouncements();
+        if (!cancelled) {
+          setAnnouncements(rows);
+        }
+      } catch {
+        // A banner is a courtesy: it must never surface an error into the
+        // shell it sits above. An empty list simply renders nothing.
+        if (!cancelled) {
           setAnnouncements([]);
         }
       }
     };
     void load();
-    timer = setInterval(() => void load(), POLL_MS);
+    const timer = setInterval(() => void load(), POLL_MS);
     return () => {
-      controller.abort();
-      if (timer) clearInterval(timer);
+      cancelled = true;
+      clearInterval(timer);
     };
   }, []);
 
