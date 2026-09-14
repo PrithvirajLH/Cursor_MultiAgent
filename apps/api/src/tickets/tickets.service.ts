@@ -2422,6 +2422,7 @@ export class TicketsService {
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
     }
+    this.assertTicketNotDeleted(ticket);
 
     if (!this.canAssignTicket(user, ticket)) {
       throw new ForbiddenException('Not allowed to assign this ticket');
@@ -2505,6 +2506,7 @@ export class TicketsService {
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
     }
+    this.assertTicketNotDeleted(ticket);
     if (!this.canAssignTicket(user, ticket)) {
       throw new ForbiddenException('Not allowed to assign this ticket');
     }
@@ -3955,6 +3957,7 @@ export class TicketsService {
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
     }
+    this.assertTicketNotDeleted(ticket);
 
     if (!this.canViewTicket(user, ticket)) {
       throw new ForbiddenException('No access to this ticket');
@@ -3988,6 +3991,7 @@ export class TicketsService {
     if (!ticket) {
       throw new NotFoundException('Ticket not found');
     }
+    this.assertTicketNotDeleted(ticket);
 
     if (!this.canViewTicket(user, ticket)) {
       throw new ForbiddenException('No access to this ticket');
@@ -4452,6 +4456,29 @@ export class TicketsService {
     },
   ) {
     return this.accessControl.canWriteTicket(user, ticket);
+  }
+
+  /**
+   * Refuse a write to a ticket that has been deleted (card 1.87).
+   *
+   * """ + W + """ MEASURED, NOT ASSUMED. Soft-deleting a ticket and then calling each
+   * write endpoint showed four that went through and wrote history against a
+   * ticket nobody can see: assign, unassign, follow and unfollow. transfer,
+   * transition, addMessage, setCategory and bulk priority already refused.
+   *
+   * """ + W + """ 404, NOT 403, AND FOR EVERYONE INCLUDING AN OWNER. A soft-deleted
+   * ticket is invisible, so the honest answer is "no such ticket". An owner may
+   * still READ one - that is card 1.45's deliberate exception - but reading a
+   * record and changing it are different acts: the way to change a deleted
+   * ticket is to restore it first.
+   *
+   * Card 1.45 fixed this class on the read side, where 20 of 23 reports were
+   * counting deleted tickets. This is the same job for writes.
+   */
+  private assertTicketNotDeleted(ticket: { deletedAt: Date | null }): void {
+    if (ticket.deletedAt) {
+      throw new NotFoundException('Ticket not found');
+    }
   }
 
   private canAssignTicket(
