@@ -13,6 +13,7 @@ import { isStaffRole } from '../notifications/is-staff-role.util';
 import type { ActionProvenance } from './action-provenance.type';
 import { MACRO_ALLOWED_ACTIONS } from './macro-allowed-actions.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { availableUserFilter } from '../tickets/available-user-filter.util';
 import { SlaEngineService } from '../slas/sla-engine.service';
 import { TagsService } from '../tags/tags.service';
 import { TicketsService } from '../tickets/tickets.service';
@@ -302,6 +303,13 @@ export class RuleEngineService {
                 automationRuleName: rule.name,
                 trigger,
                 actionCount: actions.length,
+                // Card 1.94: an action the rule declined to take is recorded
+                // here, the same way the macro path records one. A rule that
+                // silently did nothing is indistinguishable from a rule that
+                // did not match.
+                ...(result.skipped.length > 0
+                  ? { skippedActions: result.skipped }
+                  : {}),
               },
               createdById: rule.createdById,
             },
@@ -628,6 +636,29 @@ export class RuleEngineService {
               throw new Error(
                 'assign_user requires the ticket to be assigned to a team first',
               );
+            }
+            // ⚠️ CARD 1.94. A RULE MUST NOT ASSIGN TO SOMEBODY ON LEAVE.
+            // Card 2.2 covered the automatic pickers and missed this path: a
+            // rule naming a person handed them work while they were away, and
+            // the ticket then sat invisible until they came back.
+            //
+            // Skipped rather than thrown, following the macro allowlist above:
+            // the useful half of the rule still runs, the ticket keeps its
+            // team, and the skip is returned to the caller so it lands on the
+            // ticket event instead of vanishing.
+            //
+            // ⚠️ THE CHECK IS HERE AND NOT IN `applyAssigneeInTx`, deliberately.
+            // That helper also serves MANUAL assignment, and a person choosing
+            // to hand a ticket to a colleague on leave is a deliberate human
+            // act - card 2.2 governs what the system does by itself, not what
+            // somebody decides on purpose.
+            const availableAssignee = await tx.user.findFirst({
+              where: { id: action.userId, ...availableUserFilter() },
+              select: { id: true },
+            });
+            if (!availableAssignee) {
+              skipped.push('assign_user:unavailable');
+              break;
             }
             await this.ticketsService.applyAssigneeInTx(
               tx,

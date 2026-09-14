@@ -4754,8 +4754,22 @@ export class TicketsService {
       }
 
       if (assigneeId) {
+        // ⚠️ CARD 1.94. AVAILABILITY, NOT JUST MEMBERSHIP. Card 2.2 stopped
+        // the automatic pickers choosing somebody on leave; it did not stop a
+        // ROUTING RULE that names a specific person, so "send payroll
+        // escalations to Dana" kept landing on Dana while she was away.
+        //
+        // A pinned assignee who is unavailable falls back to the team queue -
+        // exactly what already happens when they are not a member of the team -
+        // and for the same reason card 2.2 gives for an all-away team: an
+        // unassigned ticket sits in a queue where somebody sees it, while one
+        // assigned to somebody on leave is invisible until they come back.
+        //
+        // `availableUserFilter` is the single definition of "actually here".
+        // One query, not two: the membership and the availability are one
+        // question about one row.
         const membership = await this.prisma.teamMember.findFirst({
-          where: { teamId, userId: assigneeId },
+          where: { teamId, userId: assigneeId, user: availableUserFilter() },
           select: { id: true },
         });
         if (!membership) {
