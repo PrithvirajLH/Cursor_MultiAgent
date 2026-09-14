@@ -273,10 +273,26 @@ export class InboundEmailService {
 
           // One transition per inbound message. The two cases are mutually
           // exclusive by status, so `else if` is honest rather than lazy.
-          if (
+          //
+          // ⚠️ CARD 1.80: `!automated` GATES THE REOPEN TOO. It did not, and an
+          // out-of-office bouncing off our "we have resolved this" reopened the
+          // ticket - work that was finished came back to the board because a
+          // mail server answered. The reasoning was already written one branch
+          // below, for WAITING_ON_REQUESTER: "an out-of-office answering our
+          // acknowledgement is not the requester answering our question, and
+          // flipping the queue on it would make the board lie in the more
+          // dangerous direction." It applies with more force to reopening
+          // closed work. Card 1.29 added the gate only to the branch it
+          // introduced.
+          const finished =
             existing.status === TicketStatus.RESOLVED ||
-            existing.status === TicketStatus.CLOSED
-          ) {
+            existing.status === TicketStatus.CLOSED;
+          // Recorded on the inbound event below, so an agent reading the
+          // timeline sees "we ignored an autoresponder" rather than wondering
+          // why a reply changed nothing. A silent decision is a mystery.
+          const statusChangeSkipped =
+            finished && automated ? 'automated' : null;
+          if (finished && !automated) {
             await this.applyInboundStatusTransition(
               existing,
               TicketStatus.REOPENED,
@@ -342,6 +358,11 @@ export class InboundEmailService {
                 threadedByDisplayId: threadTarget.threadedByDisplayId,
                 threadedByOutboxId: threadTarget.threadedByOutboxId,
                 attachmentCount: inboundAttachments.length,
+                // Card 1.80. Present only when a transition was actually
+                // withheld, so every other inbound event keeps its old shape.
+                ...(statusChangeSkipped
+                  ? { statusChangeSkipped }
+                  : {}),
               },
               createdById: requester.id,
             },
