@@ -7,6 +7,7 @@ import {
   Bug,
   Cog,
   FileText,
+  Megaphone,
   Shield,
   Tags,
   Users,
@@ -27,7 +28,8 @@ type AdminRoute =
   | "/admin/kb"
   | "/reports"
   | "/ai-debug"
-  | "/admin/operations";
+  | "/admin/operations"
+  | "/admin/announcements";
 
 type AdminSidebarItem = {
   key:
@@ -42,7 +44,8 @@ type AdminSidebarItem = {
     | "kb"
     | "reports"
     | "ai-debug"
-    | "operations";
+    | "operations"
+    | "announcements";
   label: string;
   route: AdminRoute;
   icon: LucideIcon;
@@ -138,6 +141,14 @@ const adminItems: AdminSidebarItem[] = [
     icon: Bug,
     roles: ["TEAM_ADMIN", "OWNER"],
     description: "Test AI classification pipeline",
+  },
+  {
+    key: "announcements",
+    label: "Announcements",
+    route: "/admin/announcements",
+    icon: Megaphone,
+    roles: ["TEAM_ADMIN", "OWNER"],
+    description: "Outage notices shown on every screen",
   },
   {
     key: "operations",

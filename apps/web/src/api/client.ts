@@ -2541,6 +2541,86 @@ export function negotiateRealtimeConnection() {
 }
 
 // ============================================
+// Announcements (card 2.7)
+// ============================================
+
+export type AnnouncementSeverity = "INFO" | "WARNING" | "OUTAGE";
+export type AnnouncementAudience = "ALL" | "TEAM";
+
+/** What the banner needs. The server sends only this much on the hot path. */
+export type ActiveAnnouncement = {
+  id: string;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  linkedTicketId: string | null;
+  endsAt: string | null;
+};
+
+/** A whole row, for the admin screen. */
+export type AnnouncementRecord = {
+  id: string;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  audience: AnnouncementAudience;
+  teamId: string | null;
+  linkedTicketId: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AnnouncementInput = {
+  title: string;
+  body: string;
+  severity?: AnnouncementSeverity;
+  audience?: AnnouncementAudience;
+  teamId?: string | null;
+  linkedTicketId?: string | null;
+  startsAt?: string;
+  endsAt?: string | null;
+};
+
+/**
+ * """ + W + """ RUNS ON EVERY PAGE LOAD, so it is deliberately the narrowest call in
+ * this file. The server decides what this viewer may see - a TEAM announcement
+ * for another team never reaches the browser at all.
+ */
+export function getActiveAnnouncements(signal?: AbortSignal) {
+  return apiFetch<ActiveAnnouncement[]>("/announcements/active", { signal });
+}
+
+export function listAnnouncements() {
+  return apiFetch<AnnouncementRecord[]>("/announcements");
+}
+
+export function createAnnouncement(input: AnnouncementInput) {
+  return apiFetch<AnnouncementRecord>("/announcements", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAnnouncement(
+  id: string,
+  input: Partial<AnnouncementInput>,
+) {
+  return apiFetch<AnnouncementRecord>(`/announcements/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteAnnouncement(id: string) {
+  return apiFetch<{ id: string }>(`/announcements/${id}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================
 // Bulk ticket actions
 // ============================================
 

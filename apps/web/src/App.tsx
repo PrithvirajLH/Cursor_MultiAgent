@@ -100,6 +100,11 @@ const SlaSettingsPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
 );
+const AnnouncementsPage = lazy(() =>
+  import("./pages/AnnouncementsPage").then((m) => ({
+    default: m.AnnouncementsPage,
+  })),
+);
 const OperationsPage = lazy(() =>
   import("./pages/OperationsPage").then((m) => ({
     default: m.OperationsPage,
@@ -1015,6 +1020,18 @@ function AuthenticatedShell({
                     />
                     <Route path="/help" element={<KbBrowsePage />} />
                     <Route path="/help/:slug" element={<KbArticlePage />} />
+                    <Route
+                      path="/admin/announcements"
+                      element={guardRoute(
+                        isAdminOrOwner,
+                        (
+                          <AnnouncementsPage
+                            teamsList={teamsList}
+                            role={currentPersona.role}
+                          />
+                        ),
+                      )}
+                    />
                     <Route
                       path="/admin/operations"
                       element={guardRoute(isOwner, <OperationsPage />)}
