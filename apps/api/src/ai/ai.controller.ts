@@ -71,8 +71,11 @@ export class AiController {
   @Get('analysis/:ticketId')
   async getAnalysis(
     @Param('ticketId') ticketId: string,
+    @CurrentUser() user: AuthUser,
   ) {
-    const data = await this.aiService.getAiAnalysis(ticketId);
+    // ⚠️ CARD 1.79: `@CurrentUser` is the fix. Without it this endpoint
+    // answered about any ticket to anybody signed in.
+    const data = await this.aiService.getAiAnalysis(ticketId, user);
     return { data };
   }
 }

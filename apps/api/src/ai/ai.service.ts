@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AiRoutingMethod } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +12,7 @@ import {
   AiObservabilityService,
   type PipelineStepRecord,
 } from '../common/ai-observability.service';
+import { AccessControlService } from '../common/access-control.service';
 import type { AuthUser } from '../auth/current-user.decorator';
 import type {
   PipelineInput,
@@ -38,6 +39,7 @@ export class AiService {
     private readonly kb: KbService,
     private readonly confidenceGate: ConfidenceGateService,
     private readonly observability: AiObservabilityService,
+    private readonly accessControl: AccessControlService,
   ) {}
 
   /** Best-effort KB article suggestions from the classifier's intent + classification. */
@@ -676,7 +678,42 @@ IMPORTANT: Return ONLY the JSON object. Format:
 
   // ─── Get AI Analysis for a Ticket ────────────────────────────────────
 
-  async getAiAnalysis(ticketId: string): Promise<Record<string, unknown> | null> {
+  /**
+   * What the classifier decided about a ticket (card 1.79).
+   *
+   * ⚠️ THIS READ WAS UNGUARDED: the controller took no `@CurrentUser` and
+   * this took no user, so anybody signed in could ask about any ticket. It
+   * leaked nothing only because the pipeline has never run - card 1.63 measured
+   * zero rows against 461 tickets - which is luck, not a guard, and the fix is
+   * not deferred on those grounds.
+   *
+   * ⚠️ 404, NOT 403, for a ticket this person cannot see, mirroring
+   * `listEvents`: a 403 would confirm the ticket exists.
+   *
+   * ⚠️ `rawText` IS STRIPPED. It is the requester's verbatim message, kept on
+   * the stored event for accuracy scoring, and an analysis panel has no reason
+   * to hand it back - it is the field here most likely to carry something
+   * somebody typed in a hurry, a credential included.
+   *
+   * @param ticketId The ticket to describe.
+   * @param user The caller, whose visibility decides the answer.
+   * @returns The classification payload without `rawText`, or null.
+   */
+  async getAiAnalysis(
+    ticketId: string,
+    user: AuthUser,
+  ): Promise<Record<string, unknown> | null> {
+    const visible = await this.prisma.ticket.findFirst({
+      where: {
+        id: ticketId,
+        ...this.accessControl.buildTicketAccessFilter(user),
+      },
+      select: { id: true },
+    });
+    if (!visible) {
+      throw new NotFoundException('Ticket not found');
+    }
+
     const event = await this.prisma.ticketEvent.findFirst({
       where: { ticketId, type: 'AI_CLASSIFICATION' },
       select: { payload: true, createdAt: true },
@@ -684,7 +721,10 @@ IMPORTANT: Return ONLY the JSON object. Format:
     });
 
     if (!event || !event.payload) return null;
-    return event.payload as Record<string, unknown>;
+    const payload = event.payload as Record<string, unknown>;
+    const { rawText, ...rest } = payload;
+    void rawText;
+    return rest;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────

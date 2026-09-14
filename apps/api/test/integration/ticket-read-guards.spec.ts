@@ -118,4 +118,34 @@ describe('unguarded ticket reads are guarded now (card 1.79)', () => {
         .expect(404);
     });
   });
+
+  describe('AI analysis', () => {
+    it('⚠️ a non-participant gets 404', async () => {
+      await request(server)
+        .get(`/api/ai/analysis/${ticketId}`)
+        .set(authHeader(fixtureEmails.otherRequester))
+        .expect(404);
+    });
+
+    it('an OWNER gets 200 with content', async () => {
+      const res = await request(server)
+        .get(`/api/ai/analysis/${ticketId}`)
+        .set(authHeader(fixtureEmails.owner))
+        .expect(200);
+      expect(JSON.stringify(res.body)).toContain('ai_pipeline');
+    });
+
+    it('⚠️ the payload carries no rawText', async () => {
+      // The requester's verbatim message, which this endpoint has no reason to
+      // return. Asserted on the serialised body so re-adding the field later
+      // fails here.
+      const res = await request(server)
+        .get(`/api/ai/analysis/${ticketId}`)
+        .set(authHeader(fixtureEmails.owner))
+        .expect(200);
+      const body = JSON.stringify(res.body);
+      expect(body).not.toContain('rawText');
+      expect(body).not.toContain('hunter2');
+    });
+  });
 });
