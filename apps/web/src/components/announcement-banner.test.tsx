@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
@@ -122,5 +124,27 @@ describe("dismissal rules (card 2.7)", () => {
     expect(canDismissPermanently("INFO")).toBe(true);
     expect(canDismissPermanently("WARNING")).toBe(true);
     expect(canDismissPermanently("OUTAGE")).toBe(false);
+  });
+});
+
+describe("⚠️ how the banner loads (card 2.7, regression)", () => {
+  // The browser pass caught this: the banner stayed empty on every route while
+  // the endpoint returned the outage correctly to curl. `apiFetch`
+  // de-duplicates in-flight GETs by path and hands the second caller the first
+  // one's promise, ignoring their signal - so mount -> abort -> mount (React
+  // StrictMode, or any remount) made the second load inherit an AbortError.
+  const source = readFileSync(
+    join(__dirname, "AnnouncementBanner.tsx"),
+    "utf8",
+  ).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+  it("⚠️ does not abort its own load", () => {
+    expect(source).not.toMatch(/new AbortController/);
+    expect(source).not.toMatch(/\.abort\(\)/);
+  });
+
+  it("drops a late response instead, with a cancelled flag", () => {
+    expect(source).toMatch(/let cancelled = false/);
+    expect(source).toMatch(/if \(!cancelled\)/);
   });
 });
