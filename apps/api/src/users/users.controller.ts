@@ -69,6 +69,21 @@ export class UsersController {
     return this.usersService.deactivate(id, actor);
   }
 
+  /**
+   * Card 1.98. Two routes, because restoring is a DECISION: the owner looks at
+   * what the person had, then asks for it back. Reactivation alone leaves them
+   * on no team, which is what happens today.
+   */
+  @Get(':id/restorable-teams')
+  async restorableTeams(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    return this.usersService.restorableTeams(id, actor);
+  }
+
+  @Post(':id/restore-teams')
+  async restoreTeams(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    return this.usersService.restoreTeams(id, actor);
+  }
+
   @Post(':id/reactivate')
   async reactivate(
     @Param('id') id: string,

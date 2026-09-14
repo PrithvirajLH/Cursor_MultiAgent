@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, TicketStatus, UserRole } from '@prisma/client';
+import { Prisma, TeamRole, TicketStatus, UserRole } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
@@ -258,6 +258,14 @@ export class UsersService {
       throw new ForbiddenException('Cannot deactivate another owner');
     }
 
+    // Deactivation nulls `primaryTeamId`; remember it for the same reason.
+    const priorPrimaryTeamId = (
+      await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { primaryTeamId: true },
+      })
+    )?.primaryTeamId ?? null;
+
     const summary = await this.prisma.$transaction(async (tx) => {
       const openTicketStatuses: TicketStatus[] = [
         TicketStatus.NEW,
@@ -284,6 +292,16 @@ export class UsersService {
         data: { assigneeId: null },
       });
 
+      // ⚠️ CARD 1.98: READ THE ROSTER BEFORE DELETING IT. These rows are
+      // about to be gone and nothing else records them, so a reactivated person
+      // would otherwise return to an empty queue with no way to find out which
+      // teams they had been on.
+      const memberships = await tx.teamMember.findMany({
+        where: { userId },
+        select: { teamId: true, role: true, team: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      });
+
       const teamRemoval = await tx.teamMember.deleteMany({
         where: { userId },
       });
@@ -300,6 +318,12 @@ export class UsersService {
       return {
         ticketsUnassigned: unassign.count,
         teamsRemoved: teamRemoval.count,
+        teams: memberships.map((row) => ({
+          teamId: row.teamId,
+          teamName: row.team.name,
+          role: row.role,
+        })),
+        primaryTeamId: priorPrimaryTeamId,
       };
     });
 
@@ -412,6 +436,178 @@ export class UsersService {
       ticketsOpen,
       teams: memberships.map((m) => m.team.name),
     };
+  }
+
+  /**
+   * What this person had before they were deactivated (card 1.98).
+   *
+   * """ + W + """ READ BACK OFF THE DEACTIVATION AUDIT EVENT, because the `TeamMember`
+   * rows themselves were deleted and are unrecoverable. The alternative -
+   * soft-deleting roster rows - is a migration AND it touches every roster
+   * query in the product including card 2.2's assignment picker, which is a lot
+   * of exposure for this problem.
+   *
+   * """ + W + """ A TEAM MAY HAVE BEEN DELETED SINCE. Those are returned with
+   * `stillExists: false` rather than silently dropped, so the owner can see
+   * what cannot be given back.
+   *
+   * Anyone deactivated BEFORE this card shipped has no recorded list: the
+   * event is there but carries only counts. That reads as "nothing recorded",
+   * which is the truth.
+   */
+  async restorableTeams(userId: string, actor: AuthUser) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can restore team membership');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, email: true, displayName: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const recorded = await this.lastDeactivationTeams(userId);
+    const teamIds = recorded.map((row) => row.teamId);
+    const existing = teamIds.length
+      ? await this.prisma.team.findMany({
+          where: { id: { in: teamIds } },
+          select: { id: true },
+        })
+      : [];
+    const alive = new Set(existing.map((row) => row.id));
+    const current = await this.prisma.teamMember.findMany({
+      where: { userId },
+      select: { teamId: true },
+    });
+    const already = new Set(current.map((row) => row.teamId));
+    return {
+      userId,
+      isActive: user.isActive,
+      teams: recorded.map((row) => ({
+        ...row,
+        stillExists: alive.has(row.teamId),
+        alreadyAMember: already.has(row.teamId),
+      })),
+    };
+  }
+
+  /**
+   * Put them back on the teams they were on (card 1.98).
+   *
+   * """ + W + """ DELIBERATE, NEVER AUTOMATIC. Reactivation does not call this:
+   * somebody deactivated for cause should not be silently re-rostered, so an
+   * owner looks at `restorableTeams` and decides. The two steps are separate on
+   * purpose and a test pins that they are.
+   *
+   * """ + W + """ THE ACCOUNT MUST BE ACTIVE FIRST, which is the same rule card 1.89
+   * enforces for adding anybody to a team - a deactivated account does not
+   * belong on a roster.
+   *
+   * A team that no longer exists is skipped and named in the response rather
+   * than throwing: one deleted team must not block the rest of the restore.
+   */
+  async restoreTeams(userId: string, actor: AuthUser) {
+    if (actor.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Only owners can restore team membership');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, email: true, displayName: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.isActive) {
+      throw new BadRequestException(
+        'Reactivate the account before restoring their teams',
+      );
+    }
+    const recorded = await this.lastDeactivationTeams(userId);
+    if (recorded.length === 0) {
+      return { ok: true, restored: [], skipped: [] };
+    }
+    const alive = new Set(
+      (
+        await this.prisma.team.findMany({
+          where: { id: { in: recorded.map((row) => row.teamId) } },
+          select: { id: true },
+        })
+      ).map((row) => row.id),
+    );
+    const restored: { teamId: string; teamName: string; role: string }[] = [];
+    const skipped: { teamId: string; teamName: string; reason: string }[] = [];
+    for (const row of recorded) {
+      if (!alive.has(row.teamId)) {
+        skipped.push({
+          teamId: row.teamId,
+          teamName: row.teamName,
+          reason: 'team no longer exists',
+        });
+        continue;
+      }
+      await this.prisma.teamMember.upsert({
+        where: { teamId_userId: { teamId: row.teamId, userId } },
+        update: { role: row.role as TeamRole },
+        create: { teamId: row.teamId, userId, role: row.role as TeamRole },
+      });
+      restored.push(row);
+    }
+    // The primary team too, when it survived - it is what the shell reads to
+    // decide which queue somebody lands on.
+    const primaryTeamId = await this.lastDeactivationPrimaryTeam(userId);
+    if (primaryTeamId && alive.has(primaryTeamId)) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { primaryTeamId },
+      });
+    }
+    await this.recordAdminAuditEvent(
+      'USER_TEAMS_RESTORED',
+      {
+        userId,
+        email: user.email,
+        displayName: user.displayName,
+        restored,
+        skipped,
+      },
+      actor,
+    );
+    return { ok: true, restored, skipped };
+  }
+
+  /** The team list recorded on the most recent deactivation, or empty. */
+  private async lastDeactivationTeams(
+    userId: string,
+  ): Promise<{ teamId: string; teamName: string; role: string }[]> {
+    const event = await this.lastDeactivationEvent(userId);
+    const teams = (event?.payload as { teams?: unknown } | null)?.teams;
+    if (!Array.isArray(teams)) {
+      return [];
+    }
+    return teams.filter(
+      (row): row is { teamId: string; teamName: string; role: string } =>
+        typeof row === 'object' &&
+        row !== null &&
+        typeof (row as { teamId?: unknown }).teamId === 'string',
+    );
+  }
+
+  private async lastDeactivationPrimaryTeam(userId: string) {
+    const event = await this.lastDeactivationEvent(userId);
+    const value = (event?.payload as { primaryTeamId?: unknown } | null)
+      ?.primaryTeamId;
+    return typeof value === 'string' ? value : null;
+  }
+
+  private lastDeactivationEvent(userId: string) {
+    return this.prisma.adminAuditEvent.findFirst({
+      where: {
+        type: 'USER_DEACTIVATED',
+        payload: { path: ['userId'], equals: userId },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { payload: true },
+    });
   }
 
   private async recordAdminAuditEvent(
