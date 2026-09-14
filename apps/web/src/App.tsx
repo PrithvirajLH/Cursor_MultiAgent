@@ -317,6 +317,9 @@ function isShellLayoutPath(pathname: string): boolean {
   if (pathname === "/admin/tags") return true;
   // Operations renders its own TopBar, so the shell must not add a second one.
   if (pathname === "/admin/operations") return true;
+  // Announcements does too (card 2.7). Without this the shell's generic
+  // "Admin" header and the page's own title stack into two colliding rows.
+  if (pathname === "/admin/announcements") return true;
   if (pathname === "/admin/agents" || pathname.startsWith("/admin/agents/"))
     return true;
   if (pathname === "/admin/kb" || pathname.startsWith("/admin/kb/")) return true;

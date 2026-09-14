@@ -11,7 +11,9 @@ import {
   type AnnouncementSeverity,
   type TeamRef,
 } from "../api/client";
+import { TopBar } from "../components/TopBar";
 import { Drawer } from "../components/ui/Drawer";
+import { useHeaderContext } from "../contexts/HeaderContext";
 import { EmptyState } from "../components/ui/EmptyState";
 import { handleApiError } from "../utils/handleApiError";
 import {
@@ -90,6 +92,7 @@ export function AnnouncementsPage({
   teamsList: TeamRef[];
   role: Role;
 }) {
+  const headerCtx = useHeaderContext();
   const [rows, setRows] = useState<AnnouncementRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,20 +193,49 @@ export function AnnouncementsPage({
   const teamName = (teamId: string | null) =>
     teamsList.find((team) => team.id === teamId)?.name ?? "a team";
 
+  // Title only. The create action lives in the toolbar below, where every other
+  // admin screen puts it (Categories, Routing Rules) - a primary button beside
+  // the title floats in the middle of the header bar with nothing to anchor it.
+  const pageHeading = (
+    <div className="min-w-0">
+      <h1 className="text-xl font-semibold text-foreground">Announcements</h1>
+      <p className="mt-0.5 text-sm text-muted-foreground">
+        A notice on every screen — so an outage stops the duplicate tickets
+        before they are raised.
+      </p>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Announcements</h1>
-          <p className="text-sm text-muted-foreground">
-            A notice on every screen — so an outage stops the duplicate tickets
-            before they are raised.
-          </p>
+    <section className="min-h-full bg-background animate-fade-in">
+      <div className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-sm">
+        <div className="mx-auto max-w-[1600px] px-6 py-4">
+          {/* ⚠️ The page owns its title, like Operations and Routing Rules: ONE
+              header row, not two. `/admin/announcements` is in
+              `isShellLayoutPath` so the shell does not add its generic "Admin"
+              header above this one - the two stacked and collided when it was
+              not. */}
+          {headerCtx ? (
+            <TopBar
+              title={headerCtx.title}
+              subtitle={headerCtx.subtitle}
+              currentEmail={headerCtx.currentEmail}
+              onOpenSearch={headerCtx.onOpenSearch}
+              notificationProps={headerCtx.notificationProps}
+              leftContent={pageHeading}
+            />
+          ) : (
+            pageHeading
+          )}
         </div>
+      </div>
+
+      <div className="mx-auto flex max-w-[1600px] flex-col gap-6 p-6">
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <button
           type="button"
           onClick={openNew}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-all hover:opacity-90"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-all hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
           New announcement
@@ -444,6 +476,7 @@ export function AnnouncementsPage({
           {formError && <p className="text-sm text-destructive">{formError}</p>}
         </div>
       </Drawer>
-    </div>
+      </div>
+    </section>
   );
 }
