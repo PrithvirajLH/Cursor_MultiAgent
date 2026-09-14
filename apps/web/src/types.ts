@@ -17,6 +17,9 @@ export type TicketFilters = {
   createdFrom: string;
   createdTo: string;
   updatedFrom: string;
+  /** Card 1.88: bounds `resolvedAt` — what "resolved this week" means. */
+  resolvedFrom: string;
+  resolvedTo: string;
   updatedTo: string;
   dueFrom: string;
   dueTo: string;

@@ -68,6 +68,13 @@ function parseFilters(
     createdTo: parseDate(searchParams.get("createdTo")),
     updatedFrom: parseDate(searchParams.get("updatedFrom")),
     updatedTo: parseDate(searchParams.get("updatedTo")),
+    // ⚠️ CARD 1.88. WITHOUT THESE THE PARAM IS SILENTLY DROPPED. This hook
+    // is the only path from the URL to the API query, so a saved view that
+    // sends `resolvedFrom` and a hook that does not know the word produces a
+    // list with NO date filter at all - which is how "Resolved this week"
+    // briefly showed every resolved ticket ever. Found by opening the page.
+    resolvedFrom: parseDate(searchParams.get("resolvedFrom")),
+    resolvedTo: parseDate(searchParams.get("resolvedTo")),
     dueFrom: parseDate(searchParams.get("dueFrom")),
     dueTo: parseDate(searchParams.get("dueTo")),
     q: searchParams.get("q") ?? "",
@@ -101,6 +108,8 @@ function filtersToSearchParams(
   if (filters.createdFrom) params.set("createdFrom", filters.createdFrom);
   if (filters.createdTo) params.set("createdTo", filters.createdTo);
   if (filters.updatedFrom) params.set("updatedFrom", filters.updatedFrom);
+  if (filters.resolvedFrom) params.set("resolvedFrom", filters.resolvedFrom);
+  if (filters.resolvedTo) params.set("resolvedTo", filters.resolvedTo);
   if (filters.updatedTo) params.set("updatedTo", filters.updatedTo);
   if (filters.dueFrom) params.set("dueFrom", filters.dueFrom);
   if (filters.dueTo) params.set("dueTo", filters.dueTo);
@@ -166,6 +175,8 @@ export function useFilters(
       !!filters.createdFrom ||
       !!filters.createdTo ||
       !!filters.updatedFrom ||
+      !!filters.resolvedFrom ||
+      !!filters.resolvedTo ||
       !!filters.updatedTo ||
       !!filters.dueFrom ||
       !!filters.dueTo ||
@@ -195,6 +206,8 @@ export function useFilters(
     if (filters.createdFrom) p.createdFrom = filters.createdFrom;
     if (filters.createdTo) p.createdTo = filters.createdTo;
     if (filters.updatedFrom) p.updatedFrom = filters.updatedFrom;
+    if (filters.resolvedFrom) p.resolvedFrom = filters.resolvedFrom;
+    if (filters.resolvedTo) p.resolvedTo = filters.resolvedTo;
     if (filters.updatedTo) p.updatedTo = filters.updatedTo;
     if (filters.dueFrom) p.dueFrom = filters.dueFrom;
     if (filters.dueTo) p.dueTo = filters.dueTo;

@@ -85,6 +85,8 @@ function countActiveFilterGroups(
     filters.createdTo ||
     filters.updatedFrom ||
     filters.updatedTo ||
+    filters.resolvedFrom ||
+    filters.resolvedTo ||
     filters.dueFrom ||
     filters.dueTo
   )
@@ -122,6 +124,8 @@ function clearedTicketFilters(
     createdFrom: "",
     createdTo: "",
     updatedFrom: "",
+    resolvedFrom: "",
+    resolvedTo: "",
     updatedTo: "",
     dueFrom: "",
     dueTo: "",
