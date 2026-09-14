@@ -137,6 +137,18 @@ function eventLabel(
         title: "SLA breached",
         subtitle: payload.breachType ? String(payload.breachType) : undefined,
       };
+    case "INBOUND_EMAIL_RECEIVED":
+      return {
+        title: "Inbound email received",
+        // Card 1.80: the API withholds the reopen when a machine sent the
+        // reply, and records why. Saying so here is the point of recording it -
+        // an agent who sees a reply that changed nothing needs to know it was
+        // an autoresponder rather than wonder what went wrong.
+        subtitle:
+          payload.statusChangeSkipped === "automated"
+            ? "Automatic reply — the ticket was left as it was"
+            : undefined,
+      };
     case "SLA_AT_RISK":
       return {
         title: "SLA at risk",

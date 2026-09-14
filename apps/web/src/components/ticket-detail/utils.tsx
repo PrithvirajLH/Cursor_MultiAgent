@@ -216,6 +216,8 @@ export function formatEventText(event: TicketEvent) {
     changes?: Array<{ field?: string }>;
     sourceRef?: string | null;
     department?: string | null;
+    /** Card 1.80: set when an automated reply was not allowed to reopen. */
+    statusChangeSkipped?: string | null;
   };
 
   switch (event.type) {
@@ -250,6 +252,13 @@ export function formatEventText(event: TicketEvent) {
       return `Transferred to ${payload.toTeamName ?? "another department"}`;
     case "TICKET_PRIORITY_CHANGED":
       return `Priority changed from ${formatPriority(payload.from)} to ${formatPriority(payload.to)}`;
+    case "INBOUND_EMAIL_RECEIVED":
+      // Card 1.80: the API withholds the reopen when a machine sent the reply
+      // and records why. Saying so is the point of recording it - an agent
+      // looking at a reply that changed nothing should not have to wonder.
+      return payload.statusChangeSkipped === "automated"
+        ? "Inbound email received — automatic reply, the ticket was left as it was"
+        : "Inbound email received";
     case "MESSAGE_ADDED":
       return payload.type === "INTERNAL"
         ? `${actor} added internal note`
