@@ -19,6 +19,54 @@ import {
 } from "../api/client";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 
+export const AI_DISABLED_TITLE = "The AI assistant is switched off";
+
+/**
+ * What `/submit` shows when the pipeline is switched off (card 1.106).
+ *
+ * ⚠️ SWITCHED OFF IS NOT BROKEN, AND THIS PANEL EXISTS BECAUSE THE PAGE
+ * TREATED IT AS BROKEN. Anything that was not `created` or
+ * `needs_clarification` fell into one `else` that read `response.error` - a
+ * field the disabled state does not have - so turning the AI off rendered
+ * "Something went wrong" above an EMPTY message. Card 1.106 went to the
+ * trouble of making `disabled` a distinct status precisely so an operator
+ * could tell their own change from an outage, and the web threw that
+ * distinction away at the last step.
+ *
+ * Exported so it can be rendered on its own in a test, the same way
+ * `ProfilePopoverPanel` is: the web tests run in a NODE environment with
+ * `renderToStaticMarkup` and no jsdom, so driving the page into this phase
+ * through the UI is not possible.
+ *
+ * ⚠️ NO "Try Again" BUTTON, DELIBERATELY. Retrying cannot help - the switch
+ * is off until somebody turns it on - and offering it would send people round
+ * a loop. The way out is the ordinary ticket form.
+ */
+export function AiDisabledPanel({ reason }: { reason: string }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-muted/40 p-4">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium">{AI_DISABLED_TITLE}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {reason} You can still raise a ticket the normal way, and the
+              service desk will pick it up as usual.
+            </p>
+          </div>
+        </div>
+      </div>
+      <Link
+        to="/tickets/new"
+        className="block w-full px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium text-center hover:bg-primary/90 transition-colors"
+      >
+        Raise a ticket without the assistant
+      </Link>
+    </div>
+  );
+}
+
 function SuggestedArticles({
   articles,
   heading,
@@ -56,7 +104,13 @@ function SuggestedArticles({
   );
 }
 
-type Phase = "input" | "processing" | "created" | "clarification" | "error";
+type Phase =
+  | "input"
+  | "processing"
+  | "created"
+  | "clarification"
+  | "error"
+  | "disabled";
 
 interface ProcessingStep {
   name: string;
@@ -131,6 +185,13 @@ export function AiSubmitPage() {
         } else if (response.status === "needs_clarification") {
           setClarificationQuestion(response.question);
           setPhase("clarification");
+        } else if (response.status === "disabled") {
+          // ⚠️ CARD 1.106: SWITCHED OFF IS NOT BROKEN. This branch used to
+          // fall through to the one below, which reads `response.error` - a
+          // field this state does not have - so turning the AI off showed
+          // "Something went wrong" above an empty message.
+          setErrorMessage(response.reason);
+          setPhase("disabled");
         } else {
           setErrorMessage(response.error);
           setPhase("error");
@@ -181,8 +242,12 @@ export function AiSubmitPage() {
   }, []);
 
   const createdResult = result as AiClassifyResultCreated | undefined;
+  // ⚠️ Card 1.106: `status !== "error"` was a stand-in for "one of the two
+  // states that carry articles", and the new `disabled` state broke that
+  // assumption the moment it existed. Named positively so a fourth state
+  // cannot quietly join the wrong side of it.
   const suggestions: AiSuggestedArticle[] =
-    result && result.status !== "error"
+    result && (result.status === "created" || result.status === "needs_clarification")
       ? (result.suggestedArticles ?? [])
       : [];
 
@@ -301,6 +366,10 @@ export function AiSubmitPage() {
                 placeholder="Provide more details..."
               />
             </div>
+          )}
+
+          {phase === "disabled" && (
+            <AiDisabledPanel reason={errorMessage} />
           )}
 
           {/* Error Phase */}

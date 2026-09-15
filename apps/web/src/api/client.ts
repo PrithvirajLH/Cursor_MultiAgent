@@ -3450,10 +3450,30 @@ export interface AiClassifyResultError {
   step: string;
 }
 
+/**
+ * The pipeline is switched off (card 1.106).
+ *
+ * ⚠️ IT IS NOT AN ERROR AND IT HAS NO `error` FIELD. That is the entire
+ * point of the card: an operator must be able to tell their own change from an
+ * outage. `AiSubmitPage` used to fall into its `else` branch for anything that
+ * was not `created` or `needs_clarification` and read `response.error`, so this
+ * state rendered "Something went wrong" above an EMPTY message.
+ *
+ * ⚠️ AND TYPESCRIPT COULD NOT HAVE CAUGHT THAT, because these interfaces are
+ * hand-written here rather than shared with the API - so the union simply did
+ * not know the state existed. Adding it makes the missing branch a compile
+ * error rather than a blank box.
+ */
+export interface AiClassifyResultDisabled {
+  status: "disabled";
+  reason: string;
+}
+
 export type AiClassifyResult =
   | AiClassifyResultCreated
   | AiClassifyResultClarification
-  | AiClassifyResultError;
+  | AiClassifyResultError
+  | AiClassifyResultDisabled;
 
 export interface AiDebugResult {
   steps: AiPipelineStep[];
