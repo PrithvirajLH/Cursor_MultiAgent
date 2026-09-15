@@ -25,27 +25,36 @@ function hangingFetch() {
 }
 
 /**
- * Card 1.65 — why the sweep changed ONE call site and not fifteen.
+ * Card 1.97 — joining a shared GET no longer means inheriting its cancellation.
  *
- * The list of ~15 broad `catch` blocks was assembled by shape. The defect,
- * though, needs a request that can be CANCELLED, and an `AbortError` can only
- * reach a caller two ways:
+ * ⚠️ THIS FILE USED TO ASSERT THE OPPOSITE, AND THE CHANGE IS DELIBERATE.
  *
- *  1. that caller passed a signal which aborted — none of the eight files in
- *     the sweep list uses a signal or an `AbortController` at all; or
- *  2. the caller joined an in-flight GET started by somebody who did.
+ * Under card 1.65 this suite pinned the behaviour that aborting one caller
+ * rejected every caller sharing the path, because that was the mechanism a
+ * judgement rested on: `TeamPage.loadUsers` shares `/users?page=1&pageSize=100`
+ * with the command palette, so it needed an `isAbortError` guard while other
+ * sites did not. The observation was right. Keeping the behaviour was not.
  *
- * Route 2 is the one that is easy to miss and is what this file pins.
- * `apiFetch` de-duplicates concurrent GETs by path, so a component that passes
- * no signal can inherit the abort of a component that does — which is exactly
- * `TeamPage.loadUsers` sharing `/users?page=1&pageSize=100` with the command
- * palette's `searchAll`, and the reason that one site was changed.
+ * It was a bug wearing a test. `apiFetch` de-duplicated concurrent GETs by
+ * handing the second caller the FIRST caller's promise — built with the first
+ * caller's `requestInit`, and therefore the first caller's signal. Two defects
+ * came out of that and each was worked around separately:
  *
- * ⚠️ It also pins the limit of that reasoning: sharing needs the SAME path, so
- * a site whose endpoint nobody fetches with a signal cannot see an abort, and a
- * guard there would be dead code that merely looks like handling.
+ *   - card 1.65: a caller with no signal inherited someone else's abort and
+ *     showed "Unable to load" for a request that had already returned 200.
+ *   - card 2.7: a caller WITH a signal was handed a promise that was already
+ *     rejecting, so the announcements banner never loaded at all. StrictMode's
+ *     mount → abort → remount made that the normal case, not the rare one.
+ *
+ * Two workarounds for one behaviour, and neither fixed it. Card 1.97 fixes it
+ * here by ref-counting: the shared request is issued with its own controller,
+ * each joiner gets its own promise, and the underlying request is only
+ * abandoned when every joiner has abandoned it.
+ *
+ * ⚠️ The de-duplication itself must survive — it is real on the sidebar, which
+ * is why option (b) was chosen over "stop sharing when a signal is present".
  */
-describe('a signal-less caller can inherit a shared abort (card 1.65)', () => {
+describe('joining a shared GET does not inherit its abort (card 1.97)', () => {
   beforeEach(() => {
     vi.resetModules();
   });
@@ -55,48 +64,112 @@ describe('a signal-less caller can inherit a shared abort (card 1.65)', () => {
     vi.restoreAllMocks();
   });
 
-  it('⚠️ rejects BOTH callers when the one holding the signal aborts', async () => {
-    // THE MECHANISM THE WHOLE SWEEP JUDGEMENT RESTS ON. Without this, "only
-    // TeamPage needs the guard" is an assertion; with it, it is a measurement.
+  it('⚠️ aborting the caller WITH the signal leaves the other caller running', async () => {
+    // THE INVERSION OF CARD 1.65'S ASSERTION, and the regression test for both
+    // defects above. Before the fix, `withoutSignal` rejected here.
     const fetchMock = hangingFetch();
     vi.stubGlobal('fetch', fetchMock);
     const client = await import('./client');
     const controller = new AbortController();
 
-    const withSignal = client.fetchTeams({ signal: controller.signal });
+    const withSignal = client.fetchTeams({ signal: controller.signal }).catch(
+      (error: unknown) => ({ rejected: error }),
+    );
     const withoutSignal = client.fetchTeams();
-    // One request served both callers - that is the de-duplication.
+    // One request served both callers — the de-duplication is the point.
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     controller.abort();
 
-    await expect(withSignal).rejects.toMatchObject({ name: 'AbortError' });
-    // ...and the caller that never asked to be cancelled is cancelled too.
-    await expect(withoutSignal).rejects.toMatchObject({ name: 'AbortError' });
+    // The caller that asked to be cancelled is cancelled...
+    const first = (await withSignal) as { rejected?: { name?: string } };
+    expect(first.rejected?.name).toBe('AbortError');
+
+    // ...and the one that never asked is still waiting, not rejected.
+    let settled = false;
+    void withoutSignal.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
   });
 
-  it('⚠️ does NOT share across different paths, which is why most sites are safe', () => {
-    // The discriminating half. Sharing is keyed on the path, so the sweep sites
-    // that hit `/admin/tags`, `/admin/agents` or `/teams/:id/members` cannot
-    // inherit an abort from anyone: nothing fetches those paths with a signal.
-    // If this ever stopped being true the judgement would need redoing, and
-    // this line is where that shows.
+  it('⚠️ one request still serves both callers', async () => {
+    // Without this the "fix" is a regression: the sidebar fires the same GET
+    // from several components at once, which is why sharing exists at all.
+    const fetchMock = hangingFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const client = await import('./client');
+    const a = client.fetchTeams().catch(() => null);
+    const b = client.fetchTeams().catch(() => null);
+    const c = client.fetchTeams().catch(() => null);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a).toBeInstanceOf(Promise);
+    expect(b).toBeInstanceOf(Promise);
+    expect(c).toBeInstanceOf(Promise);
+  });
+
+  it('⚠️ the underlying request IS cancelled once every joiner abandons it', async () => {
+    // The other half of ref-counting. If nobody is waiting any more, continuing
+    // to hold the connection open would be a leak - the de-duplication must not
+    // turn into "requests can never be cancelled".
+    const fetchMock = hangingFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const client = await import('./client');
+    const first = new AbortController();
+    const second = new AbortController();
+
+    const a = client.fetchTeams({ signal: first.signal }).catch(
+      (error: unknown) => (error as Error).name,
+    );
+    const b = client.fetchTeams({ signal: second.signal }).catch(
+      (error: unknown) => (error as Error).name,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // The signal handed to fetch belongs to the shared entry, not to either
+    // caller, so it must still be unaborted after the first one leaves.
+    const passedSignal = fetchMock.mock.calls[0][1]?.signal as AbortSignal;
+    first.abort();
+    expect(await a).toBe('AbortError');
+    expect(passedSignal.aborted).toBe(false);
+
+    second.abort();
+    expect(await b).toBe('AbortError');
+    expect(passedSignal.aborted).toBe(true);
+  });
+
+  it('a caller that aborts before joining still gets its own abort', async () => {
+    const fetchMock = hangingFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    const client = await import('./client');
+    const live = client.fetchTeams().catch(() => null);
+    const already = new AbortController();
+    already.abort();
+    await expect(
+      client.fetchTeams({ signal: already.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(live).toBeInstanceOf(Promise);
+  });
+
+  it('does NOT share across different paths, which is why most sites are safe', () => {
+    // Unchanged from card 1.65: sharing is keyed on the path, so a site whose
+    // endpoint nobody fetches with a signal cannot see an abort at all.
     const fetchMock = hangingFetch();
     vi.stubGlobal('fetch', fetchMock);
     return import('./client').then(async (client) => {
       const controller = new AbortController();
-      // Attach the catch BEFORE aborting. Leaving these floating produced a
-      // real unhandled rejection in the suite - which vitest reports as an
-      // error beside 271 green tests, and which would have gone in unnoticed
-      // had the summary line been the only thing read.
       const a = client.fetchTeams({ signal: controller.signal }).catch(() => null);
       const b = client.fetchHiddenPresets().catch(() => null);
-      // Two different paths, two real requests: no promise to inherit.
       expect(fetchMock).toHaveBeenCalledTimes(2);
       controller.abort();
       await a;
-      // `b` is still hanging on its own path, unaffected by the abort above -
-      // which is the point. Nothing awaits it to completion.
       expect(b).toBeInstanceOf(Promise);
     });
   });

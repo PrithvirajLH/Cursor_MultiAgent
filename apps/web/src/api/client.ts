@@ -23,7 +23,95 @@ const HOT_GET_CACHE_TTL_MS = 15 * 1000;
 const API_REQUEST_TIMEOUT_MS = 30 * 1000;
 const MAX_GET_CACHE_ENTRIES = 300;
 const apiGetCache = new Map<string, ApiGetCacheEntry>();
-const apiGetInflight = new Map<string, Promise<unknown>>();
+/**
+ * One in-flight GET, and everyone currently waiting on it (card 1.97).
+ *
+ * ⚠️ `joiners` IS WHAT MAKES SHARING SAFE. The request is issued with this
+ * entry's OWN controller, never a caller's signal, so one component unmounting
+ * cannot cancel a request another component is still waiting for. The shared
+ * request is abandoned only when every joiner has abandoned it.
+ */
+type ApiGetInflightEntry = {
+  promise: Promise<unknown>;
+  controller: AbortController;
+  joiners: number;
+};
+
+const apiGetInflight = new Map<string, ApiGetInflightEntry>();
+
+/** An AbortError shaped like the one `fetch` would have produced. */
+function abortErrorFor(signal: AbortSignal): Error {
+  const reason: unknown = signal.reason;
+  if (reason instanceof Error) {
+    return reason;
+  }
+  const error = new Error("The operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
+
+/**
+ * Attach a caller to an in-flight GET (card 1.97).
+ *
+ * ⚠️ THIS REPLACES `return inflight`, WHICH HANDED THE SECOND CALLER THE FIRST
+ * CALLER'S PROMISE - built with the first caller's `requestInit`, and therefore
+ * the first caller's signal. Two real defects came out of that, and each was
+ * papered over separately instead of fixed here:
+ *
+ *   - card 1.65: a caller passing NO signal inherited another caller's abort and
+ *     rendered "Unable to load" for a request that had already returned 200.
+ *   - card 2.7: a caller passing a signal was handed a promise that was already
+ *     rejecting, so the announcements banner never loaded at all.
+ *
+ * Now each caller gets its own promise. Aborting yours rejects yours; the shared
+ * request continues for everyone else, and is only cancelled when the last
+ * joiner has gone. A caller with no signal can never abandon, so it always sees
+ * the request through.
+ */
+function joinInflight<T>(
+  entry: ApiGetInflightEntry,
+  signal: AbortSignal | null | undefined,
+): Promise<T> {
+  entry.joiners += 1;
+  if (!signal) {
+    // Cannot abandon, so it is never released: the request outlives any
+    // cancelling sibling.
+    return entry.promise as Promise<T>;
+  }
+  if (signal.aborted) {
+    releaseJoiner(entry);
+    return Promise.reject(abortErrorFor(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      entry.promise.then(
+        () => undefined,
+        () => undefined,
+      );
+      releaseJoiner(entry);
+      reject(abortErrorFor(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    entry.promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value as T);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+/** One joiner has given up; cancel the shared request only if all have. */
+function releaseJoiner(entry: ApiGetInflightEntry): void {
+  entry.joiners -= 1;
+  if (entry.joiners <= 0) {
+    entry.controller.abort();
+  }
+}
 
 function clearApiGetCache() {
   apiGetCache.clear();
@@ -804,7 +892,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   const inflight = apiGetInflight.get(cacheKey);
   if (inflight) {
-    return inflight as Promise<T>;
+    return joinInflight<T>(inflight, options?.signal);
   }
 
   const conditionalHeaders = new Headers(requestHeaders);
@@ -815,11 +903,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     conditionalHeaders.set("If-Modified-Since", cached.lastModified);
   }
 
+  // ⚠️ CARD 1.97: THE SHARED REQUEST GETS ITS OWN CONTROLLER. Passing the
+  // first caller's signal here is precisely the bug - it let whoever happened to
+  // arrive first cancel the request for everybody who joined after.
+  const sharedController = new AbortController();
   const requestPromise = (async () => {
     try {
       let response = await fetchWithTimeout(`${API_BASE}${path}`, {
         ...requestInit,
         headers: conditionalHeaders,
+        signal: sharedController.signal,
       });
 
       // On 401, try refreshing the token and retry once
@@ -833,6 +926,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
             response = await fetchWithTimeout(`${API_BASE}${path}`, {
               ...requestInit,
               headers: retryHeaders,
+              signal: sharedController.signal,
             });
           }
         }
@@ -879,8 +973,15 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     }
   })();
 
-  apiGetInflight.set(cacheKey, requestPromise as Promise<unknown>);
-  return requestPromise;
+  const entry: ApiGetInflightEntry = {
+    promise: requestPromise as Promise<unknown>,
+    controller: sharedController,
+    joiners: 0,
+  };
+  apiGetInflight.set(cacheKey, entry);
+  // The originator joins on the same terms as everybody else, so its abort is
+  // counted rather than special.
+  return joinInflight<T>(entry, options?.signal);
 }
 
 type DataEnvelope<T> = { data: T };
