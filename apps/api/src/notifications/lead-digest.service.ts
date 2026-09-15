@@ -46,6 +46,14 @@ export type LeadDigestRunSummary = {
   digestsQueued: number;
   leadsWithNothingToSay: number;
   enabled: boolean;
+  /**
+   * Card 1.115: this run was refused because one was already in flight.
+   *
+   * ⚠️ REFUSED VISIBLY, NOT SILENTLY. The Operations console is a person
+   * clicking a button, and it renders this summary; "already running" is a
+   * useful answer and silence is not.
+   */
+  alreadyRunning?: boolean;
 };
 
 /**
@@ -95,6 +103,23 @@ export type LeadDigestRunSummary = {
 export class LeadDigestService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LeadDigestService.name);
   private timer: NodeJS.Timeout | null = null;
+  /**
+   * Whether a run is in flight (card 1.115).
+   *
+   * ⚠️ IN-PROCESS, AND ITS LIMIT IS WRITTEN DOWN RATHER THAN IMPLIED.
+   * `operations.service.ts:119` exposes `runOnce()` to the Operations console,
+   * so two clicks sent every lead two digests; the scheduled path can overlap
+   * with itself the same way when a run outlasts its interval. Both of those
+   * are ONE process, and this closes both.
+   *
+   * ⚠️ WHAT IT DOES NOT COVER: a second App Service instance. Each would
+   * hold its own flag - but note it would also hold its own `setInterval` from
+   * `onModuleInit`, so scaling out already double-sends regardless of this
+   * guard. A database or advisory lock is the fix for THAT, and it is a larger
+   * change than this card: it would have to govern the schedule, not just guard
+   * the entry. Recorded, not silently implied.
+   */
+  private running = false;
   private lastRunAt: string | null = null;
   private lastSummary: LeadDigestRunSummary | null = null;
 
@@ -158,6 +183,34 @@ export class LeadDigestService implements OnModuleInit, OnModuleDestroy {
    * switch's back.
    */
   async runOnce(): Promise<LeadDigestRunSummary> {
+    if (this.running) {
+      // ⚠️ REFUSED, NOT QUEUED. Queueing would send the second digest a
+      // moment later, which is the bug rather than the fix.
+      const refusal: LeadDigestRunSummary = {
+        ranAt: new Date().toISOString(),
+        leadsConsidered: 0,
+        digestsQueued: 0,
+        leadsWithNothingToSay: 0,
+        enabled: this.isEnabled(),
+        alreadyRunning: true,
+      };
+      this.logger.warn('Lead digest already running; this run was refused.');
+      return refusal;
+    }
+    this.running = true;
+    try {
+      return await this.collectAndQueue();
+    } finally {
+      // ⚠️ `finally`, SO A THROWN RUN DOES NOT LOCK THE DIGEST FOREVER. The
+      // scheduled caller catches and logs, so without this one failure would
+      // silently end the digest for the life of the process - card 1.104's
+      // shape again.
+      this.running = false;
+    }
+  }
+
+  /** The run itself. Split out so the guard above stays legible. */
+  private async collectAndQueue(): Promise<LeadDigestRunSummary> {
     const enabled = this.isEnabled();
     const digests = enabled ? await this.collectDigests() : [];
     let queued = 0;
