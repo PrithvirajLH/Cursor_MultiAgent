@@ -9,13 +9,17 @@ import { Prisma, TeamRole, TicketStatus, UserRole } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateAvailabilityDto } from './dto/update-availability.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   /** The caller's own availability, for the avatar menu (card 2.2). */
   async getAvailability(actor: AuthUser): Promise<{
@@ -221,19 +225,70 @@ export class UsersService {
       if (!team) {
         throw new BadRequestException('Primary team not found');
       }
-      return this.prisma.user.update({
+      const updated = await this.prisma.user.update({
         where: { id: userId },
         data: { role: payload.role, primaryTeamId: teamId },
       });
+      await this.revokeStaleRealtimeGroups(userId, user.role, payload.role);
+      return updated;
     }
 
     const primaryTeamId =
       payload.role === UserRole.OWNER ? null : (payload.primaryTeamId ?? null);
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { role: payload.role, primaryTeamId },
     });
+    await this.revokeStaleRealtimeGroups(userId, user.role, payload.role);
+    return updated;
+  }
+
+  /**
+   * One rule, called from every place that changes what a user may receive.
+   *
+   * ⚠️ DEACTIVATION AND ROLE CHANGE ARE TWO CALLERS OF ONE RULE, and this
+   * project has fifteen recorded instances of that being answered twice. The
+   * groups in a Web PubSub token come from role, primaryTeamId and the lead
+   * team (`resolveGroupsForUser`), so every write that moves one of those three
+   * ends here.
+   *
+   * A role change to the SAME role is left alone: it cannot have changed any
+   * group, and a needless revoke costs every open tab a reconnect.
+   */
+  private async revokeStaleRealtimeGroups(
+    userId: string,
+    previousRole: UserRole,
+    nextRole: UserRole,
+  ) {
+    if (previousRole === nextRole) {
+      return;
+    }
+    await this.revokeLiveAccess(
+      userId,
+      `Role changed from ${previousRole} to ${nextRole}`,
+    );
+  }
+
+  /**
+   * End a user's live session, and never fail the write that asked for it.
+   *
+   * ⚠️ THE CATCH IS DELIBERATE BELT AND BRACES, NOT A DUPLICATE.
+   * `RealtimeService.revokeLiveAccess` already swallows its own Azure failures,
+   * but every caller below has ALREADY COMMITTED its change by the time it gets
+   * here - the user is deactivated, the role is changed. A throw at this point
+   * would surface to the admin as a failed deactivation that actually
+   * succeeded, which is precisely the outcome the card forbids: "a user who
+   * cannot be switched off because the realtime call failed is a worse bug than
+   * the one you are fixing". This boundary must not depend on a collaborator
+   * keeping a promise.
+   */
+  private async revokeLiveAccess(userId: string, reason: string) {
+    try {
+      await this.realtime.revokeLiveAccess(userId, reason);
+    } catch {
+      // Already logged inside RealtimeService; the write above stands.
+    }
   }
 
   async deactivate(userId: string, actor: AuthUser) {
@@ -329,6 +384,14 @@ export class UsersService {
 
     await this.recordAdminAuditEvent('USER_DEACTIVATED', { userId, email: user.email, displayName: user.displayName, ...summary }, actor);
 
+    // ⚠️ CARD 1.109: THE LIVE FEED HAS TO GO TOO. The HTTP door shut the
+    // moment the row above was written, but the Web PubSub token they are
+    // already holding carries its groups and its own expiry - up to an hour of
+    // ticket subjects and requester names still arriving at an offboarded
+    // account. `revokeLiveAccess` never throws, so this cannot fail the
+    // deactivation that has already been committed.
+    await this.revokeLiveAccess(userId, 'Account deactivated');
+
     return { ok: true, ...summary };
   }
 
@@ -388,6 +451,11 @@ export class UsersService {
       { userId, email: user.email, displayName: user.displayName, primaryTeamId: teamId },
       actor,
     );
+    // Card 1.109: the TEAM_ADMIN group name embeds the primary team id, so
+    // moving it leaves the old team's group in a live token. The handoff names
+    // deactivation and role change; this is the third caller of the same rule
+    // and it was one line.
+    await this.revokeLiveAccess(userId, 'Primary team changed');
     return updated;
   }
 

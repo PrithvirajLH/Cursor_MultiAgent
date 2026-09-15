@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UsersService } from './users.service';
 
@@ -42,7 +43,10 @@ describe('UsersService.updateRole — owner lockout guards', () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    service = new UsersService(prisma as unknown as PrismaService);
+    service = new UsersService(
+      prisma as unknown as PrismaService,
+      { revokeLiveAccess: jest.fn() } as unknown as RealtimeService,
+    );
   });
 
   it('refuses to demote the last active OWNER', async () => {

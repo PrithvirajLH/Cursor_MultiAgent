@@ -295,13 +295,68 @@ export class RealtimeService {
     ];
   }
 
-  private async safeSend(target: string, task: () => Promise<void>) {
+  /**
+   * Run a Web PubSub call and swallow its failure.
+   *
+   * ⚠️ NOTHING IN THIS SERVICE MAY FAIL ITS CALLER. A publish that throws must
+   * not fail the write that triggered it, and card 1.109's revoke must not fail
+   * a deactivation - a user who cannot be switched off because Azure was
+   * unreachable is a worse bug than the one that card fixes.
+   */
+  private async safeRealtime(what: string, task: () => Promise<void>) {
     try {
       await task();
     } catch (error) {
-      this.logger.warn(`Realtime publish failed for ${target}.`);
+      this.logger.warn(`Realtime ${what} failed.`);
       this.logger.debug((error as Error).stack);
     }
+  }
+
+  private async safeSend(target: string, task: () => Promise<void>) {
+    await this.safeRealtime(`publish to ${target}`, task);
+  }
+
+  /**
+   * End a user's live session immediately (card 1.109).
+   *
+   * ⚠️ THE HTTP DOOR WAS CLOSED AND THIS ONE WAS NOT. Card 1.78 made
+   * `auth.guard.ts` refuse a deactivated person before any write, and it works.
+   * But `negotiateForUser` mints a Web PubSub token with the user's groups
+   * BAKED IN at negotiate time, living for
+   * `AZURE_WEB_PUBSUB_TOKEN_LIFETIME_MINUTES` - default 60, and set in
+   * production. Nothing anywhere closed a connection or stripped a group, so
+   * for up to an hour after being switched off somebody kept receiving live
+   * ticket events, notification pushes and team-group traffic. On a healthcare
+   * desk that is a stream of ticket subjects and requester names going to
+   * somebody who was offboarded.
+   *
+   * ⚠️ THE SAME HOLE APPLIES TO A DEMOTION, AND THAT CASE IS QUIETER. Groups
+   * are resolved once, at negotiate. A LEAD demoted to AGENT kept receiving the
+   * lead group's events until the token expired and nobody involved would ever
+   * have noticed.
+   *
+   * ORDER MATTERS: groups are dropped BEFORE the connections are closed, so a
+   * message published in the gap between the two calls cannot reach them.
+   *
+   * ⚠️ AND CLOSING THE SOCKET IS DECISIVE HERE ONLY BECAUSE THE CLIENT
+   * RE-NEGOTIATES. `useRealtimeEvents.ts` calls `connect()` on every reconnect,
+   * and `connect()` always calls `negotiateRealtimeConnection()` - it never
+   * reuses the old token URL. So the reconnect goes back through the auth guard,
+   * which refuses a deactivated user outright and re-resolves groups for a
+   * demoted one. A DIFFERENT client that cached the token URL could rejoin the
+   * groups stamped into it until it expired; shortening the lifetime is the
+   * mitigation for that, and it is the owner's call (see the batch report).
+   */
+  async revokeLiveAccess(userId: string, reason: string): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+    await this.safeRealtime(`group removal for user ${userId}`, () =>
+      this.client!.removeUserFromAllGroups(userId),
+    );
+    await this.safeRealtime(`connection close for user ${userId}`, () =>
+      this.client!.closeUserConnections(userId, { reason }),
+    );
   }
 
   private async resolveActiveTeamIds() {
