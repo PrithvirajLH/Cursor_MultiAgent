@@ -1,3 +1,4 @@
+import { AdminAuditService } from '../audit/admin-audit.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -20,6 +21,7 @@ export class TeamsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly adminAudit: AdminAuditService,
   ) {}
 
   async list(query: ListTeamsDto, user?: AuthUser) {
@@ -112,6 +114,7 @@ export class TeamsService {
       entityId: created.id,
       teamId: created.id,
       actorId: user.id,
+      actor: user,
     });
     return created;
   }
@@ -140,6 +143,7 @@ export class TeamsService {
       entityId: updated.id,
       teamId: updated.id,
       actorId: user.id,
+      actor: user,
     });
     return updated;
   }
@@ -198,6 +202,7 @@ export class TeamsService {
       entityId: member.id,
       teamId,
       actorId: user.id,
+      actor: user,
     });
     return member;
   }
@@ -242,6 +247,7 @@ export class TeamsService {
       entityId: updatedMember.id,
       teamId,
       actorId: user.id,
+      actor: user,
     });
     return updatedMember;
   }
@@ -268,6 +274,7 @@ export class TeamsService {
       entityId: memberId,
       teamId,
       actorId: user.id,
+      actor: user,
     });
     return { id: memberId };
   }
@@ -448,15 +455,46 @@ export class TeamsService {
       .replace(/(^-|-$)+/g, '');
   }
 
+  /**
+   * Announce an administrative change: to connected clients, and to the audit
+   * trail (card 1.95).
+   *
+   * ⚠️ CALLED ONLY AFTER THE CHANGE HAS SUCCEEDED. Every call site sits below
+   * the write it describes, so a failed change cannot leave a row claiming it
+   * happened - which is the one property an audit trail has to have.
+   *
+   * The realtime publish stays best-effort. The audit write goes through the
+   * one shared `AdminAuditService`, which logs loudly rather than throwing; see
+   * the note there about why it does not fail closed.
+   */
   private async safePublishAdminChanged(payload: {
     scope: string;
     action: string;
     entityId: string | null;
     teamId: string | null;
     actorId: string | null;
+    actor?: AuthUser;
   }) {
+    if (payload.actor) {
+      await this.adminAudit.record({
+        type: `${payload.scope}_${payload.action}`.toUpperCase(),
+        actor: payload.actor,
+        teamId: payload.teamId,
+        payload: {
+          scope: payload.scope,
+          action: payload.action,
+          entityId: payload.entityId,
+        },
+      });
+    }
     try {
-      await this.realtime.publishAdminChanged(payload);
+      await this.realtime.publishAdminChanged({
+        scope: payload.scope,
+        action: payload.action,
+        entityId: payload.entityId,
+        teamId: payload.teamId,
+        actorId: payload.actorId,
+      });
     } catch {
       // Best-effort realtime; never block team operations.
     }

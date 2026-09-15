@@ -1,3 +1,4 @@
+import { AdminAuditService } from '../audit/admin-audit.service';
 import {
   ForbiddenException,
   Injectable,
@@ -36,6 +37,7 @@ export class KbService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly adminAudit: AdminAuditService,
   ) {}
 
   /** Agents (and up) may see internal articles; employees may not. */
@@ -224,7 +226,7 @@ export class KbService {
       },
       select: ARTICLE_LIST_SELECT,
     });
-    await this.safePublishAdminChanged('created', created.id, user.id);
+    await this.safePublishAdminChanged('created', created.id, user.id, user);
     return created;
   }
 
@@ -262,7 +264,7 @@ export class KbService {
       },
       select: ARTICLE_LIST_SELECT,
     });
-    await this.safePublishAdminChanged('updated', updated.id, user.id);
+    await this.safePublishAdminChanged('updated', updated.id, user.id, user);
     return updated;
   }
 
@@ -277,7 +279,7 @@ export class KbService {
       where: { id },
       data: { deletedAt: new Date() },
     });
-    await this.safePublishAdminChanged('deleted', id, user.id);
+    await this.safePublishAdminChanged('deleted', id, user.id, user);
     return { id };
   }
 
@@ -305,7 +307,7 @@ export class KbService {
         isActive: payload.isActive ?? true,
       },
     });
-    await this.safePublishAdminChanged('created', created.id, user.id);
+    await this.safePublishAdminChanged('created', created.id, user.id, user);
     return created;
   }
 
@@ -330,7 +332,7 @@ export class KbService {
         isActive: payload.isActive,
       },
     });
-    await this.safePublishAdminChanged('updated', updated.id, user.id);
+    await this.safePublishAdminChanged('updated', updated.id, user.id, user);
     return updated;
   }
 
@@ -342,7 +344,7 @@ export class KbService {
     }
     // Articles keep existing (categoryId set null via FK) — safe to delete.
     await this.prisma.kbCategory.delete({ where: { id } });
-    await this.safePublishAdminChanged('deleted', id, user.id);
+    await this.safePublishAdminChanged('deleted', id, user.id, user);
     return { id };
   }
 
@@ -398,11 +400,28 @@ export class KbService {
     return `${root}-${Date.now()}`;
   }
 
+  /**
+   * Announce an administrative change: to connected clients, and to the audit
+   * trail (card 1.95).
+   *
+   * ⚠️ CALLED ONLY AFTER THE CHANGE HAS SUCCEEDED, so a failed change cannot
+   * leave a row claiming it happened - the one property an audit trail must
+   * have. The realtime publish stays best-effort; the audit write goes through
+   * the one shared AdminAuditService.
+   */
   private async safePublishAdminChanged(
     action: string,
     entityId: string | null,
     actorId: string | null,
+    actor?: AuthUser,
   ) {
+    if (actor) {
+      await this.adminAudit.record({
+        type: `KB_${action}`.toUpperCase(),
+        actor,
+        payload: { scope: 'kb', action, entityId },
+      });
+    }
     try {
       await this.realtime.publishAdminChanged({
         scope: 'kb',

@@ -1,3 +1,4 @@
+import { AdminAuditService } from '../audit/admin-audit.service';
 import {
   BadRequestException,
   ConflictException,
@@ -20,6 +21,7 @@ export class TagsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accessControl: AccessControlService,
+    private readonly adminAudit: AdminAuditService,
   ) {}
 
   /**
@@ -279,7 +281,19 @@ export class TagsService {
         'Another tag with that name already exists. Use merge instead.',
       );
     }
-    return this.prisma.tag.update({ where: { id: tagId }, data: { name } });
+    const renamed = await this.prisma.tag.update({
+      where: { id: tagId },
+      data: { name },
+    });
+    // ⚠️ Card 1.95, and AFTER the update - a rename that threw must not leave
+    // a row saying it happened. The old name is the part worth keeping: without
+    // it the trail cannot answer "what was this tag called before".
+    await this.adminAudit.record({
+      type: 'TAG_RENAMED',
+      actor,
+      payload: { tagId, from: target.name, to: name },
+    });
+    return renamed;
   }
 
   /**
@@ -332,6 +346,25 @@ export class TagsService {
         where: { id: { in: fromIds } },
       });
 
+      // ⚠️ Card 1.95, and INSIDE the transaction on purpose. A merge destroys
+      // tags: if the audit row cannot be written, the merge must not happen
+      // either. `record` rethrows when handed a `tx` precisely so this rolls
+      // back together - the one place in this card where failing closed is
+      // clearly right, because the evidence of what was merged is gone
+      // afterwards.
+      await this.adminAudit.record(
+        {
+          type: 'TAG_MERGED',
+          actor,
+          payload: {
+            into: { id: target.id, name: target.name },
+            from: fromIds,
+            movedRows: moved.count,
+            deletedTags: deleted.count,
+          },
+        },
+        tx,
+      );
       return { ok: true, movedRows: moved.count, deletedTags: deleted.count };
     });
   }
@@ -350,6 +383,11 @@ export class TagsService {
       update: {},
       create: { name, createdById: actor.id },
     });
+    await this.adminAudit.record({
+      type: 'TAG_CREATED',
+      actor,
+      payload: { tagId: tag.id, name: tag.name },
+    });
     return { id: tag.id, name: tag.name, color: tag.color };
   }
 
@@ -364,6 +402,11 @@ export class TagsService {
       );
     }
     await this.prisma.tag.delete({ where: { id: tagId } });
+    await this.adminAudit.record({
+      type: 'TAG_DELETED',
+      actor,
+      payload: { tagId },
+    });
     return { ok: true };
   }
 }

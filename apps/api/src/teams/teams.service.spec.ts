@@ -3,6 +3,7 @@ import { AuthUser } from '../auth/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { ListTeamsDto } from './dto/list-teams.dto';
+import { AdminAuditService } from '../audit/admin-audit.service';
 import { TeamsService } from './teams.service';
 
 type MockPrisma = {
@@ -39,6 +40,8 @@ describe('TeamsService.list scoping', () => {
     service = new TeamsService(
       prisma as unknown as PrismaService,
       realtime as RealtimeService,
+      // Card 1.95: this suite exercises query shaping, not the audit trail.
+      { record: jest.fn() } as unknown as AdminAuditService,
     );
   });
 

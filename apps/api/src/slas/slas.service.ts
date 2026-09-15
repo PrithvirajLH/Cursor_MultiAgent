@@ -1,3 +1,4 @@
+import { AdminAuditService } from '../audit/admin-audit.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -109,6 +110,7 @@ export class SlasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly adminAudit: AdminAuditService,
     private readonly businessHoursCache: BusinessHoursCacheService,
   ) {}
 
@@ -289,6 +291,7 @@ export class SlasService {
       entityId: effective.policyId ?? null,
       teamId,
       actorId: user.id,
+      actor: user,
     });
     return this.list({ teamId }, user);
   }
@@ -309,6 +312,7 @@ export class SlasService {
       entityId: null,
       teamId,
       actorId: user.id,
+      actor: user,
     });
     return this.list({ teamId }, user);
   }
@@ -434,6 +438,7 @@ export class SlasService {
         entityId: created.id,
         teamId: teamIds.length === 1 ? teamIds[0] : null,
         actorId: user.id,
+      actor: user,
       },
       this.buildSlaPolicyRealtimeAudience(teamIds, payload.isDefault ?? false),
     );
@@ -580,6 +585,7 @@ export class SlasService {
         entityId: updated.id,
         teamId: nextTeamIds.length === 1 ? nextTeamIds[0] : null,
         actorId: user.id,
+      actor: user,
       },
       this.buildSlaPolicyRealtimeAudience(nextTeamIds, nextIsDefault),
     );
@@ -634,6 +640,7 @@ export class SlasService {
             ? existing.assignments[0].teamId
             : null,
         actorId: user.id,
+      actor: user,
       },
       this.buildSlaPolicyRealtimeAudience(
         existing.assignments.map((assignment) => assignment.teamId),
@@ -694,6 +701,7 @@ export class SlasService {
       entityId: scope ?? 'global',
       teamId: scope,
       actorId: user.id,
+      actor: user,
     });
     return {
       data: this.serializeBusinessHours(
@@ -1470,6 +1478,15 @@ export class SlasService {
     return undefined;
   }
 
+  /**
+   * Announce an administrative change: to connected clients, and to the audit
+   * trail (card 1.95).
+   *
+   * ⚠️ CALLED ONLY AFTER THE CHANGE HAS SUCCEEDED, so a failed change cannot
+   * leave a row claiming it happened - the one property an audit trail must
+   * have. The realtime publish stays best-effort; the audit write goes through
+   * the one shared AdminAuditService.
+   */
   private async safePublishAdminChanged(
     payload: {
       scope: string;
@@ -1477,11 +1494,33 @@ export class SlasService {
       entityId: string | null;
       teamId: string | null;
       actorId: string | null;
+      actor?: AuthUser;
     },
     audience?: AdminChangedAudience,
   ) {
+    if (payload.actor) {
+      await this.adminAudit.record({
+        type: `${payload.scope}_${payload.action}`.toUpperCase(),
+        actor: payload.actor,
+        teamId: payload.teamId,
+        payload: {
+          scope: payload.scope,
+          action: payload.action,
+          entityId: payload.entityId,
+        },
+      });
+    }
     try {
-      await this.realtime.publishAdminChanged(payload, audience);
+      await this.realtime.publishAdminChanged(
+        {
+          scope: payload.scope,
+          action: payload.action,
+          entityId: payload.entityId,
+          teamId: payload.teamId,
+          actorId: payload.actorId,
+        },
+        audience,
+      );
     } catch {
       // Best-effort realtime publish.
     }
