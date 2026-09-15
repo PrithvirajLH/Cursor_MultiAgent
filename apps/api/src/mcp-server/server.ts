@@ -26,6 +26,26 @@ import { timingSafeEqual } from 'crypto';
 
 import { AppModule } from '../app.module';
 import { ToolRegistryService } from '../ai/tools/tool-registry.service';
+import type { ToolCallContext } from '../ai/tools/tool-call-context';
+
+/**
+ * ⚠️ THE ONE CALLER THAT MAY NAME ITS OWN SUBJECT (card 1.85).
+ *
+ * Everywhere else the subject comes from the authenticated request, because the
+ * model must not be able to choose whose profile and history it reads. This
+ * transport has no session: it is a separate process, bound to 127.0.0.1 and
+ * gated by MCP_SERVER_TOKEN, whose whole purpose is to let a Foundry agent look
+ * up the requester it was handed. The bearer token IS the authorisation here -
+ * which is why the SSE transport refuses to start without one.
+ *
+ * `user` stays null, so `create_ticket` refuses over MCP exactly as it always
+ * has. Do not paper over that with a service account without deciding, on
+ * purpose, who the requester of such a ticket would be.
+ */
+const mcpContext = (subjectId = ''): ToolCallContext => ({
+  user: null,
+  subjectId,
+});
 
 function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
   const server = new McpServer({
@@ -42,7 +62,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
       userId: z.string().describe('The ID of the user to look up'),
     },
     async ({ userId }) => {
-      const result = await toolRegistry.executeTool('get_user_profile', { userId });
+      const result = await toolRegistry.executeTool('get_user_profile', {}, mcpContext(userId));
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );
@@ -54,7 +74,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
       userId: z.string().describe('The ID of the user to look up'),
     },
     async ({ userId }) => {
-      const result = await toolRegistry.executeTool('get_user_history', { userId });
+      const result = await toolRegistry.executeTool('get_user_history', {}, mcpContext(userId));
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );
@@ -66,7 +86,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
     'Retrieves all active departments (teams) from the database.',
     {},
     async () => {
-      const result = await toolRegistry.executeTool('get_departments', {});
+      const result = await toolRegistry.executeTool('get_departments', {}, mcpContext());
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );
@@ -76,7 +96,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
     'Retrieves the full category tree (hierarchical) with parent-child relationships.',
     {},
     async () => {
-      const result = await toolRegistry.executeTool('get_categories', {});
+      const result = await toolRegistry.executeTool('get_categories', {}, mcpContext());
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );
@@ -86,7 +106,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
     'Retrieves active keyword-based routing rules that map keywords to teams.',
     {},
     async () => {
-      const result = await toolRegistry.executeTool('get_routing_rules', {});
+      const result = await toolRegistry.executeTool('get_routing_rules', {}, mcpContext());
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );
@@ -120,7 +140,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
           tags: params.tags,
         },
         requesterId: params.requesterId,
-      });
+      }, mcpContext());
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );
@@ -133,7 +153,7 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
       priority: z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']).describe('Priority level'),
     },
     async ({ ticketId, priority }) => {
-      const result = await toolRegistry.executeTool('create_sla_instance', { ticketId, priority });
+      const result = await toolRegistry.executeTool('create_sla_instance', { ticketId, priority }, mcpContext());
       return { content: [{ type: 'text' as const, text: result }] };
     },
   );

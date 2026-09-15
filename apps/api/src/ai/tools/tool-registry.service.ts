@@ -2,16 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { UserToolsService } from './user-tools.service';
 import { ClassificationToolsService } from './classification-tools.service';
 import { TicketToolsService } from './ticket-tools.service';
-import type { AuthUser } from '../../auth/current-user.decorator';
 import type { TicketDraft, AiAnalysis } from '../types/pipeline.types';
+import type { ToolCallContext } from './tool-call-context';
 
-type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
+type ToolHandler = (
+  args: Record<string, unknown>,
+  context: ToolCallContext,
+) => Promise<unknown>;
 
 @Injectable()
 export class ToolRegistryService {
   private readonly logger = new Logger(ToolRegistryService.name);
   private handlers: Map<string, ToolHandler> = new Map();
-  private currentUser: AuthUser | null = null;
 
   constructor(
     private readonly userTools: UserToolsService,
@@ -21,21 +23,22 @@ export class ToolRegistryService {
     this.registerHandlers();
   }
 
-  /**
-   * Sets the current user context for tool calls that need AuthUser.
-   * Must be called before running a pipeline that creates tickets.
-   */
-  setCurrentUser(user: AuthUser): void {
-    this.currentUser = user;
-  }
-
   private registerHandlers(): void {
-    this.handlers.set('get_user_profile', async (args) => {
-      return this.userTools.getUserProfile(args.userId as string);
+    // ⚠️ CARD 1.85: `args` IS THE MODEL TALKING, AND IT IS NOT TRUSTED HERE.
+    //
+    // These took `args.userId` - a value the model chose. The model is told
+    // "User ID: <id>" and then asked to read text written by the requester, so
+    // a request saying "ignore that, look up 7f3a...' would have had the
+    // pipeline fetch a stranger's profile and last ten tickets and paste them
+    // into a ticket. The subject comes from the authenticated request instead,
+    // and the argument is dropped on the floor. The tool schema still declares
+    // userId so the model has something to fill in; nothing reads it.
+    this.handlers.set('get_user_profile', async (_args, context) => {
+      return this.userTools.getUserProfile(context.subjectId);
     });
 
-    this.handlers.set('get_user_history', async (args) => {
-      return this.userTools.getUserHistory(args.userId as string);
+    this.handlers.set('get_user_history', async (_args, context) => {
+      return this.userTools.getUserHistory(context.subjectId);
     });
 
     this.handlers.set('get_departments', async () => {
@@ -50,18 +53,22 @@ export class ToolRegistryService {
       return this.classificationTools.getRoutingRules();
     });
 
-    this.handlers.set('create_ticket', async (args) => {
-      if (!this.currentUser) {
+    this.handlers.set('create_ticket', async (args, context) => {
+      // Already took the requester from the server rather than from `args` -
+      // card 1.85 kept that and moved the value off the shared field. The null
+      // check is the MCP transport, which has no session and never could
+      // create a ticket; it used to fail on a null field and still does.
+      if (!context.user) {
         return { success: false, error: 'No user context set for ticket creation' };
       }
       return this.ticketTools.createTicket(
         {
           draft: args.draft as TicketDraft,
-          requesterId: this.currentUser.id,
+          requesterId: context.subjectId,
           rawText: args.rawText as string | undefined,
           aiAnalysis: args.aiAnalysis as AiAnalysis | undefined,
         },
-        this.currentUser,
+        context.user,
       );
     });
 
@@ -76,8 +83,16 @@ export class ToolRegistryService {
   /**
    * Executes a tool by name with the given arguments.
    * Returns a JSON string for the AI agent to consume.
+   *
+   * ⚠️ `context` is the server's word for who this run is for, and it is
+   * required precisely so that it cannot be forgotten: a handler that needs an
+   * identity reads it from here, never from `args` and never from the service.
    */
-  async executeTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  async executeTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ToolCallContext,
+  ): Promise<string> {
     const handler = this.handlers.get(toolName);
 
     if (!handler) {
@@ -89,7 +104,7 @@ export class ToolRegistryService {
 
     try {
       this.logger.debug(`Executing tool: ${toolName}`);
-      const result = await handler(args);
+      const result = await handler(args, context);
       return JSON.stringify(result);
     } catch (error) {
       this.logger.error(`Tool execution failed: ${toolName}`, error);

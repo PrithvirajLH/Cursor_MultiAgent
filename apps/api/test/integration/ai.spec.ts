@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
-import { fixtureEmails, fixtureTeamIds } from '../utils/fixtures';
+import { fixtureEmails, fixtureTeamIds, fixtureUserIds } from '../utils/fixtures';
 import { resetTestDb } from '../utils/reset-test-db';
 import { createTestApp } from '../utils/test-app';
 
@@ -170,11 +170,19 @@ describe('AI', () => {
       .expect(400);
   });
 
-  it('rejects POST /ai/classify with a non-UUID userId (400)', async () => {
+  it('⚠️ rejects POST /ai/classify carrying ANY userId (400) — card 1.85', async () => {
+    // This used to read "a non-UUID userId", because a well-formed one was
+    // ACCEPTED and beat the signed-in user (`dto.userId ?? user.id`). The field
+    // is gone from the DTO, so `forbidNonWhitelisted` now refuses both.
     await request(server)
       .post('/api/ai/classify')
       .set(authHeader(fixtureEmails.requester))
       .send({ text: VALID_TEXT, userId: 'not-a-uuid' })
+      .expect(400);
+    await request(server)
+      .post('/api/ai/classify')
+      .set(authHeader(fixtureEmails.requester))
+      .send({ text: VALID_TEXT, userId: fixtureUserIds.otherRequester })
       .expect(400);
   });
 
@@ -286,4 +294,59 @@ describe('AI', () => {
       .set(authHeader(fixtureEmails.admin))
       .expect(404);
   });
+
+  /**
+   * Card 1.85 - the pipeline runs as the caller, not as whoever the body says.
+   *
+   * ⚠️ TWO HOLES, AND THEY COMPOUND. The controller preferred a body field
+   * over the session (`dto.userId ?? user.id`), and the prompt is built as
+   * "User ID: <id>" followed by the requester's own words - which the model
+   * then passed straight back into get_user_profile / get_user_history. So a
+   * caller could name somebody else, and failing that could simply ASK the
+   * model to, in the text of the request. Either way the answer was that
+   * person's profile and last ten tickets, folded into a ticket.
+   */
+  describe('⚠️ the AI pipeline acts as the signed-in user (card 1.85)', () => {
+    it('⚠️ a TEAM_ADMIN cannot debug as somebody else (403)', () => {
+      // The team-scope escape: the debug page has a free-text requester box,
+      // and a team admin only sees their own team's tickets.
+      return request(server)
+        .post('/api/ai/debug')
+        .set(authHeader(fixtureEmails.admin))
+        .send({ text: VALID_TEXT, userId: fixtureUserIds.otherRequester })
+        .expect(403);
+    });
+
+    it('a TEAM_ADMIN can still debug as themselves', async () => {
+      // The non-vacuity half: the refusal must be about WHOSE id it is, not
+      // about the field existing. A blanket 403 would break the debug page.
+      const res = await request(server)
+        .post('/api/ai/debug')
+        .set(authHeader(fixtureEmails.admin))
+        .send({ text: VALID_TEXT, userId: fixtureUserIds.admin });
+      expect(res.status).not.toBe(403);
+      expect(res.status).not.toBe(401);
+    });
+
+    it('an OWNER may still debug as a named requester', async () => {
+      // Deliberately kept: an owner can already read every ticket, so this
+      // grants nothing, and reproducing a routing decision as the person who
+      // hit it is the whole point of the page.
+      const res = await request(server)
+        .post('/api/ai/debug')
+        .set(authHeader(fixtureEmails.owner))
+        .send({ text: VALID_TEXT, userId: fixtureUserIds.otherRequester });
+      expect(res.status).not.toBe(403);
+      expect(res.status).not.toBe(401);
+    });
+
+    it('omitting userId is still the ordinary case for an admin', async () => {
+      const res = await request(server)
+        .post('/api/ai/debug')
+        .set(authHeader(fixtureEmails.admin))
+        .send({ text: VALID_TEXT });
+      expect(res.status).not.toBe(403);
+    });
+  });
+
 });

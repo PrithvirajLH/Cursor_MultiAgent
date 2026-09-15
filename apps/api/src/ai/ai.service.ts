@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { FoundryClientService } from './foundry-client.service';
 import { ToolRegistryService } from './tools/tool-registry.service';
+import type { ToolCallContext } from './tools/tool-call-context';
 import { TicketToolsService } from './tools/ticket-tools.service';
 import { KbService } from '../kb/kb.service';
 import { ConfidenceGateService } from './confidence-gate.service';
@@ -101,12 +102,16 @@ export class AiService {
 
   // ─── Pipeline Steps ──────────────────────────────────────────────────
 
-  private async extractIntent(text: string, userId?: string): Promise<IntentResult> {
+  private async extractIntent(
+    text: string,
+    toolContext: ToolCallContext,
+    userId?: string,
+  ): Promise<IntentResult> {
     const userMessage = userId
       ? `User ID: ${userId}\n\nRequest:\n${text}`
       : `Request:\n${text}`;
 
-    const result = await this.foundryClient.runAgent('intentExtractor', userMessage);
+    const result = await this.foundryClient.runAgent('intentExtractor', userMessage, toolContext);
     this.logger.debug(`[Agent 1] Intent Extractor — ${result.latencyMs}ms, tools: [${result.toolCallsMade.join(', ')}]`);
 
     return this.foundryClient.parseAgentResponse(result.content, (data) =>
@@ -114,10 +119,13 @@ export class AiService {
     );
   }
 
-  private async classifyDepartment(intent: IntentResult): Promise<ClassificationResult> {
+  private async classifyDepartment(
+    intent: IntentResult,
+    toolContext: ToolCallContext,
+  ): Promise<ClassificationResult> {
     const userMessage = `Classify the following analyzed request:\n\n${JSON.stringify(intent, null, 2)}`;
 
-    const result = await this.foundryClient.runAgent('departmentClassifier', userMessage);
+    const result = await this.foundryClient.runAgent('departmentClassifier', userMessage, toolContext);
     this.logger.debug(`[Agent 2] Dept Classifier — ${result.latencyMs}ms, tools: [${result.toolCallsMade.join(', ')}]`);
 
     return this.foundryClient.parseAgentResponse(result.content, (data) =>
@@ -137,12 +145,13 @@ export class AiService {
   private async generateClarifyingQuestion(
     intent: IntentResult,
     classification: ClassificationResult,
+    toolContext: ToolCallContext,
   ): Promise<string> {
     const fallback =
       'Could you tell me a bit more about your request, so it reaches the right team?';
     const userMessage = `Write ONE short clarifying question for this request. Ask about the department boundary, offer 2-3 concrete options, and never ask something the user already answered.\n\nIntent:\n${JSON.stringify(intent, null, 2)}\n\nClassification:\n${JSON.stringify(classification, null, 2)}`;
     try {
-      const result = await this.foundryClient.runAgent('confidenceGate', userMessage);
+      const result = await this.foundryClient.runAgent('confidenceGate', userMessage, toolContext);
       this.logger.debug(`[Agent 3] Clarifying question — ${result.latencyMs}ms`);
       const parsed = this.foundryClient.parseAgentResponse(result.content, (data) =>
         this.validateConfidenceResult(data),
@@ -183,8 +192,11 @@ export class AiService {
     const startTime = Date.now();
     this.logger.log(`AI Pipeline Start — Input: "${input.text.substring(0, 80)}${input.text.length > 80 ? '...' : ''}"`);
 
-    // Set user context for tool calls
-    this.toolRegistry.setCurrentUser(user);
+    // ⚠️ CARD 1.85: who this run may act as, decided here and passed down.
+    const toolContext: ToolCallContext = {
+      user,
+      subjectId: input.userId ?? user.id,
+    };
 
     // Track each agent's raw response for storage
     const pipelineSteps: Record<string, unknown>[] = [];
@@ -199,7 +211,7 @@ export class AiService {
       const userMessage = input.userId
         ? `User ID: ${input.userId}\n\nRequest:\n${input.text}`
         : `Request:\n${input.text}`;
-      const result = await this.foundryClient.runAgent('intentExtractor', userMessage);
+      const result = await this.foundryClient.runAgent('intentExtractor', userMessage, toolContext);
       step1Raw = result;
       intent = this.foundryClient.parseAgentResponse(result.content, (data) => this.validateIntentResult(data));
       pipelineSteps.push({
@@ -227,7 +239,7 @@ export class AiService {
     let step2Raw: { content: string; toolCallsMade: string[]; latencyMs: number } | null = null;
     try {
       const step2Input = `Classify the following analyzed request:\n\n${JSON.stringify(intent, null, 2)}`;
-      const result = await this.foundryClient.runAgent('departmentClassifier', step2Input);
+      const result = await this.foundryClient.runAgent('departmentClassifier', step2Input, toolContext);
       step2Raw = result;
       classification = this.foundryClient.parseAgentResponse(result.content, (data) => this.validateClassificationResult(data));
       pipelineSteps.push({
@@ -272,7 +284,7 @@ export class AiService {
       // called only when the gate has already decided to ask one.
       const clarifyingQuestion = decision.passed
         ? null
-        : await this.generateClarifyingQuestion(intent, classification);
+        : await this.generateClarifyingQuestion(intent, classification, toolContext);
       confidence = {
         passed: decision.passed,
         overallConfidence: decision.overallConfidence,
@@ -363,7 +375,7 @@ Requester ID: ${input.userId ?? user.id}
 IMPORTANT: Return ONLY the JSON object. Format:
 {"subject":"...","description":"...","priority":"SEV1|SEV2|SEV3|SEV4","channel":"PORTAL|EMAIL","assignedTeamId":"...","categoryId":"...|null","displayId":"...","tags":["..."]}`;
 
-      const result = await this.foundryClient.runAgent('ticketGenerator', step4Input);
+      const result = await this.foundryClient.runAgent('ticketGenerator', step4Input, toolContext);
       ticketDraft = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateTicketDraft(d));
       pipelineSteps.push({
         step: 4, agent: 'ticketGenerator', status: 'success',
@@ -525,7 +537,10 @@ IMPORTANT: Return ONLY the JSON object. Format:
   async debugPipeline(input: PipelineInput, user: AuthUser): Promise<DebugPipelineResult> {
     const steps: StepResult[] = [];
     const startTime = Date.now();
-    this.toolRegistry.setCurrentUser(user);
+    const toolContext: ToolCallContext = {
+      user,
+      subjectId: input.userId ?? user.id,
+    };
 
     // Step 1: Intent Extraction
     const step1Input = input.userId
@@ -534,7 +549,7 @@ IMPORTANT: Return ONLY the JSON object. Format:
 
     let intent: IntentResult;
     try {
-      const result = await this.foundryClient.runAgent('intentExtractor', step1Input);
+      const result = await this.foundryClient.runAgent('intentExtractor', step1Input, toolContext);
       intent = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateIntentResult(d));
       steps.push({
         step: 1, name: 'Intent Extraction',
@@ -557,7 +572,7 @@ IMPORTANT: Return ONLY the JSON object. Format:
     const step2Input = `Classify the following analyzed request:\n\n${JSON.stringify(intent, null, 2)}`;
     let classification: ClassificationResult;
     try {
-      const result = await this.foundryClient.runAgent('departmentClassifier', step2Input);
+      const result = await this.foundryClient.runAgent('departmentClassifier', step2Input, toolContext);
       classification = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateClassificationResult(d));
       steps.push({
         step: 2, name: 'Department Classification',
@@ -585,7 +600,7 @@ IMPORTANT: Return ONLY the JSON object. Format:
       const decision = await this.confidenceGate.evaluate(classification);
       const clarifyingQuestion = decision.passed
         ? null
-        : await this.generateClarifyingQuestion(intent, classification);
+        : await this.generateClarifyingQuestion(intent, classification, toolContext);
       confidence = {
         passed: decision.passed,
         overallConfidence: decision.overallConfidence,
@@ -639,7 +654,7 @@ IMPORTANT: Return ONLY the JSON object. Format:
 
     let ticketDraft: TicketDraft;
     try {
-      const result = await this.foundryClient.runAgent('ticketGenerator', step4Input);
+      const result = await this.foundryClient.runAgent('ticketGenerator', step4Input, toolContext);
       ticketDraft = this.foundryClient.parseAgentResponse(result.content, (d) => this.validateTicketDraft(d));
       steps.push({
         step: 4, name: 'Ticket Generation',

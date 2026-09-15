@@ -20,6 +20,12 @@ export class AiController {
   /**
    * POST /api/ai/classify
    * Runs the full 4-step AI classification pipeline and creates a ticket.
+   *
+   * ⚠️ CARD 1.85: THE REQUESTER IS THE SIGNED-IN USER, FULL STOP. This read
+   * `dto.userId ?? user.id`, so a body field beat the session: anyone could
+   * file as anyone, and the pipeline would then look up that person's profile
+   * and last ten tickets and fold them into the ticket it wrote. The field is
+   * gone from the DTO, so there is nothing here to prefer.
    */
   @Post('classify')
   @HttpCode(HttpStatus.OK)
@@ -30,7 +36,7 @@ export class AiController {
     const result = await this.aiService.classifyAndCreateTicket(
       {
         text: dto.text,
-        userId: dto.userId ?? user.id,
+        userId: user.id,
         channel: dto.channel ?? 'PORTAL',
       },
       user,
@@ -43,6 +49,15 @@ export class AiController {
    * POST /api/ai/debug
    * Runs the debug pipeline with step-by-step output.
    * Restricted to TEAM_ADMIN and OWNER roles.
+   *
+   * ⚠️ CARD 1.85, AND THIS ONE IS NOT SYMMETRIC WITH `classify`. The debug page
+   * has a free-text "UUID of the requester" box, used to reproduce a routing
+   * decision as the person who actually hit it — a real capability, so it is
+   * not simply deleted. It is narrowed to OWNER, who can already read every
+   * ticket and therefore gains nothing from it. For a TEAM_ADMIN the same box
+   * was a way out of their own team's scope, so it is REFUSED rather than
+   * quietly ignored: a debug trace that silently ran as someone else would be a
+   * diagnostic tool that lies about what it did.
    */
   @Post('debug')
   @HttpCode(HttpStatus.OK)
@@ -52,6 +67,11 @@ export class AiController {
   ) {
     if (user.role !== 'TEAM_ADMIN' && user.role !== 'OWNER') {
       throw new ForbiddenException('Only admins can access the debug pipeline');
+    }
+    if (dto.userId && dto.userId !== user.id && user.role !== 'OWNER') {
+      throw new ForbiddenException(
+        'Only an owner can run the pipeline as another user',
+      );
     }
 
     return this.aiService.debugPipeline(

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AzureOpenAI } from 'openai';
 import { ToolRegistryService } from './tools/tool-registry.service';
+import type { ToolCallContext } from './tools/tool-call-context';
 import {
   systemPrompt as intentExtractorPrompt,
   toolDefinitions as intentExtractorTools,
@@ -136,7 +137,11 @@ export class FoundryClientService {
    * Handles the tool call loop — if the agent requests tools, they are
    * executed locally via ToolRegistryService and results are sent back.
    */
-  async runAgent(step: AgentStep, userMessage: string): Promise<AgentRunResult> {
+  async runAgent(
+    step: AgentStep,
+    userMessage: string,
+    context: ToolCallContext,
+  ): Promise<AgentRunResult> {
     const openai = this.getClient();
     const model = this.config.get<string>('AZURE_AI_FOUNDRY_MODEL') ?? 'gpt-4o';
     const startTime = Date.now();
@@ -208,7 +213,13 @@ export class FoundryClientService {
         const toolName = call.name ?? 'unknown';
         const toolArgs = JSON.parse(call.arguments ?? '{}');
         toolCallsMade.push(toolName);
-        const result = await this.toolRegistry.executeTool(toolName, toolArgs);
+        // ⚠️ Card 1.85: the identity travels with the call. `toolArgs` is
+        // whatever the model decided to send and is never an identity.
+        const result = await this.toolRegistry.executeTool(
+          toolName,
+          toolArgs,
+          context,
+        );
         toolResults.push({
           type: 'function_call_output',
           call_id: call.call_id,

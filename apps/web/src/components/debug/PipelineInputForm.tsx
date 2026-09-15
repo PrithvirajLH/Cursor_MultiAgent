@@ -40,7 +40,9 @@ export function PipelineInputForm({
       <div>
         <label className="block text-sm font-medium mb-1.5">
           User ID{" "}
-          <span className="text-muted-foreground font-normal">(optional)</span>
+          <span className="text-muted-foreground font-normal">
+            (optional — owners only)
+          </span>
         </label>
         <input
           type="text"
@@ -50,6 +52,14 @@ export function PipelineInputForm({
           className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring/20 font-mono"
           placeholder="UUID of the requester"
         />
+        {/* ⚠️ Card 1.85: running as another user is an OWNER capability. A
+            team admin who fills this in is refused by the API with a message
+            this page already shows, rather than silently getting a trace of
+            their own request — but saying so up front beats finding out. */}
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Leave empty to run as yourself. Naming someone else reproduces their
+          routing and is restricted to owners.
+        </p>
       </div>
 
       <button

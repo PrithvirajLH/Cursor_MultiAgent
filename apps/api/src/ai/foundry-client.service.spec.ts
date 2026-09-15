@@ -18,6 +18,16 @@ interface CapturedCall {
  *
  * Both are invisible without a live model, so they are pinned here instead.
  */
+/**
+ * The identity a tool call runs as (card 1.85). This spec is about transport
+ * shape, not identity, so one fixed context is enough - but it is REQUIRED, and
+ * that is the point: the argument cannot be forgotten the way a field could.
+ */
+const TEST_CONTEXT = {
+  user: null,
+  subjectId: '11111111-1111-4111-8111-111111111111',
+} as const;
+
 describe('FoundryClientService — request construction', () => {
   let calls: CapturedCall[];
 
@@ -78,7 +88,7 @@ describe('FoundryClientService — request construction', () => {
       const service = buildService({ AZURE_AI_FOUNDRY_MODEL: 'test-model' });
       attachClient(service, [textResponse('r1', '{}')]);
 
-      await service.runAgent('departmentClassifier', 'classify this');
+      await service.runAgent('departmentClassifier', 'classify this', TEST_CONTEXT);
 
       const body = calls[0].body;
       expect(body.agent_reference).toBeUndefined();
@@ -96,7 +106,7 @@ describe('FoundryClientService — request construction', () => {
       const service = buildService({});
       attachClient(service, [textResponse('r1', '{}')]);
 
-      await service.runAgent('departmentClassifier', 'classify this');
+      await service.runAgent('departmentClassifier', 'classify this', TEST_CONTEXT);
 
       const [tool] = calls[0].body.tools as Array<Record<string, unknown>>;
       expect(tool.type).toBe('function');
@@ -112,7 +122,7 @@ describe('FoundryClientService — request construction', () => {
         textResponse('r2', '{}'),
       ]);
 
-      await service.runAgent('departmentClassifier', 'classify this');
+      await service.runAgent('departmentClassifier', 'classify this', TEST_CONTEXT);
 
       expect(calls).toHaveLength(2);
       const followUp = calls[1].body;
@@ -128,7 +138,7 @@ describe('FoundryClientService — request construction', () => {
       const service = buildService({});
       attachClient(service, [textResponse('r1', '{}')]);
 
-      await service.runAgent('ticketGenerator', 'draft this');
+      await service.runAgent('ticketGenerator', 'draft this', TEST_CONTEXT);
 
       // Persistence is the pipeline's job. Handing the model a write tool would
       // let a dry run create real tickets.
@@ -140,7 +150,7 @@ describe('FoundryClientService — request construction', () => {
       const service = buildService({});
       attachClient(service, [textResponse('r1', '{}')]);
 
-      await service.runAgent('confidenceGate', 'ask something');
+      await service.runAgent('confidenceGate', 'ask something', TEST_CONTEXT);
 
       expect(calls[0].body.tools).toBeUndefined();
     });
@@ -154,7 +164,7 @@ describe('FoundryClientService — request construction', () => {
       });
       attachClient(service, [textResponse('r1', '{}')]);
 
-      await service.runAgent('departmentClassifier', 'classify this');
+      await service.runAgent('departmentClassifier', 'classify this', TEST_CONTEXT);
 
       const body = calls[0].body;
       expect(body.agent_reference).toEqual({
@@ -177,7 +187,7 @@ describe('FoundryClientService — request construction', () => {
         textResponse('r2', '{}'),
       ]);
 
-      await service.runAgent('departmentClassifier', 'classify this');
+      await service.runAgent('departmentClassifier', 'classify this', TEST_CONTEXT);
 
       expect(calls[1].body.agent_reference).toEqual({
         name: 'classifier-agent',
@@ -194,7 +204,7 @@ describe('FoundryClientService — request construction', () => {
       textResponse('r2', '{}'),
     ]);
 
-    const result = await service.runAgent('departmentClassifier', 'classify');
+    const result = await service.runAgent('departmentClassifier', 'classify', TEST_CONTEXT);
 
     // An empty list here is the signature of an ungrounded run.
     expect(result.toolCallsMade).toEqual(['get_departments']);

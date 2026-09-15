@@ -3363,9 +3363,13 @@ export interface AiDebugResult {
   errorMessage?: string;
 }
 
+/**
+ * ⚠️ Card 1.85: there is no `userId` here, and adding one back would 400.
+ * The API files as the signed-in user and rejects the field outright, so a
+ * caller that thinks it can name a requester would fail at runtime only.
+ */
 export async function classifyTicket(payload: {
   text: string;
-  userId?: string;
   channel?: string;
 }): Promise<AiClassifyResult> {
   return apiFetch("/ai/classify", {
