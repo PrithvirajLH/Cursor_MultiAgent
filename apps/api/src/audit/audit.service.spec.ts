@@ -102,11 +102,13 @@ describe('AuditService', () => {
   });
 
   it('exports CSV from the combined SQL query instead of loading and merging in memory', async () => {
-    prisma.$queryRaw
-      .mockResolvedValueOnce([{ exists: true }])
-      .mockResolvedValueOnce([
-        buildCombinedRow('event-1', new Date('2026-03-10T12:00:00.000Z')),
-      ]);
+    // ⚠️ Card 1.104: there is no longer a `[{ exists: true }]` probe response
+    // to feed first. The information_schema check is deleted, so the FIRST
+    // $queryRaw is the export query itself and the call indices below shift
+    // down by one.
+    prisma.$queryRaw.mockResolvedValueOnce([
+      buildCombinedRow('event-1', new Date('2026-03-10T12:00:00.000Z')),
+    ]);
 
     const chunks: string[] = [];
     for await (const chunk of service.exportCsv(
@@ -123,7 +125,7 @@ describe('AuditService', () => {
     expect(csv).toContain('"from OPEN to CLOSED"');
     expect(prisma.ticketEvent.findMany).not.toHaveBeenCalled();
 
-    const exportCall = extractSqlCall(prisma, 1);
+    const exportCall = extractSqlCall(prisma, 0);
     expect(exportCall.sql).toContain('UNION ALL');
     // Export wraps the combined query as `... AS "wc"` and orders by the
     // aliased columns (audit.service.ts listCombinedAuditEntries).
@@ -140,8 +142,8 @@ describe('AuditService', () => {
       buildCombinedRow(`event-${1000 - index}`, createdAt),
     );
 
+    // Card 1.104: no probe response to skip past any more.
     prisma.$queryRaw
-      .mockResolvedValueOnce([{ exists: true }])
       .mockResolvedValueOnce(firstBatch)
       .mockResolvedValueOnce([]);
 
@@ -151,7 +153,7 @@ describe('AuditService', () => {
     }
 
     expect(chunkCount).toBeGreaterThan(1);
-    const secondBatchCall = extractSqlCall(prisma, 2);
+    const secondBatchCall = extractSqlCall(prisma, 1);
     expect(secondBatchCall.sql).not.toContain('OFFSET');
     expect(secondBatchCall.sql).toContain('"createdAt" <');
     expect(secondBatchCall.sql).toContain('"entryId" <');

@@ -63,7 +63,6 @@ export class CustomFieldsService {
     private readonly realtime: RealtimeService,
   ) {}
   private readonly selectableFieldTypes = new Set(['DROPDOWN', 'MULTISELECT']);
-  private adminAuditEventTableExists: boolean | null = null;
 
   private ensureOwner(user: AuthUser) {
     if (user.role !== UserRole.OWNER) {
@@ -589,8 +588,11 @@ export class CustomFieldsService {
     user: AuthUser,
     teamId: string | null,
   ) {
-    const hasTable = await this.hasAdminAuditEventTable();
-    if (!hasTable) return;
+    // ⚠️ CARD 1.104: THE THIRD COPY OF THE SAME PROBE, DELETED WITH THE OTHER
+    // TWO. Memoised for the life of the process with a catch that stored
+    // `false`, so one transient error stopped this service recording admin
+    // audit rows for good, silently. `AdminAuditEvent` has existed since
+    // migration 20260212163000.
     // Resolve snapshot fields (8.1 fix) so audit data survives user/team deletion
     let actorName: string = user.email;
     let teamName: string | null = null;
@@ -620,27 +622,6 @@ export class CustomFieldsService {
     }
   }
 
-  private async hasAdminAuditEventTable() {
-    if (this.adminAuditEventTableExists !== null) {
-      return this.adminAuditEventTableExists;
-    }
-
-    try {
-      const rows = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (
-          SELECT 1
-          FROM information_schema.tables
-          WHERE table_schema = current_schema()
-            AND table_name = 'AdminAuditEvent'
-        ) AS "exists"
-      `;
-      this.adminAuditEventTableExists = Boolean(rows[0]?.exists);
-    } catch {
-      this.adminAuditEventTableExists = false;
-    }
-
-    return this.adminAuditEventTableExists;
-  }
 
   private async safePublishAdminChanged(payload: {
     scope: string;

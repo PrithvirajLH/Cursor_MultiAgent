@@ -73,7 +73,6 @@ export class AutomationService {
     private readonly ruleEngine: RuleEngineService,
     private readonly realtime: RealtimeService,
   ) {}
-  private adminAuditEventTableExists: boolean | null = null;
 
   async list(user: AuthUser) {
     if (user.role === UserRole.TEAM_ADMIN && !user.primaryTeamId) {
@@ -517,8 +516,13 @@ export class AutomationService {
     user: AuthUser,
     teamId: string | null,
   ) {
-    const hasTable = await this.hasAdminAuditEventTable();
-    if (!hasTable) return;
+    // ⚠️ CARD 1.104: THE SAME PROBE WAS HERE, AND ON A WRITE PATH IT WAS
+    // WORSE. `hasAdminAuditEventTable()` memoised its answer for the life of
+    // the process and its catch stored `false`, so one transient database error
+    // on the first probe stopped this service recording ANY admin audit row
+    // thereafter - silently, and with no way to tell that from "nothing
+    // happened". Deleted for the same reason as the reader in audit.service.ts:
+    // the table has existed since migration 20260212163000.
     // Resolve snapshot fields (8.1 fix) so audit data survives user/team deletion
     let actorName: string = user.email;
     let teamName: string | null = null;
@@ -546,28 +550,6 @@ export class AutomationService {
     } catch {
       // Non-blocking audit log write
     }
-  }
-
-  private async hasAdminAuditEventTable() {
-    if (this.adminAuditEventTableExists !== null) {
-      return this.adminAuditEventTableExists;
-    }
-
-    try {
-      const rows = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (
-          SELECT 1
-          FROM information_schema.tables
-          WHERE table_schema = current_schema()
-            AND table_name = 'AdminAuditEvent'
-        ) AS "exists"
-      `;
-      this.adminAuditEventTableExists = Boolean(rows[0]?.exists);
-    } catch {
-      this.adminAuditEventTableExists = false;
-    }
-
-    return this.adminAuditEventTableExists;
   }
 
   private async safePublishAdminChanged(payload: {

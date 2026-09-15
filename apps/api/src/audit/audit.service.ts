@@ -68,9 +68,33 @@ type CombinedAuditCursor = {
 };
 
 @Injectable()
+/**
+ * ⚠️ CARD 1.104: THE `AdminAuditEvent` EXISTENCE PROBE IS GONE, DELIBERATELY.
+ *
+ * A private `hasAdminAuditEventTable()` used to ask `information_schema`
+ * whether the table was there and memoise the answer in a field checked with
+ * `!== null` - computed exactly ONCE per process - with a `catch` that set it
+ * to `false`.
+ *
+ * So a single transient database error on the first probe turned the admin
+ * audit log off for the life of the process, silently. The three readers then
+ * behaved as though the table did not exist: the page rendered empty, and
+ * nothing anywhere said why. An empty audit log and a broken audit log looked
+ * identical, which is the whole defect.
+ *
+ * Card 1.95 had just made that worse by succeeding - five more services now
+ * write audit rows, so a reader silently reporting none is a much bigger lie
+ * than when only two did.
+ *
+ * Deleted rather than repaired. `AdminAuditEvent` has existed since migration
+ * `20260212163000_add_admin_audit_events` (February 2026) and every
+ * environment runs `prisma migrate deploy`; the check was legacy from when the
+ * table was optional. A probe that cannot be computed cannot cache a failure,
+ * and a genuinely missing table now raises a real database error instead of
+ * quietly reporting "no audit history".
+ */
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
-  private adminAuditEventTableExists: boolean | null = null;
 
   async list(
     params: {
@@ -266,7 +290,6 @@ export class AuditService {
     },
     user: AuthUser,
   ): Promise<Prisma.Sql> {
-    const hasAdminTable = await this.hasAdminAuditEventTable();
     const ticketWhereClause = this.buildTicketAuditSqlWhereClause(params, user);
     const adminWhereClause = this.buildAdminAuditSqlWhereClause(params, user);
 
@@ -289,9 +312,6 @@ export class AuditService {
       ${ticketWhereClause}
     `;
 
-    if (!hasAdminTable) {
-      return Prisma.sql`(${ticketQuery})`;
-    }
 
     const adminQuery = Prisma.sql`
       SELECT
@@ -597,9 +617,6 @@ export class AuditService {
     },
     user: AuthUser,
   ): Promise<number> {
-    const hasTable = await this.hasAdminAuditEventTable();
-    if (!hasTable) return 0;
-
     const conditions: Prisma.Sql[] = [];
     if (params.dateFrom) {
       conditions.push(
@@ -659,9 +676,6 @@ export class AuditService {
     limit?: number,
     offset = 0,
   ): Promise<AdminAuditEventRow[]> {
-    const hasTable = await this.hasAdminAuditEventTable();
-    if (!hasTable) return [];
-
     const conditions: Prisma.Sql[] = [];
     if (params.dateFrom) {
       conditions.push(
@@ -709,28 +723,6 @@ export class AuditService {
       ORDER BY a."createdAt" DESC
       ${limitOffsetClause}
     `;
-  }
-
-  private async hasAdminAuditEventTable() {
-    if (this.adminAuditEventTableExists !== null) {
-      return this.adminAuditEventTableExists;
-    }
-
-    try {
-      const rows = await this.prisma.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (
-          SELECT 1
-          FROM information_schema.tables
-          WHERE table_schema = current_schema()
-            AND table_name = 'AdminAuditEvent'
-        ) AS "exists"
-      `;
-      this.adminAuditEventTableExists = Boolean(rows[0]?.exists);
-    } catch {
-      this.adminAuditEventTableExists = false;
-    }
-
-    return this.adminAuditEventTableExists;
   }
 
   private buildWhere(
