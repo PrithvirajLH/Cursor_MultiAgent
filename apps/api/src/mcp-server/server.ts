@@ -7,10 +7,15 @@
  * Tool Categories:
  * - User Tools: get_user_profile, get_user_history
  * - Routing Tools: get_departments, get_categories, get_routing_rules
- * - Ticket Tools: create_ticket, create_sla_instance
+ * - Ticket Tools: create_sla_instance
+ *
+ * ⚠️ NOT PART OF THE RUNNING APPLICATION (card 1.101). Nothing in the deploy
+ * starts this; the App Service runs `node dist/src/main.js`. It is compiled
+ * into `dist` and therefore ships, so it now refuses to start unless
+ * MCP_SERVER_ENABLED=true is set deliberately.
  *
  * Usage:
- *   npx ts-node src/mcp-server/server.ts
+ *   MCP_SERVER_ENABLED=true npx ts-node src/mcp-server/server.ts
  *
  * This bootstraps a minimal NestJS application context (no HTTP listener)
  * and exposes the tool registry via MCP SSE or Stdio transport.
@@ -113,37 +118,18 @@ function createMcpServer(toolRegistry: ToolRegistryService): McpServer {
 
   // ─── Ticket Tools ────────────────────────────────────────────────────────
 
-  server.tool(
-    'create_ticket',
-    'Creates a new ticket in the database. Returns the created ticket with its ID and number.',
-    {
-      subject: z.string().max(255).describe('Ticket subject line'),
-      description: z.string().describe('Ticket description'),
-      priority: z.enum(['SEV1', 'SEV2', 'SEV3', 'SEV4']).describe('Priority level'),
-      channel: z.enum(['PORTAL', 'EMAIL']).describe('Channel'),
-      assignedTeamId: z.string().describe('Team ID to assign to'),
-      categoryId: z.string().nullable().describe('Category ID or null'),
-      displayId: z.string().describe('Human-readable ticket ID'),
-      tags: z.array(z.string()).describe('Tags'),
-      requesterId: z.string().describe('Requester user ID'),
-    },
-    async (params) => {
-      const result = await toolRegistry.executeTool('create_ticket', {
-        draft: {
-          subject: params.subject,
-          description: params.description,
-          priority: params.priority,
-          channel: params.channel,
-          assignedTeamId: params.assignedTeamId,
-          categoryId: params.categoryId,
-          displayId: params.displayId,
-          tags: params.tags,
-        },
-        requesterId: params.requesterId,
-      }, mcpContext());
-      return { content: [{ type: 'text' as const, text: result }] };
-    },
-  );
+  // ⚠️ `create_ticket` IS DELIBERATELY NOT EXPOSED HERE (card 1.101).
+  //
+  // It was listed as an available tool and HAS NEVER WORKED. It needs a
+  // signed-in user to attribute the ticket to; this transport has no session,
+  // so every call returned `{"success":false,"error":"No user context set for
+  // ticket creation"}`. A tool that has never worked is a lie in the tool list -
+  // an agent reads the list, plans around it, and fails at the last step.
+  //
+  // Removed rather than fixed, because fixing it means deciding who the
+  // requester of an unauthenticated ticket is, and that is a real decision
+  // about attribution rather than a missing line of code. `ticketTools` still
+  // exposes it to the authenticated HTTP pipeline, which is unaffected.
 
   server.tool(
     'create_sla_instance',
@@ -178,6 +164,31 @@ function isAuthorized(header: string | undefined, expected: string): boolean {
 }
 
 async function main() {
+  // ⚠️ CARD 1.101: EXPLICIT OPT-IN, BECAUSE THIS DOES SHIP TO PRODUCTION.
+  //
+  // It was reported as unreachable in production on the grounds that `ts-node`
+  // is a devDependency. That is only half true and the half that is wrong
+  // matters: `create-deploy-zip.ps1` copies the whole of `apps/api/dist`, so
+  // `dist/src/mcp-server/server.js` is deployed and `node` can run it. Nothing
+  // STARTS it - the App Service start command is `node dist/src/main.js` - but
+  // "nobody starts it" is a weaker guarantee than "it will not start".
+  //
+  // That matters because these tools take a client-supplied `userId` with NO
+  // session, which is precisely the door card 1.85 closed everywhere else. So
+  // this process now refuses to run unless somebody says so on purpose.
+  //
+  // The larger question - delete it, or keep it as local developer tooling -
+  // is the owner's, and this gate is deliberately not that decision. It makes
+  // the current state safe and explicit while the decision is made.
+  if (process.env.MCP_SERVER_ENABLED !== 'true') {
+    console.error(
+      'Refusing to start the MCP server: set MCP_SERVER_ENABLED=true to run it.\n' +
+        'It exposes tools that act on any user id with no session, and it is not ' +
+        'part of the running application - nothing in the deploy starts it.',
+    );
+    process.exitCode = 1;
+    return;
+  }
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
