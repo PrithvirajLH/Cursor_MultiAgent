@@ -1,5 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { Writable } from 'stream';
+import pino from 'pino';
 import { LOG_REDACTION_PATHS } from './log-redaction-paths.util';
 
 /**
@@ -40,5 +42,69 @@ describe('LOG_REDACTION_PATHS', () => {
     const appModule = readFileSync(join(__dirname, '..', 'app.module.ts'), 'utf8');
     expect(appModule).toContain('LOG_REDACTION_PATHS');
     expect(appModule).toContain('redact:');
+  });
+});
+
+/**
+ * Card 2.6 — `x-api-key` is a new credential in a header, so it must not reach
+ * the log.
+ *
+ * ⚠️ THIS RUNS THE REAL REDACTION RATHER THAN READING THE LIST. The card is
+ * explicit that the list is not the proof, and card 1.57 is why: the constant
+ * above was correct for months while 2,064 bearer tokens went into the log,
+ * because nothing checked that pino was actually applying it. Here a logger is
+ * built with the same `redact` options app.module.ts passes, a request carrying
+ * a key is logged, and the output is searched for the secret.
+ */
+describe('a presented API key never reaches the log (card 2.6)', () => {
+  const KEY = 'tk_SUPER_SECRET_VALUE_THAT_MUST_NOT_APPEAR';
+
+  /** Log one request through pino and hand back exactly what was written. */
+  function logRequestWithKey(): string {
+    let written = '';
+    const sink = new Writable({
+      write(chunk, _encoding, callback) {
+        written += String(chunk);
+        callback();
+      },
+    });
+    const logger = pino(
+      {
+        redact: { paths: [...LOG_REDACTION_PATHS], censor: '[redacted]' },
+      },
+      sink,
+    );
+    logger.info({
+      req: {
+        method: 'GET',
+        url: '/api/tickets',
+        headers: {
+          host: 'localhost',
+          'x-api-key': KEY,
+          authorization: 'Bearer some.jwt.value',
+        },
+      },
+    });
+    return written;
+  }
+
+  it('⚠️ the key does not appear in the written log line', () => {
+    // THE REGRESSION ASSERTION. Removing 'req.headers["x-api-key"]' from the
+    // list makes this fail with the secret visible in the output.
+    const output = logRequestWithKey();
+    expect(output).not.toContain(KEY);
+    expect(output).toContain('[redacted]');
+  });
+
+  it('the line is still written, so redaction did not silence the log', () => {
+    // The non-vacuity half: a logger that wrote nothing would pass the test
+    // above and destroy the request log.
+    const output = logRequestWithKey();
+    expect(output).toContain('/api/tickets');
+    expect(output).toContain('x-api-key');
+  });
+
+  it('and the bearer token is still covered beside it', () => {
+    expect(logRequestWithKey()).not.toContain('some.jwt.value');
   });
 });

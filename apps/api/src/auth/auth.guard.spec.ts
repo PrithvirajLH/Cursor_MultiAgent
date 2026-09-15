@@ -2,6 +2,7 @@ import { ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { createHmac } from 'crypto';
+import { ApiKeysService } from '../api-keys/api-keys.service';
 import { AuthGuard } from './auth.guard';
 import { DuplicateAccountService } from '../common/duplicate-account.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -64,6 +65,8 @@ describe('AuthGuard rejection logging (card 1.54)', () => {
       configService,
       {} as DuplicateAccountService,
       {} as UserIdentityService,
+      // Card 2.6: no x-api-key in these cases, so resolve is never reached.
+      { resolve: jest.fn().mockResolvedValue(null) } as unknown as ApiKeysService,
     );
   }
 
@@ -317,6 +320,7 @@ describe('⚠️ AuthGuard refuses a deactivated account (card 1.78)', () => {
       } as unknown as ConfigService,
       { flag: jest.fn() } as unknown as DuplicateAccountService,
       { recordAddresses: jest.fn() } as unknown as UserIdentityService,
+      { resolve: jest.fn().mockResolvedValue(null) } as unknown as ApiKeysService,
     );
     return { guard, update, create };
   }

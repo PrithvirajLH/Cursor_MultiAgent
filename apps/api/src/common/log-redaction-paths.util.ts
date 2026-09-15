@@ -29,5 +29,10 @@ export const LOG_REDACTION_PATHS = [
   'req.headers["x-intake-secret"]',
   'req.headers["x-inbound-email-secret"]',
   'req.headers["x-attachment-scan-secret"]',
+  // ⚠️ Card 2.6: `x-api-key` is the newest anonymous integration credential,
+  // and the comment above is why it is added on the same commit that introduced
+  // it. Card 1.57 exists because 2,064 bearer tokens and 252 intake secrets were
+  // already in the log before anyone looked.
+  'req.headers["x-api-key"]',
   'res.headers["set-cookie"]',
 ] as const;

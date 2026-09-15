@@ -116,6 +116,11 @@ enum AccessLevel {
 
 enum NotificationChannel {
   EMAIL
+  // ⚠️ Card 2.6: webhook deliveries ride NotificationOutbox rather than a
+  // second table. Every query in outbox.service.ts already filters
+  // `channel: EMAIL`, so the mail sender cannot see these rows - the retry,
+  // attempt counting and dead state are reused rather than reimplemented.
+  WEBHOOK
 }
 
 enum OutboxStatus {
@@ -218,6 +223,7 @@ model User {
   emailAliases            UserEmailAlias[]
   ticketLinksCreated      TicketLink[]         @relation("TicketLinkCreatedBy")
   messagesRedacted        TicketMessage[]      @relation("TicketMessageRedactedBy")
+  apiKeys                 ApiKey[]             @relation("ApiKeyServiceUser")
 
   // TEAM_ADMIN user listings filter users by primaryTeamId
   // (users.service.ts getUserListScope) — index avoids a full User scan.
@@ -764,6 +770,50 @@ model InboundMailboxCursor {
   lastSyncedAt DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+/**
+ * A key a machine authenticates with (card 2.6).
+ *
+ * ⚠️ ONLY THE HASH IS STORED. The key is shown once, at creation, and cannot
+ * be read back - if the admin screen could re-display it, this table would be
+ * holding live credentials.
+ *
+ * `serviceUserId` points at a real User, so a key resolves to an identity the
+ * existing access checks already understand. There is deliberately no separate
+ * permission model here.
+ */
+model ApiKey {
+  id            String    @id @default(uuid())
+  name          String
+  hashedKey     String    @unique
+  serviceUserId String
+  teamScope     String?
+  lastUsedAt    DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+
+  serviceUser User @relation("ApiKeyServiceUser", fields: [serviceUserId], references: [id])
+
+  @@index([revokedAt])
+}
+
+/**
+ * Where to send outbound event notifications (card 2.6).
+ *
+ * ⚠️ `secret` is a credential: it signs the payload so a consumer can verify
+ * the call came from us. It must never reach a log, the admin screen after
+ * creation, or an example payload.
+ */
+model WebhookSubscription {
+  id        String   @id @default(uuid())
+  url       String
+  secret    String
+  events    String[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
 }
 
 model NotificationOutbox {

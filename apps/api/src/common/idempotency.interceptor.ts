@@ -24,6 +24,8 @@ const SECRET_SCOPE_HEADERS = [
   'x-intake-secret',
   'x-inbound-email-secret',
   'x-attachment-scan-secret',
+  // ⚠️ Card 2.6. Kept in step with LOG_REDACTION_PATHS, which says to.
+  'x-api-key',
 ] as const;
 
 type BeginResult =

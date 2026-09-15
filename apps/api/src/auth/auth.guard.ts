@@ -16,6 +16,7 @@ import {
   UserIdentityService,
   type DirectoryAddress,
 } from '../common/user-identity.service';
+import { ApiKeysService } from '../api-keys/api-keys.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { joseRejectionDetail } from './jose-rejection-detail.util';
@@ -54,6 +55,11 @@ type AuthIdentity = {
   provisionIfMissing: boolean;
   /** The `oid` claim, when the token carried one. Null everywhere else. */
   entraObjectId?: string | null;
+  /**
+   * ⚠️ Card 2.6: the team an API key is confined to, when one was used.
+   * Only ever NARROWS what the service user already has - see canActivate.
+   */
+  apiKeyTeamScope?: string | null;
   /** Every address the token presented, for UserIdentityService to record. */
   directoryAddresses?: DirectoryAddress[];
 };
@@ -71,6 +77,7 @@ export class AuthGuard implements CanActivate {
     private readonly config: ConfigService,
     private readonly duplicateAccounts: DuplicateAccountService,
     private readonly userIdentity: UserIdentityService,
+    private readonly apiKeys: ApiKeysService,
   ) {}
 
   /**
@@ -142,12 +149,21 @@ export class AuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<AuthRequest>();
     const token = this.extractBearerToken(request.headers.authorization);
-    const authIdentity = token
-      ? await this.identityFromBearerToken(token)
-      : this.identityFromInsecureHeaders(
-          request.headers['x-user-id'],
-          request.headers['x-user-email'],
-        );
+    // ⚠️ CARD 2.6: A THIRD WAY IN, AND DELIBERATELY NOT A THIRD WAY THROUGH.
+    // A key resolves to a real User here and then takes exactly the same path as
+    // a person - assertActive, membership, roleFilter, accessConditionSql. The
+    // value of resolving to a User is that nothing downstream needs to know a
+    // machine is calling, so there is no second authorisation path to keep in
+    // step with the first.
+    const presentedApiKey = this.singleHeaderValue(request.headers['x-api-key']);
+    const authIdentity = presentedApiKey
+      ? await this.identityFromApiKey(presentedApiKey)
+      : token
+        ? await this.identityFromBearerToken(token)
+        : this.identityFromInsecureHeaders(
+            request.headers['x-user-id'],
+            request.headers['x-user-email'],
+          );
 
     if (!authIdentity) {
       throw this.reject('Missing authentication credentials');
@@ -216,19 +232,62 @@ export class AuthGuard implements CanActivate {
     });
     const memberTeamIds = [...new Set(membershipRows.map((row) => row.teamId))];
 
+    // ⚠️ Card 2.6: a scoped key sees one team, and ONLY by narrowing what the
+    // service user already had. Intersecting rather than assigning is what makes
+    // it impossible for a key to widen access - if the service user is removed
+    // from that team the key grants nothing rather than silently granting all.
+    const apiKeyScope = authIdentity.apiKeyTeamScope ?? null;
+    const scopedTeamIds = apiKeyScope
+      ? memberTeamIds.filter((teamId) => teamId === apiKeyScope)
+      : memberTeamIds;
+    if (apiKeyScope && scopedTeamIds.length === 0) {
+      throw this.reject('API key scoped to a team the service user is not in');
+    }
+
     request.user = {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       role: user.role,
-      teamId: resolvedTeamId,
+      teamId: apiKeyScope ?? resolvedTeamId,
       teamName: membership?.team?.name ?? null,
       teamRole: membership?.role ?? null,
       primaryTeamId: user.primaryTeamId ?? null,
-      memberTeamIds,
+      memberTeamIds: scopedTeamIds,
     };
 
     return true;
+  }
+
+  /**
+   * Turn an `x-api-key` header into the service user it stands for (card 2.6).
+   *
+   * ⚠️ A REVOKED KEY FAILS ON THE NEXT REQUEST. `ApiKeysService.resolve` reads
+   * the row every time and caches nothing, so there is no window in which a
+   * revoked key still works. That is the card's explicit requirement and the
+   * reason this costs one indexed read per machine request.
+   *
+   * Rejects rather than falling through to the other schemes: a caller that
+   * presented a key meant to authenticate as that key, and quietly treating a
+   * bad one as anonymous would turn a revoked credential into a confusing
+   * failure somewhere further in.
+   */
+  private async identityFromApiKey(presented: string): Promise<AuthIdentity> {
+    const resolved = await this.apiKeys.resolve(presented);
+    if (!resolved) {
+      // ⚠️ Never echo the presented value - card 1.57. The reason names the
+      // scheme, not the credential.
+      throw this.reject('Invalid or revoked API key');
+    }
+    return {
+      userId: resolved.serviceUserId,
+      email: null,
+      displayName: null,
+      department: null,
+      location: null,
+      provisionIfMissing: false,
+      apiKeyTeamScope: resolved.teamScope,
+    };
   }
 
   private identityFromInsecureHeaders(
