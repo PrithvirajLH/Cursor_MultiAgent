@@ -86,17 +86,24 @@ describe('who a ticket can be assigned to (card 1.110)', () => {
     return { service, tx, updates };
   };
 
-  const teamless = {
+  type Snapshot = {
+    id: string;
+    status: TicketStatus;
+    assignedTeamId: string | null;
+    assigneeId: string | null;
+  };
+
+  const teamless: Snapshot = {
     id: 't1',
     status: TicketStatus.NEW,
     assignedTeamId: null,
     assigneeId: null,
   };
-  const teamed = { ...teamless, assignedTeamId: 'team-1' };
+  const teamed: Snapshot = { ...teamless, assignedTeamId: 'team-1' };
 
   const assign = (
     built: ReturnType<typeof build>,
-    ticket: typeof teamless,
+    ticket: Snapshot,
     assigneeId: string,
   ) =>
     built.service.applyAssigneeInTx(
