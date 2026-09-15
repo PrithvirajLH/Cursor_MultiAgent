@@ -1342,11 +1342,45 @@ export class TicketsService {
   async getById(reference: string, user: AuthUser) {
     const ticket = await this.prisma.ticket.findUnique({
       where: ticketRefWhere(reference),
+      // ⚠️ CARD 1.96: EXPLICIT `select` ON EVERY RELATION, NOT `true`.
+      //
+      // In Prisma `include: { x: true }` returns EVERY column of x, so a
+      // requester opening their own ticket was handed the assignee's
+      // `entraObjectId`, `graphProfile`, `department`, `location` and
+      // availability, plus the team's `isSensitive`, `confidenceThreshold`,
+      // `hiddenPresetIds` and `assignmentStrategy`. None of it is rendered.
+      //
+      // This is OVER-FETCHING, NOT AN AUTHORISATION HOLE - the person is allowed
+      // to see the ticket - so it is fixed by asking for less, and deliberately
+      // not by adding a permissions check that would change who can open what.
+      //
+      // The field lists below are what the ticket detail UI actually reads,
+      // measured rather than guessed. `requester` keeps the profile fields
+      // because the header renders the requester's own avatar and department;
+      // `assignee` does not, because nothing shows an agent's department and it
+      // was the agent's record that leaked.
       include: {
-        requester: true,
-        assignee: true,
-        assignedTeam: true,
-        category: true,
+        requester: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            department: true,
+            location: true,
+            graphProfile: true,
+          },
+        },
+        assignee: {
+          select: { id: true, email: true, displayName: true },
+        },
+        assignedTeam: {
+          select: { id: true, name: true },
+        },
+        category: {
+          select: { id: true, name: true },
+        },
+        // Left whole on purpose: `accessGrants` is { ticketId, teamId } and is
+        // read by canViewTicket, and `tags` is already a narrow join row.
         accessGrants: true,
         tags: {
           include: { tag: true },
