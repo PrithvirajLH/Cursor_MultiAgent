@@ -131,8 +131,21 @@ export interface PipelineClarification {
 
 export interface PipelineError {
   status: 'error';
+  /**
+   * ⚠️ CARD 1.107: GENERIC, AND DELIBERATELY SO. This used to interpolate
+   * `error.message` straight from the Azure SDK - endpoint hostnames,
+   * deployment and model names, region, request ids, quota and billing states,
+   * sometimes a fragment of the failing request - and `POST /api/ai/classify`
+   * has no role guard, so any EMPLOYEE could read it.
+   */
   error: string;
   step: 'intent_extraction' | 'department_classification' | 'confidence_check' | 'ticket_generation';
+  /**
+   * The request id from `correlationIdMiddleware`, so somebody reporting "the
+   * AI failed" can be matched to the full error in the log. Not a second id -
+   * the same one the HTTP log line carries.
+   */
+  correlationId?: string;
 }
 
 /**

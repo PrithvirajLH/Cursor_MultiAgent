@@ -5,7 +5,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { FoundryClientService } from './foundry-client.service';
 import { ToolRegistryService } from './tools/tool-registry.service';
-import type { PipelineDisabled } from './types/pipeline.types';
+import { getRequestId } from '../common/request-context';
+import type { PipelineDisabled, PipelineError } from './types/pipeline.types';
 import type { ToolCallContext } from './tools/tool-call-context';
 import { TicketToolsService } from './tools/ticket-tools.service';
 import { KbService } from '../kb/kb.service';
@@ -208,6 +209,47 @@ export class AiService {
     );
   }
 
+  /**
+   * The one failure answer given to an ordinary caller (card 1.107).
+   *
+   * ⚠️ FIVE SITES USED TO BUILD THIS BY HAND, EACH INTERPOLATING
+   * `error.message` FROM THE AZURE SDK. `POST /api/ai/classify` has no role
+   * guard - it takes `@CurrentUser()` and nothing else - so any EMPLOYEE could
+   * call it and read endpoint hostnames, deployment and model names, the
+   * region, request ids, quota and billing state, and sometimes a fragment of
+   * the request that failed.
+   *
+   * ⚠️ THIS IS CARD 1.57 IN THE OTHER DIRECTION. That card stopped credentials
+   * being written into the log; the log at least needed Azure access to read.
+   * This handed infrastructure detail straight back over HTTP to the least
+   * privileged role in the system.
+   *
+   * The full text still goes to the logger - throwing the detail away would be
+   * worse than leaking it, because then nobody could diagnose anything. The
+   * caller gets a stable sentence plus the request id that finds it.
+   *
+   * ⚠️ `step` IS KEPT. It is useful, it is not sensitive, and the web page
+   * renders it.
+   */
+  private pipelineFailure(
+    step: PipelineError['step'],
+    error: unknown,
+  ): PipelineError {
+    const correlationId = getRequestId();
+    this.logger.error(
+      `AI pipeline failed at ${step}${correlationId ? ` [${correlationId}]` : ''}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return {
+      status: 'error',
+      error:
+        'The AI could not process this request. Please try again, or contact the service desk with the reference below.',
+      step,
+      ...(correlationId ? { correlationId } : {}),
+    };
+  }
+
   /** The one answer every caller gets when the switch is off. */
   private disabledResult(): PipelineDisabled {
     return {
@@ -264,12 +306,7 @@ export class AiService {
         latencyMs: step1Raw?.latencyMs ?? Date.now() - startTime,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      this.logger.error('Intent extraction failed', error);
-      return {
-        status: 'error',
-        error: `Intent extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        step: 'intent_extraction',
-      };
+      return this.pipelineFailure('intent_extraction', error);
     }
 
     // Step 2: Classify department
@@ -292,12 +329,7 @@ export class AiService {
         latencyMs: step2Raw?.latencyMs ?? Date.now() - startTime,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      this.logger.error('Classification failed', error);
-      return {
-        status: 'error',
-        error: `Department classification failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        step: 'department_classification',
-      };
+      return this.pipelineFailure('department_classification', error);
     }
 
     // Step 3: Confidence gate — deterministic, in code.
@@ -343,12 +375,7 @@ export class AiService {
         latencyMs: Date.now() - step3Started,
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      this.logger.error('Confidence check failed', error);
-      return {
-        status: 'error',
-        error: `Confidence check failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        step: 'confidence_check',
-      };
+      return this.pipelineFailure('confidence_check', error);
     }
 
     const finalClassification = classification;
@@ -465,11 +492,12 @@ IMPORTANT: Return ONLY the JSON object. Format:
       );
 
       if (!ticketResult.success) {
-        return {
-          status: 'error',
-          error: ticketResult.error,
-          step: 'ticket_generation',
-        };
+        // The tool's own message, which can carry database detail. Same
+        // treatment as an SDK error: logged in full, generic to the caller.
+        return this.pipelineFailure(
+          'ticket_generation',
+          new Error(ticketResult.error ?? 'ticket creation failed'),
+        );
       }
 
       const pipelineLatencyMs = Date.now() - startTime;
@@ -588,12 +616,7 @@ IMPORTANT: Return ONLY the JSON object. Format:
         aiAnalysis,
       };
     } catch (error) {
-      this.logger.error('Ticket generation failed', error);
-      return {
-        status: 'error',
-        error: `Ticket generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        step: 'ticket_generation',
-      };
+      return this.pipelineFailure('ticket_generation', error);
     }
   }
 
