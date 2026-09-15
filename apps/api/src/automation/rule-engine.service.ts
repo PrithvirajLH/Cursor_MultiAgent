@@ -20,13 +20,12 @@ import { TicketsService } from '../tickets/tickets.service';
 import { TicketSlaCalculationService } from '../tickets/ticket-sla-calculation.service';
 import { fillTemplateVars } from './template-vars.util';
 
-export type AutomationTrigger =
-  | 'TICKET_CREATED'
-  | 'STATUS_CHANGED'
-  | 'SLA_APPROACHING'
-  | 'SLA_BREACHED'
-  | 'TIME_IN_STATUS'
-  | 'UNASSIGNED_FOR';
+// ⚠️ Card 1.103: the union now lives in `common/automation-trigger.type.ts`
+// so that code needing only a trigger NAME does not have to import the whole
+// rule engine - one of the edges that closed a circular import. Re-exported
+// here so existing importers are untouched.
+export type { AutomationTrigger } from '../common/automation-trigger.type';
+import type { AutomationTrigger } from '../common/automation-trigger.type';
 
 export type TicketContext = {
   id: string;

@@ -1,6 +1,4 @@
 import {
-  forwardRef,
-  Inject,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -9,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { RuleEngineService } from '../automation/rule-engine.service';
+import { AutomationRunner } from './automation-runner';
 import type { QueueStatus } from './queue-status.type';
 
 type AutomationJobData = { ticketId: string; trigger: string };
@@ -33,10 +31,15 @@ export class AutomationQueueService implements OnModuleInit, OnModuleDestroy {
   private enabled = true;
   private fellBack = false;
 
+  // ⚠️ CARD 1.103: DEPENDS ON THE ABSTRACTION, NOT ON THE RULE ENGINE.
+  // This used `@Inject(forwardRef(() => RuleEngineService))`, which dragged
+  // `automation/` into `common/` and closed a circular import beneath the whole
+  // app - `common` is @Global, so everything inherited it. `AutomationRunner`
+  // is declared in `common/` and bound to RuleEngineService by AutomationModule,
+  // so the arrow points the right way and the forwardRef is gone.
   constructor(
     private readonly config: ConfigService,
-    @Inject(forwardRef(() => RuleEngineService))
-    private readonly ruleEngine: RuleEngineService,
+    private readonly ruleEngine: AutomationRunner,
   ) {}
 
   onModuleInit() {
@@ -94,7 +97,7 @@ export class AutomationQueueService implements OnModuleInit, OnModuleDestroy {
           await this.ruleEngine.runForTicket(
             job.data.ticketId,
             job.data.trigger as Parameters<
-              RuleEngineService['runForTicket']
+              AutomationRunner['runForTicket']
             >[1],
           );
         },
@@ -148,7 +151,7 @@ export class AutomationQueueService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.ruleEngine.runForTicket(
           ticketId,
-          trigger as Parameters<RuleEngineService['runForTicket']>[1],
+          trigger as Parameters<AutomationRunner['runForTicket']>[1],
         );
       } catch (err) {
         this.logger.error(
