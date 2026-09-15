@@ -69,9 +69,15 @@ export class IngestInboundEmailDto {
   @MaxLength(160)
   fromName?: string;
 
+  // ⚠️ CARD 1.105: 200 HERE MEANT A LONG SUBJECT LOST THE EMAIL.
+  // `Ticket.subject` is VarChar(200) and this mirrored it, so a forwarded
+  // "FW: RE: FW:" chain was refused with a 400 and the sender's words went with
+  // it. The column limit is still 200 - `truncateInboundSubject` enforces it -
+  // but that is the service's job, not a reason to reject the message. 998 is
+  // the RFC 5322 line limit, so anything a real mail client can send gets in.
   @IsString()
   @MinLength(1)
-  @MaxLength(200)
+  @MaxLength(998)
   subject!: string;
 
   @IsString()

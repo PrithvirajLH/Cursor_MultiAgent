@@ -69,6 +69,38 @@ type PersistedInboundEmailMutation = {
  *
  * Uses TicketsService (via forwardRef) for ticket creation and message posting.
  */
+/** One attachment that could not be stored, and why, in words for an agent. */
+export type RejectedInboundAttachment = { fileName: string; reason: string };
+
+/**
+ * What the inbound payload's attachments turned into (card 1.105).
+ *
+ * ⚠️ Both halves matter. `accepted` is stored; `rejected` is written onto the
+ * ticket so an agent can see a file is missing and ask for it again. Silently
+ * dropping is barely better than losing the email.
+ */
+export type NormalizedInboundAttachmentResult = {
+  accepted: NormalizedInboundAttachment[];
+  rejected: RejectedInboundAttachment[];
+};
+
+/** The database column is VarChar(200); anything longer is trimmed, not fatal. */
+const INBOUND_SUBJECT_MAX = 200;
+
+/**
+ * Fit a subject into the column (card 1.105).
+ *
+ * ⚠️ An ellipsis rather than a hard cut, so an agent can see the subject was
+ * shortened rather than wondering whether the sender wrote it that way.
+ */
+export function truncateInboundSubject(subject: string): string {
+  const trimmed = (subject ?? '').trim();
+  if (trimmed.length <= INBOUND_SUBJECT_MAX) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, INBOUND_SUBJECT_MAX - 1)}…`;
+}
+
 @Injectable()
 export class InboundEmailService {
   private readonly logger = new Logger(InboundEmailService.name);
@@ -161,9 +193,12 @@ export class InboundEmailService {
     let persistedMutation: PersistedInboundEmailMutation | null = null;
 
     try {
-      const inboundAttachments = await this.normalizeInboundEmailAttachments(
-        payload.attachments,
-      );
+      // ⚠️ CARD 1.105: THIS NO LONGER THROWS, WHICH IS THE ENTIRE CARD.
+      // It is still the first call in the block, but an attachment problem now
+      // produces a REPORT rather than an exception - so the requester's words
+      // are stored either way and the dropped files are recorded on the ticket.
+      const { accepted: inboundAttachments, rejected: droppedAttachments } =
+        await this.normalizeInboundEmailAttachments(payload.attachments);
       const requester = await this.findOrCreateInboundRequester(
         payload.fromEmail,
         payload.fromName,
@@ -359,11 +394,15 @@ export class InboundEmailService {
             ticketId: existing.id,
             threaded: true,
           };
-          await this.attachInboundEmailAttachments(
+          const replyAttachFailures = await this.attachInboundEmailAttachments(
             existing.id,
             inboundAttachments,
             requester.id,
           );
+          await this.recordDroppedInboundAttachments(existing.id, [
+            ...droppedAttachments,
+            ...replyAttachFailures,
+          ]);
 
           await this.prisma.ticketEvent.create({
             data: {
@@ -407,7 +446,10 @@ export class InboundEmailService {
 
       const created = await this.ticketsService.create(
         {
-          subject: payload.subject,
+          // ⚠️ CARD 1.105: TRUNCATE, DO NOT FAIL. `Ticket.subject` is
+          // VarChar(200), so a long forwarded subject - "FW: RE: FW:" chains
+          // reach this easily - raised Prisma P2000 and lost the email with it.
+          subject: truncateInboundSubject(payload.subject),
           description: payload.body,
           priority: payload.priority ?? TicketPriority.SEV3,
           channel: TicketChannel.EMAIL,
@@ -443,11 +485,15 @@ export class InboundEmailService {
         ticketSubject: created.subject ?? payload.subject,
         messageId,
       });
-      await this.attachInboundEmailAttachments(
+      const newTicketAttachFailures = await this.attachInboundEmailAttachments(
         created.id,
         inboundAttachments,
         requester.id,
       );
+      await this.recordDroppedInboundAttachments(created.id, [
+        ...droppedAttachments,
+        ...newTicketAttachFailures,
+      ]);
 
       await this.prisma.ticketEvent.create({
         data: {
@@ -585,28 +631,51 @@ export class InboundEmailService {
       );
   }
 
+  /**
+   * Store what can be stored, and say what could not (card 1.105).
+   *
+   * Returns the files that failed rather than throwing, so a single unstorable
+   * attachment cannot undo an email that has already been persisted.
+   */
   async attachInboundEmailAttachments(
     ticketId: string,
     attachments: NormalizedInboundAttachment[],
     actorId: string,
-  ) {
+  ): Promise<RejectedInboundAttachment[]> {
     if (attachments.length === 0) {
       return [];
     }
 
-    const created = await Promise.all(
-      attachments.map((attachment) =>
-        this.attachmentService.createTicketAttachmentFromBuffer(
-          ticketId,
-          {
-            originalName: attachment.fileName,
-            contentType: attachment.contentType,
-            buffer: attachment.buffer,
-          },
-          actorId,
-        ),
-      ),
-    );
+    // ⚠️ CARD 1.105, THE SECOND CLIFF. This was `Promise.all`, and
+    // `createTicketAttachmentFromBuffer` calls `assertAttachmentWithinSizeLimit`,
+    // which THROWS. So one oversized file rejected the whole batch - after the
+    // ticket already existed, leaving a created ticket and a failed ingest that
+    // the mailbox worker then retried into a reservation conflict. Making the
+    // normalizer non-throwing alone would only have moved the cliff here.
+    const failures: RejectedInboundAttachment[] = [];
+    const created: Awaited<
+      ReturnType<TicketAttachmentService['createTicketAttachmentFromBuffer']>
+    >[] = [];
+    for (const attachment of attachments) {
+      try {
+        created.push(
+          await this.attachmentService.createTicketAttachmentFromBuffer(
+            ticketId,
+            {
+              originalName: attachment.fileName,
+              contentType: attachment.contentType,
+              buffer: attachment.buffer,
+            },
+            actorId,
+          ),
+        );
+      } catch (error) {
+        failures.push({
+          fileName: attachment.fileName,
+          reason: error instanceof Error ? error.message : 'could not be stored',
+        });
+      }
+    }
 
     await this.ticketRealtime.safeRealtime(() =>
       this.ticketRealtime.emitTicketRealtimeEvent({
@@ -616,24 +685,87 @@ export class InboundEmailService {
       }),
     );
 
-    return created;
+    return failures;
   }
 
+  /**
+   * Say on the ticket that some files did not make it, and why (card 1.105).
+   *
+   * ⚠️ AN AGENT MUST BE ABLE TO SEE THAT A FILE IS MISSING AND ASK FOR IT
+   * AGAIN. Dropping silently is barely better than losing the email: the
+   * requester believes they sent a screenshot, the agent never knows one
+   * existed, and the ticket stalls on a misunderstanding.
+   *
+   * Never throws. The email is already stored by the time this runs, and a
+   * failure to write the note must not undo it.
+   */
+  private async recordDroppedInboundAttachments(
+    ticketId: string,
+    dropped: RejectedInboundAttachment[],
+  ): Promise<void> {
+    if (dropped.length === 0) {
+      return;
+    }
+    try {
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId,
+          type: 'INBOUND_ATTACHMENTS_DROPPED',
+          payload: {
+            count: dropped.length,
+            files: dropped.map((file) => ({
+              fileName: file.fileName,
+              reason: file.reason,
+            })),
+          },
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Could not record dropped attachments for ticket ${ticketId}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Turn the inbound payload's attachments into buffers we can store.
+   *
+   * ⚠️ CARD 1.105: THIS USED TO THROW, AND IT IS THE FIRST CALL IN THE TRY
+   * BLOCK - ahead of the requester, the thread target and the ticket. So one
+   * file over a limit discarded the entire email, the person's words included,
+   * and on the mailbox path the message stayed in the Inbox and was re-offered
+   * every thirty seconds, failing identically each time.
+   *
+   * It now REPORTS instead of throwing: everything usable comes back in
+   * `accepted`, everything else in `rejected` with a reason a person can read.
+   * The caller stores the email either way and records what was dropped.
+   *
+   * ⚠️ The limits are lower than they sound. Ten attachments is three to five
+   * Outlook signature images plus a handful of screenshots, and one modern
+   * phone photo can exceed 10 MB on its own.
+   */
   async normalizeInboundEmailAttachments(
     attachments: InboundEmailAttachmentDto[] | undefined,
-  ): Promise<NormalizedInboundAttachment[]> {
+  ): Promise<NormalizedInboundAttachmentResult> {
     if (!attachments || attachments.length === 0) {
-      return [];
+      return { accepted: [], rejected: [] };
     }
 
     const maxCount = parsePositiveInt(
       this.config.get<string>('INBOUND_EMAIL_MAX_ATTACHMENTS'),
       10,
     );
-    if (attachments.length > maxCount) {
-      throw new BadRequestException(
-        `Inbound email includes ${attachments.length} attachments, which exceeds the limit of ${maxCount}`,
-      );
+    // Over the count limit: keep the first `maxCount` and report the rest.
+    // Dropping the overflow beats dropping the email.
+    const rejected: RejectedInboundAttachment[] = [];
+    const withinCount = attachments.slice(0, maxCount);
+    for (const overflow of attachments.slice(maxCount)) {
+      rejected.push({
+        fileName: overflow.fileName?.trim() || '(unnamed)',
+        reason: `more than ${maxCount} attachments on one email`,
+      });
     }
 
     const maxBytes = this.attachmentService.getAttachmentMaxBytes();
@@ -641,7 +773,7 @@ export class InboundEmailService {
     let totalBytes = 0;
 
     const normalized: NormalizedInboundAttachment[] = [];
-    for (const [index, attachment] of attachments.entries()) {
+    for (const [index, attachment] of withinCount.entries()) {
       const fileName = attachment.fileName.trim();
       const contentType = attachment.contentType.trim().toLowerCase();
       const declaredSize = attachment.sizeBytes;
@@ -649,34 +781,49 @@ export class InboundEmailService {
       const hasContentUrl = Boolean(attachment.contentUrl?.trim());
 
       if (hasBase64 === hasContentUrl) {
-        throw new BadRequestException(
-          `Inbound attachment ${index + 1} must include exactly one of contentBase64 or contentUrl`,
-        );
+        rejected.push({
+          fileName: fileName || `attachment ${index + 1}`,
+          reason: 'the message did not carry the file content',
+        });
+        continue;
       }
 
-      const buffer = hasBase64
-        ? this.decodeInboundAttachmentBase64(
-            attachment.contentBase64 ?? '',
-            fileName,
-          )
-        : await this.downloadInboundAttachmentBuffer(
-            attachment.contentUrl ?? '',
-            fileName,
-            declaredSize,
+      let buffer: Buffer;
+      try {
+        buffer = hasBase64
+          ? this.decodeInboundAttachmentBase64(
+              attachment.contentBase64 ?? '',
+              fileName,
+            )
+          : await this.downloadInboundAttachmentBuffer(
+              attachment.contentUrl ?? '',
+              fileName,
+              declaredSize,
+            );
+        if (buffer.length !== declaredSize) {
+          throw new BadRequestException(
+            `expected ${declaredSize} bytes, got ${buffer.length}`,
           );
-
-      if (buffer.length !== declaredSize) {
-        throw new BadRequestException(
-          `Inbound attachment "${fileName}" size mismatch: expected ${declaredSize} bytes, got ${buffer.length}`,
-        );
+        }
+        this.attachmentService.assertAttachmentWithinSizeLimit(buffer.length);
+      } catch (error) {
+        // ⚠️ ONE BAD FILE IS ONE REJECTION, not a lost email. The reason is
+        // kept human-readable because it is shown to an agent on the ticket.
+        rejected.push({
+          fileName: fileName || `attachment ${index + 1}`,
+          reason:
+            error instanceof Error ? error.message : 'could not be read',
+        });
+        continue;
       }
 
-      this.attachmentService.assertAttachmentWithinSizeLimit(buffer.length);
       totalBytes += buffer.length;
       if (totalBytes > maxAggregateBytes) {
-        throw new BadRequestException(
-          `Inbound email attachments exceed the aggregate limit of ${maxAggregateBytes} bytes`,
-        );
+        rejected.push({
+          fileName,
+          reason: `the email's attachments together exceed ${Math.round(maxAggregateBytes / (1024 * 1024))} MB`,
+        });
+        continue;
       }
 
       normalized.push({
@@ -687,7 +834,7 @@ export class InboundEmailService {
       });
     }
 
-    return normalized;
+    return { accepted: normalized, rejected };
   }
 
   decodeInboundAttachmentBase64(rawBase64: string, fileName: string) {
