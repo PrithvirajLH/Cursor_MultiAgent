@@ -437,34 +437,61 @@ IMPORTANT: Return ONLY the JSON object. Format:
       const pipelineLatencyMs = Date.now() - startTime;
       this.logger.log(`Ticket created: #${ticketResult.data.number} (${pipelineLatencyMs}ms total)`);
 
-      // Store the full pipeline trace as a TicketEvent
+      // ⚠️ Computed BEFORE the trace is written, because the trace is now one
+      // of the things it governs. It used to be read only by the logs below.
+      const redactLogs = await this.isSensitiveDepartment(
+        finalClassification.department.id,
+      );
+      // ⚠️ CARD 1.91: WHAT IS NOT IN THIS PAYLOAD IS THE POINT.
+      //
+      // This event used to carry `inputText` - the requester's message, word
+      // for word - plus their email and every agent's raw input, unconditionally
+      // and for every department. AuditLogPage renders unknown payload keys
+      // generically, key by key, and the audit search matches on payload, so
+      // those words were on screen and searchable for every admin whose scope
+      // reaches the ticket. On a sensitive department that is somebody's health
+      // or HR problem quoted verbatim, sitting in an admin console.
+      //
+      // Gone from here: `inputText`, `userEmail`, and each step's `input` -
+      // which embedded the same message, so dropping only `inputText` would
+      // have been theatre. `userId` stays: it is an opaque id, it is already on
+      // `createdById`, and without it the trace cannot be tied to a person.
+      //
+      // The diagnostic half lives in AiInferenceLog (recordSteps, below), which
+      // already redacts by department and deliberately does not store step
+      // inputs either. `correlationId` is the join between the two, and is what
+      // keeps this event useful rather than merely smaller.
       await this.prisma.ticketEvent.create({
         data: {
           ticketId: ticketResult.data.id,
           type: 'AI_PIPELINE_TRACE',
           payload: JSON.parse(JSON.stringify({
             userId: user.id,
-            userEmail: user.email,
             ticketId: ticketResult.data.id,
             ticketNumber: ticketResult.data.number,
-            inputText: input.text,
             channel: input.channel ?? 'PORTAL',
             totalLatencyMs: pipelineLatencyMs,
-            steps: pipelineSteps,
-            finalClassification,
-            aiAnalysis,
+            correlationId,
+            redacted: redactLogs,
+            steps: this.traceSteps(pipelineSteps),
+            // Both of these restate the model's conclusions rather than the
+            // requester's words, but on a sensitive department even the
+            // reasoning quotes the request back, and `aiAnalysis.who` falls
+            // back to the user's email when they have no display name.
+            ...(redactLogs ? {} : { finalClassification, aiAnalysis }),
           })),
           createdById: user.id,
         },
       });
 
-      // Durable, queryable observability alongside the TicketEvent trace. The
-      // TicketEvent payload stays for backwards compatibility with
-      // getAiAnalysis; these tables are what accuracy scoring reads. Both calls
-      // are fire-and-forget and never block or fail the intake.
-      const redactLogs = await this.isSensitiveDepartment(
-        finalClassification.department.id,
-      );
+      // Durable, queryable observability alongside the TicketEvent trace. These
+      // tables are what accuracy scoring reads. Both calls are fire-and-forget
+      // and never block or fail the intake.
+      //
+      // ⚠️ NOTE: `getAiAnalysis` does NOT read this event - it reads
+      // AI_CLASSIFICATION. The comment that used to sit here claimed the
+      // payload was kept for backwards compatibility with it, which was untrue
+      // and would have argued against ever trimming this.
       this.observability.recordSteps(
         correlationId,
         ticketResult.data.id,
@@ -740,6 +767,43 @@ IMPORTANT: Return ONLY the JSON object. Format:
     const { rawText, ...rest } = payload;
     void rawText;
     return rest;
+  }
+
+  /**
+   * The trace's steps, with the requester's words taken out (card 1.91).
+   *
+   * Timing, tool calls and status are the half that makes a trace worth having,
+   * and none of it is personal. Three fields go, and ALL THREE go every time:
+   *
+   *  - `input` was built as "User ID: <id>
+
+Request:
+<their message>", so
+   *    it carried the whole message a second time.
+   *  - `rawOutput` and `parsed` are the model's answer, and the model quotes
+   *    the request back - the intent extractor returns `rawText` verbatim.
+   *
+   * ⚠️ THE LAST TWO WERE ORIGINALLY KEPT FOR NON-SENSITIVE DEPARTMENTS, AND A
+   * LIVE RUN IS WHAT DISPROVED THAT. A ticket filed with a canary phrase came
+   * back with the phrase sitting in `parsed` and `rawOutput`, so the event
+   * still quoted the requester - just one field further down. Redaction by
+   * department was the wrong lever here: it left the words in place for most
+   * traffic, which is most of the exposure.
+   *
+   * Nothing is lost. AiInferenceLog stores both fields for every step under the
+   * same sensitivity rule, and that is the store this card names as their home;
+   * keeping a second copy on a TicketEvent only put them somewhere the audit UI
+   * renders generically and the audit search matches on. `correlationId` on the
+   * event is the way back to them.
+   */
+  private traceSteps(steps: Record<string, unknown>[]): Record<string, unknown>[] {
+    return steps.map((step) => {
+      const { input, rawOutput, parsed, ...rest } = step;
+      void input;
+      void rawOutput;
+      void parsed;
+      return rest;
+    });
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────
