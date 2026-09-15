@@ -10,6 +10,7 @@ import { AppController } from './app.controller';
 import { RouteThrottlerGuard } from './common/route-throttler.guard';
 import { AuthModule } from './auth/auth.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
+import { ApiDocsModule } from './api-docs/api-docs.module';
 import { AuditModule } from './audit/audit.module';
 import { AutomationModule } from './automation/automation.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
@@ -105,6 +106,7 @@ import { validateEnv } from './common/env.validation';
     }),
     AiModule,
     AnnouncementsModule,
+    ApiDocsModule,
     AuthModule,
     AuditModule,
     AutomationModule,

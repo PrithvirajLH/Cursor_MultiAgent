@@ -7,7 +7,9 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import type { Request, Response } from 'express';
 import express from 'express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { ApiDocsStore } from './api-docs/api-docs.store';
 import { correlationIdMiddleware } from './common/correlation-id.middleware';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter';
 
@@ -65,6 +67,31 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new PrismaExceptionFilter());
+
+  // ⚠️ CARD 2.6: the API description, generated from the running module graph.
+  //
+  // Built here because this is the only place the application instance exists,
+  // then handed to a @Global store that `GET /api/docs` reads. It is NOT mounted
+  // with `SwaggerModule.setup()`: that attaches an express handler outside Nest's
+  // controller layer, where AuthGuard and OwnerGuard never run, and protecting it
+  // would mean writing identity resolution a second time. See
+  // `api-docs.controller.ts` for why the interactive UI is not served either.
+  //
+  // `ignoreGlobalPrefix` is false, so documented paths carry the real `/api`
+  // prefix a caller has to use.
+  const openApiConfig = new DocumentBuilder()
+    .setTitle('Ticketing System API')
+    .setDescription(
+      'The endpoints this service exposes. Machine callers authenticate with ' +
+        'an issued key in the `x-api-key` header; people authenticate with a ' +
+        'bearer token. Restricted to owners.',
+    )
+    .setVersion('1.0')
+    .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'api-key')
+    .addBearerAuth()
+    .build();
+  const openApiDocument = SwaggerModule.createDocument(app, openApiConfig);
+  app.get(ApiDocsStore).set(openApiDocument as unknown as Record<string, unknown>);
 
   // Serve frontend SPA from "public" folder (same origin as API for single-app deploy)
   const publicDir = join(process.cwd(), 'public');
