@@ -12,7 +12,13 @@ export type ReadinessReport = {
   webPubSub: 'configured' | 'disabled';
   blobStorage: 'azure' | 'local-disk';
   attachmentScanner: 'configured' | 'bypass' | 'gate-off' | 'blocked';
-  aiPipeline: 'configured' | 'disabled';
+  /**
+   * Card 1.106: three states, not two. `disabled` has always meant "no
+   * credentials"; `switched-off` means the credentials are present and
+   * AI_PIPELINE_ENABLED=false. Those are different operational facts and they
+   * used to collapse into one word.
+   */
+  aiPipeline: 'configured' | 'disabled' | 'switched-off';
   slaWorker: SlaWorkerState;
   /**
    * Email outbox depth (card 1.32). `null` when the count could not be read -

@@ -135,7 +135,26 @@ export interface PipelineError {
   step: 'intent_extraction' | 'department_classification' | 'confidence_check' | 'ticket_generation';
 }
 
-export type PipelineResult = PipelineSuccess | PipelineClarification | PipelineError;
+/**
+ * The pipeline is switched off (card 1.106).
+ *
+ * ⚠️ ITS OWN STATUS, NOT AN ERROR, AND THAT DISTINCTION IS THE POINT. A
+ * disabled pipeline is working exactly as configured; an errored one is not.
+ * Collapsing them would mean an operator who switched the AI off could not tell
+ * their own change from a Foundry outage, and every caller would render a
+ * failure for a deliberate act.
+ */
+export interface PipelineDisabled {
+  status: 'disabled';
+  /** Why, in words a UI can show without interpretation. */
+  reason: string;
+}
+
+export type PipelineResult =
+  | PipelineSuccess
+  | PipelineClarification
+  | PipelineError
+  | PipelineDisabled;
 
 // ─── Debug Pipeline Types ───────────────────────────────────────────────────
 

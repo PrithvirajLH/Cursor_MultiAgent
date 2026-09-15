@@ -90,11 +90,28 @@ export class HealthService {
       : 'blocked';
   }
 
+  /**
+   * ⚠️ CARD 1.106: THE KILL SWITCH AND THE HEALTH SIGNAL ARE NO LONGER ONE
+   * LEVER. Turning the AI off used to mean blanking its credentials, which made
+   * this report say `disabled` - indistinguishable from a misconfigured
+   * environment. An operator could not switch the AI off without the readiness
+   * endpoint claiming something was wrong.
+   *
+   * `disabled` still means exactly what it meant - no credentials - so every
+   * configuration that exists today reports the same word it did before.
+   */
   private aiState(): ReadinessReport['aiPipeline'] {
-    return this.hasValue('AZURE_AI_FOUNDRY_ENDPOINT') &&
-      this.hasValue('AZURE_AI_FOUNDRY_API_KEY')
-      ? 'configured'
-      : 'disabled';
+    const configured =
+      this.hasValue('AZURE_AI_FOUNDRY_ENDPOINT') &&
+      this.hasValue('AZURE_AI_FOUNDRY_API_KEY');
+    if (!configured) {
+      return 'disabled';
+    }
+    const switchedOff =
+      (this.config.get<string>('AI_PIPELINE_ENABLED') ?? 'true')
+        .trim()
+        .toLowerCase() === 'false';
+    return switchedOff ? 'switched-off' : 'configured';
   }
 
   private hasValue(key: string): boolean {

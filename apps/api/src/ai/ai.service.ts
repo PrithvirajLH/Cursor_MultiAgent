@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { FoundryClientService } from './foundry-client.service';
 import { ToolRegistryService } from './tools/tool-registry.service';
+import type { PipelineDisabled } from './types/pipeline.types';
 import type { ToolCallContext } from './tools/tool-call-context';
 import { TicketToolsService } from './tools/ticket-tools.service';
 import { KbService } from '../kb/kb.service';
@@ -185,10 +186,47 @@ export class AiService {
 
   // ─── Main Pipeline ───────────────────────────────────────────────────
 
+  /**
+   * Whether the AI pipeline may run at all (card 1.106).
+   *
+   * ⚠️ THIS SETTING WAS A SWITCH WIRED TO NOTHING. It is set on the App
+   * Service and was read by no code anywhere, so anyone reading those settings
+   * would reasonably conclude the AI could be turned off from there. It could
+   * not. The only way to stop it was blanking the Foundry endpoint or key -
+   * destructive, fiddly under pressure, and it ALSO flipped
+   * /api/health/ready to report the pipeline misconfigured. The kill switch and
+   * the health signal were the same lever.
+   *
+   * ⚠️ DEFAULTS TO ENABLED WHEN UNSET, so no existing environment changes
+   * behaviour on deploy. Only the literal string "false" switches it off.
+   */
+  private isPipelineEnabled(): boolean {
+    return (
+      (this.config.get<string>('AI_PIPELINE_ENABLED') ?? 'true')
+        .trim()
+        .toLowerCase() !== 'false'
+    );
+  }
+
+  /** The one answer every caller gets when the switch is off. */
+  private disabledResult(): PipelineDisabled {
+    return {
+      status: 'disabled',
+      reason: 'The AI pipeline is switched off.',
+    };
+  }
+
   async classifyAndCreateTicket(
     input: PipelineInput,
     user: AuthUser,
   ): Promise<PipelineResult> {
+    // ⚠️ FIRST STATEMENT IN THE METHOD, AND IT HAS TO BE. A kill switch that
+    // still burns a Foundry call, or writes an AiInferenceLog row, is not a kill
+    // switch. Nothing above this line touches the model or the database.
+    if (!this.isPipelineEnabled()) {
+      this.logger.warn('AI pipeline refused: AI_PIPELINE_ENABLED=false');
+      return this.disabledResult();
+    }
     const startTime = Date.now();
     this.logger.log(`AI Pipeline Start — Input: "${input.text.substring(0, 80)}${input.text.length > 80 ? '...' : ''}"`);
 
@@ -562,6 +600,17 @@ IMPORTANT: Return ONLY the JSON object. Format:
   // ─── Debug Pipeline ──────────────────────────────────────────────────
 
   async debugPipeline(input: PipelineInput, user: AuthUser): Promise<DebugPipelineResult> {
+    // The debug page runs the same agents against the same quota, so the switch
+    // governs it too - otherwise "off" would mean "off for everyone but here".
+    if (!this.isPipelineEnabled()) {
+      this.logger.warn('AI debug pipeline refused: AI_PIPELINE_ENABLED=false');
+      return {
+        steps: [],
+        finalStatus: 'error',
+        totalLatencyMs: 0,
+        errorMessage: this.disabledResult().reason,
+      };
+    }
     const steps: StepResult[] = [];
     const startTime = Date.now();
     const toolContext: ToolCallContext = {

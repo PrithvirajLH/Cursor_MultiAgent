@@ -112,6 +112,26 @@ describe('HealthService.readiness', () => {
     expect(report.aiPipeline).toBe('configured');
   });
 
+  it('⚠️ reports switched-off distinctly from not-configured (card 1.106)', async () => {
+    // THE ASSERTION THE CARD EXISTS FOR. Turning the AI off used to mean
+    // blanking its credentials, which made this say `disabled` - the same word
+    // as a misconfigured environment. An operator could not switch the AI off
+    // without the readiness endpoint claiming something was wrong.
+    const report = await build({
+      AZURE_AI_FOUNDRY_ENDPOINT: 'https://e',
+      AZURE_AI_FOUNDRY_API_KEY: 'k',
+      AI_PIPELINE_ENABLED: 'false',
+    }).readiness();
+    expect(report.aiPipeline).toBe('switched-off');
+  });
+
+  it('⚠️ no credentials still reports `disabled`, whatever the switch says', async () => {
+    // Every configuration that exists today must report the word it did before.
+    // A missing endpoint is not "switched off", it is not set up.
+    const report = await build({ AI_PIPELINE_ENABLED: 'false' }).readiness();
+    expect(report.aiPipeline).toBe('disabled');
+  });
+
   it('marks status degraded when the database check fails', async () => {
     const report = await build({}, false).readiness();
     expect(report.db).toBe('error');
