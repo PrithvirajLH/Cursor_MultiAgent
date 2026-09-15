@@ -256,8 +256,14 @@ describe('One-click email actions (card 1.44)', () => {
       expect((await post(token).expect(201)).body).toEqual({
         outcome: 'confirm',
       });
+      // ⚠️ CARD 1.100 CHANGED THIS ANSWER, DELIBERATELY. The token is now
+      // single-use, so replaying the SAME link no longer reaches the transition
+      // at all - it is served the outcome that link already produced. "We have
+      // closed this for you" is true and is the same friendly page they saw the
+      // first time, which is what the card asks for. It used to say
+      // "alreadyDone", which was the transition refusing a second time.
       const second = await post(token).expect(201);
-      expect(second.body).toEqual({ outcome: 'alreadyDone' });
+      expect(second.body).toEqual({ outcome: 'confirm' });
       expect(await statusOf(ticket.id)).toBe('CLOSED');
       expect(
         await prisma.ticketEvent.count({
@@ -297,8 +303,10 @@ describe('One-click email actions (card 1.44)', () => {
       const ticket = await plantResolvedTicket();
       const token = tokenFor(ticket.id, 'reopen');
       await post(token).expect(201);
+      // Card 1.100: the same link replays its own outcome rather than
+      // re-attempting the move. See the note on the confirm case above.
       const second = await post(token).expect(201);
-      expect(second.body).toEqual({ outcome: 'alreadyDone' });
+      expect(second.body).toEqual({ outcome: 'reopen' });
       expect(await statusOf(ticket.id)).toBe('REOPENED');
     });
   });
@@ -469,12 +477,93 @@ describe('One-click email actions (card 1.44)', () => {
     });
 
     it('a second press is still harmless, and still says so', async () => {
+      // Card 1.100 made the token single-use, so the second press is served the
+      // outcome the first one produced - the same friendly page, not an error.
       const ticket = await plantResolvedTicket();
       const token = tokenFor(ticket.id, 'confirm');
       await post(token).expect(201);
       const again = await post(token).set('Accept', 'text/html').expect(201);
-      expect(again.text).toContain('already done');
+      expect(again.text).toContain('we have closed this');
+      expect(again.text).not.toContain('went wrong');
       expect(await statusOf(ticket.id)).toBe('CLOSED');
     });
   });
+
+  /**
+   * Card 1.100 - the link can be spent once.
+   *
+   * ⚠️ CARD 1.93 REMOVED THE URGENT HALF: a scanner can no longer act, because
+   * the page waits for a press. What remained is a PERSON replaying a link they
+   * still have, for up to the 30-day TTL. Closing a closed ticket is a no-op -
+   * but submitting a satisfaction score repeatedly is not, and CSAT is a number
+   * the desk is judged on.
+   */
+  describe('⚠️ a one-click link can only be spent once (card 1.100)', () => {
+    it('⚠️ a replayed rating link does not write a second rating', () => {
+      // THE CASE THE CARD EXISTS FOR.
+      return plantResolvedTicket().then(async (ticket) => {
+        const token = tokenFor(ticket.id, 'rate', 5);
+        expect((await post(token).expect(201)).body).toEqual({ outcome: 'rate' });
+        await post(token).expect(201);
+        await post(token).expect(201);
+        expect(await ratingsOf(ticket.id)).toHaveLength(1);
+      });
+    });
+
+    it('⚠️ a replay is shown the same friendly sentence, not an error', async () => {
+      const ticket = await plantResolvedTicket();
+      const token = tokenFor(ticket.id, 'rate', 4);
+      await post(token).expect(201);
+      const replay = await post(token).expect(201);
+      // The person did nothing wrong - they pressed a link twice.
+      expect(replay.body).toEqual({ outcome: 'rate' });
+      const page = await post(token).set('Accept', 'text/html').expect(201);
+      expect(page.text).toContain('Thanks for the rating');
+      expect(page.text).not.toContain('went wrong');
+      expect(page.text).not.toContain('not valid');
+    });
+
+    it('⚠️ the token is recorded as a HASH, never in the clear', async () => {
+      // A row that held the token would be a working credential sitting in the
+      // database - the thing this card is trying to stop being reusable.
+      const ticket = await plantResolvedTicket();
+      const token = tokenFor(ticket.id, 'confirm');
+      await post(token).expect(201);
+      const row = await prisma.emailActionUse.findFirstOrThrow({
+        where: { ticketId: ticket.id },
+        select: { tokenHash: true, action: true, outcome: true },
+      });
+      expect(row.tokenHash).not.toBe(token);
+      expect(row.tokenHash).toHaveLength(64);
+      expect(row.action).toBe('confirm');
+      expect(row.outcome).toBe('confirm');
+    });
+
+    it('⚠️ two simultaneous presses act exactly once', async () => {
+      // The unique index on tokenHash is the lock, and the claim is taken
+      // BEFORE the action - claiming afterwards would let both do the work and
+      // only then discover one was a duplicate.
+      const ticket = await plantResolvedTicket();
+      const token = tokenFor(ticket.id, 'rate', 3);
+      await Promise.all([post(token), post(token), post(token)]);
+      expect(await ratingsOf(ticket.id)).toHaveLength(1);
+      expect(
+        await prisma.emailActionUse.count({ where: { ticketId: ticket.id } }),
+      ).toBe(1);
+    });
+
+    it('a DIFFERENT link for the same ticket is still its own token', async () => {
+      // The non-vacuity half: single-use must not mean "one action per ticket
+      // ever". Confirm and reopen are different tokens and both are spendable -
+      // the second is refused by the transition rules, not by this table.
+      const ticket = await plantResolvedTicket();
+      await post(tokenFor(ticket.id, 'reopen')).expect(201);
+      const res = await post(tokenFor(ticket.id, 'confirm')).expect(201);
+      expect(res.body).toEqual({ outcome: 'noLongerPossible' });
+      expect(
+        await prisma.emailActionUse.count({ where: { ticketId: ticket.id } }),
+      ).toBe(2);
+    });
+  });
+
 });

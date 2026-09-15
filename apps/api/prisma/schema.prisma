@@ -816,6 +816,30 @@ model WebhookSubscription {
   @@index([isActive])
 }
 
+/**
+ * One use of a one-click email link (card 1.100).
+ *
+ * ⚠️ THE TOKEN IS STATELESS AND SIGNED, SO THIS TABLE IS THE ONLY THING THAT
+ * MAKES IT SINGLE-USE. Card 1.93 stopped a scanner acting; what remained was a
+ * person replaying a link they still have. Closing a closed ticket is a no-op,
+ * but submitting a satisfaction score repeatedly is not - CSAT is a number the
+ * desk is judged on.
+ *
+ * Only the HASH of the token is stored: the row must not itself be a working
+ * credential if the table is read.
+ */
+model EmailActionUse {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  ticketId  String
+  action    String
+  /** What the first use answered, so a replay can be shown the same sentence. */
+  outcome   String?
+  usedAt    DateTime @default(now())
+
+  @@index([ticketId])
+}
+
 model NotificationOutbox {
   id        String              @id @default(uuid())
   channel   NotificationChannel @default(EMAIL)

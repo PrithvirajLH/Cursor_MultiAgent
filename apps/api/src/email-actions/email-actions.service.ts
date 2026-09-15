@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TicketStatus, UserRole } from '@prisma/client';
@@ -90,10 +91,78 @@ export class EmailActionsService {
       teamId: null,
       primaryTeamId: null,
     } as AuthUser;
-    if (action === 'rate') {
-      return this.rate(ticketId, value ?? 0, actor);
+    // ⚠️ CARD 1.100: SPEND THE TOKEN BEFORE ACTING, NOT AFTER.
+    //
+    // The token is a stateless HMAC, so nothing in it can record that it has
+    // been used. Card 1.93 stopped a SCANNER acting; what remained was a person
+    // replaying a link they still have. Closing a closed ticket is a no-op, but
+    // submitting a satisfaction score repeatedly is not - CSAT is a number the
+    // desk is judged on, and `rate` is the reason this card exists.
+    //
+    // The INSERT is the lock: `tokenHash` is unique, so two simultaneous clicks
+    // race and exactly one wins. Claiming BEFORE performing is what makes that
+    // true - claiming afterwards would let both do the work and only then
+    // discover one was a duplicate.
+    const claim = await this.claimToken(token, ticketId, action);
+    if (!claim.won) {
+      // ⚠️ A replay is not an error and must not read like one: the person did
+      // nothing wrong, they pressed a link twice. They are shown the sentence
+      // the first use produced. `alreadyDone` is the fallback for the narrow
+      // window where the first use has claimed but not yet finished.
+      return claim.outcome ?? 'alreadyDone';
     }
-    return this.move(ticket, action, actor);
+    const outcome =
+      action === 'rate'
+        ? await this.rate(ticketId, value ?? 0, actor)
+        : await this.move(ticket, action, actor);
+    await this.recordOutcome(claim.tokenHash, outcome);
+    return outcome;
+  }
+
+  /** The stored form of a token. Never the token itself. */
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token, 'utf8').digest('hex');
+  }
+
+  /**
+   * Take ownership of this token, or discover somebody already has.
+   *
+   * ⚠️ ON CONFLICT DO NOTHING rather than a read-then-write: the read would
+   * leave a window in which two clicks both see nothing and both act, which is
+   * exactly the replay this card closes.
+   */
+  private async claimToken(
+    token: string,
+    ticketId: string,
+    action: string,
+  ): Promise<{ won: boolean; tokenHash: string; outcome?: EmailActionOutcome }> {
+    const tokenHash = this.hashToken(token);
+    try {
+      await this.prisma.emailActionUse.create({
+        data: { tokenHash, ticketId, action },
+      });
+      return { won: true, tokenHash };
+    } catch {
+      const existing = await this.prisma.emailActionUse.findUnique({
+        where: { tokenHash },
+        select: { outcome: true },
+      });
+      return {
+        won: false,
+        tokenHash,
+        outcome: (existing?.outcome as EmailActionOutcome | null) ?? undefined,
+      };
+    }
+  }
+
+  /** Remember what the first use answered, so a replay can be shown it. */
+  private async recordOutcome(
+    tokenHash: string,
+    outcome: EmailActionOutcome,
+  ): Promise<void> {
+    await this.prisma.emailActionUse
+      .update({ where: { tokenHash }, data: { outcome } })
+      .catch(() => undefined);
   }
 
   /**
