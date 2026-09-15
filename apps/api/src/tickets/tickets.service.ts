@@ -50,6 +50,7 @@ import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { InboundEmailService } from './inbound-email.service';
 import { OutboxService } from '../notifications/outbox.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { canSeeInternalMessages } from '../common/can-see-internal-messages.util';
 import { inlineAttachmentIds } from './inline-attachment-ids.util';
 import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
 import { stripQuotedReply } from '../notifications/quoted-reply.util';
@@ -1425,7 +1426,27 @@ export class TicketsService {
           orderBy: { createdAt: 'asc' },
         }),
         this.prisma.attachment.findMany({
-          where: { ticketId: id },
+          // ⚠️ CARD 1.83: A FILE PASTED INTO AN INTERNAL NOTE IS NOT LISTED TO
+          // THE REQUESTER. It used to be - with its filename, size and uploader
+          // - because Attachment linked only to `ticketId`. The audit confirmed
+          // at runtime that an agent's screenshot was downloadable by the person
+          // it was about.
+          //
+          // `messageId: null` is the rest of the world: every attachment that
+          // existed before this column, and every file attached to the ticket
+          // rather than to a message. Those stay visible, which is the half of
+          // this fix that stops it being worse than the bug.
+          where: {
+            ticketId: id,
+            ...(canSeeInternalMessages(user, ticket)
+              ? {}
+              : {
+                  OR: [
+                    { messageId: null },
+                    { message: { type: MessageType.PUBLIC } },
+                  ],
+                }),
+          },
           // Same door, same reason: whoever uploaded a file is usually an agent.
           include: {
             uploadedBy: { select: { id: true, email: true, displayName: true } },
@@ -1537,12 +1558,15 @@ export class TicketsService {
     // file it, and "staff will not raise tickets to their own department" is
     // not a mitigation that exists. Relationship now beats rank, the same way
     // card 1.22's guard works on the send path.
-    const isRequester = accessibleTicket.requesterId === user.id;
+    // ⚠️ CARD 1.83 MOVED THIS DECISION INTO `canSeeInternalMessages`, UNCHANGED.
+    // The files pasted into internal notes need the identical rule, and writing
+    // it twice is how the two drift - a later fix to one would leave a
+    // screenshot downloadable by the person it is about.
     const where: Prisma.TicketMessageWhereInput = {
       ticketId,
-      ...(user.role === UserRole.EMPLOYEE || isRequester
-        ? { type: MessageType.PUBLIC }
-        : {}),
+      ...(canSeeInternalMessages(user, accessibleTicket)
+        ? {}
+        : { type: MessageType.PUBLIC }),
     };
 
     const messages = await this.prisma.ticketMessage.findMany({
@@ -2294,6 +2318,22 @@ export class TicketsService {
       });
 
       await this.ensureFollower(ticketId, user.id, tx);
+
+      // ⚠️ CARD 1.83: LINK THE FILES THIS MESSAGE CARRIES, HERE AND NOT AT
+      // UPLOAD. The handoff says "populate it on upload", which cannot work:
+      // an attachment is uploaded to the TICKET and gets its id BEFORE any
+      // message exists, and the editor only pastes that id into the body
+      // afterwards. Message creation is the first moment the link is known.
+      //
+      // Scoped to this ticket, always - the ids come out of text the author
+      // typed, so an id belonging to another ticket must not be actionable.
+      const carriedIds = inlineAttachmentIds(createdMessage.body);
+      if (carriedIds.length > 0) {
+        await tx.attachment.updateMany({
+          where: { id: { in: carriedIds }, ticketId, messageId: null },
+          data: { messageId: createdMessage.id },
+        });
+      }
 
       return createdMessage;
     });

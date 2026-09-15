@@ -1,3 +1,5 @@
+import { MessageType } from '@prisma/client';
+import { canSeeInternalMessages } from '../common/can-see-internal-messages.util';
 import {
   BadRequestException,
   ForbiddenException,
@@ -250,6 +252,9 @@ export class TicketAttachmentService {
         ticket: {
           include: { accessGrants: true },
         },
+        // Card 1.83 needs the message's visibility to decide, and `requesterId`
+        // off the ticket to know who is asking.
+        message: { select: { type: true } },
       },
     });
 
@@ -258,6 +263,25 @@ export class TicketAttachmentService {
     }
 
     if (!this.accessControl.canViewTicket(user, attachment.ticket)) {
+      throw new ForbiddenException('No access to this attachment');
+    }
+
+    // ⚠️ CARD 1.83: SEEING THE TICKET IS NOT SEEING EVERY FILE ON IT.
+    //
+    // This gated on `canViewTicket` alone, so a screenshot pasted into an
+    // INTERNAL note was downloadable by the requester - by the person it was
+    // about. Hiding it from the listing is not enough on its own: the id is
+    // guessable from a redacted message body and the route was the only thing
+    // in the way.
+    //
+    // The same rule the message list uses, called rather than restated.
+    if (
+      attachment.messageId &&
+      attachment.message?.type === MessageType.INTERNAL &&
+      !canSeeInternalMessages(user, attachment.ticket)
+    ) {
+      // 403 and not 404: the person CAN see the ticket, so its existence is
+      // not a secret from them - only this file is.
       throw new ForbiddenException('No access to this attachment');
     }
 
