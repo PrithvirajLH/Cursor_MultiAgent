@@ -21,8 +21,12 @@ const past = () => Math.floor(Date.now() / 1000) - 60;
  * Microsoft Defender Safe Links, antivirus gateways and link-preview bots fetch
  * URLs out of email before a human ever reads the message. If the link acted on
  * GET, the scanner would confirm every resolved ticket and set whichever star it
- * fetched first - and it would look exactly like the feature working. The action
- * is a POST that only the page's script makes, and a scanner runs no script.
+ * fetched first - and it would look exactly like the feature working.
+ *
+ * ⚠️ CARD 1.93 TIGHTENED THE SECOND HALF OF THAT. The action is a POST, and the
+ * page used to make it from its script on load - safe only while "a scanner runs
+ * no script" held. It does not hold for detonation sandboxes, which open links
+ * in a real headless browser. The POST now needs a press; see the last describe.
  */
 describe('One-click email actions (card 1.44)', () => {
   const prisma = getPrisma();
@@ -380,6 +384,97 @@ describe('One-click email actions (card 1.44)', () => {
       expect(resolved.pathname).toBe('/api/email-actions/action.js');
       // And that path really answers, from this same app.
       await request(server).get(resolved.pathname).expect(200);
+    });
+  });
+
+  /**
+   * Card 1.93 — the page waits for a press.
+   *
+   * ⚠️ WHY THE EXISTING SCANNER TESTS ABOVE ARE NOT ENOUGH. They prove a bare
+   * GET writes nothing, which was the whole defence: the POST fired from the
+   * script on load, and the reasoning was that a scanner runs no script. Link
+   * detonation sandboxes DO run it, in a real headless browser, and every one
+   * of them would have closed the ticket and looked like a happy user. A
+   * server-side test cannot execute the script, so the property is asserted
+   * where it lives - in the source of the file the browser is handed.
+   */
+  describe('⚠️ nothing happens until somebody presses the button (card 1.93)', () => {
+    it('⚠️ the script has no fetch outside the submit handler', () => {
+      // THE REGRESSION ASSERTION. Hoisting the fetch back out would read as a
+      // tidy-up and would silently re-arm every scanner that runs scripts.
+      const script = buildEmailActionScript();
+      const listenerAt = script.indexOf("addEventListener('submit'");
+      expect(listenerAt).toBeGreaterThan(-1);
+      expect(script.indexOf('fetch(')).toBeGreaterThan(listenerAt);
+      expect(script.split('fetch(').length - 1).toBe(1);
+    });
+
+    it('the page serves a real form with a submit button', async () => {
+      const ticket = await plantResolvedTicket();
+      const page = await get(tokenFor(ticket.id, 'confirm')).expect(200);
+      expect(page.text).toContain('<form id="act" method="post" action="">');
+      expect(page.text).toContain('<button type="submit"');
+      // And it says so before it does anything, rather than claiming success.
+      expect(page.text).toContain('Please confirm.');
+      expect(page.text).not.toContain('we have closed this');
+    });
+
+    it('⚠️ serving that page still writes nothing', async () => {
+      // The card's named test, re-stated against the page that now has a form:
+      // rendering a button must not be the same as pressing it.
+      const ticket = await plantResolvedTicket();
+      await get(tokenFor(ticket.id, 'confirm')).expect(200);
+      await get(tokenFor(ticket.id, 'reopen')).expect(200);
+      expect(await statusOf(ticket.id)).toBe('RESOLVED');
+      expect(
+        await prisma.ticketEvent.count({
+          where: { ticketId: ticket.id, type: 'TICKET_ACTION_FROM_EMAIL' },
+        }),
+      ).toBe(0);
+    });
+
+    it('⚠️ the press still closes the ticket', async () => {
+      // The non-vacuity half. A gate that never opens passes everything above
+      // and breaks the feature the owner asked for.
+      const ticket = await plantResolvedTicket();
+      const res = await post(tokenFor(ticket.id, 'confirm')).expect(201);
+      expect((res.body as { outcome: string }).outcome).toBe('confirm');
+      expect(await statusOf(ticket.id)).toBe('CLOSED');
+    });
+
+    it('a form post from a browser with no JavaScript works, and gets a page', async () => {
+      // The degraded path: the same press, submitted natively. Without this the
+      // no-JS user is shown raw JSON.
+      const ticket = await plantResolvedTicket();
+      const res = await post(tokenFor(ticket.id, 'confirm'))
+        .set('Accept', 'text/html,application/xhtml+xml')
+        .expect(201);
+      expect(res.headers['content-type']).toContain('text/html');
+      expect(res.text).toContain('we have closed this');
+      expect(res.text).not.toContain('<form');
+      expect(await statusOf(ticket.id)).toBe('CLOSED');
+    });
+
+    it('an expired link says so plainly, on both paths, and changes nothing', async () => {
+      const ticket = await plantResolvedTicket();
+      const expired = tokenFor(ticket.id, 'confirm', undefined, past());
+      const asJson = await post(expired).expect(201);
+      expect((asJson.body as { outcome: string }).outcome).toBe('expired');
+      const asPage = await post(expired)
+        .set('Accept', 'text/html')
+        .expect(201);
+      expect(asPage.text).toContain('This link has expired');
+      expect(asPage.text).not.toContain('we have closed this');
+      expect(await statusOf(ticket.id)).toBe('RESOLVED');
+    });
+
+    it('a second press is still harmless, and still says so', async () => {
+      const ticket = await plantResolvedTicket();
+      const token = tokenFor(ticket.id, 'confirm');
+      await post(token).expect(201);
+      const again = await post(token).set('Accept', 'text/html').expect(201);
+      expect(again.text).toContain('already done');
+      expect(await statusOf(ticket.id)).toBe('CLOSED');
     });
   });
 });

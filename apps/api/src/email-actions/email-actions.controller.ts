@@ -1,10 +1,21 @@
-import { Controller, Get, Header, Param, Post } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Header,
+  Headers,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { Public } from '../auth/public.decorator';
 import { ThrottlePolicy } from '../common/throttle-policy.decorator';
 import {
+  buildEmailActionOutcomePage,
   buildEmailActionPage,
   buildEmailActionScript,
   EMAIL_ACTION_SCRIPT_PATH,
+  type EmailActionMessageKey,
 } from './email-action-page.util';
 import { EmailActionsService } from './email-actions.service';
 
@@ -18,9 +29,11 @@ import { EmailActionsService } from './email-actions.service';
  *    Defender Safe Links and antivirus gateways fetch email URLs before a human
  *    reads them; a link that acted on GET would auto-confirm every resolved
  *    ticket and set a rating nobody gave.
- *  - `POST /api/email-actions/:token` performs the action. The page's script
- *    makes that call on load, so the human clicks once and a scanner - which
- *    runs no script - does nothing.
+ *  - `POST /api/email-actions/:token` performs the action, and card 1.93 made it
+ *    reachable ONLY by pressing the button on that page. It used to fire from
+ *    the script on load, which assumed a scanner runs no script - and the
+ *    sandboxes that detonate links in a real headless browser do. A press is
+ *    the one thing they do not do.
  *  - The response says only what happened, in one word the page turns into a
  *    sentence. No subject, no reference, no name, no status.
  *
@@ -81,12 +94,33 @@ export class EmailActionsController {
     return buildEmailActionPage(`/api/email-actions/${EMAIL_ACTION_SCRIPT_PATH}`);
   }
 
-  /** The write. One action, one ticket, and nothing about it in the answer. */
+  /**
+   * The write. One action, one ticket, and nothing about it in the answer.
+   *
+   * ⚠️ Card 1.93: reached only by pressing the button. Two callers arrive here
+   * and they want different things back - the page's `fetch` asks for JSON and
+   * renders the sentence itself, while a browser with no JavaScript submits the
+   * form natively and would otherwise be shown raw JSON. The Accept header is
+   * the only difference between them, and it decides nothing but the rendering:
+   * the action taken is identical, so a client lying about it gains nothing.
+   */
   @Post(':token')
   @Public()
   @ThrottlePolicy('webhook')
-  async perform(@Param('token') token: string) {
+  async perform(
+    @Param('token') token: string,
+    @Headers('accept') accept: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ outcome: string } | string> {
     const outcome = await this.emailActions.perform(token);
+    // A native form post sends `text/html,...`; the page's fetch asks for JSON
+    // explicitly, and a bare API client sends neither. Only the first gets HTML.
+    if (accept?.includes('text/html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      return buildEmailActionOutcomePage(outcome as EmailActionMessageKey);
+    }
     return { outcome };
   }
 }
