@@ -75,6 +75,25 @@ export class InboundEmailService {
   /** Layer two of loop protection: more than this from one sender on one
    *  ticket inside the window and we stop answering, without ever bouncing. */
   private static readonly INBOUND_RATE_LIMIT = 5;
+  /**
+   * How long a reservation may sit unfinished before another delivery may take
+   * it over (card 1.84).
+   *
+   * ⚠️ CHOSEN DELIBERATELY, AND THE TRADE IS IN BOTH DIRECTIONS. Too short
+   * and a message that is merely slow gets processed twice, producing a
+   * duplicate ticket. Too long and a wedged message stays stuck, with the Graph
+   * worker retrying it every 30 seconds to no effect.
+   *
+   * Ten minutes, for two reasons. The input is ingestion latency: one inbound
+   * message reserves, classifies, creates the ticket, stores attachments and
+   * queues notifications, and even a slow run of that is tens of seconds - so
+   * ten minutes is more than an order of magnitude of headroom before anything
+   * is called abandoned. And it is the SAME window
+   * `email-outbox-sweeper.service.ts` already uses to reclaim an abandoned
+   * PROCESSING row, so an operator has one number to remember rather than two.
+   */
+  private static readonly RESERVATION_STALE_MS = 10 * 60 * 1000;
+
   private static readonly INBOUND_RATE_WINDOW_MS = 5 * 60 * 1000;
 
   constructor(
@@ -1160,6 +1179,39 @@ export class InboundEmailService {
     }
 
     if (!existing[0].ticketId) {
+      // ⚠️ CARD 1.84: A RESERVATION NOBODY CLEARED USED TO BLOCK THE MESSAGE
+      // FOREVER.
+      //
+      // The row is inserted with a null `ticketId` to claim the message, and is
+      // released only in the `catch`. A process exit between the INSERT and
+      // completion - a deploy, an OOM, a killed container - leaves a row that
+      // nothing clears. The Graph worker then re-offers that message every 30
+      // seconds and every attempt conflicts here, forever. Recovery was editing
+      // the database by hand.
+      //
+      // Reclaimed the way `outbox.service.ts:reclaimStaleProcessing` reclaims an
+      // abandoned PROCESSING row, rather than inventing a second mechanism.
+      //
+      // The UPDATE is the lock: it is conditional on the row STILL being unowned
+      // and STILL being stale, so two workers racing to reclaim cannot both win -
+      // the loser matches nothing and falls through to the conflict below.
+      const staleBefore = new Date(
+        Date.now() - InboundEmailService.RESERVATION_STALE_MS,
+      );
+      const reclaimed = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        UPDATE "InboundEmailReceipt"
+        SET "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "messageId" = ${messageId}
+          AND "ticketId" IS NULL
+          AND "updatedAt" < ${staleBefore}
+        RETURNING "id"
+      `;
+      if (reclaimed[0]?.id) {
+        this.logger.warn(
+          `Reclaimed a stale inbound reservation for messageId ${messageId}; a previous attempt did not finish`,
+        );
+        return { mode: 'reserved', id: reclaimed[0].id };
+      }
       throw new ConflictException(
         'Inbound email with this messageId is still processing',
       );
