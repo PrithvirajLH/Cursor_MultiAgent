@@ -10,9 +10,6 @@ import { AppController } from './app.controller';
 import { RouteThrottlerGuard } from './common/route-throttler.guard';
 import { AuthModule } from './auth/auth.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
-import { ApiDocsModule } from './api-docs/api-docs.module';
-import { ApiKeysModule } from './api-keys/api-keys.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
 import { AuditModule } from './audit/audit.module';
 import { AutomationModule } from './automation/automation.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
@@ -40,6 +37,16 @@ import { IdempotencyInterceptor } from './common/idempotency.interceptor';
 import { AiModule } from './ai/ai.module';
 import { CsatModule } from './csat/csat.module';
 import { EmailActionsModule } from './email-actions/email-actions.module';
+// ⚠️ CARD 2.6: THESE THREE IMPORT STATEMENTS MUST STAY LAST.
+// ES modules evaluate in the order their import statements appear, not in the
+// order of the `imports` array below. Adding these near the top moved when
+// notifications.module.ts first begins evaluating, and the app then failed to
+// boot with "TicketsModule imports[1] is undefined" - a latent import cycle
+// that was harmless only because of the previous ordering. Typecheck, 738 unit
+// tests and a full build all passed; only starting the app found it.
+import { ApiDocsModule } from './api-docs/api-docs.module';
+import { ApiKeysModule } from './api-keys/api-keys.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 // Resolve env file from cwd (apps/api) to work in both dev and production builds
 const envFile = process.env.NODE_ENV === 'test' ? '.env.test' : '.env';
@@ -110,7 +117,6 @@ import { validateEnv } from './common/env.validation';
     AnnouncementsModule,
     ApiDocsModule,
     ApiKeysModule,
-    WebhooksModule,
     AuthModule,
     AuditModule,
     AutomationModule,
@@ -136,6 +142,7 @@ import { validateEnv } from './common/env.validation';
     AgentsAdminModule,
     TeamsModule,
     TicketsModule,
+    WebhooksModule,
     UsersModule,
   ],
   controllers: [AppController],
