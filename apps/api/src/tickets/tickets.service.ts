@@ -30,6 +30,7 @@ import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
 import { availableUserFilter } from './available-user-filter.util';
 import { leastLoadedMember } from './least-loaded-member.util';
+import { nextRoundRobinMember } from './next-round-robin-member.util';
 import { ticketRefWhere } from './ticket-ref.util';
 import {
   sameCountBoundaries,
@@ -2668,10 +2669,12 @@ export class TicketsService {
       });
     }
     const previousAssigneeId = ticket.assigneeId;
+    const nextStatus = this.statusAfterUnassign(ticket.status);
+    const statusChanged = nextStatus !== ticket.status;
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.ticket.update({
         where: { id: ticketId },
-        data: { assigneeId: null },
+        data: { assigneeId: null, status: nextStatus },
       });
       await tx.ticketEvent.create({
         data: {
@@ -2681,6 +2684,22 @@ export class TicketsService {
           createdById: user.id,
         },
       });
+      if (statusChanged) {
+        // ⚠️ A STATUS THAT CHANGES WITH NO EVENT IS INVISIBLE IN THE HISTORY,
+        // which is the whole of card 1.95. Written exactly as the assign path
+        // writes it at :2809.
+        await tx.ticketEvent.create({
+          data: {
+            ticketId,
+            type: 'TICKET_STATUS_CHANGED',
+            payload: {
+              from: ticket.status,
+              to: nextStatus,
+            },
+            createdById: user.id,
+          },
+        });
+      }
       return tx.ticket.findUniqueOrThrow({
         where: { id: ticketId },
         include: { requester: true, assignee: true, assignedTeam: true },
@@ -2699,6 +2718,46 @@ export class TicketsService {
       }),
     );
     return updated;
+  }
+
+  /**
+   * Where a ticket lands when its assignee is taken off it (card 1.111).
+   *
+   * ⚠️ THE ASYMMETRY WAS THE TELL. `applyAssigneeInTx` promotes NEW, TRIAGED
+   * and REOPENED to ASSIGNED on the way in, and the journey out had no
+   * equivalent at all - `unassign` wrote `{ assigneeId: null }` and never
+   * touched status. So an IN_PROGRESS ticket became an IN_PROGRESS ticket with
+   * nobody on it: the queue says somebody is working on it and nobody is.
+   *
+   * TRIAGED, not NEW. The ticket HAS been looked at - it reached a team and a
+   * priority - and NEW would throw that away and misreport the backlog. TRIAGED
+   * also has a legal move to ASSIGNED, so assign/unassign/assign round-trips
+   * cleanly.
+   *
+   * ⚠️ THIS IS THE MIRROR OF THE PROMOTE LIST, NOT A SECOND TABLE. Two
+   * statuses in, deliberately:
+   *   - WAITING_ON_REQUESTER and WAITING_ON_VENDOR are NOT demoted. They record
+   *     who is being waited on, which is still true with nobody assigned, and
+   *     erasing it would lose information the desk uses.
+   *   - RESOLVED and CLOSED are NOT touched. Unassigning a finished ticket must
+   *     not reopen it - that is card 1.80's bug in a new dress.
+   *
+   * ⚠️ AND THE TRANSITION MAP DOES NOT SANCTION THIS MOVE. `DEFAULT_STATUS_
+   * TRANSITIONS` has no edge from ASSIGNED or IN_PROGRESS back to TRIAGED - it
+   * has no way back to a queue status at all. `unassign` writes directly and
+   * never consulted the map, so nothing here changes behaviour, but the
+   * inconsistency is real and it is NOT fixed here: adding the reverse edges is
+   * audit F-079 and a separate decision. Flagged in the batch report, not
+   * improvised.
+   */
+  private statusAfterUnassign(current: TicketStatus): TicketStatus {
+    const unassignStatusDemote: TicketStatus[] = [
+      TicketStatus.ASSIGNED,
+      TicketStatus.IN_PROGRESS,
+    ];
+    return unassignStatusDemote.includes(current)
+      ? TicketStatus.TRIAGED
+      : current;
   }
 
   async applyAssigneeInTx(
@@ -5156,16 +5215,38 @@ export class TicketsService {
           team.lastAssignedUserId,
         );
       } else {
-        let nextMember = members[0];
-        if (team.lastAssignedUserId) {
-          const currentIndex = members.findIndex(
-            (member) => member.userId === team.lastAssignedUserId,
-          );
-          if (currentIndex >= 0) {
-            nextMember = members[(currentIndex + 1) % members.length];
-          }
+        // ⚠️ CARD 1.112. The pointer holder may not be in `members`: they are
+        // away, or they have left the team. Their join position is read only in
+        // that case, and inside the same `FOR UPDATE` transaction as everything
+        // else here - a position read outside the lock would be stale in
+        // exactly the case the lock exists for.
+        //
+        // ⚠️ `members` AND ITS `orderBy` ARE UNTOUCHED, WHICH MATTERS.
+        // `leastLoadedMember` breaks its ties by walking this same list from the
+        // pointer, so re-sorting it here would silently change LEAST_LOADED -
+        // and card 2.1 is deployed but switched off, so nothing in production
+        // would have caught it.
+        let pointerJoinedAt: Date | null = null;
+        const pointerIsAvailable = members.some(
+          (member) => member.userId === team.lastAssignedUserId,
+        );
+        if (team.lastAssignedUserId && !pointerIsAvailable) {
+          const pointerMembership = await client.teamMember.findUnique({
+            where: {
+              teamId_userId: {
+                teamId,
+                userId: team.lastAssignedUserId,
+              },
+            },
+            select: { createdAt: true },
+          });
+          pointerJoinedAt = pointerMembership?.createdAt ?? null;
         }
-        nextUserId = nextMember.userId;
+        nextUserId = nextRoundRobinMember(
+          members,
+          team.lastAssignedUserId,
+          pointerJoinedAt,
+        );
       }
 
       if (!nextUserId) {
