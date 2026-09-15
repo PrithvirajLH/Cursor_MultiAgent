@@ -157,21 +157,28 @@ describe('issued API keys (card 2.6)', () => {
     it('⚠️ narrows, and cannot widen', async () => {
       // The scope is intersected with the service user's real memberships, so a
       // key can only ever see less than the user it acts as.
+      // ⚠️ ASSERTED ON WHAT THE GUARD RESOLVED, NOT ON LIST ROWS. The first
+      // version read `assignedTeamId` off each ticket in the list response and
+      // got `undefined` - that field is not part of the list item shape, so the
+      // assertion was vacuous in the worst way: it would have passed for a key
+      // with no scope at all.
+      //
+      // `GET /auth/me` answers with the identity the guard built, which is
+      // exactly the thing team scope narrows.
       const scoped = await mint('scoped', fixtureUserIds.agent, fixtureTeamIds.it);
       const res = await request(server)
-        .get('/api/tickets?pageSize=100')
+        .get('/api/auth/me')
         .set('x-api-key', scoped.key)
         .expect(200);
-      const teams = new Set(
-        (res.body as { data: { assignedTeamId: string | null }[] }).data.map(
-          (ticket) => ticket.assignedTeamId,
-        ),
-      );
-      for (const teamId of teams) {
-        if (teamId !== null) {
-          expect(teamId).toBe(fixtureTeamIds.it);
-        }
-      }
+      const me = res.body as {
+        teamId?: string | null;
+        memberTeamIds?: string[];
+        data?: { teamId?: string | null; memberTeamIds?: string[] };
+      };
+      const identity = me.data ?? me;
+      expect(identity.teamId).toBe(fixtureTeamIds.it);
+      // The scope narrows the membership list to exactly the scoped team.
+      expect(identity.memberTeamIds).toEqual([fixtureTeamIds.it]);
     });
 
     it('refuses a scope the service user is not a member of', async () => {

@@ -78,13 +78,31 @@ describe('One-click email actions (card 1.44)', () => {
       select: { payload: true },
     });
 
+  // ⚠️ THE WEBHOOK THROTTLE IS 30 REQUESTS A MINUTE, AND THIS FILE NOW MAKES
+  // MORE THAN THAT. `/api/email-actions/:token` carries @ThrottlePolicy('webhook'),
+  // every request in this suite shares one anonymous bucket, and card 1.100's
+  // replay tests pushed the file past the limit - eight tests failed with 429
+  // rather than anything to do with the code.
+  //
+  // Raised here rather than trimmed away, because the replay assertions are the
+  // point of card 1.100 and the rate limit has its own suite
+  // (security.rate-limit.spec.ts). setup-tests.ts deletes this key precisely so
+  // a spec can own it.
+  const previousWebhookLimit = process.env.RATE_LIMIT_WEBHOOK_LIMIT;
+
   beforeAll(async () => {
+    process.env.RATE_LIMIT_WEBHOOK_LIMIT = '500';
     resetTestDb();
     app = await createTestApp();
     server = app.getHttpServer() as SupertestApp;
   });
 
   afterAll(async () => {
+    if (previousWebhookLimit === undefined) {
+      delete process.env.RATE_LIMIT_WEBHOOK_LIMIT;
+    } else {
+      process.env.RATE_LIMIT_WEBHOOK_LIMIT = previousWebhookLimit;
+    }
     await app.close();
     await disconnectPrisma();
   });

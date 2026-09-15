@@ -1406,14 +1406,30 @@ export class TicketsService {
     const id = ticket.id;
     const [followers, attachments, customFieldValues, links] =
       await Promise.all([
+        // ⚠️ CARD 1.96, AND THE INTEGRATION TEST IS WHAT FOUND THIS SECOND DOOR.
+        // Narrowing `assignee` was not enough: the assigned agent is also a
+        // FOLLOWER, and `include: { user: true }` here handed back their whole
+        // directory record - entraObjectId, department, location - to any
+        // requester opening their own ticket. The first fix closed the front
+        // door and left this one open, and only asserting on the whole
+        // serialised payload showed it.
         this.prisma.ticketFollower.findMany({
           where: { ticketId: id },
-          include: { user: true },
+          select: {
+            id: true,
+            ticketId: true,
+            userId: true,
+            createdAt: true,
+            user: { select: { id: true, email: true, displayName: true } },
+          },
           orderBy: { createdAt: 'asc' },
         }),
         this.prisma.attachment.findMany({
           where: { ticketId: id },
-          include: { uploadedBy: true },
+          // Same door, same reason: whoever uploaded a file is usually an agent.
+          include: {
+            uploadedBy: { select: { id: true, email: true, displayName: true } },
+          },
           orderBy: { createdAt: 'asc' },
         }),
         this.prisma.customFieldValue.findMany({

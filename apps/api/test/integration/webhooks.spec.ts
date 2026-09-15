@@ -133,13 +133,19 @@ describe('outbound webhooks (card 2.6)', () => {
         where: { channel: NotificationChannel.WEBHOOK, ticketId },
         select: { body: true, toEmail: true, eventType: true },
       });
+      // ⚠️ EARLIER TESTS IN THIS FILE LEFT THEIR OWN SUBSCRIPTIONS ACTIVE, so
+      // one ticket fans out to several rows. The first version of this asserted
+      // `toEmail === created.url` on EVERY row and failed against a
+      // subscription made three tests earlier - a test defect, not a fanout bug.
+      // What matters is that this subscription got one, and that NO row carries
+      // the canary.
       expect(rows.length).toBeGreaterThan(0);
+      expect(rows.map((row) => row.toEmail)).toContain(created.url);
       for (const row of rows) {
         expect(row.body).not.toContain('CANARY_SUBJECT_7781');
         expect(row.body).not.toContain('CANARY_BODY_7781');
         expect(row.body).toContain('"version":1');
         expect(row.eventType).toBe('ticket.created');
-        expect(row.toEmail).toBe(created.url);
       }
     });
 
