@@ -285,7 +285,23 @@ describe('Automation actions: tags, category, follower, email (card 1.4)', () =>
   });
 
   it('6: a rule whose later action fails sends no email from an earlier send_email (post-commit ordering)', async () => {
-    // assign_user with a user outside the ticket team throws inside the transaction at run time.
+    // assign_user with an ineligible user throws inside the transaction at run
+    // time, which is what this test needs: the point is the ORDERING - a later
+    // action failing must leave no email from an earlier send_email.
+    //
+    // ⚠️ CARD 1.110 CHANGED WHICH RULE REFUSES, NOT WHETHER IT REFUSES.
+    // `otherRequester` is an EMPLOYEE who is also outside the team, so this
+    // used to be caught by the team-membership check. Employees are now
+    // refused outright, on every path including team-less tickets, so the
+    // refusal happens a few lines earlier and says something more specific.
+    // Both of this test's real assertions - the run failed, no email was sent -
+    // are unchanged.
+    //
+    // ⚠️ AND THIS WAS THE ONLY ASSERTION IN THE REPO ON THE MEMBERSHIP
+    // MESSAGE, so changing it here would have silently dropped that rule's
+    // coverage. It is now covered by `src/tickets/assignee-eligibility.spec.ts`,
+    // with an ACTIVE AGENT off the team - a fixture an employee could never
+    // stand in for.
     const ruleId = await createRule('ACT6', [
       {
         type: 'send_email',
@@ -299,7 +315,7 @@ describe('Automation actions: tags, category, follower, email (card 1.4)', () =>
     const execution = await waitForExecution(ruleId, ticket.id);
     expect(execution.success).toBe(false);
     expect(execution.error).toContain(
-      'Assignee must belong to the ticket team',
+      'is an employee and cannot be assigned tickets',
     );
     const rows = await getPrisma().notificationOutbox.count({
       // Scoped to the rule's own email by card 1.42: a portal ticket now also

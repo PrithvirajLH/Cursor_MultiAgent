@@ -152,6 +152,21 @@ describe('who a ticket can be assigned to (card 1.110)', () => {
     expect(built.updates[0]).toMatchObject({ assigneeId: 'owner' });
   });
 
+  it('⚠️ an ACTIVE AGENT who is not on the ticket team is still refused', async () => {
+    // ⚠️ THIS COVERAGE MOVED HERE, IT DID NOT EXIST BEFORE.
+    // `automation.actions.spec.ts:302` held the repo's ONLY assertion on the
+    // membership message, and its fixture was an EMPLOYEE - so card 1.110's
+    // employee rule started refusing that case one step earlier and the
+    // membership rule lost its only test. An active agent cannot be refused by
+    // the employee or isActive rules, so this reaches the membership check and
+    // nothing else can account for the failure.
+    const built = build(null);
+    await expect(assign(built, teamed, 'agent')).rejects.toThrow(
+      /must belong to the ticket team/,
+    );
+    expect(built.updates).toHaveLength(0);
+  });
+
   it('a normal assignment to a team member is completely unaffected', async () => {
     const built = build({ id: 'm1' });
     await assign(built, teamed, 'agent');

@@ -5,17 +5,19 @@ import type { HealthService } from './health.service';
 import type { ReadinessReport } from './readiness-report.type';
 
 /**
- * ⚠️ REAL-SHAPED SECRETS. The point of this test is that NONE of these
- * strings can appear in the response, so they are written the way they actually
- * look in the App Service settings rather than as placeholders.
+ * ⚠️ REAL-SHAPED BUT NOT REAL. The values need the SHAPE of App Service
+ * settings for the canary to be meaningful, and the passwords and keys here are
+ * invented. The HOSTNAMES are deliberately `example-*` rather than the real
+ * ones: two of this repo's remotes are public, and a genuine database hostname
+ * is a location worth knowing even when the password beside it is fiction.
  */
 const SECRETS = {
-  blob: 'DefaultEndpointsProtocol=https;AccountName=ticketblob;AccountKey=abc123XYZ==',
-  pubsub: 'Endpoint=https://ticketing-pubsub.webpubsub.azure.com;AccessKey=s3cr3tk3y=;Version=1.0;',
-  foundry: 'https://ai-ticketmaster-eastus2.openai.azure.com',
-  foundryKey: 'fk-9931-abcdef',
+  blob: 'DefaultEndpointsProtocol=https;AccountName=examplestore;AccountKey=abc123XYZ==',
+  pubsub: 'Endpoint=https://example-pubsub.webpubsub.azure.com;AccessKey=s3cr3tk3y=;Version=1.0;',
+  foundry: 'https://example-foundry.openai.azure.com',
+  foundryKey: 'fk-0000-abcdef',
   smtp: 'smtp-password-hunter2',
-  db: 'postgresql://ticket:pa55w0rd@csh-ticketing-db.postgres.database.azure.com:5432/app',
+  db: 'postgresql://ticket:pa55w0rd@example-db.postgres.database.azure.com:5432/app',
 };
 
 /**
