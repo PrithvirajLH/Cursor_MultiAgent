@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import request from 'supertest';
 import type { App as SupertestApp } from 'supertest/types';
+import { AdminAuditService } from '../../src/audit/admin-audit.service';
 import { ApiKeysService } from '../../src/api-keys/api-keys.service';
 import { AuthGuard } from '../../src/auth/auth.guard';
 import {
@@ -69,6 +70,7 @@ describe('Probable duplicate accounts', () => {
       app.get(DuplicateAccountService),
       app.get(UserIdentityService),
       app.get(ApiKeysService),
+      app.get(AdminAuditService),
     );
     return (
       guard as unknown as {

@@ -2,6 +2,7 @@ import { ExecutionContext, Logger, UnauthorizedException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { createHmac } from 'crypto';
+import { AdminAuditService } from '../audit/admin-audit.service';
 import { ApiKeysService } from '../api-keys/api-keys.service';
 import { AuthGuard } from './auth.guard';
 import { DuplicateAccountService } from '../common/duplicate-account.service';
@@ -67,6 +68,7 @@ describe('AuthGuard rejection logging (card 1.54)', () => {
       {} as UserIdentityService,
       // Card 2.6: no x-api-key in these cases, so resolve is never reached.
       { resolve: jest.fn().mockResolvedValue(null) } as unknown as ApiKeysService,
+      { record: jest.fn() } as unknown as AdminAuditService,
     );
   }
 
@@ -321,6 +323,7 @@ describe('⚠️ AuthGuard refuses a deactivated account (card 1.78)', () => {
       { flag: jest.fn() } as unknown as DuplicateAccountService,
       { recordAddresses: jest.fn() } as unknown as UserIdentityService,
       { resolve: jest.fn().mockResolvedValue(null) } as unknown as ApiKeysService,
+      { record: jest.fn() } as unknown as AdminAuditService,
     );
     return { guard, update, create };
   }

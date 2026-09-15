@@ -16,6 +16,7 @@ import {
   UserIdentityService,
   type DirectoryAddress,
 } from '../common/user-identity.service';
+import { AdminAuditService } from '../audit/admin-audit.service';
 import { ApiKeysService } from '../api-keys/api-keys.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
@@ -69,7 +70,6 @@ export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   private azureJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
   private azureJwksIssuer: string | null = null;
-  private bootstrapOwnerEmails: Set<string> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -78,6 +78,11 @@ export class AuthGuard implements CanActivate {
     private readonly duplicateAccounts: DuplicateAccountService,
     private readonly userIdentity: UserIdentityService,
     private readonly apiKeys: ApiKeysService,
+    // Card 1.113. `AuditModule` is @Global, so this needs no module import -
+    // which is deliberate: adding one would reorder ES module evaluation and
+    // this repo has a latent import cycle that surfaces exactly then (card
+    // 1.103).
+    private readonly adminAudit: AdminAuditService,
   ) {}
 
   /**
@@ -538,7 +543,12 @@ export class AuthGuard implements CanActivate {
     if (identity.location !== null && user.location !== identity.location) {
       updateData.location = identity.location;
     }
-    if (this.shouldBootstrapOwner(email) && user.role !== UserRole.OWNER) {
+    // ⚠️ CARD 1.113: ONLY WHEN THERE IS NO OWNER LEFT. This used to run on
+    // every login, so a demotion was silently undone at the next sign-in.
+    const promotingToOwner =
+      user.role !== UserRole.OWNER &&
+      (await this.shouldPromoteBootstrapOwner(email));
+    if (promotingToOwner) {
       updateData.role = UserRole.OWNER;
     }
     if (options.stampObjectId) {
@@ -547,6 +557,30 @@ export class AuthGuard implements CanActivate {
 
     if (Object.keys(updateData).length === 0) {
       return user;
+    }
+
+    if (promotingToOwner) {
+      // ⚠️ A ROLE CHANGE WITH NO RECORD IS EXACTLY WHAT THIS CARD IS ABOUT.
+      // The demotion was always audited and the re-promotion never was, so the
+      // log showed a role being removed and never restored. `AdminAuditService`
+      // is @Global (card 1.95), so injecting it here adds no module import and
+      // cannot reorder ES evaluation - see the comment on `AuditModule`.
+      //
+      // The actor is the person signing in, because nobody else is present. The
+      // payload says it was the bootstrap variable and not a human decision.
+      await this.adminAudit.record({
+        type: 'BOOTSTRAP_OWNER_PROMOTED',
+        actor: {
+          id: user.id,
+          email: user.email,
+          displayName,
+          role: user.role,
+        },
+        payload: {
+          previousRole: user.role,
+          reason: 'AUTH_BOOTSTRAP_OWNER_EMAILS matched and no active owner remained',
+        },
+      });
     }
 
     return this.prisma.user
@@ -580,19 +614,64 @@ export class AuthGuard implements CanActivate {
     return this.getBootstrapOwnerEmails().has(email);
   }
 
+  /**
+   * The bootstrap addresses, read fresh every time (card 1.113).
+   *
+   * ⚠️ IT USED TO BE MEMOISED FOR THE LIFE OF THE PROCESS, so removing
+   * somebody from `AUTH_BOOTSTRAP_OWNER_EMAILS` needed an App Service restart
+   * to take effect. That is card 1.104's bug in a different file three days
+   * later - that card deleted three memoised probes for exactly this reason -
+   * and it is worse here, because the thing that would not take effect is the
+   * removal of an owner.
+   *
+   * Nothing is saved by caching it: `ConfigService.get` is an in-memory lookup
+   * and this runs only on a login.
+   */
   private getBootstrapOwnerEmails() {
-    if (this.bootstrapOwnerEmails) {
-      return this.bootstrapOwnerEmails;
-    }
-
     const configured =
       this.config.get<string>('AUTH_BOOTSTRAP_OWNER_EMAILS') ?? '';
-    const parsed = configured
-      .split(',')
-      .map((value) => this.normalizeEmail(value))
-      .filter((value): value is string => value !== null);
-    this.bootstrapOwnerEmails = new Set(parsed);
-    return this.bootstrapOwnerEmails;
+    return new Set(
+      configured
+        .split(',')
+        .map((value) => this.normalizeEmail(value))
+        .filter((value): value is string => value !== null),
+    );
+  }
+
+  /**
+   * Whether a bootstrap address should be promoted on this login (card 1.113).
+   *
+   * ⚠️ IT USED TO PROMOTE ON EVERY LOGIN, UNCONDITIONALLY. An admin who
+   * demoted that person saw it succeed, and their next sign-in silently put
+   * them back. The demotion was audited; the re-promotion was not. So the role
+   * could not be taken back, and nothing in the record said why.
+   *
+   * ⚠️ GATED RATHER THAN DROPPED, AND THE GATE IS THE WHOLE DECISION.
+   * Deleting the enforcement outright was the simpler change and it breaks the
+   * one thing bootstrap is FOR: recovering when every owner is gone. That
+   * recovery names an address that usually ALREADY EXISTS as an ordinary user,
+   * so provisioning alone would not cover it. The gate is therefore "there is
+   * no active owner left" - which is precisely the disaster it exists for, and
+   * which is false on every ordinary day, so a demotion now sticks.
+   *
+   * ⚠️ AND IT IS KEYED ON AN EMAIL ADDRESS, which card 1.30 established is a
+   * LABEL on a person, not the person. Healthcare re-issues role mailboxes, so
+   * a departing owner's address given to a new starter would make that new
+   * starter an owner. The gate narrows that too: it can only happen while the
+   * system has no owner at all.
+   *
+   * MEASURED: `AUTH_BOOTSTRAP_OWNER_EMAILS` is not set in production, so none
+   * of this could happen today. It was a trap armed for whoever set it - most
+   * likely mid-disaster, the worst moment to find a role cannot be taken back.
+   */
+  private async shouldPromoteBootstrapOwner(email: string): Promise<boolean> {
+    if (!this.shouldBootstrapOwner(email)) {
+      return false;
+    }
+    const activeOwners = await this.prisma.user.count({
+      where: { role: UserRole.OWNER, isActive: true },
+    });
+    return activeOwners === 0;
   }
 
   private findExistingUser(identity: AuthIdentity) {
