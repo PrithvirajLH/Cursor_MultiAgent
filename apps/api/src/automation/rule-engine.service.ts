@@ -693,24 +693,30 @@ export class RuleEngineService {
               tx,
             );
 
-            const firstStart = current.firstResponseDueAt
-              ? this.addHours(
-                  current.firstResponseDueAt,
-                  -oldSla.firstResponseHours,
-                )
-              : current.createdAt;
-            const resolutionStart = current.dueAt
-              ? this.addHours(current.dueAt, -oldSla.resolutionHours)
-              : current.createdAt;
-
-            const firstResponseDueAt = this.addHours(
-              firstStart,
-              newSla.firstResponseHours,
-            );
-            const dueAt = this.addHours(
-              resolutionStart,
-              newSla.resolutionHours,
-            );
+            // ⚠️ CARD 1.82: THE SLA CALCULATOR, NOT RAW MILLISECONDS.
+            //
+            // This used a private `addHours` that adds `hours * 60 * 60 * 1000`
+            // to a Date - wall-clock time, ignoring the policy's
+            // `businessHoursOnly` flag and the team's calendar entirely. The
+            // same priority change through POST /tickets/bulk/priority went
+            // through the calculator, so a macro and a bulk action produced
+            // DIFFERENT due dates for identical tickets, and the wrong value was
+            // written back to the ticket and to SlaInstance, where it compounded.
+            //
+            // Now both paths call one method. `tx` is passed so the calendar is
+            // read inside this transaction.
+            const { firstResponseDueAt, dueAt } =
+              await this.slaCalc.recalculateDeadlinesForPriorityChange(
+                {
+                  createdAt: current.createdAt,
+                  firstResponseDueAt: current.firstResponseDueAt,
+                  dueAt: current.dueAt,
+                  assignedTeamId: current.assignedTeamId,
+                  oldSla,
+                  newSla,
+                },
+                tx,
+              );
 
             await tx.ticket.update({
               where: { id: ticketId },
@@ -1166,7 +1172,4 @@ export class RuleEngineService {
     }
   }
 
-  private addHours(date: Date, hours: number) {
-    return new Date(date.getTime() + hours * 60 * 60 * 1000);
-  }
 }

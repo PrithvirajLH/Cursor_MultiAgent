@@ -3946,36 +3946,18 @@ export class TicketsService {
         ticket.assignedTeamId,
       );
 
-      // Derive SLA start from current cycle so reopened/paused tickets and due dates are preserved
-      const firstStart = ticket.firstResponseDueAt
-        ? await this.slaCalc.subtractSlaHours(
-            ticket.firstResponseDueAt,
-            oldSla.firstResponseHours,
-            oldSla.businessHoursOnly,
-            ticket.assignedTeamId,
-          )
-        : ticket.createdAt;
-      const resolutionStart = ticket.dueAt
-        ? await this.slaCalc.subtractSlaHours(
-            ticket.dueAt,
-            oldSla.resolutionHours,
-            oldSla.businessHoursOnly,
-            ticket.assignedTeamId,
-          )
-        : ticket.createdAt;
-
-      const firstResponseDueAt = await this.slaCalc.addSlaHours(
-        firstStart,
-        newSla.firstResponseHours,
-        newSla.businessHoursOnly,
-        ticket.assignedTeamId,
-      );
-      const dueAt = await this.slaCalc.addSlaHours(
-        resolutionStart,
-        newSla.resolutionHours,
-        newSla.businessHoursOnly,
-        ticket.assignedTeamId,
-      );
+      // Derive SLA start from the current cycle so reopened and paused tickets
+      // keep their elapsed time. Card 1.82 moved this into the calculator so the
+      // automation path cannot drift from it again.
+      const { firstResponseDueAt, dueAt } =
+        await this.slaCalc.recalculateDeadlinesForPriorityChange({
+          createdAt: ticket.createdAt,
+          firstResponseDueAt: ticket.firstResponseDueAt,
+          dueAt: ticket.dueAt,
+          assignedTeamId: ticket.assignedTeamId,
+          oldSla,
+          newSla,
+        });
 
       await this.prisma.$transaction(async (tx) => {
         await tx.ticket.update({

@@ -180,6 +180,72 @@ export class TicketSlaCalculationService {
   }
 
   /**
+   * Recompute both SLA deadlines when a ticket's priority changes (card 1.82).
+   *
+   * ⚠️ THE ONE DERIVATION. Two existed, and they disagreed. `bulkPriority`
+   * called this calculator with the policy's `businessHoursOnly` flag;
+   * `rule-engine.service.ts` used a private `addHours` that adds raw
+   * milliseconds. So the SAME priority change produced a different `dueAt`
+   * depending on whether a person used the bulk action or a macro or automation
+   * rule did it - and the wrong value was written back to the ticket and to
+   * SlaInstance, so the error compounded.
+   *
+   * The shape is: unwind the current deadline back to the start of the cycle on
+   * the OLD policy's calendar, then add the NEW policy's hours forward on the
+   * new one. That preserves elapsed time for reopened and paused tickets rather
+   * than restarting the clock, which is why it is not simply
+   * `createdAt + newHours`.
+   *
+   * Both callers pass their own transaction client, so this is safe inside the
+   * rule engine's transaction.
+   */
+  async recalculateDeadlinesForPriorityChange(
+    input: {
+      createdAt: Date;
+      firstResponseDueAt: Date | null;
+      dueAt: Date | null;
+      assignedTeamId: string | null;
+      oldSla: { firstResponseHours: number; resolutionHours: number; businessHoursOnly: boolean };
+      newSla: { firstResponseHours: number; resolutionHours: number; businessHoursOnly: boolean };
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ firstResponseDueAt: Date; dueAt: Date }> {
+    const firstStart = input.firstResponseDueAt
+      ? await this.subtractSlaHours(
+          input.firstResponseDueAt,
+          input.oldSla.firstResponseHours,
+          input.oldSla.businessHoursOnly,
+          input.assignedTeamId,
+          tx,
+        )
+      : input.createdAt;
+    const resolutionStart = input.dueAt
+      ? await this.subtractSlaHours(
+          input.dueAt,
+          input.oldSla.resolutionHours,
+          input.oldSla.businessHoursOnly,
+          input.assignedTeamId,
+          tx,
+        )
+      : input.createdAt;
+    const firstResponseDueAt = await this.addSlaHours(
+      firstStart,
+      input.newSla.firstResponseHours,
+      input.newSla.businessHoursOnly,
+      input.assignedTeamId,
+      tx,
+    );
+    const dueAt = await this.addSlaHours(
+      resolutionStart,
+      input.newSla.resolutionHours,
+      input.newSla.businessHoursOnly,
+      input.assignedTeamId,
+      tx,
+    );
+    return { firstResponseDueAt, dueAt };
+  }
+
+  /**
    * Resolve a team's business-hours calendar: the team's own row, else the
    * organisation default, else a hardcoded UTC week. The third level exists so
    * a missing default row can never break SLA maths.
