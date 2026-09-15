@@ -13,6 +13,7 @@ import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { AiObservabilityService } from '../common/ai-observability.service';
 import { OutboxService } from '../notifications/outbox.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import { TagsService } from '../tags/tags.service';
 import { TicketsService } from './tickets.service';
 
@@ -83,6 +84,10 @@ describe('TicketsService', () => {
       // logic; the cancel path is covered by the integration suite, where the
       // race and the sweeper are real.
       {} as OutboxService,
+      // Card 2.6: this suite exercises pure transition logic and never reaches
+      // an emit; the delivery path is covered by webhook-url.util.spec.ts and
+      // the integration suite.
+      { emit: jest.fn() } as unknown as WebhooksService,
     );
   });
 

@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { ApiDocsModule } from './api-docs/api-docs.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { AuditModule } from './audit/audit.module';
 import { AutomationModule } from './automation/automation.module';
 import { CannedResponsesModule } from './canned-responses/canned-responses.module';
@@ -109,6 +110,7 @@ import { validateEnv } from './common/env.validation';
     AnnouncementsModule,
     ApiDocsModule,
     ApiKeysModule,
+    WebhooksModule,
     AuthModule,
     AuditModule,
     AutomationModule,

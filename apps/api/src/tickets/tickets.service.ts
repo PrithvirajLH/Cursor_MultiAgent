@@ -49,6 +49,7 @@ import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketSlaCalculationService } from './ticket-sla-calculation.service';
 import { InboundEmailService } from './inbound-email.service';
 import { OutboxService } from '../notifications/outbox.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import { inlineAttachmentIds } from './inline-attachment-ids.util';
 import { runBulkWithConcurrency } from '../common/run-bulk-with-concurrency.util';
 import { stripQuotedReply } from '../notifications/quoted-reply.util';
@@ -252,6 +253,7 @@ export class TicketsService {
     // Card 1.47: redaction has to be able to stop a queued email. Exported by
     // NotificationsModule already, for readiness and the operations console.
     private readonly outbox: OutboxService,
+    private readonly webhooks: WebhooksService,
   ) {
     const customTransitionsStr = this.config.get<string>(
       'TICKET_STATUS_TRANSITIONS',
@@ -1983,6 +1985,21 @@ export class TicketsService {
       }),
     );
 
+    // ⚠️ Card 2.6: outbound webhook, AFTER the write has committed and
+    // deliberately not awaited for its result - `emit` only queues a row, and a
+    // third-party integration must never be able to fail an intake.
+    void this.webhooks.emit('ticket.created', {
+      event: 'ticket.created',
+      occurredAt: new Date(),
+      ticketId: updatedTicket.id,
+      ticketNumber: updatedTicket.number,
+      displayId: updatedTicket.displayId ?? null,
+      status: updatedTicket.status,
+      priority: updatedTicket.priority,
+      teamId: updatedTicket.assignedTeamId ?? null,
+      actorId: user.id,
+    });
+
     // Queue automation with retry via BullMQ instead of fire-and-forget
     this.automationQueue
       .enqueue(updatedTicket.id, 'TICKET_CREATED')
@@ -2229,6 +2246,23 @@ export class TicketsService {
       await this.ensureFollower(ticketId, user.id, tx);
 
       return createdMessage;
+    });
+
+    // ⚠️ Card 2.6: the message ID and its visibility, never its text. A
+    // consumer that needs the words calls back with its API key and is
+    // access-checked on the way in.
+    void this.webhooks.emit('message.added', {
+      event: 'message.added',
+      occurredAt: new Date(),
+      ticketId,
+      ticketNumber: ticket.number,
+      displayId: ticket.displayId ?? null,
+      status: ticket.status,
+      priority: ticket.priority,
+      teamId: ticket.assignedTeamId ?? null,
+      actorId: user.id,
+      messageId: message.id,
+      messageVisibility: message.type,
     });
 
     // Parse mentions: (user:uuid) from markdown or data-user-id="uuid" from HTML (WYSIWYG)
@@ -3190,6 +3224,20 @@ export class TicketsService {
     await this.safeNotify(() =>
       this.notifications.ticketStatusChanged(updated, ticket.status, user),
     );
+    // ⚠️ Card 2.6. `ticket.status` is the value BEFORE the transition - it was
+    // read before the update - which is what a consumer needs to see a move.
+    void this.webhooks.emit('ticket.status_changed', {
+      event: 'ticket.status_changed',
+      occurredAt: new Date(),
+      ticketId: updated.id,
+      ticketNumber: updated.number,
+      displayId: updated.displayId ?? null,
+      status: updated.status,
+      priority: updated.priority,
+      teamId: updated.assignedTeamId ?? null,
+      actorId: user.id,
+      previousStatus: ticket.status,
+    });
     await this.ticketRealtime.safeRealtime(() =>
       this.ticketRealtime.emitTicketRealtimeEvent({
         ticketId: updated.id,
