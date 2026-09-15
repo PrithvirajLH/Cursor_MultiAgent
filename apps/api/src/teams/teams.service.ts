@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, TeamRole, UserRole } from '@prisma/client';
 import { AuthUser } from '../auth/current-user.decorator';
+import { assertUserIsActive } from '../common/assert-user-is-active.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
@@ -336,11 +337,7 @@ export class TeamsService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    if (!user.isActive) {
-      throw new BadRequestException(
-        `${user.displayName || user.email} is deactivated. Reactivate the account before adding them to a team.`,
-      );
-    }
+    assertUserIsActive(user, 'adding them to a team');
     return user;
   }
 

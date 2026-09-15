@@ -43,6 +43,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import type { MessageRecipientsPreview } from '../notifications/message-recipients-preview.type';
 import type { LinkTicketDto } from './dto/link-ticket.dto';
 import type { TicketLinkView } from './ticket-link-view.type';
+import { assertUserIsActive } from '../common/assert-user-is-active.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
@@ -2713,11 +2714,47 @@ export class TicketsService {
         displayName: true,
         email: true,
         role: true,
+        isActive: true,
       },
     });
     if (!assignee) {
       throw new BadRequestException('Assignee not found');
     }
+
+    // ⚠️ CARD 1.110: THESE TWO CHECKS RUN ON EVERY PATH, WITH OR WITHOUT A
+    // TEAM. The membership check below is real and correct, but it sits inside
+    // `if (ticket.assignedTeamId && ...)`, so a ticket with NO team had no
+    // check at all - any user id that existed was accepted, including an
+    // EMPLOYEE, the requester, or somebody from another department. And
+    // team-less tickets are not a corner case: they are exactly the ones in the
+    // Unassigned queue, where mail to a bare address lands.
+    //
+    // ⚠️ AND NOTHING HERE CHECKED `isActive`, TEAM OR NO TEAM. Card 1.89
+    // answered precisely this question at `addMember`, one method over, and
+    // the answer was never carried across. `assertUserIsActive` is now that one
+    // answer, in one file, called from both.
+    assertUserIsActive(assignee, 'assigning work to them');
+
+    // ⚠️ AN EMPLOYEE CANNOT HOLD A TICKET. That is the rule for a team-less
+    // ticket, and it is applied everywhere rather than only there, because a
+    // teamed ticket reaches the same place by one extra step:
+    // `ensureEligibleTeamMemberRole` lets an EMPLOYEE onto a roster, and
+    // membership alone would then have let them be assigned. EMPLOYEE is the
+    // requester-only role - `canSeeInternalMessages` already treats it as the
+    // one that is not staff - so "somebody who can actually work tickets" means
+    // any role above it.
+    if (assignee.role === UserRole.EMPLOYEE) {
+      throw new BadRequestException(
+        `${assignee.displayName || assignee.email} is an employee and cannot be assigned tickets. Assign it to an agent, lead or team admin.`,
+      );
+    }
+
+    // ⚠️ NO `isAvailable` CHECK HERE, DELIBERATELY. Cards 2.2 and 1.94 govern
+    // AUTOMATIC assignment; a human deliberately handing a ticket to a
+    // colleague on leave is a legitimate override - a lead queueing work for
+    // somebody back tomorrow. `rule-engine.service.ts:649` states the same
+    // division from the other side. Removing it would be a regression dressed
+    // as a fix, and a test below locks the gap open.
 
     // OWNERs have global write access and aren't required to hold an explicit
     // TeamMember record; skip the membership check for them so "assign to me"
