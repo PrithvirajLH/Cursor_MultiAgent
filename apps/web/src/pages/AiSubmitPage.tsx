@@ -19,6 +19,67 @@ import {
 } from "../api/client";
 import { useTicketDataInvalidation } from "../contexts/TicketDataInvalidationContext";
 
+/**
+ * What `/submit` shows when the pipeline fails (card 1.107).
+ *
+ * ⚠️ THE CALLER IS TOLD NOTHING ABOUT THE INFRASTRUCTURE. `POST
+ * /api/ai/classify` has no role guard, so the least privileged role in the
+ * system can reach it; before card 1.107 the Azure SDK's own message came
+ * straight back - endpoint hostnames, deployment and model names, region,
+ * request ids, quota and billing state.
+ *
+ * ⚠️ AND THE REFERENCE IS THE OTHER HALF OF THAT BARGAIN. The generic
+ * sentence ends "contact the service desk with the reference below", and a
+ * browser pass found there was nothing below it: the API sent `correlationId`
+ * and the hand-written client type did not have the field, so it never reached
+ * the UI. A message promising a reference that is not there is worse than one
+ * that promises nothing.
+ *
+ * `select-all` because the one thing anybody does with it is copy it.
+ */
+/**
+ * The reference to show beside a failed run, if there is one (card 1.107).
+ *
+ * ⚠️ EXTRACTED BECAUSE THE PANEL TEST COULD NOT SEE THIS. Rendering
+ * `AiErrorPanel` with a reference prop proves the panel renders it and proves
+ * NOTHING about whether the page ever passes one - deleting the wiring left
+ * that test green. This is the decision, so it can be tested on its own.
+ *
+ * Only an `error` result carries one. A transport failure never reached the API
+ * and has no request id, so it gets null rather than the previous attempt's.
+ */
+export function errorReferenceFrom(result: AiClassifyResult): string | null {
+  return result.status === "error" ? (result.correlationId ?? null) : null;
+}
+
+export function AiErrorPanel({
+  message,
+  reference,
+}: {
+  message: string;
+  reference: string | null;
+}) {
+  return (
+    <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+      <div className="flex items-start gap-3">
+        <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-destructive">
+            Something went wrong
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">{message}</p>
+          {reference && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Reference:{" "}
+              <code className="font-mono select-all">{reference}</code>
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const AI_DISABLED_TITLE = "The AI assistant is switched off";
 
 /**
@@ -132,6 +193,7 @@ export function AiSubmitPage() {
   const [result, setResult] = useState<AiClassifyResult | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [clarificationQuestion, setClarificationQuestion] = useState("");
+  const [errorReference, setErrorReference] = useState<string | null>(null);
   const [originalText, setOriginalText] = useState("");
   const { notifyTicketAggregatesChanged, notifyTicketReportsChanged } =
     useTicketDataInvalidation();
@@ -194,6 +256,8 @@ export function AiSubmitPage() {
           setPhase("disabled");
         } else {
           setErrorMessage(response.error);
+          // Card 1.107: the message promises a reference; this is it.
+          setErrorReference(errorReferenceFrom(response));
           setPhase("error");
         }
       } catch (err) {
@@ -208,6 +272,9 @@ export function AiSubmitPage() {
         setErrorMessage(
           err instanceof Error ? err.message : "Pipeline failed",
         );
+        // A transport failure never reached the API, so there is no request id
+        // to quote. Cleared rather than left holding the previous attempt's.
+        setErrorReference(null);
         setPhase("error");
       }
     },
@@ -375,19 +442,10 @@ export function AiSubmitPage() {
           {/* Error Phase */}
           {phase === "error" && (
             <div className="space-y-4">
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-destructive">
-                      Something went wrong
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {errorMessage}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <AiErrorPanel
+                message={errorMessage}
+                reference={errorReference}
+              />
               <button
                 onClick={handleNewTicket}
                 className="w-full px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-accent transition-colors"

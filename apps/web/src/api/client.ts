@@ -3448,6 +3448,17 @@ export interface AiClassifyResultError {
   status: "error";
   error: string;
   step: string;
+  /**
+   * The request id that finds the full error in the server log (card 1.107).
+   *
+   * ⚠️ THE API SENDS IT AND THE PAGE HAD NOWHERE TO PUT IT. The generic
+   * message deliberately ends "contact the service desk with the reference
+   * below" - and there was nothing below, because this field was not in the
+   * hand-written type and so never reached the UI. Half a correlation id is
+   * worse than none: it tells somebody to quote a reference that does not
+   * exist.
+   */
+  correlationId?: string;
 }
 
 /**
