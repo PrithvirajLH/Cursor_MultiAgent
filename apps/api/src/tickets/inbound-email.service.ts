@@ -84,22 +84,11 @@ export type NormalizedInboundAttachmentResult = {
   rejected: RejectedInboundAttachment[];
 };
 
-/** The database column is VarChar(200); anything longer is trimmed, not fatal. */
-const INBOUND_SUBJECT_MAX = 200;
-
-/**
- * Fit a subject into the column (card 1.105).
- *
- * ⚠️ An ellipsis rather than a hard cut, so an agent can see the subject was
- * shortened rather than wondering whether the sender wrote it that way.
- */
-export function truncateInboundSubject(subject: string): string {
-  const trimmed = (subject ?? '').trim();
-  if (trimmed.length <= INBOUND_SUBJECT_MAX) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, INBOUND_SUBJECT_MAX - 1)}…`;
-}
+// ⚠️ Card 1.108 moved this to `common/truncate-ticket-subject.util.ts` so the
+// AI ticket path could reuse it without importing this service. Re-exported
+// under its original name, so nothing that referenced it had to change.
+export { truncateTicketSubject as truncateInboundSubject } from '../common/truncate-ticket-subject.util';
+import { truncateTicketSubject as truncateInboundSubject } from '../common/truncate-ticket-subject.util';
 
 @Injectable()
 export class InboundEmailService {
