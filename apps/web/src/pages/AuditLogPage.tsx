@@ -79,6 +79,8 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   TICKET_CATEGORY_CHANGED: "Category Changed",
   MESSAGE_ADDED: "Message Added",
   ATTACHMENT_ADDED: "Attachment Added",
+  ATTACHMENT_DOWNLOADED: "Attachment Opened",
+  INBOUND_ATTACHMENTS_DROPPED: "Attachments Not Saved",
   FOLLOWER_ADDED: "Follower Added",
   FOLLOWER_REMOVED: "Follower Removed",
   CUSTOM_FIELD_UPDATED: "Custom Field Updated",
@@ -263,6 +265,27 @@ function summarize(entry: AuditLogEntry): string {
       return payload.fileName
         ? `Uploaded ${String(payload.fileName)}`
         : "Attachment uploaded";
+    case "ATTACHMENT_DOWNLOADED": {
+      // Card 3.5. Refusals are recorded as well as downloads, so the outcome
+      // has to be on the row - "who opened that file" and "who was turned
+      // away" must never read the same.
+      const name = payload.fileName ? String(payload.fileName) : "a file";
+      if (payload.outcome === "refused_internal") {
+        return `Refused ${name} (internal note)`;
+      }
+      if (payload.outcome === "refused_no_access") {
+        return `Refused ${name} (no access)`;
+      }
+      return `Opened ${name}`;
+    }
+    case "INBOUND_ATTACHMENTS_DROPPED": {
+      // Card 1.105: an agent has to be able to see a file is missing and ask
+      // for it again.
+      const count = payload.count ? Number(payload.count) : 0;
+      return count > 0
+        ? `${count} attachment(s) not saved`
+        : "Some attachments were not saved";
+    }
     case "TICKET_CREATED_VIA_INTAKE": {
       // Deliberately its own row here, unlike the ticket timeline: this page is
       // the compliance trail, and "a ticket was created" and "it arrived from

@@ -263,6 +263,7 @@ export class TicketAttachmentService {
     }
 
     if (!this.accessControl.canViewTicket(user, attachment.ticket)) {
+      await this.recordAttachmentAccess(attachment, user, 'refused_no_access');
       throw new ForbiddenException('No access to this attachment');
     }
 
@@ -282,13 +283,62 @@ export class TicketAttachmentService {
     ) {
       // 403 and not 404: the person CAN see the ticket, so its existence is
       // not a secret from them - only this file is.
+      await this.recordAttachmentAccess(attachment, user, 'refused_internal');
       throw new ForbiddenException('No access to this attachment');
     }
 
     this.assertAttachmentDownloadAllowed(attachment.scanStatus);
 
     const stream = await this.getAttachmentReadStream(attachment.storageKey);
+    await this.recordAttachmentAccess(attachment, user, 'downloaded');
     return { attachment, stream };
+  }
+
+  /**
+   * Record who opened which file, and who was turned away (card 3.5).
+   *
+   * ⚠️ THIS MATTERS MORE NOW THAN WHEN THE CARD WAS WRITTEN. With the AV gate
+   * about to be switched off, every file becomes downloadable by anyone
+   * entitled to the ticket - so "who opened that file" stops being a
+   * nice-to-have.
+   *
+   * ⚠️ REFUSALS ARE RECORDED TOO, DELIBERATELY. After an incident the question
+   * is usually "did anyone try?", and an empty answer is only meaningful if
+   * attempts would have shown up. The outcome says which happened, so a refusal
+   * can never be mistaken for a download.
+   *
+   * ⚠️ IT CAN NEVER FAIL THE DOWNLOAD. Same shape as card 1.95's
+   * `AdminAuditService.record()`: swallow and log outside a transaction. A
+   * missing audit row is bad; a file an entitled person cannot open because
+   * the audit write failed is worse, and would be a self-inflicted outage.
+   *
+   * Nothing is recorded on the LISTING endpoint - that one is hot.
+   */
+  private async recordAttachmentAccess(
+    attachment: { id: string; ticketId: string; fileName: string },
+    user: AuthUser,
+    outcome: 'downloaded' | 'refused_no_access' | 'refused_internal',
+  ): Promise<void> {
+    try {
+      await this.prisma.ticketEvent.create({
+        data: {
+          ticketId: attachment.ticketId,
+          type: 'ATTACHMENT_DOWNLOADED',
+          payload: {
+            attachmentId: attachment.id,
+            fileName: attachment.fileName,
+            outcome,
+          },
+          createdById: user.id,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Could not record attachment access for ${attachment.id}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+    }
   }
 
   async updateAttachmentScanStatus(
