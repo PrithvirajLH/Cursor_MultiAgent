@@ -34,7 +34,20 @@ export const TicketTimeline = memo(function TicketTimeline({
         </button>
       ) : null}
 
-      <div className="mt-5 max-h-[660px] space-y-4 overflow-y-auto">
+      {/*
+        ⚠️ CARD 1.120: THE PANEL IS THE SCROLLER NOW, SO THIS ONE GOES.
+        `max-h-[660px] overflow-y-auto` was a workaround from when the tab panel
+        could not scroll at all - it bounded the list so SOMETHING was reachable.
+        With the panel scrolling, keeping it nests two scrollbars: measured at a
+        700px viewport the panel was 415px tall and this list was still capped at
+        660px, so a reader scrolled the inner list and then had to scroll the
+        panel as well. One scroller per panel.
+
+        The "Load older events" button above now scrolls with the content, which
+        is the right way round: it sits at the TOP, so scrolling up to reach it
+        is the same gesture as looking for older items.
+      */}
+      <div className="mt-5 space-y-4">
         {eventsError ? (
           <div
             className="rounded-xl border border-amber-200 bg-amber-500/10 p-4 text-left"

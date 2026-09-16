@@ -41,12 +41,43 @@ describe("ticket detail tabs", () => {
   });
 
   it("renders inactive panels with a hidden display class instead of layered flex panels", () => {
-    expect(
-      getTicketDetailTabPanelClassName("conversation", "conversation"),
-    ).toBe("absolute inset-0 flex flex-col");
     expect(getTicketDetailTabPanelClassName("timeline", "conversation")).toBe(
       "absolute inset-0 hidden",
     );
+  });
+
+  it("⚠️ the active panel can scroll its own overflow (card 1.120)", () => {
+    // THE REGRESSION ASSERTION. `absolute inset-0` pins the panel to a fixed
+    // box; without a scroller the overflow is simply unreachable. Measured in
+    // production with seven emailed attachments: 1015px of content in a 562px
+    // panel, 453px that no scroller in the whole ancestor chain could reach.
+    const active = getTicketDetailTabPanelClassName(
+      "attachments",
+      "attachments",
+    );
+    expect(active).toContain("overflow-y-auto");
+  });
+
+  it("⚠️ and carries min-h-0, without which the scroller never engages", () => {
+    // NOT A DETAIL. A flex child will not shrink below its content height, so
+    // `overflow-y-auto` alone leaves the panel as tall as its content and
+    // nothing ever scrolls - the fix would look applied and change nothing.
+    expect(getTicketDetailTabPanelClassName("timeline", "timeline")).toContain(
+      "min-h-0",
+    );
+  });
+
+  it("⚠️ every tab gets the same treatment, conversation included", () => {
+    // The card feared conversation would need excluding, because it owns a
+    // message-list scroller and a composer. Measured at a 700px viewport with a
+    // four-message thread: the panel does not overflow and nothing doubles,
+    // because `TicketConversation`'s root is `flex flex-1 flex-col min-h-0` and
+    // absorbs the height itself. One rule, no special cases.
+    for (const tab of ["conversation", "attachments", "timeline"] as const) {
+      expect(getTicketDetailTabPanelClassName(tab, tab)).toBe(
+        "absolute inset-0 flex flex-col overflow-y-auto min-h-0",
+      );
+    }
   });
 
   it("derives stable tab and panel ids", () => {
