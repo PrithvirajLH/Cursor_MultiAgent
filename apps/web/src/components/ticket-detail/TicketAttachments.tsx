@@ -1,13 +1,153 @@
 import { useCallback, useEffect, useState } from "react";
 import type { TicketDetail } from "../../api/client";
 import { downloadAttachment } from "../../api/client";
-import { ChevronLeft, ChevronRight, Maximize2, Paperclip, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Paperclip, X } from "lucide-react";
 import { attachmentCarousel } from "./attachment-carousel";
 
 interface TicketAttachmentsProps {
   ticket: TicketDetail;
   onDownloadAttachment: (id: string, fileName: string) => void;
   attachmentError: string | null;
+}
+
+/** One attachment as the viewer needs it. */
+type ViewerAttachment = {
+  id: string;
+  fileName: string;
+  sizeBytes: number;
+  contentType: string;
+};
+
+/**
+ * The full-screen attachment viewer (card 1.128).
+ *
+ * ⚠️ THERE USED TO BE TWO SURFACES AND NOW THERE IS ONE. View opened a small
+ * inline panel, which carried its own arrows, filename and Download, and a
+ * separate button promoted it to full screen. Two sets of arrows to keep in
+ * step, for one job. The owner asked for the big one; the small one is gone.
+ *
+ * ⚠️ `role="dialog"` IS LOAD-BEARING, NOT DECORATION.
+ * `isTransientLayerOpen()` (card 1.76) looks for exactly this, and
+ * `TicketDetailPage` registers its Escape handler on `window` with CAPTURE - so
+ * without the role, Escape here would navigate the ticket away before the
+ * viewer ever saw the key, and `stopPropagation` could not undo it. `aria-modal`
+ * is honest: this one really does cover the page, unlike the four anchored
+ * popovers card 1.76 was careful not to mislabel.
+ *
+ * Presentational and exported on purpose: the web tests run in a NODE
+ * environment with `renderToStaticMarkup` and no jsdom, so a viewer that could
+ * only be reached by clicking could not be tested at all. Same reason
+ * `ProfilePopoverPanel` is exported.
+ */
+export function AttachmentViewer({
+  attachment,
+  previewUrl,
+  loading,
+  error,
+  position,
+  prevId,
+  nextId,
+  onOpen,
+  onClose,
+  onDownload,
+}: {
+  attachment: ViewerAttachment;
+  previewUrl: string | null;
+  loading: boolean;
+  error: string | null;
+  position: { index: number; total: number } | null;
+  prevId: string | null;
+  nextId: string | null;
+  onOpen: (id: string) => void;
+  onClose: () => void;
+  onDownload: (id: string, fileName: string) => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${attachment.fileName}, full screen`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+    >
+      {/*
+        ⚠️ THE FILENAME IS NOT DECORATION ON THIS TICKET. Four of its ten
+        attachments are called `image.png`, so "8 of 10 images" alone cannot tell
+        you which file is on screen. The inline panel used to carry the name and
+        it went with the panel, so it is carried here instead.
+      */}
+      <div className="absolute left-6 top-6 right-44 flex flex-col gap-0.5">
+        <p className="truncate text-sm font-semibold text-slate-100">
+          {attachment.fileName}
+        </p>
+        <p className="text-[11px] text-slate-400">
+          {(attachment.sizeBytes / 1024).toFixed(1)} KB • {attachment.contentType}
+        </p>
+      </div>
+
+      <div className="absolute right-6 top-6 flex items-center gap-2">
+        {/*
+          ⚠️ DOWNLOAD HAD TO COME WITH THE PANEL TOO. Without it the only way
+          to save a file becomes "close the viewer, find the row again", which is
+          worse than what this replaced.
+        */}
+        <button
+          type="button"
+          onClick={() => onDownload(attachment.id, attachment.fileName)}
+          className="rounded-full border border-slate-600 bg-black/70 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-slate-300 hover:text-white"
+        >
+          Download
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close preview"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {position ? (
+        <>
+          <button
+            type="button"
+            onClick={() => prevId && onOpen(prevId)}
+            disabled={!prevId}
+            aria-label="Previous image"
+            className="absolute left-6 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/70"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => nextId && onOpen(nextId)}
+            disabled={!nextId}
+            aria-label="Next image"
+            className="absolute right-6 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/70"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <p className="absolute bottom-6 rounded-full bg-black/70 px-3 py-1 text-[11px] tabular-nums text-slate-200">
+            {position.index + 1} of {position.total} images
+          </p>
+        </>
+      ) : null}
+
+      <div className="max-h-[calc(90vh/var(--ui-zoom))] max-w-[calc(90vw/var(--ui-zoom))] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/80 p-3">
+        {loading ? (
+          <p className="px-8 py-16 text-xs text-slate-300">Loading…</p>
+        ) : error ? (
+          <p className="px-8 py-16 text-xs text-rose-300">{error}</p>
+        ) : previewUrl ? (
+          <img
+            src={previewUrl}
+            alt={attachment.fileName}
+            className="h-full w-full max-h-[calc(85vh/var(--ui-zoom))] max-w-[calc(85vw/var(--ui-zoom))] object-contain"
+          />
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 export function TicketAttachments({
@@ -21,7 +161,6 @@ export function TicketAttachments({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
 
   const expandedAttachment =
     ticket.attachments.find(
@@ -88,7 +227,6 @@ export function TicketAttachments({
     setExpandedAttachmentId(null);
     setPreviewError(null);
     setPreviewUrl(null);
-    setIsFullscreenPreview(false);
   }, []);
 
   function handleTogglePreview(attachmentId: string) {
@@ -110,11 +248,11 @@ export function TicketAttachments({
    * `TicketsPage` takes j/k/x/Enter - so there is nothing to collide with, and
    * the listener does not exist at all when no preview is up.
    *
-   * ⚠️ ESCAPE IS NOT HANDLED HERE FOR THE INLINE PANEL, on purpose. The
-   * full-screen viewer carries `role="dialog"`, so `isTransientLayerOpen()`
-   * (card 1.76) reports it and `TicketDetailPage`'s window-capture handler
-   * stands down - which is precisely why Escape closes the viewer without also
-   * navigating the ticket away behind it.
+   * ⚠️ ESCAPE WORKS ONLY BECAUSE THE VIEWER IS A `role="dialog"`.
+   * `isTransientLayerOpen()` (card 1.76) looks for exactly that, and
+   * `TicketDetailPage` registers its own Escape handler on `window` with
+   * CAPTURE - so without the role the page would navigate the ticket away
+   * before this listener ever ran, and `stopPropagation` could not undo it.
    *
    * The typing guard mirrors `TicketsPage`: a reader typing a reply with a
    * preview open still owns their arrow keys.
@@ -144,14 +282,18 @@ export function TicketAttachments({
         void openPreview(prevId);
         return;
       }
-      if (event.key === "Escape" && isFullscreenPreview) {
+      if (event.key === "Escape") {
+        // One surface now, so Escape closes the viewer outright rather than
+        // dropping back to an inline panel that no longer exists. `closePreview`
+        // clears previewUrl and previewError together - leaving either behind
+        // would show the last image's error over the next file opened.
         event.preventDefault();
-        setIsFullscreenPreview(false);
+        closePreview();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [expandedAttachmentId, prevId, nextId, isFullscreenPreview, openPreview]);
+  }, [expandedAttachmentId, prevId, nextId, openPreview, closePreview]);
 
   if (!ticket.attachments.length) {
     return (
@@ -226,13 +368,31 @@ export function TicketAttachments({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleTogglePreview(attachment.id)}
-                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
-                >
-                  View
-                </button>
+                {/*
+                  ⚠️ NO View ON A FILE THAT CANNOT BE VIEWED. With one surface,
+                  View opens a full-screen viewer - and a PDF or a .docx would
+                  open a black rectangle with nothing in it. The old inline panel
+                  had somewhere to put "Inline preview is only available for
+                  image attachments"; a dimmed overlay does not.
+
+                  A button that cannot do what it says is card 1.81's team filter
+                  again, so it is hidden rather than left to disappoint. The row
+                  keeps Download, which is the thing that actually works for
+                  those files.
+
+                  `carousel.images` is the test, not a second content-type check:
+                  the carousel already decides what is previewable, and asking it
+                  keeps that decision in one place.
+                */}
+                {carousel.images.some((image) => image.id === attachment.id) ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleTogglePreview(attachment.id)}
+                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-slate-800"
+                  >
+                    View
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() =>
@@ -247,160 +407,25 @@ export function TicketAttachments({
           ))}
         </div>
 
-        {expandedAttachment ? (
-          <div className="relative mt-4 overflow-hidden rounded-2xl border border-border bg-slate-950 text-slate-50 shadow-2xl transition-all">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.22),_transparent_55%),radial-gradient(circle_at_bottom,_rgba(94,234,212,0.18),_transparent_55%)]" />
-            <div className="relative flex flex-col gap-4 p-5 sm:p-6">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">
-                    Preview
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-50">
-                    {expandedAttachment.fileName}
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    {(expandedAttachment.sizeBytes / 1024).toFixed(1)} KB •{" "}
-                    {expandedAttachment.contentType}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {carousel.index >= 0 && carousel.total > 1 ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => prevId && void openPreview(prevId)}
-                        disabled={!prevId}
-                        aria-label="Previous image"
-                        className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-600 text-slate-100 hover:border-slate-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-600"
-                      >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="px-1 text-[11px] tabular-nums text-slate-300">
-                        {carousel.index + 1} of {carousel.total} images
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => nextId && void openPreview(nextId)}
-                        disabled={!nextId}
-                        aria-label="Next image"
-                        className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-600 text-slate-100 hover:border-slate-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-600"
-                      >
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onDownloadAttachment(
-                        expandedAttachment.id,
-                        expandedAttachment.fileName,
-                      )
-                    }
-                    className="rounded-full border border-slate-600 px-3 py-1.5 text-[11px] font-semibold text-slate-100 hover:border-slate-300 hover:text-white"
-                  >
-                    Download
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsFullscreenPreview(true)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-600 text-slate-100 hover:border-slate-300 hover:text-white"
-                    title="View full screen"
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative mt-1 flex min-h-[220px] max-h-[420px] items-center justify-center overflow-auto rounded-xl bg-slate-900/60">
-                {previewLoading ? (
-                  <p className="text-xs text-slate-300">Loading preview…</p>
-                ) : previewError ? (
-                  <p className="text-xs text-rose-300">{previewError}</p>
-                ) : expandedAttachment.contentType.startsWith("image/") &&
-                  previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt={expandedAttachment.fileName}
-                    className="max-h-[360px] w-full max-w-full cursor-zoom-in object-contain"
-                    onClick={() => setIsFullscreenPreview(true)}
-                  />
-                ) : (
-                  <p className="text-xs text-slate-400">
-                    Inline preview is only available for image attachments. Use
-                    Download to open this file.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : null}
       </div>
 
-      {isFullscreenPreview && expandedAttachment ? (
-        // ⚠️ `role="dialog"` IS LOAD-BEARING, NOT DECORATION. `isTransientLayerOpen()`
-        // (card 1.76) looks for exactly this, and `TicketDetailPage` registers its
-        // Escape handler on `window` with capture - so without the role, Escape
-        // here would navigate the ticket away BEFORE this viewer ever saw the key,
-        // and `stopPropagation` could not undo it. `aria-modal` is honest: this
-        // one really does cover the page, unlike the four anchored popovers that
-        // card 1.76 was careful not to mislabel.
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${expandedAttachment.fileName}, full screen`}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-        >
-          <button
-            type="button"
-            onClick={() => setIsFullscreenPreview(false)}
-            className="absolute right-6 top-6 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black"
-            title="Close full screen"
-          >
-            <X className="h-4 w-4" />
-          </button>
-
-          {carousel.index >= 0 && carousel.total > 1 ? (
-            <>
-              <button
-                type="button"
-                onClick={() => prevId && void openPreview(prevId)}
-                disabled={!prevId}
-                aria-label="Previous image"
-                className="absolute left-6 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/70"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => nextId && void openPreview(nextId)}
-                disabled={!nextId}
-                aria-label="Next image"
-                className="absolute right-6 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/70"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-              <p className="absolute bottom-6 rounded-full bg-black/70 px-3 py-1 text-[11px] tabular-nums text-slate-200">
-                {carousel.index + 1} of {carousel.total} images
-              </p>
-            </>
-          ) : null}
-
-          <div className="max-h-[calc(90vh/var(--ui-zoom))] max-w-[calc(90vw/var(--ui-zoom))] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/80 p-3">
-            {previewLoading ? (
-              <p className="px-8 py-16 text-xs text-slate-300">Loading…</p>
-            ) : previewError ? (
-              <p className="px-8 py-16 text-xs text-rose-300">{previewError}</p>
-            ) : previewUrl ? (
-              <img
-                src={previewUrl}
-                alt={expandedAttachment.fileName}
-                className="h-full w-full max-h-[calc(85vh/var(--ui-zoom))] max-w-[calc(85vw/var(--ui-zoom))] object-contain"
-              />
-            ) : null}
-          </div>
-        </div>
+      {expandedAttachment ? (
+        <AttachmentViewer
+          attachment={expandedAttachment}
+          previewUrl={previewUrl}
+          loading={previewLoading}
+          error={previewError}
+          position={
+            carousel.index >= 0 && carousel.total > 1
+              ? { index: carousel.index, total: carousel.total }
+              : null
+          }
+          prevId={prevId}
+          nextId={nextId}
+          onOpen={(id) => void openPreview(id)}
+          onClose={closePreview}
+          onDownload={onDownloadAttachment}
+        />
       ) : null}
     </>
   );
