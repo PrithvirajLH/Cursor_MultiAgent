@@ -29,6 +29,30 @@ export const DEFAULT_INLINE_IMAGE_MIN_BYTES = 50 * 1024;
  * THE ACCEPTED COST: a genuinely tiny pasted screenshot, under the threshold, is
  * skipped along with the logos. `INBOUND_INLINE_IMAGE_MIN_BYTES` exists so that
  * line can be moved without a deploy.
+ *
+ * ⚠️ CARD 1.122: THIS THRESHOLD IS KNOWN TO BE TOO LOW, AND THE OWNER CHOSE
+ * TO LEAVE IT. DO NOT RAISE IT WITHOUT ASKING THEM AGAIN.
+ *
+ * The first real email to reach this platform carried seven files, and two
+ * signature graphics of 104.7 KB and 120.9 KB sailed straight through - both
+ * roughly double this ceiling. So the filter is not catching what it was built
+ * to catch, and that is a measured fact rather than a suspicion.
+ *
+ * ⚠️ IT WAS LEFT ALONE BECAUSE SIZE IS THE ONLY THING THAT SEPARATES THE TWO
+ * CASES, AND THE GAP IS NARROW. A signature logo and a deliberately pasted
+ * screenshot are both `isInline`, both referenced by `cid:` in the body, both
+ * `image/png`, and in the observed mail both were even named `image.png`.
+ * Graph's attachment metadata carries no dimensions. The screenshot in that
+ * same email was 212 KB, so a ceiling high enough to catch a 121 KB logo sits
+ * uncomfortably close to real content.
+ *
+ * The owner's call, asked with those numbers in front of them: keep the logos
+ * arriving as noise rather than risk silently dropping a file somebody meant to
+ * send. Noise on a ticket is visible and annoying; a lost screenshot is neither.
+ *
+ * If this is revisited, the honest fix is a signal that is CERTAIN rather than a
+ * better guess - image dimensions, or the same file recurring across a sender's
+ * emails - not a larger number here.
  */
 export function isSignatureImage(
   attachment: { contentType: string; sizeBytes: number; isInline: boolean },

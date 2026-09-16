@@ -80,6 +80,24 @@ describe('isSignatureImage (card 1.116)', () => {
     ).toBe(true);
   });
 
+  it('⚠️ the REAL signature logos are let through, by the owner decision (card 1.122)', () => {
+    // Measured on the first real email to reach this platform: two signature
+    // graphics of 104.7 KB and 120.9 KB, both roughly double this ceiling, both
+    // kept. The filter is NOT catching what it was built to catch.
+    //
+    // ⚠️ LEFT THAT WAY DELIBERATELY. Size is the only thing separating a logo
+    // from a pasted screenshot - both inline, both cid-referenced, both
+    // image/png, both named image.png in that mail - and the screenshot was
+    // 212 KB. Asked with those numbers, the owner chose noise over ever
+    // silently dropping a file somebody meant to send.
+    //
+    // This test exists so raising the ceiling is a deliberate act with a
+    // failing test explaining why, not a quiet tune-up.
+    const logo = { contentType: 'image/png', isInline: true };
+    expect(isSignatureImage({ ...logo, sizeBytes: 104.7 * 1024 })).toBe(false);
+    expect(isSignatureImage({ ...logo, sizeBytes: 120.9 * 1024 })).toBe(false);
+  });
+
   it('⚠️ the threshold is the boundary, and it is configurable', () => {
     const at = { contentType: 'image/png', isInline: true };
     // Exactly at the limit is kept: the rule is "smaller than".
