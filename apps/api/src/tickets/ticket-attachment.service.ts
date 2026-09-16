@@ -172,6 +172,25 @@ export class TicketAttachmentService {
     return attachment;
   }
 
+  /**
+   * Store one file against a ticket, optionally against a MESSAGE (card 1.121).
+   *
+   * ⚠️ `messageId` IS WHAT MAKES CARD 1.83's RULE ABLE TO RUN AT ALL.
+   * `downloadAttachment` refuses a file whose message is INTERNAL to anyone who
+   * may not see internal notes - and until this card no code path anywhere set
+   * the column, so every Attachment row carried `messageId: null`, the rule
+   * never engaged, and migration 67's `Attachment_messageId_fkey` held no data.
+   * The default read as "not an internal note", which is the permissive answer,
+   * so nothing leaked - but the rule was unproven rather than working.
+   *
+   * ⚠️ ONLY THE EMAIL PATH PASSES IT, AND ONLY ON A REPLY. The HTTP upload
+   * route deliberately does not: an attachment is uploaded to the TICKET and
+   * gets its id BEFORE any message exists, and `addMessage` links it afterwards
+   * from the ids the author pasted into the body. That mechanism cannot work for
+   * inbound mail, because the HTML-to-text conversion drops the `<img>` and no
+   * id ever appears in the body - which is precisely why every emailed
+   * attachment was unlinked.
+   */
   async createTicketAttachmentFromBuffer(
     ticketId: string,
     file: {
@@ -180,6 +199,7 @@ export class TicketAttachmentService {
       buffer: Buffer;
     },
     actorId: string,
+    messageId?: string,
   ) {
     const mimeType = file.contentType.trim().toLowerCase();
     const sizeBytes = file.buffer.length;
@@ -206,6 +226,9 @@ export class TicketAttachmentService {
           data: {
             id: attachmentId,
             ticketId,
+            // Card 1.121. Undefined on the upload route, where `addMessage`
+            // links it later from the body's pasted ids.
+            ...(messageId ? { messageId } : {}),
             uploadedById: actorId,
             fileName: file.originalName,
             contentType: mimeType,

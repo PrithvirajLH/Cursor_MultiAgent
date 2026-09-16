@@ -75,7 +75,7 @@ describe('an attachment problem never loses the email (card 1.105)', () => {
     const id = body.ticket?.id ?? body.data?.ticket?.id;
     return getPrisma().ticket.findUniqueOrThrow({
       where: { id: id as string },
-      select: { id: true, subject: true, description: true },
+      select: { id: true, subject: true, description: true, displayId: true },
     });
   };
 
@@ -172,6 +172,77 @@ describe('an attachment problem never loses the email (card 1.105)', () => {
     expect(payload.files.map((f) => f.fileName)).toContain('huge.txt');
     expect(payload.files[0].reason).toMatch(/exceed|limit|MB/i);
   }, 120_000);
+
+  it('⚠️ a REPLY links its files to the message they arrived on (card 1.121)', async () => {
+    // THE ASSERTION THE CARD EXISTS FOR. Measured in production on the first
+    // seven emailed attachments ever to land: every one had messageId NULL, so
+    // migration 67's `Attachment_messageId_fkey` carried no data at all.
+    //
+    // ⚠️ `addMessage` ALREADY LINKS ATTACHMENTS - but only those whose id
+    // appears in the message BODY, which is how the web composer's pasted
+    // images work. An emailed body can never carry such an id, because the
+    // HTML-to-text conversion drops the image tag. That is exactly why every
+    // inbound file was unlinked, and why the link has to be made explicitly.
+    const first = await send({
+      subject: 'card 1121 provenance',
+      body: 'opening the ticket',
+    });
+    const ticket = await ticketOf(first);
+
+    // This endpoint threads on the DISPLAY ID in the subject, which is how the
+    // other inbound specs do it - not on In-Reply-To.
+    await send({
+      subject: `Re: ${ticket.displayId} provenance`,
+      body: 'here is the screenshot you asked for',
+      attachments: [
+        {
+          fileName: 'screenshot.txt',
+          contentType: 'text/plain',
+          sizeBytes: 11,
+          contentBase64: Buffer.from('hello there').toString('base64'),
+        },
+      ],
+    });
+
+    const attachment = await getPrisma().attachment.findFirstOrThrow({
+      where: { ticketId: ticket.id, fileName: 'screenshot.txt' },
+      select: { messageId: true, message: { select: { type: true } } },
+    });
+    expect(attachment.messageId).toBeTruthy();
+    // ⚠️ AND THE MESSAGE IT POINTS AT IS THE INBOUND REPLY, which is PUBLIC.
+    // Worth pinning: an inbound reply is never INTERNAL, so this link does NOT
+    // change what card 1.83 refuses today. What it buys is provenance - which
+    // reply a file arrived on - and a populated foreign key for the rules that
+    // want to use it later.
+    expect(attachment.message?.type).toBe('PUBLIC');
+  });
+
+  it('⚠️ a NEW ticket\'s files stay unlinked, deliberately', async () => {
+    // NON-VACUITY, and it guards the more dangerous direction. Creating a
+    // ticket writes no TicketMessage at all - the first email's words become
+    // the ticket DESCRIPTION - so there is nothing for these files to belong
+    // to. A null messageId reads as "not on an internal note", which keeps them
+    // visible to the requester who sent them. Inventing a link here would be
+    // the change that could hide somebody's own file from them.
+    const res = await send({
+      subject: 'card 1121 new ticket files',
+      body: 'first contact with a file',
+      attachments: [
+        {
+          fileName: 'first-contact.txt',
+          contentType: 'text/plain',
+          sizeBytes: 5,
+          contentBase64: Buffer.from('first').toString('base64'),
+        },
+      ],
+    });
+    const ticket = await ticketOf(res);
+    const attachment = await getPrisma().attachment.findFirstOrThrow({
+      where: { ticketId: ticket.id, fileName: 'first-contact.txt' },
+      select: { messageId: true },
+    });
+    expect(attachment.messageId).toBeNull();
+  });
 
   it('a 250-character subject creates the ticket with a truncated subject', async () => {
     // `Ticket.subject` is VarChar(200), so this used to raise Prisma P2000 and

@@ -303,7 +303,7 @@ export class InboundEmailService {
           // shape before this card touched it.
           //
           // A status derived from a message must not outlive the message.
-          await this.ticketsService.addMessage(
+          const inboundMessage = await this.ticketsService.addMessage(
             existing.id,
             { body: payload.body, type: MessageType.PUBLIC },
             requesterAuth,
@@ -383,10 +383,20 @@ export class InboundEmailService {
             ticketId: existing.id,
             threaded: true,
           };
+          // ⚠️ CARD 1.121: THE FILES BELONG TO THE MESSAGE THEY ARRIVED ON.
+          // Until this card nothing anywhere set `Attachment.messageId`, so
+          // card 1.83's rule - refuse a file on an INTERNAL note to anyone who
+          // may not read internal notes - had no data to act on and had never
+          // once run. `addMessage` already links attachments whose ids appear
+          // in the message BODY, which is how the web composer's pasted images
+          // work; an emailed body can never carry such an id, because the
+          // HTML-to-text conversion drops the image tag. So the link is made
+          // explicitly here, where it is known.
           const replyAttachFailures = await this.attachInboundEmailAttachments(
             existing.id,
             inboundAttachments,
             requester.id,
+            inboundMessage?.id,
           );
           await this.recordDroppedInboundAttachments(existing.id, [
             ...droppedAttachments,
@@ -474,6 +484,12 @@ export class InboundEmailService {
         ticketSubject: created.subject ?? payload.subject,
         messageId,
       });
+      // ⚠️ NO messageId HERE, AND THAT IS CORRECT RATHER THAN AN OVERSIGHT.
+      // Creating a ticket writes no TicketMessage at all - the first email's
+      // words become the ticket DESCRIPTION - so there is no message for these
+      // files to belong to. A null messageId reads as "not on an internal
+      // note", which is the right answer for files the requester themselves
+      // sent in.
       const newTicketAttachFailures = await this.attachInboundEmailAttachments(
         created.id,
         inboundAttachments,
@@ -630,6 +646,7 @@ export class InboundEmailService {
     ticketId: string,
     attachments: NormalizedInboundAttachment[],
     actorId: string,
+    messageId?: string,
   ): Promise<RejectedInboundAttachment[]> {
     if (attachments.length === 0) {
       return [];
@@ -656,6 +673,7 @@ export class InboundEmailService {
               buffer: attachment.buffer,
             },
             actorId,
+            messageId,
           ),
         );
       } catch (error) {
