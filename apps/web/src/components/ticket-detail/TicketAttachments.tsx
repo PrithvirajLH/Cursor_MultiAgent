@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { TicketDetail } from "../../api/client";
 import { downloadAttachment } from "../../api/client";
-import { Maximize2, Paperclip, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Paperclip, X } from "lucide-react";
+import { attachmentCarousel } from "./attachment-carousel";
 
 interface TicketAttachmentsProps {
   ticket: TicketDetail;
@@ -27,6 +28,12 @@ export function TicketAttachments({
       (attachment) => attachment.id === expandedAttachmentId,
     ) ?? null;
 
+  // Card 1.117. Images only, in the server's order, one id per direction.
+  const carousel = attachmentCarousel(
+    ticket.attachments,
+    expandedAttachmentId,
+  );
+
   useEffect(() => {
     return () => {
       if (previewUrl) {
@@ -35,39 +42,116 @@ export function TicketAttachments({
     };
   }, [previewUrl]);
 
-  async function handleTogglePreview(attachmentId: string) {
-    if (expandedAttachmentId === attachmentId) {
-      setExpandedAttachmentId(null);
-      setPreviewError(null);
-      if (previewUrl) {
-        window.URL.revokeObjectURL(previewUrl);
-      }
-      setPreviewUrl(null);
-      setIsFullscreenPreview(false);
-      return;
-    }
-
+  /**
+   * Open one attachment in the preview.
+   *
+   * ⚠️ ONE FETCH, FOR THE FILE THE PERSON ASKED FOR, AND NEVER A NEIGHBOUR.
+   * Card 3.5 makes every `GET /attachments/:id` write an audit row naming the
+   * file and the reader, so the log answers "who opened this" after an incident
+   * on a desk handling PHI. Preloading the next image would file a row for a
+   * picture nobody looked at, and the log would then describe what the software
+   * fetched instead of what a person saw. This is the only call to
+   * `downloadAttachment` in the component, and a test holds it to that.
+   *
+   * ⚠️ NO CACHE, DELIBERATELY. Stepping away revokes the object URL and
+   * stepping back fetches again, which is the existing revoke-on-change pattern
+   * kept exactly as it was. Two consequences, both intended: seven 1-2 MB images
+   * never accumulate in memory while somebody holds an arrow key down, and every
+   * viewing of a file is one row in the audit log - so a repeat view reads as a
+   * repeat view rather than disappearing into a cache.
+   */
+  const openPreview = useCallback(async (attachmentId: string) => {
     setExpandedAttachmentId(attachmentId);
     setPreviewLoading(true);
+    // Per image, not per panel: stepping off a broken file must not leave its
+    // error sitting over the next one.
     setPreviewError(null);
 
     try {
       const blob = await downloadAttachment(attachmentId);
-      if (previewUrl) {
-        window.URL.revokeObjectURL(previewUrl);
-      }
       const url = window.URL.createObjectURL(blob);
+      // The effect above revokes whatever this replaces.
       setPreviewUrl(url);
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "Unable to preview attachment.";
+      setPreviewUrl(null);
       setPreviewError(message);
     } finally {
       setPreviewLoading(false);
     }
+  }, []);
+
+  const closePreview = useCallback(() => {
+    setExpandedAttachmentId(null);
+    setPreviewError(null);
+    setPreviewUrl(null);
+    setIsFullscreenPreview(false);
+  }, []);
+
+  function handleTogglePreview(attachmentId: string) {
+    if (expandedAttachmentId === attachmentId) {
+      closePreview();
+      return;
+    }
+    void openPreview(attachmentId);
   }
+
+  const { prevId, nextId } = carousel;
+
+  /**
+   * Keyboard navigation, live only while a preview is open (card 1.117).
+   *
+   * ⚠️ BOUND ON `document` AND ONLY WHILE THE PREVIEW IS OPEN, which is the
+   * scoping choice card 1.117 asks to be stated. Neither page that can host this
+   * component binds the arrow keys - `TicketDetailPage` takes r/a/s/Escape and
+   * `TicketsPage` takes j/k/x/Enter - so there is nothing to collide with, and
+   * the listener does not exist at all when no preview is up.
+   *
+   * ⚠️ ESCAPE IS NOT HANDLED HERE FOR THE INLINE PANEL, on purpose. The
+   * full-screen viewer carries `role="dialog"`, so `isTransientLayerOpen()`
+   * (card 1.76) reports it and `TicketDetailPage`'s window-capture handler
+   * stands down - which is precisely why Escape closes the viewer without also
+   * navigating the ticket away behind it.
+   *
+   * The typing guard mirrors `TicketsPage`: a reader typing a reply with a
+   * preview open still owns their arrow keys.
+   */
+  useEffect(() => {
+    if (!expandedAttachmentId) {
+      return;
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === "ArrowRight" && nextId) {
+        event.preventDefault();
+        void openPreview(nextId);
+        return;
+      }
+      if (event.key === "ArrowLeft" && prevId) {
+        event.preventDefault();
+        void openPreview(prevId);
+        return;
+      }
+      if (event.key === "Escape" && isFullscreenPreview) {
+        event.preventDefault();
+        setIsFullscreenPreview(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [expandedAttachmentId, prevId, nextId, isFullscreenPreview, openPreview]);
 
   if (!ticket.attachments.length) {
     return (
@@ -181,6 +265,31 @@ export function TicketAttachments({
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {carousel.index >= 0 && carousel.total > 1 ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => prevId && void openPreview(prevId)}
+                        disabled={!prevId}
+                        aria-label="Previous image"
+                        className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-600 text-slate-100 hover:border-slate-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-600"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <span className="px-1 text-[11px] tabular-nums text-slate-300">
+                        {carousel.index + 1} of {carousel.total} images
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => nextId && void openPreview(nextId)}
+                        disabled={!nextId}
+                        aria-label="Next image"
+                        className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-600 text-slate-100 hover:border-slate-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-600"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() =>
@@ -229,8 +338,20 @@ export function TicketAttachments({
         ) : null}
       </div>
 
-      {isFullscreenPreview && expandedAttachment && previewUrl ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+      {isFullscreenPreview && expandedAttachment ? (
+        // ⚠️ `role="dialog"` IS LOAD-BEARING, NOT DECORATION. `isTransientLayerOpen()`
+        // (card 1.76) looks for exactly this, and `TicketDetailPage` registers its
+        // Escape handler on `window` with capture - so without the role, Escape
+        // here would navigate the ticket away BEFORE this viewer ever saw the key,
+        // and `stopPropagation` could not undo it. `aria-modal` is honest: this
+        // one really does cover the page, unlike the four anchored popovers that
+        // card 1.76 was careful not to mislabel.
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${expandedAttachment.fileName}, full screen`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+        >
           <button
             type="button"
             onClick={() => setIsFullscreenPreview(false)}
@@ -239,12 +360,45 @@ export function TicketAttachments({
           >
             <X className="h-4 w-4" />
           </button>
+
+          {carousel.index >= 0 && carousel.total > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => prevId && void openPreview(prevId)}
+                disabled={!prevId}
+                aria-label="Previous image"
+                className="absolute left-6 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/70"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => nextId && void openPreview(nextId)}
+                disabled={!nextId}
+                aria-label="Next image"
+                className="absolute right-6 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 text-slate-100 hover:bg-black disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-black/70"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+              <p className="absolute bottom-6 rounded-full bg-black/70 px-3 py-1 text-[11px] tabular-nums text-slate-200">
+                {carousel.index + 1} of {carousel.total} images
+              </p>
+            </>
+          ) : null}
+
           <div className="max-h-[calc(90vh/var(--ui-zoom))] max-w-[calc(90vw/var(--ui-zoom))] overflow-auto rounded-2xl border border-slate-700 bg-slate-950/80 p-3">
-            <img
-              src={previewUrl}
-              alt={expandedAttachment.fileName}
-              className="h-full w-full max-h-[calc(85vh/var(--ui-zoom))] max-w-[calc(85vw/var(--ui-zoom))] object-contain"
-            />
+            {previewLoading ? (
+              <p className="px-8 py-16 text-xs text-slate-300">Loading…</p>
+            ) : previewError ? (
+              <p className="px-8 py-16 text-xs text-rose-300">{previewError}</p>
+            ) : previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={expandedAttachment.fileName}
+                className="h-full w-full max-h-[calc(85vh/var(--ui-zoom))] max-w-[calc(85vw/var(--ui-zoom))] object-contain"
+              />
+            ) : null}
           </div>
         </div>
       ) : null}
