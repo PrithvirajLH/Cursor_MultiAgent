@@ -2390,7 +2390,15 @@ export function TicketDetailPage({
   return (
     <section
       className={`flex flex-col bg-card animate-fade-in ${ticketIdProp ? "h-full overflow-hidden" : "h-screen"}`}
-      title={headerTitle}
+      // ⚠️ `aria-label`, NEVER `title`, ON A CONTAINER. As `title` this put a
+      // native browser tooltip on the WHOLE ticket panel, and the browser shows
+      // an ancestor's title for every descendant that has none of its own - so
+      // hovering any attachment, button or message inside the panel popped up
+      // "All Tickets" (the view name, which is what `headerTitle` holds).
+      //
+      // `aria-label` gives the section the same accessible name for screen
+      // readers and renders no tooltip at all.
+      aria-label={headerTitle}
     >
       {/*
         Card 1.11. The caveat is the point of this dialog, and it is different
