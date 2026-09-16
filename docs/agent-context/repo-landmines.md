@@ -687,3 +687,91 @@ children when the session ends. Restart the cluster with
 coming up fails alone and the rest of the run is fine, which is what happened to
 `security.authorization.spec.ts`. **Re-running that one suite is a valid way to
 complete the tally; say so when you do.**
+
+## ⚠️ AND THE DEPLOY AGENT IS THE WORST OFFENDER — a planner instruction caused it (2026-09-15)
+
+**Every deploy handoff in this repo says “check out `<sha>` explicitly and build
+from it, not the branch tip.” That instruction is RIGHT about what to build and
+WRONG about how** — in a shared checkout it detaches HEAD under whoever else is
+working, twice observed on 2026-09-15 (during card 2.6, and again during the
+1.102–1.104 batch).
+
+**An implementer's uncommitted edits survive it, so the damage is not lost work —
+it is that their `git log`, their `HEAD`, and any test they run mid-deploy now
+describe a different commit than they think.**
+
+**The fix, for every future deploy handoff:** build from a throwaway copy, never
+by moving the shared checkout.
+
+```bash
+git worktree add ../deploy-<sha> <sha>   # or: git clone . ../deploy-<sha>
+# build there, deploy, then:
+git worktree remove ../deploy-<sha>
+```
+
+**If a worktree is not possible, the deploy agent must say so and wait until the
+tree is idle** — not detach HEAD and hope.
+
+## Two sessions share the WORKING TREE, not just the database (2026-09-15)
+
+**Worse than the shared-database trap, and it looks exactly like a real
+regression.** A second session's *uncommitted* work sits in the same checkout,
+so your test run exercises code you did not write and cannot see in `git log`.
+
+**What it looked like:** a clean full run went from 914 passing to 4 failures in
+two email suites, with **zero `P1001`/`P1017`/`57P01` markers** — so it did not
+resemble the database trap at all. The failures were a `400` on a webhook and a
+missing `references` header: plausible, specific, and entirely someone else's
+half-finished `main.ts`.
+
+⚠️ **`git checkout <old-commit>` DOES NOT ESCAPE IT.** Uncommitted
+modifications are carried across checkouts, so a bisect walks the tree with the
+other session's changes still applied at every step. **A bisect run this way is
+worthless and will point confidently at an innocent commit.**
+
+**How to catch it in one command, before believing any red run:**
+
+```bash
+git status --porcelain | grep -v '^??'
+```
+
+**If anything under `apps/` is modified and it is not yours, stop.** Check
+`main.ts`, `app.module.ts` and `package.json` first — a change there alters
+application-wide behaviour (global pipes, module graph) and the failures surface
+far from the edit.
+
+**And check it BEFORE the run as well as after**, because the other session's
+work can land mid-run: the same commit and the same suite gave opposite results
+twenty minutes apart on 2026-09-15, which is what finally gave it away.
+
+## `apps/web/src/api/client.ts` HAND-WRITES the API types, so `tsc` is blind to a new response shape (2026-09-16)
+
+⚠️ **The web app does not import the API's types. It keeps its own copies.** So
+when the API grows a new response `status`, a new field, or a new variant,
+**both typechecks stay at 0 and every test stays green while the page renders
+nonsense.**
+
+**Found by card 1.106, and it shipped half-broken because of it.** The API gained
+`status: 'disabled'`; `AiSubmitPage` funnelled every non-`created` /
+non-`needs_clarification` result into one `else` that read `response.error` — a
+field the disabled shape does not have. **Switching the AI off rendered
+"Something went wrong" above a blank message: worse than before the card.**
+Nothing caught it — not `tsc`, not 834 unit tests, not the integration suite.
+**Only opening the page did.**
+
+**And it was not a single site.** Card 1.107 had the same root cause on the same
+day: the API sent `correlationId`, the hand-written type had no such field, so
+the message promising *"contact the service desk with the reference below"* had
+nothing below it.
+
+**What to do when you change an API response shape:**
+
+1. **Add the union member or field to `client.ts` FIRST.** That turns the silent
+   gap into a compile error — which is exactly how card 1.106's second site was
+   found, where `status !== "error"` had been standing in for "has suggested
+   articles".
+2. ⚠️ **Then grep for every `else` that assumes the old shape.** A widened union
+   does not make an `else` wrong in TypeScript's eyes; it makes it wrong in the
+   browser.
+3. **Open the page.** This class of bug has now been caught by a browser pass
+   three times (cards 2.7, 1.106, 1.107) and by an automated check zero times.
