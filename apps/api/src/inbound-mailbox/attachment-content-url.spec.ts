@@ -2,7 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { GraphMailHttpClient } from './graph-mail.http-client';
 
 /**
- * Card 1.117 — the attachment download URL must carry no `$select`.
+ * Card 1.119 — the attachment download URL must carry no `$select`.
  *
  * `fetchAttachmentContent` asked Graph for
  * `/attachments/{id}?$select=contentBytes` and got **400 BadRequest** every
@@ -19,7 +19,7 @@ import { GraphMailHttpClient } from './graph-mail.http-client';
  * These cases pin the URL, so re-adding the projection fails here rather than
  * in production.
  */
-describe('fetchAttachmentContent URL (card 1.117)', () => {
+describe('fetchAttachmentContent URL (card 1.119)', () => {
   const MAILBOX = 'glovebox@csnhc.com';
   const MESSAGE_ID = 'AAMkAGI2=';
   const ATTACHMENT_ID = 'AAMkAGI2xyz=';

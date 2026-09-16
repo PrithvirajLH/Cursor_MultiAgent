@@ -290,7 +290,7 @@ export class GraphMailHttpClient extends GraphMailClient {
    * Fetched by id, one file at a time, only for files the worker has already
    * decided to keep.
    *
-   * ⚠️ NO `$select` HERE, AND THAT IS THE POINT (card 1.117). This used to ask
+   * ⚠️ NO `$select` HERE, AND THAT IS THE POINT (card 1.119). This used to ask
    * for `?$select=contentBytes` and Graph answered **400 BadRequest** every
    * time: *"Could not find a property named 'contentBytes' on type
    * 'microsoft.graph.attachment'."* `contentBytes` belongs to the derived
