@@ -49,6 +49,22 @@ process.env.TEST_DB_RESET_STRATEGY = 'migrate';
 // queue nothing and any assertion about an outbound email would pass vacuously.
 process.env.EMAIL_ALLOWED_DOMAINS = 'company.com';
 
+// ⚠️ THE OUTBOUND SENDING IDENTITY IS PINNED HERE, NOT INHERITED.
+// `ticket-email-thread.service.ts` derives every ticket's root Message-ID
+// domain from the configured reply address, so `email-threading.spec.ts` and
+// `tickets.inbound-email.spec.ts` assert ids ending `@csnhc.com`. Those values
+// live ONLY in the dev `.env` - never in `.env.test` - and reached the suite
+// purely by the @prisma/client side-load below. When that did not deliver them,
+// the address fell back to `no-reply@localhost`, every root id changed domain,
+// and four tests failed with `references[0]` undefined while the product was
+// entirely fine.
+//
+// ⚠️ A DELIBERATELY DIFFERENT LOCAL PART FROM PRODUCTION'S. Only the DOMAIN
+// is asserted, and two of this repo's remotes are public, so the real sending
+// mailbox does not belong in a tracked file.
+process.env.SMTP_FROM = 'helpdesk@csnhc.com';
+process.env.SMTP_REPLY_TO = 'helpdesk@csnhc.com';
+
 // ---------------------------------------------------------------------------
 // Make the test environment hermetic against the dev `.env`.
 //
