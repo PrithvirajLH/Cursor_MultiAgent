@@ -7,6 +7,7 @@ import { InboundMailboxService } from './inbound-mailbox.service';
 import {
   GraphDeltaPage,
   GraphMailClient,
+  GraphAttachmentMeta,
   GraphMailMessage,
 } from './graph-mail.client';
 
@@ -22,7 +23,7 @@ function message(partial: Partial<GraphMailMessage> = {}): GraphMailMessage {
     toRecipients: [{ address: 'helpdesk+payroll@csnhc.com' }],
     ccRecipients: [],
     deliveredTo: [],
-    attachments: [],
+    hasAttachments: false,
     ...partial,
   };
 }
@@ -44,6 +45,38 @@ class FakeGraph extends GraphMailClient {
   constructor(pages: GraphDeltaPage[], private configured = true) {
     super();
     this.pages = pages;
+  }
+
+  /** Card 1.116: what `listAttachments` returns, per Graph message id. */
+  attachmentsByMessage = new Map<string, GraphAttachmentMeta[]>();
+  /** Every (messageId, attachmentId) whose CONTENT was actually downloaded. */
+  contentFetches: Array<{ messageId: string; attachmentId: string }> = [];
+  listCalls: string[] = [];
+  listShouldThrow = false;
+  contentShouldThrow = false;
+
+  listAttachments(
+    _mailbox: string,
+    messageId: string,
+  ): Promise<GraphAttachmentMeta[]> {
+    this.listCalls.push(messageId);
+    if (this.listShouldThrow) {
+      return Promise.reject(new Error('Graph list failed'));
+    }
+    return Promise.resolve(this.attachmentsByMessage.get(messageId) ?? []);
+  }
+
+  fetchAttachmentContent(
+    _mailbox: string,
+    messageId: string,
+    attachmentId: string,
+  ): Promise<string> {
+    this.contentFetches.push({ messageId, attachmentId });
+    if (this.contentShouldThrow) {
+      return Promise.reject(new Error('Graph download failed'));
+    }
+    // Four base64 characters per three bytes: 12 chars -> 9 bytes decoded.
+    return Promise.resolve(Buffer.from('nine bytes').toString('base64'));
   }
 
   fetchDelta(_mailbox: string, link: string | null): Promise<GraphDeltaPage> {
@@ -144,6 +177,195 @@ describe('InboundMailboxService (card 1.24)', () => {
     logSpy.mockRestore();
     warnSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+
+  describe('attachments (card 1.116)', () => {
+    const LOGO = {
+      id: 'att-logo',
+      name: 'logo.png',
+      contentType: 'image/png',
+      sizeBytes: 6 * 1024,
+      isInline: true,
+    };
+    const PASTED = {
+      id: 'att-pasted',
+      name: 'image.png',
+      contentType: 'image/png',
+      sizeBytes: 212 * 1024,
+      isInline: true,
+    };
+    const FILE_ONE = {
+      id: 'att-1',
+      name: 'aginf.png',
+      contentType: 'image/png',
+      sizeBytes: 4_573_184,
+      isInline: false,
+    };
+    const FILE_TWO = {
+      id: 'att-2',
+      name: 'Back Injury.png',
+      contentType: 'image/png',
+      sizeBytes: 4_552_704,
+      isInline: false,
+    };
+
+    /** One message that says it has files, with `metas` behind it. */
+    const withAttachments = (
+      metas: typeof LOGO[],
+      graphId = 'graph-att-1',
+    ) => {
+      const graph = new FakeGraph([
+        {
+          messages: [message({ id: graphId, hasAttachments: true })],
+          deltaLink: 'delta-1',
+        },
+      ]);
+      graph.attachmentsByMessage.set(graphId, metas);
+      return graph;
+    };
+
+    it('⚠️ the three real images arrive and the signature logo does not', async () => {
+      // THE REGRESSION ASSERTION FOR THE WHOLE CARD. Before this, the delta
+      // page carried no attachments at all and every one of these was left in
+      // the mailbox.
+      const graph = withAttachments([LOGO, PASTED, FILE_ONE, FILE_TWO]);
+      const { service, ingest } = build(graph, ON);
+      await service.runOnce();
+
+      const payload = ingest.mock.calls[0][0] as {
+        attachments: { fileName: string }[];
+      };
+      expect(payload.attachments.map((a) => a.fileName)).toEqual([
+        'image.png',
+        'aginf.png',
+        'Back Injury.png',
+      ]);
+    });
+
+    it('⚠️ the logo is never even downloaded', async () => {
+      // Metadata first is the design: the skip has to happen BEFORE the bytes
+      // are paid for, otherwise the filter saves nothing.
+      const graph = withAttachments([LOGO, PASTED]);
+      const { service } = build(graph, ON);
+      await service.runOnce();
+      expect(graph.contentFetches.map((c) => c.attachmentId)).toEqual([
+        'att-pasted',
+      ]);
+    });
+
+    it('⚠️ sizeBytes is the DECODED length, not Graph\'s wire size', async () => {
+      // THE SECOND BUG, and the reason fixing only the fetch would have
+      // delivered nothing. The normalizer checks `sizeBytes` for an EXACT match
+      // against the decoded buffer; Graph reports the base64/MIME size, about a
+      // third larger, so passing it through rejected every attachment with
+      // "expected N bytes, got M".
+      const graph = withAttachments([FILE_ONE]);
+      const { service, ingest } = build(graph, ON);
+      await service.runOnce();
+
+      const payload = ingest.mock.calls[0][0] as {
+        attachments: { sizeBytes: number; contentBase64: string }[];
+      };
+      const attachment = payload.attachments[0];
+      expect(attachment.sizeBytes).toBe(
+        Buffer.from(attachment.contentBase64, 'base64').length,
+      );
+      expect(attachment.sizeBytes).not.toBe(FILE_ONE.sizeBytes);
+    });
+
+    it('⚠️ a message with no attachments makes no Graph call at all', async () => {
+      // NON-VACUITY for the whole path: ordinary mail must not cost a request.
+      const graph = new FakeGraph([
+        { messages: [message({ hasAttachments: false })], deltaLink: 'd' },
+      ]);
+      const { service } = build(graph, ON);
+      await service.runOnce();
+      expect(graph.listCalls).toHaveLength(0);
+      expect(graph.contentFetches).toHaveLength(0);
+    });
+
+    it('⚠️ mail that is not addressed to us costs no download', async () => {
+      // The reason the fetch sits after the addressing check rather than in
+      // the delta page: a mailbox full of other people\'s copies is free.
+      const graph = new FakeGraph([
+        {
+          messages: [
+            message({
+              id: 'graph-other',
+              hasAttachments: true,
+              toRecipients: [{ address: 'someone-else@elsewhere.com' }],
+              deliveredTo: [],
+            }),
+          ],
+          deltaLink: 'd',
+        },
+      ]);
+      graph.attachmentsByMessage.set('graph-other', [FILE_ONE]);
+      const { service, ingest } = build(graph, ON);
+      await service.runOnce();
+      expect(graph.listCalls).toHaveLength(0);
+      expect(ingest).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ a failed listing still ingests the email', async () => {
+      // Card 1.105\'s principle one layer up: an attachment problem must never
+      // cost the person\'s words.
+      const graph = withAttachments([FILE_ONE]);
+      graph.listShouldThrow = true;
+      const { service, ingest } = build(graph, ON);
+      const summary = await service.runOnce();
+      expect(summary.ingested).toBe(1);
+      const payload = ingest.mock.calls[0][0] as { attachments: unknown[] };
+      expect(payload.attachments).toHaveLength(0);
+    });
+
+    it('⚠️ a failed download still ingests, and reports the file', async () => {
+      // Emitted WITHOUT content on purpose, so the existing normalizer rejects
+      // it and INBOUND_ATTACHMENTS_DROPPED names it on the ticket - rather than
+      // the file vanishing silently.
+      const graph = withAttachments([FILE_ONE]);
+      graph.contentShouldThrow = true;
+      const { service, ingest } = build(graph, ON);
+      const summary = await service.runOnce();
+      expect(summary.ingested).toBe(1);
+      const payload = ingest.mock.calls[0][0] as {
+        attachments: { fileName: string; contentBase64?: string }[];
+      };
+      expect(payload.attachments[0].fileName).toBe('aginf.png');
+      expect(payload.attachments[0].contentBase64).toBeUndefined();
+    });
+
+    it('⚠️ content is fetched only up to the attachment ceiling', async () => {
+      // The overflow is still passed on, without content, so the normalizer
+      // reports it in its own words instead of it disappearing here.
+      const many = Array.from({ length: 12 }, (_, i) => ({
+        id: `att-${i}`,
+        name: `file-${i}.png`,
+        contentType: 'image/png',
+        sizeBytes: 100_000,
+        isInline: false,
+      }));
+      const graph = withAttachments(many);
+      const { service, ingest } = build(graph, {
+        ...ON,
+        INBOUND_EMAIL_MAX_ATTACHMENTS: '10',
+      });
+      await service.runOnce();
+      expect(graph.contentFetches).toHaveLength(10);
+      const payload = ingest.mock.calls[0][0] as { attachments: unknown[] };
+      expect(payload.attachments).toHaveLength(12);
+    });
+
+    it('the logo threshold is configurable', async () => {
+      const graph = withAttachments([PASTED]);
+      const { service, ingest } = build(graph, {
+        ...ON,
+        INBOUND_INLINE_IMAGE_MIN_BYTES: String(512 * 1024),
+      });
+      await service.runOnce();
+      const payload = ingest.mock.calls[0][0] as { attachments: unknown[] };
+      expect(payload.attachments).toHaveLength(0);
+    });
   });
 
   describe('the switch', () => {

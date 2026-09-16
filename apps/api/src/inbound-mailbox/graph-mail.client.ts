@@ -1,12 +1,25 @@
 /** One recipient as Graph reports it. */
 export type GraphRecipient = { address: string; name?: string | null };
 
-/** One attachment as Graph reports it, already base64 in `contentBytes`. */
-export type GraphAttachment = {
+/**
+ * One attachment as Graph DESCRIBES it, with no content (card 1.116).
+ *
+ * ⚠️ METADATA ONLY, DELIBERATELY. Listing is cheap and downloading is not,
+ * so the worker decides what it wants - is it a signature logo, is it over the
+ * size limit - before spending anything on the bytes.
+ *
+ * `sizeBytes` is Graph's wire size: about a third larger than the real file,
+ * because of base64 and MIME overhead. Good enough to choose by, and NOT the
+ * number to hand downstream. See `fetchAttachmentContent`.
+ */
+export type GraphAttachmentMeta = {
+  /** Graph's attachment id, needed to fetch the content. */
+  id: string;
   name: string;
   contentType: string;
   sizeBytes: number;
-  contentBytes?: string | null;
+  /** Embedded by the sender's mail client - a pasted image, or a signature logo. */
+  isInline: boolean;
 };
 
 /**
@@ -40,7 +53,18 @@ export type GraphMailMessage = {
   precedence?: string | null;
   listId?: string | null;
   returnPath?: string | null;
-  attachments: GraphAttachment[];
+  /**
+   * Whether Graph says this message has attachments (card 1.116).
+   *
+   * ⚠️ THIS REPLACED AN `attachments` ARRAY THAT COULD NEVER BE FILLED, and
+   * that is the whole point of the change. A delta query does not return the
+   * attachments collection and does not support `$expand`, so the old field was
+   * `[]` on every message the system has ever received - which looked exactly
+   * like "this email had no attachments" and hid the bug for months.
+   *
+   * A flag cannot lie the same way. If it is true, the worker goes and asks.
+   */
+  hasAttachments: boolean;
 };
 
 /** One page of a delta query. */
@@ -92,6 +116,30 @@ export abstract class GraphMailClient {
    * ⚠️ Called ONLY after the message is safely stored. See the worker.
    */
   abstract moveToProcessed(mailbox: string, messageId: string): Promise<void>;
+
+  /**
+   * Describe one message's attachments WITHOUT downloading them (card 1.116).
+   *
+   * ⚠️ SEPARATE FROM `fetchDelta` ON PURPOSE. Called only after the worker
+   * has decided the mail is addressed to us, so a mailbox full of other
+   * people's copies costs nothing.
+   */
+  abstract listAttachments(
+    mailbox: string,
+    messageId: string,
+  ): Promise<GraphAttachmentMeta[]>;
+
+  /**
+   * One attachment's content, base64, for a file already chosen.
+   *
+   * ⚠️ ONE CALL PER FILE, WHICH IS THE POINT. A failure here costs that one
+   * attachment; it does not stall the page, and it must never lose the email.
+   */
+  abstract fetchAttachmentContent(
+    mailbox: string,
+    messageId: string,
+    attachmentId: string,
+  ): Promise<string>;
 
   /** Whether the client has the configuration it needs to reach Graph. */
   abstract isConfigured(): boolean;

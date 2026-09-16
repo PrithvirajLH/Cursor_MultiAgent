@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  GraphAttachment,
+  GraphAttachmentMeta,
   GraphDeltaPage,
   GraphMailClient,
   GraphMailMessage,
@@ -184,7 +184,16 @@ export class GraphMailHttpClient extends GraphMailClient {
       precedence: headers['precedence']?.[0] ?? null,
       listId: headers['list-id']?.[0] ?? null,
       returnPath: headers['return-path']?.[0] ?? null,
-      attachments: this.toAttachments(item.attachments),
+      // ⚠️ CARD 1.116: A FLAG, BECAUSE THE LIST WAS ALWAYS A LIE.
+      // This used to be `this.toAttachments(item.attachments)`. `attachments`
+      // is a navigation property: a delta query does not return it and does not
+      // support `$expand`, so `item.attachments` was ALWAYS undefined and the
+      // array was ALWAYS empty. Every emailed image since this worker shipped
+      // was left in the mailbox, and an empty array is indistinguishable from
+      // "no attachments", which is why nothing ever reported a problem.
+      //
+      // `hasAttachments` IS returned by delta. The worker asks separately.
+      hasAttachments: item.hasAttachments === true,
     };
   }
 
@@ -227,27 +236,77 @@ export class GraphMailHttpClient extends GraphMailClient {
     return { address, name: typeof name === 'string' ? name : null };
   }
 
-  private toAttachments(raw: unknown): GraphAttachment[] {
-    if (!Array.isArray(raw)) {
-      return [];
-    }
-    const out: GraphAttachment[] = [];
-    for (const entry of raw) {
+  /**
+   * One message's attachments, described but not downloaded (card 1.116).
+   *
+   * ⚠️ `$select` KEEPS `contentBytes` OUT OF THIS RESPONSE. Without it Graph
+   * returns the content of every attachment inline, which is the cost this call
+   * exists to avoid: the worker wants to know what is there before deciding
+   * what is worth fetching.
+   *
+   * `itemAttachment` and `referenceAttachment` have no file content to store,
+   * so only `fileAttachment` comes back.
+   */
+  async listAttachments(
+    mailbox: string,
+    messageId: string,
+  ): Promise<GraphAttachmentMeta[]> {
+    const url =
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}` +
+      `/messages/${encodeURIComponent(messageId)}/attachments` +
+      `?$select=${encodeURIComponent('id,name,contentType,size,isInline')}`;
+    const payload = await this.request<{ value?: unknown[] }>(url, {
+      method: 'GET',
+    });
+    const out: GraphAttachmentMeta[] = [];
+    for (const entry of payload.value ?? []) {
       if (typeof entry !== 'object' || entry === null) continue;
       const item = entry as Record<string, unknown>;
-      if (typeof item.name !== 'string') continue;
+      if (typeof item.id !== 'string' || typeof item.name !== 'string') continue;
+      const odataType = item['@odata.type'];
+      if (
+        typeof odataType === 'string' &&
+        !odataType.endsWith('fileAttachment')
+      ) {
+        continue;
+      }
       out.push({
+        id: item.id,
         name: item.name,
         contentType:
           typeof item.contentType === 'string'
             ? item.contentType
             : 'application/octet-stream',
         sizeBytes: typeof item.size === 'number' ? item.size : 0,
-        contentBytes:
-          typeof item.contentBytes === 'string' ? item.contentBytes : null,
+        isInline: item.isInline === true,
       });
     }
     return out;
+  }
+
+  /**
+   * One attachment's content as base64 (card 1.116).
+   *
+   * Fetched by id, one file at a time, only for files the worker has already
+   * decided to keep.
+   */
+  async fetchAttachmentContent(
+    mailbox: string,
+    messageId: string,
+    attachmentId: string,
+  ): Promise<string> {
+    const url =
+      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}` +
+      `/messages/${encodeURIComponent(messageId)}` +
+      `/attachments/${encodeURIComponent(attachmentId)}` +
+      `?$select=${encodeURIComponent('contentBytes')}`;
+    const payload = await this.request<{ contentBytes?: unknown }>(url, {
+      method: 'GET',
+    });
+    if (typeof payload.contentBytes !== 'string' || !payload.contentBytes) {
+      throw new Error('Graph returned no content for the attachment');
+    }
+    return payload.contentBytes;
   }
 
   /** One Graph call, with a bearer token and a timeout. Throws on failure. */

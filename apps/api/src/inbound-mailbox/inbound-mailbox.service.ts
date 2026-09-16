@@ -8,8 +8,20 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { InboundEmailService } from '../tickets/inbound-email.service';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
-import { IngestInboundEmailDto } from '../tickets/dto/ingest-inbound-email.dto';
-import { GraphMailClient, GraphMailMessage } from './graph-mail.client';
+import {
+  IngestInboundEmailDto,
+  InboundEmailAttachmentDto,
+} from '../tickets/dto/ingest-inbound-email.dto';
+import { parsePositiveInt } from '../common/config.utils';
+import {
+  GraphAttachmentMeta,
+  GraphMailClient,
+  GraphMailMessage,
+} from './graph-mail.client';
+import {
+  DEFAULT_INLINE_IMAGE_MIN_BYTES,
+  isSignatureImage,
+} from './is-signature-image.util';
 import {
   classifyInboundAddress,
   RecipientCandidate,
@@ -275,7 +287,15 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
     // Every surviving kind carries the address we matched; `none` returned
     // above. The ingestion path pulls the reply token out of this field, so it
     // has to be OUR address rather than whatever sorted first in `To`.
-    const payload = this.toIngestPayload(message, addressing.matchedAddress);
+    // ⚠️ CARD 1.116: FETCHED HERE, AFTER THE ADDRESSING CHECK, NOT IN THE
+    // DELTA PAGE. Mail that is not ours returned above without costing a single
+    // download, and one message's attachment trouble cannot stall the page.
+    const attachments = await this.collectAttachments(mailbox, message);
+    const payload = this.toIngestPayload(
+      message,
+      addressing.matchedAddress,
+      attachments,
+    );
     try {
       await this.inboundEmail.ingestInboundEmailMessage(payload, {
         assignedTeamId,
@@ -301,6 +321,100 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
           `Processed: ${(error as Error).message}`,
       );
     }
+  }
+
+  /**
+   * The files on one message, ready for ingestion (card 1.116).
+   *
+   * ⚠️ THIS IS THE WHOLE CARD. The worker used to read `message.attachments`
+   * off the delta page, and a delta query never returns that collection - so it
+   * was empty on every message ever received and every emailed image was left
+   * in the mailbox. Nothing downstream was broken; nothing downstream was ever
+   * reached.
+   *
+   * ⚠️ METADATA FIRST, CONTENT SECOND, AND THAT ORDER IS THE DESIGN. Listing
+   * is cheap. It lets the signature logos and the overflow be discarded before
+   * anything is downloaded, instead of paying for files that card 1.105's
+   * normalizer would only reject on arrival.
+   *
+   * ⚠️ AN ATTACHMENT PROBLEM MUST NEVER LOSE THE EMAIL - card 1.105's
+   * principle, one layer up. A failed listing ingests the mail with no files. A
+   * failed download emits the entry WITHOUT content, so the existing normalizer
+   * rejects it and `INBOUND_ATTACHMENTS_DROPPED` names the file on the ticket.
+   * Reusing that path rather than inventing a second way to report the same
+   * thing.
+   */
+  private async collectAttachments(
+    mailbox: string,
+    message: GraphMailMessage,
+  ): Promise<InboundEmailAttachmentDto[]> {
+    if (!message.hasAttachments) {
+      return [];
+    }
+    let described: GraphAttachmentMeta[];
+    try {
+      described = await this.graph.listAttachments(mailbox, message.id);
+    } catch (error) {
+      this.logger.warn(
+        `Could not list attachments for ${message.internetMessageId}; ` +
+          `ingesting the email without them: ${(error as Error).message}`,
+      );
+      return [];
+    }
+    const minInlineBytes = parsePositiveInt(
+      this.config.get<string>('INBOUND_INLINE_IMAGE_MIN_BYTES'),
+      DEFAULT_INLINE_IMAGE_MIN_BYTES,
+    );
+    const wanted = described.filter(
+      (attachment) => !isSignatureImage(attachment, minInlineBytes),
+    );
+    // The normalizer applies this same ceiling and reports the overflow in its
+    // own words. Content is fetched only for the files that will survive it.
+    const maxWithContent = parsePositiveInt(
+      this.config.get<string>('INBOUND_EMAIL_MAX_ATTACHMENTS'),
+      10,
+    );
+    const out: InboundEmailAttachmentDto[] = [];
+    for (const [index, attachment] of wanted.entries()) {
+      if (index >= maxWithContent) {
+        out.push({
+          fileName: attachment.name,
+          contentType: attachment.contentType,
+          sizeBytes: attachment.sizeBytes || 1,
+        } as InboundEmailAttachmentDto);
+        continue;
+      }
+      try {
+        const contentBase64 = await this.graph.fetchAttachmentContent(
+          mailbox,
+          message.id,
+          attachment.id,
+        );
+        out.push({
+          fileName: attachment.name,
+          contentType: attachment.contentType,
+          // ⚠️ THE DECODED LENGTH, NOT GRAPH'S `size`. `sizeBytes` means "the
+          // size of the file I am handing you", and the normalizer checks it
+          // for an EXACT match to catch a truncated download. Graph's `size` is
+          // the wire size - base64 and MIME overhead included - so passing it
+          // rejected every single attachment with "expected N bytes, got M".
+          // The check is right; the caller was wrong.
+          sizeBytes: Buffer.byteLength(contentBase64, 'base64'),
+          contentBase64,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not download "${attachment.name}" from ` +
+            `${message.internetMessageId}: ${(error as Error).message}`,
+        );
+        out.push({
+          fileName: attachment.name,
+          contentType: attachment.contentType,
+          sizeBytes: attachment.sizeBytes || 1,
+        } as InboundEmailAttachmentDto);
+      }
+    }
+    return out;
   }
 
   /**
@@ -332,6 +446,7 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
   private toIngestPayload(
     message: GraphMailMessage,
     matchedAddress: string | undefined,
+    attachments: InboundEmailAttachmentDto[],
   ): IngestInboundEmailDto {
     return {
       fromEmail: message.from.address,
@@ -364,12 +479,7 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
       precedence: message.precedence ?? undefined,
       listId: message.listId ?? undefined,
       returnPath: message.returnPath ?? undefined,
-      attachments: message.attachments.map((attachment) => ({
-        fileName: attachment.name,
-        contentType: attachment.contentType,
-        sizeBytes: attachment.sizeBytes || 1,
-        contentBase64: attachment.contentBytes ?? undefined,
-      })),
+      attachments,
     } as IngestInboundEmailDto;
   }
 

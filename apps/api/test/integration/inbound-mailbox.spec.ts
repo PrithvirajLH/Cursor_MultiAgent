@@ -11,6 +11,7 @@ import { InboundMailboxService } from '../../src/inbound-mailbox/inbound-mailbox
 import {
   GraphDeltaPage,
   GraphMailClient,
+  GraphAttachmentMeta,
   GraphMailMessage,
 } from '../../src/inbound-mailbox/graph-mail.client';
 
@@ -25,6 +26,31 @@ class ScriptedGraph extends GraphMailClient {
     return Promise.resolve(
       this.pages.shift() ?? { messages: [], deltaLink: 'delta-end' },
     );
+  }
+
+  /** Card 1.116: attachments per Graph message id, and what was downloaded. */
+  attachmentsByMessage = new Map<string, GraphAttachmentMeta[]>();
+  contentByAttachment = new Map<string, string>();
+  contentFetches: string[] = [];
+
+  listAttachments(
+    _mailbox: string,
+    messageId: string,
+  ): Promise<GraphAttachmentMeta[]> {
+    return Promise.resolve(this.attachmentsByMessage.get(messageId) ?? []);
+  }
+
+  fetchAttachmentContent(
+    _mailbox: string,
+    _messageId: string,
+    attachmentId: string,
+  ): Promise<string> {
+    this.contentFetches.push(attachmentId);
+    const content = this.contentByAttachment.get(attachmentId);
+    if (content === undefined) {
+      return Promise.reject(new Error('no scripted content'));
+    }
+    return Promise.resolve(content);
   }
 
   moveToProcessed(_mailbox: string, messageId: string): Promise<void> {
@@ -51,7 +77,7 @@ function message(partial: Partial<GraphMailMessage> = {}): GraphMailMessage {
     toRecipients: [{ address: `helpdesk+payroll@company.com` }],
     ccRecipients: [],
     deliveredTo: [],
-    attachments: [],
+    hasAttachments: false,
     ...partial,
   };
 }
@@ -124,6 +150,104 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
     expect(ticket.assignedTeamId).toBe(fixtureTeamIds.hr);
     expect(ticket.channel).toBe('EMAIL');
     expect(graph.moved).toEqual([mail.id]);
+  });
+
+  it('⚠️ emailed files become real attachments, minus the signature logo', async () => {
+    // THE END-TO-END PROOF FOR CARD 1.116, and the reason it belongs in this
+    // tier rather than the unit one. The unit tests show the worker builds the
+    // right payload; this shows the payload actually survives the normalizer,
+    // the size checks and storage, and lands as Attachment ROWS on the ticket.
+    //
+    // ⚠️ EVERYTHING DOWNSTREAM WAS ALWAYS CORRECT AND ALWAYS STARVING. The
+    // delta query never returned the attachments collection, so every emailed
+    // image since this worker shipped was left in the mailbox and none of that
+    // machinery ever ran on a real file. This is the first test that feeds it.
+    //
+    // Shaped from the real email that produced the card: two genuine files, one
+    // pasted screenshot, and the sender's signature logo.
+    // ⚠️ REAL PNG BYTES, NOT A STRING. Uploads are checked against a magic-byte
+    // signature as well as the extension and MIME type, so "pretend it is a
+    // png" is refused - correctly - and the first version of this test saw zero
+    // rows for that reason rather than the one it was written for.
+    const PNG_1X1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const pasted = PNG_1X1;
+    const fileOne = PNG_1X1;
+    const fileTwo = PNG_1X1;
+
+    const mail = message({
+      subject: `Attachments end to end ${Date.now()}`,
+      toRecipients: [{ address: 'helpdesk+it@company.com' }],
+      hasAttachments: true,
+    });
+    graph.attachmentsByMessage.set(mail.id, [
+      {
+        id: 'att-logo',
+        name: 'signature-logo.png',
+        contentType: 'image/png',
+        sizeBytes: 6 * 1024,
+        isInline: true,
+      },
+      {
+        id: 'att-pasted',
+        name: 'image.png',
+        contentType: 'image/png',
+        sizeBytes: 212 * 1024,
+        isInline: true,
+      },
+      {
+        id: 'att-1',
+        name: 'aginf.png',
+        contentType: 'image/png',
+        sizeBytes: 4_573_184,
+        isInline: false,
+      },
+      {
+        id: 'att-2',
+        name: 'Back Injury.png',
+        contentType: 'image/png',
+        sizeBytes: 4_552_704,
+        isInline: false,
+      },
+    ]);
+    graph.contentByAttachment.set('att-pasted', pasted.toString('base64'));
+    graph.contentByAttachment.set('att-1', fileOne.toString('base64'));
+    graph.contentByAttachment.set('att-2', fileTwo.toString('base64'));
+
+    graph.pages = [{ messages: [mail], deltaLink: 'delta-att' }];
+    const summary = await worker.runOnce();
+    expect(summary.ingested).toBe(1);
+
+    const ticket = await prisma.ticket.findFirstOrThrow({
+      where: { subject: mail.subject },
+      select: { id: true },
+    });
+    const attachments = await prisma.attachment.findMany({
+      where: { ticketId: ticket.id },
+      select: { fileName: true, sizeBytes: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(attachments.map((a) => a.fileName)).toEqual([
+      'image.png',
+      'aginf.png',
+      'Back Injury.png',
+    ]);
+    // ⚠️ THE SIGNATURE LOGO IS NOT HERE AND WAS NEVER DOWNLOADED - the
+    // owner's decision, enforced before the bytes are paid for.
+    expect(graph.contentFetches).not.toContain('att-logo');
+
+    // ⚠️ THE STORED SIZE IS THE REAL FILE, which is the second half of the
+    // card. Graph reports a wire size about a third larger; passing that
+    // through made the normalizer reject every attachment for a size mismatch.
+    const stored = new Map(
+      attachments.map((a) => [a.fileName, a.sizeBytes]),
+    );
+    expect(stored.get('aginf.png')).toBe(fileOne.length);
+    expect(stored.get('Back Injury.png')).toBe(fileTwo.length);
+    expect(stored.get('image.png')).toBe(pasted.length);
   });
 
   it('⚠️ a friendly alias resolves to the real slug', async () => {
