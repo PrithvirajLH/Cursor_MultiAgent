@@ -348,9 +348,27 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
     mailbox: string,
     message: GraphMailMessage,
   ): Promise<InboundEmailAttachmentDto[]> {
-    if (!message.hasAttachments) {
-      return [];
-    }
+    // ⚠️ NO `hasAttachments` SHORT-CIRCUIT HERE, AND THAT IS THE POINT
+    // (card 1.128). Graph reports `hasAttachments: false` when a message's ONLY
+    // attachments are INLINE - a pasted screenshot, referenced from the body as
+    // `src="cid:..."`. Gating on it meant an inline-only reply was skipped
+    // before anything looked, so a pasted image could never arrive however
+    // correct the rest of the path was.
+    //
+    // Measured in production 2026-09-16 on `PA_20260910_381`: a reply reporting
+    // `hasAttachments: false` whose `/attachments` collection nonetheless
+    // returned one `image.png` of 13,307 bytes, `isInline: true`. The flag and
+    // the collection disagreed, and the flag was the one being believed.
+    //
+    // `listAttachments` already answers with an empty array when there is
+    // nothing, so asking it is both the correct answer and the simpler one. The
+    // cost is one Graph call per message - the same call card 1.116 chose over
+    // `$expand` precisely because it is cheap.
+    //
+    // ⚠️ The signature filter below is UNCHANGED and still applies. An inline
+    // image under `INBOUND_INLINE_IMAGE_MIN_BYTES` is still dropped as a logo;
+    // this commit only stops the message being skipped before that judgement is
+    // ever reached.
     let described: GraphAttachmentMeta[];
     try {
       described = await this.graph.listAttachments(mailbox, message.id);

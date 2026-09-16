@@ -273,15 +273,66 @@ describe('InboundMailboxService (card 1.24)', () => {
       expect(attachment.sizeBytes).not.toBe(FILE_ONE.sizeBytes);
     });
 
-    it('⚠️ a message with no attachments makes no Graph call at all', async () => {
-      // NON-VACUITY for the whole path: ordinary mail must not cost a request.
+    it('⚠️ asks about attachments even when Graph says there are none', async () => {
+      // ⚠️ CARD 1.128. THIS CASE USED TO ASSERT THE OPPOSITE, and it is kept
+      // rewritten rather than deleted so the trade is on the record.
+      //
+      // It read "a message with no attachments makes no Graph call at all",
+      // guarding a real optimisation: ordinary mail should not cost a request.
+      // That was written while `hasAttachments` was believed to be true whenever
+      // a message carries files. **It is not.** Graph reports
+      // `hasAttachments: false` when the ONLY attachments are INLINE - a pasted
+      // screenshot referenced from the body as `src="cid:..."`.
+      //
+      // Measured in production on `PA_20260910_381`: a reply with
+      // `hasAttachments: false` whose `/attachments` collection returned one
+      // 13,307-byte inline `image.png`. Believing the flag meant a pasted image
+      // could never arrive.
+      //
+      // The optimisation cannot be salvaged cheaply: the `cid:` markup that
+      // would prove an inline image exists lives in the HTML body, and card
+      // 1.62 converts that to text at the Graph boundary before this code sees
+      // it. So the choice was one metadata call per ingested message, or
+      // pasted images never working. ⚠️ Note the cost is bounded - the fetch
+      // sits AFTER the addressing check, so a mailbox full of other people's
+      // copies still costs nothing.
       const graph = new FakeGraph([
         { messages: [message({ hasAttachments: false })], deltaLink: 'd' },
       ]);
       const { service } = build(graph, ON);
       await service.runOnce();
-      expect(graph.listCalls).toHaveLength(0);
+      expect(graph.listCalls).toHaveLength(1);
+      // Nothing to download: listAttachments answers empty and that is the end.
       expect(graph.contentFetches).toHaveLength(0);
+    });
+
+    it('⚠️ fetches an INLINE image even though Graph says hasAttachments false', async () => {
+      // ⚠️ CARD 1.128 - THE EXACT PRODUCTION CASE, from `PA_20260910_381`
+      // on 2026-09-16: the owner pasted a screenshot into a reply, Graph
+      // reported `hasAttachments: false`, and `/attachments` nonetheless held
+      // one inline `image.png` of 13,307 bytes. The old gate returned early and
+      // the image was never fetched.
+      //
+      // 60 KB is used deliberately: ABOVE the 50 KB inline floor, so this case
+      // proves the FETCH happens and is not silently passing because the
+      // signature filter would have dropped it anyway.
+      const INLINE_PASTE = {
+        id: 'att-inline',
+        name: 'image.png',
+        contentType: 'image/png',
+        sizeBytes: 60 * 1024,
+        isInline: true,
+      };
+      const graph = new FakeGraph([
+        { messages: [message({ id: 'graph-inline', hasAttachments: false })], deltaLink: 'd' },
+      ]);
+      graph.attachmentsByMessage.set('graph-inline', [INLINE_PASTE]);
+      const { service } = build(graph, ON);
+      await service.runOnce();
+      expect(graph.listCalls).toEqual(['graph-inline']);
+      expect(graph.contentFetches).toEqual([
+        { messageId: 'graph-inline', attachmentId: 'att-inline' },
+      ]);
     });
 
     it('⚠️ mail that is not addressed to us costs no download', async () => {
