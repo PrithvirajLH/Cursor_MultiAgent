@@ -289,6 +289,25 @@ export class GraphMailHttpClient extends GraphMailClient {
    *
    * Fetched by id, one file at a time, only for files the worker has already
    * decided to keep.
+   *
+   * ⚠️ NO `$select` HERE, AND THAT IS THE POINT (card 1.117). This used to ask
+   * for `?$select=contentBytes` and Graph answered **400 BadRequest** every
+   * time: *"Could not find a property named 'contentBytes' on type
+   * 'microsoft.graph.attachment'."* `contentBytes` belongs to the derived
+   * `fileAttachment` type, and OData will not select a derived property off the
+   * base type without a cast. So every download failed, silently enough that
+   * the email still landed — card 1.105 doing its job — with no files on it.
+   *
+   * `?$select=microsoft.graph.fileAttachment/contentBytes` also works and was
+   * verified to return byte-identical content. Plain GET is preferred because
+   * the response is one attachment either way, so the projection buys nothing
+   * and the cast is one more thing to get wrong.
+   *
+   * ⚠️ DO NOT use Graph's `size` as the byte length. Measured on five real
+   * files, `size` runs about **2x** the decoded length — it describes the
+   * stored MIME representation, not the file. `inbound-mailbox.service.ts`
+   * decodes and measures instead, which is what keeps the exact-byte-match in
+   * `inbound-email.service.ts` from rejecting every attachment.
    */
   async fetchAttachmentContent(
     mailbox: string,
@@ -298,8 +317,7 @@ export class GraphMailHttpClient extends GraphMailClient {
     const url =
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}` +
       `/messages/${encodeURIComponent(messageId)}` +
-      `/attachments/${encodeURIComponent(attachmentId)}` +
-      `?$select=${encodeURIComponent('contentBytes')}`;
+      `/attachments/${encodeURIComponent(attachmentId)}`;
     const payload = await this.request<{ contentBytes?: unknown }>(url, {
       method: 'GET',
     });
