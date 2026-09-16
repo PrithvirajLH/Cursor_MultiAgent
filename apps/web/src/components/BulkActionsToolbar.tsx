@@ -38,7 +38,12 @@ type BulkActionsToolbarProps = {
   onClearSelection: () => void;
   onBulkAssign: (
     assigneeId?: string,
-  ) => Promise<{ success: number; failed: number }>;
+  ) => Promise<{
+    success: number;
+    failed: number;
+    /** Card 1.110: per-ticket refusal reasons, so the toolbar can say why. */
+    errors?: Array<{ ticketId: string; message: string }>;
+  }>;
   onBulkTransfer: (
     newTeamId: string,
     assigneeId?: string,
@@ -63,6 +68,32 @@ type BulkActionsToolbarProps = {
   onSuccess?: (message: string) => void;
   onError?: (message: string) => void;
 };
+
+/**
+ * What to tell somebody when a bulk assign failed (card 1.110).
+ *
+ * ⚠️ THE REASON WAS IN THE RESULT AND WAS BEING DROPPED.
+ * `runBulkWithConcurrency` returns `errors: [{ ticketId, message }]` per
+ * failure, and the toolbar showed a flat "Unable to assign ticket." The API
+ * writes these refusals FOR a person - naming who, and why - so throwing them
+ * away one step from the screen is the same defect cards 1.106 and 1.107 had on
+ * the AI page.
+ *
+ * Only quoted when every failure agrees. A mixed batch keeps the count, because
+ * one arbitrary reason out of several would misrepresent what happened.
+ */
+export function bulkAssignFailureMessage(result: {
+  failed: number;
+  errors?: Array<{ ticketId: string; message: string }>;
+}): string {
+  const reasons = new Set((result.errors ?? []).map((e) => e.message));
+  if (reasons.size === 1) {
+    return [...reasons][0];
+  }
+  return result.failed === 1
+    ? "Unable to assign ticket."
+    : `Unable to assign (${result.failed} failed).`;
+}
 
 export function BulkActionsToolbar({
   selectedCount,
@@ -133,11 +164,13 @@ export function BulkActionsToolbar({
         onSuccess?.(`${result.success} assigned, ${result.failed} failed.`);
         onClearSelection();
       } else {
-        onError?.(
-          result.failed === 1
-            ? "Unable to assign ticket."
-            : `Unable to assign (${result.failed} failed).`,
-        );
+        // ⚠️ THE REASON IS IN THE RESULT AND WAS BEING DROPPED (card 1.110).
+        // `runBulkWithConcurrency` returns `errors: [{ ticketId, message }]`
+        // per failure, so a bulk assign refused for one reason - an employee, a
+        // deactivated account - can say which, exactly as the single-ticket
+        // path now does. Only quoted when every failure agrees; a mixed batch
+        // keeps the count, because one arbitrary reason would misrepresent it.
+        onError?.(bulkAssignFailureMessage(result));
       }
     } catch {
       onError?.("Unable to assign tickets.");

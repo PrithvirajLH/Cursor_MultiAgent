@@ -1961,9 +1961,21 @@ export function TicketDetailPage({
       setCopyToast({ message: "Assigned to you.", type: "success" });
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
-    } catch {
-      setActionError("Unable to assign ticket.");
-      setCopyToast({ message: "Unable to assign ticket.", type: "error" });
+    } catch (error) {
+      // ⚠️ SAY WHY, DON'T JUST SAY NO (card 1.110). This used to discard the
+      // error entirely - `catch {}` did not even bind it - and show "Unable to
+      // assign ticket." The API's refusals are written FOR a person and name
+      // the person and the reason ("... is deactivated. Reactivate the account
+      // before assigning work to them."), and all of that was thrown away one
+      // step from the screen.
+      //
+      // `handleApiError` is the existing rule, reused rather than rewritten: it
+      // returns the server's sentence for a 4xx and stays generic for a 5xx, so
+      // a deliberate refusal is quoted and an internal failure still is not -
+      // the same line card 1.107 draws.
+      const message = handleApiError(error);
+      setActionError(message);
+      setCopyToast({ message, type: "error" });
     } finally {
       setActionLoading(false);
     }
@@ -1986,9 +1998,11 @@ export function TicketDetailPage({
       setCopyToast({ message: "Assignee updated.", type: "success" });
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
-    } catch {
-      setActionError("Unable to assign ticket.");
-      setCopyToast({ message: "Unable to assign ticket.", type: "error" });
+    } catch (error) {
+      // Card 1.110, same rule as `handleAssignSelf` above.
+      const message = handleApiError(error);
+      setActionError(message);
+      setCopyToast({ message, type: "error" });
     } finally {
       setActionLoading(false);
     }
