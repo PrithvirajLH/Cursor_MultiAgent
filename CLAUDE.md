@@ -27,18 +27,21 @@ functions. There is no AGENTS.md here; `.cursorrules` is it.
 
 ## Baseline — do not regress these
 
-**896 unit tests (93 suites), 987 integration + 1 skipped (97 of 98 suites), 442 web unit tests (64 files)** — **67 migrations.**
+**916 unit tests (94 suites), 1003 integration + 1 skipped (100 of 101 suites), 480 web unit tests (67 files)** — **68 migrations.**
 
-✅ **Measured 2026-09-15 on a clean tree.** ⚠️ **Check the tree is yours before trusting any run:** `git status --porcelain | grep -v '^??'`. A full run was invalidated on 2026-09-15 by another session's uncommitted `main.ts`.
+✅ **Measured 2026-09-17 on a clean tree**, after cards 1.132, 1.137 and 1.139. ⚠️ **Check the tree is yours before trusting any run:** `git status --porcelain | grep -v '^??'`. A full run was invalidated on 2026-09-15 by another session's uncommitted `main.ts`.
 
 ```bash
 cd apps/api && npx tsc --noEmit
 cd apps/web && npx tsc --noEmit
-cd apps/api && npx jest                       # 896, 93 suites
-cd apps/web && npx vitest run                 # 442, 64 files
+cd apps/api && npx jest                       # 916, 94 suites
+cd apps/web && npx vitest run                 # 480, 67 files
 
 export PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION="Yes, reset the local test database"
-cd apps/api && npm run test:integration       # 963 + 1 skipped, 96 of 97 suites, ~20 min
+cd apps/api && npm run test:integration -- --workerIdleMemoryLimit=1G
+# 1003 + 1 skipped, 100 of 101 suites. ⚠️ 19-30 MINUTES, and the spread is real:
+# two runs on 2026-09-17 took 1153s and 1771s on the same tree.
+# ⚠️ Without --workerIdleMemoryLimit=1G the run is OOM-killed part way through.
 # ⚠️ Exceeds the 10-minute Bash cap - it CANNOT be run in the foreground. Background it.
 # ⚠️ And touch NOTHING in apps/api while it runs, reads included: each suite's reset
 #    renames .env, and an open handle on Windows blocks that rename and fails the suite.

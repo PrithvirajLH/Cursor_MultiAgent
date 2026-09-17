@@ -775,3 +775,38 @@ nothing below it.
    browser.
 3. **Open the page.** This class of bug has now been caught by a browser pass
    three times (cards 2.7, 1.106, 1.107) and by an automated check zero times.
+
+## ⚠️ NEVER symlink `node_modules` into a `git worktree`, then `worktree remove --force` (2026-09-17)
+
+**The planner did this and deleted `apps/api/src` and `apps/web/src` from the
+MAIN tree — 906 files.** Everything was committed, so `git restore apps/`
+recovered it in full, but for a few minutes the working tree had no source in it.
+
+**What was done:**
+
+```bash
+git worktree add ../verify-<sha> <sha>
+cd ../verify-<sha> && ln -s "<main tree>/node_modules" node_modules   # ⚠️ THIS
+# ...run tests...
+git worktree remove ../verify-<sha> --force                           # ⚠️ AND THIS
+```
+
+**`--force` does a recursive delete of the worktree directory, and on Windows it
+walks the link back into the main repository.**
+
+**The worktree idea is still right** — it is what keeps two sessions from
+wrecking each other's test runs, and it is what the deploy handoffs specify. **It
+is the shortcut that is wrong.**
+
+**Do this instead:**
+
+1. `npm ci` inside the worktree, or copy `node_modules` rather than linking it.
+2. Remove it with plain `git worktree remove`, without `--force`, so git refuses
+   rather than deleting something it should not.
+3. **Check the main tree afterwards:** `git status --porcelain | grep -c '^ D'`.
+   A non-zero count means files went with it — `git restore apps/` fixes it,
+   because everything that matters is committed.
+
+⚠️ **And the reason it was survivable is the reason to keep committing often.**
+The same tree was emptied on 2026-09-16 by something else entirely. **Twice in
+two days, both times recovered only because the work was in git.**
