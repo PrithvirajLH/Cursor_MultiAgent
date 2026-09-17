@@ -3,9 +3,11 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AccessControlService } from './access-control.service';
 import { AiObservabilityService } from './ai-observability.service';
+import { AttachmentStorageService } from './attachment-storage.service';
 import { AutomationQueueService } from './automation-queue.service';
 import { DuplicateAccountService } from './duplicate-account.service';
 import { IdempotencyService } from './idempotency.service';
+import { InlineEmailImagesService } from './inline-email-images.service';
 import { UserIdentityService } from './user-identity.service';
 
 @Global()
@@ -19,17 +21,21 @@ import { UserIdentityService } from './user-identity.service';
   providers: [
     AccessControlService,
     AiObservabilityService,
+    AttachmentStorageService,
     AutomationQueueService,
     DuplicateAccountService,
     IdempotencyService,
+    InlineEmailImagesService,
     UserIdentityService,
   ],
   exports: [
     AccessControlService,
     AiObservabilityService,
+    AttachmentStorageService,
     AutomationQueueService,
     DuplicateAccountService,
     IdempotencyService,
+    InlineEmailImagesService,
     UserIdentityService,
   ],
 })

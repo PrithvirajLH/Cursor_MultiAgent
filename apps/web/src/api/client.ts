@@ -381,12 +381,41 @@ export type TicketRecord = {
   awaitingAgentReply?: boolean;
 };
 
+/**
+ * A file that arrived on one message (card 1.129, fault A).
+ *
+ * Deliberately narrower than `Attachment`: the conversation needs a name, a
+ * size and something to click, and nothing else. `storageKey` and the uploader
+ * are not sent per message.
+ */
+export type MessageAttachment = {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+};
+
 export type TicketMessage = {
   id: string;
   body: string;
   type: string;
   createdAt: string;
   author: UserRef;
+  /**
+   * The files that came in on this message (card 1.129, fault A).
+   *
+   * ⚠️ WRITTEN HERE BEFORE THE API SENT IT, DELIBERATELY. This file
+   * hand-writes the API's shapes rather than importing them, so a field the
+   * server returns and this type omits is invisible to `tsc` and to every
+   * test - which is exactly how cards 1.106 and 1.107 both shipped
+   * half-broken on the same day.
+   *
+   * ⚠️ EMPTY ON EVERY MESSAGE STORED BEFORE 2026-09-16, and that is correct.
+   * `Attachment.messageId` was only populated by card 1.121, so older files
+   * cannot be attributed to the message they arrived on. There is no backfill
+   * and a guess would be worse than a blank.
+   */
+  attachments?: MessageAttachment[];
   /**
    * What actually happened to this message's email (card 1.28, 6c). Reports
    * the outbox, not the intent: a label reading "emailed to 3" when the send

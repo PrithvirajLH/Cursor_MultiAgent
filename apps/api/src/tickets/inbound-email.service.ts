@@ -28,6 +28,7 @@ import { DuplicateAccountService } from '../common/duplicate-account.service';
 import { UserIdentityService } from '../common/user-identity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
+import { INLINE_IMAGE_MARKER } from '../inbound-mailbox/inline-image-marker.util';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { TicketsService } from './tickets.service';
 import {
@@ -36,11 +37,47 @@ import {
 } from './dto/ingest-inbound-email.dto';
 import { parsePositiveInt } from '../common/config.utils';
 
+/**
+ * A file name, safe inside a double-quoted `alt`.
+ *
+ * The name comes from the sender's mail client, so it is not ours to trust:
+ * this body is rendered as HTML in the app.
+ */
+function escapeAttachmentAlt(fileName: string): string {
+  return fileName
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export type NormalizedInboundAttachment = {
   fileName: string;
   contentType: string;
   sizeBytes: number;
   buffer: Buffer;
+  /**
+   * The sender's `Content-ID`, for a file the body pasted inline
+   * (card 1.129, fault B). Absent on an ordinary attached file.
+   */
+  contentId?: string;
+};
+
+/**
+ * One inline image, once it has a row and therefore an id
+ * (card 1.129, fault B).
+ */
+export type StoredInlineImage = {
+  contentId: string;
+  attachmentId: string;
+  fileName: string;
+};
+
+/** What storing an email's attachments produced (card 1.105, card 1.129). */
+export type InboundAttachmentOutcome = {
+  rejected: RejectedInboundAttachment[];
+  /** Only the files the body referred to as `cid:`; usually empty. */
+  inlineImages: StoredInlineImage[];
 };
 
 type InboundThreadTarget = {
@@ -165,7 +202,22 @@ export class InboundEmailService {
    */
   async ingestInboundEmailMessage(
     payload: IngestInboundEmailDto,
-    options?: { assignedTeamId?: string | null },
+    options?: {
+      assignedTeamId?: string | null;
+      /**
+       * What the AI decided, when it is what chose the team (card 1.63).
+       *
+       * ⚠️ PRESENT ONLY WHEN THE AI ACTUALLY ROUTED IT. A plus-addressed email
+       * never carries this, and neither does one that landed unrouted - so the
+       * event below marks exactly the tickets whose team was a classification.
+       */
+      aiRouting?: {
+        teamId: string;
+        teamName: string;
+        confidence: number;
+        thresholdUsed: number;
+      };
+    },
   ) {
     const messageId = payload.messageId.trim();
     const reservation = await this.reserveInboundEmailReceipt(
@@ -392,15 +444,28 @@ export class InboundEmailService {
           // work; an emailed body can never carry such an id, because the
           // HTML-to-text conversion drops the image tag. So the link is made
           // explicitly here, where it is known.
-          const replyAttachFailures = await this.attachInboundEmailAttachments(
+          const replyAttachOutcome = await this.attachInboundEmailAttachments(
             existing.id,
             inboundAttachments,
             requester.id,
             inboundMessage?.id,
           );
+          // ⚠️ CARD 1.129 FAULT B. The body was stored carrying markers where
+          // the sender's pasted images sat, because the files had no ids yet.
+          // They do now, so the markers become the SAME `<img
+          // data-attachment-id>` the web composer writes - and `MessageBody`
+          // hydrates it with no new rendering code on either side.
+          //
+          // ⚠️ RUN UNCONDITIONALLY, INCLUDING WHEN NOTHING WAS STORED. An
+          // unresolved marker is worse than a missing picture: it is `[[cid:...]]`
+          // in front of a requester. This removes any that are left.
+          await this.resolveInlineImageMarkers(
+            inboundMessage?.id,
+            replyAttachOutcome.inlineImages,
+          );
           await this.recordDroppedInboundAttachments(existing.id, [
             ...droppedAttachments,
-            ...replyAttachFailures,
+            ...replyAttachOutcome.rejected,
           ]);
 
           await this.prisma.ticketEvent.create({
@@ -449,7 +514,17 @@ export class InboundEmailService {
           // VarChar(200), so a long forwarded subject - "FW: RE: FW:" chains
           // reach this easily - raised Prisma P2000 and lost the email with it.
           subject: truncateInboundSubject(payload.subject),
-          description: payload.body,
+          // ⚠️ CARD 1.129 FAULT B: MARKERS NEVER REACH A DESCRIPTION.
+          // Creating a ticket writes no TicketMessage - the email's words
+          // become the DESCRIPTION - and `TicketDescription.tsx` renders that
+          // as TEXT, not through `MessageBody`. So an `<img>` here would be
+          // markup on the page, and the column carries
+          // `Ticket_description_trgm_idx` besides. The picture is named
+          // instead, which is still more than the nothing it left before.
+          description: this.describeInlineImageMarkers(
+            payload.body,
+            inboundAttachments,
+          ),
           priority: payload.priority ?? TicketPriority.SEV3,
           channel: TicketChannel.EMAIL,
           requesterId: requester.id,
@@ -490,14 +565,14 @@ export class InboundEmailService {
       // files to belong to. A null messageId reads as "not on an internal
       // note", which is the right answer for files the requester themselves
       // sent in.
-      const newTicketAttachFailures = await this.attachInboundEmailAttachments(
+      const newTicketAttachOutcome = await this.attachInboundEmailAttachments(
         created.id,
         inboundAttachments,
         requester.id,
       );
       await this.recordDroppedInboundAttachments(created.id, [
         ...droppedAttachments,
-        ...newTicketAttachFailures,
+        ...newTicketAttachOutcome.rejected,
       ]);
 
       await this.prisma.ticketEvent.create({
@@ -515,6 +590,39 @@ export class InboundEmailService {
           createdById: requester.id,
         },
       });
+
+      // ⚠️ CARD 1.63: SAY THAT THE AI CHOSE THE TEAM, AND WITH WHAT CONFIDENCE.
+      // Without this nobody can ever tell how often it is right - which is the
+      // one number that decides whether the threshold is set correctly. A
+      // routing decision nobody can audit is not a decision, it is a guess with
+      // better manners.
+      //
+      // ⚠️ BEST EFFORT, LIKE EVERY OTHER EVENT ON THIS PATH. The ticket exists
+      // and the sender's words are stored; losing the annotation must not undo
+      // that.
+      if (options?.aiRouting) {
+        await this.prisma.ticketEvent
+          .create({
+            data: {
+              ticketId: created.id,
+              type: 'TICKET_ROUTED_BY_AI',
+              payload: {
+                teamId: options.aiRouting.teamId,
+                teamName: options.aiRouting.teamName,
+                confidence: options.aiRouting.confidence,
+                thresholdUsed: options.aiRouting.thresholdUsed,
+                messageId,
+              },
+              createdById: null,
+            },
+          })
+          .catch((error) =>
+            this.logger.error(
+              `Failed to record the AI routing decision for ticket ${created.id}`,
+              (error as Error).stack,
+            ),
+          );
+      }
 
       await this.completeInboundEmailReceipt(reservation.id, created.id, false);
       if (automated) {
@@ -647,9 +755,9 @@ export class InboundEmailService {
     attachments: NormalizedInboundAttachment[],
     actorId: string,
     messageId?: string,
-  ): Promise<RejectedInboundAttachment[]> {
+  ): Promise<InboundAttachmentOutcome> {
     if (attachments.length === 0) {
-      return [];
+      return { rejected: [], inlineImages: [] };
     }
 
     // ⚠️ CARD 1.105, THE SECOND CLIFF. This was `Promise.all`, and
@@ -659,23 +767,34 @@ export class InboundEmailService {
     // the mailbox worker then retried into a reservation conflict. Making the
     // normalizer non-throwing alone would only have moved the cliff here.
     const failures: RejectedInboundAttachment[] = [];
+    const inlineImages: StoredInlineImage[] = [];
     const created: Awaited<
       ReturnType<TicketAttachmentService['createTicketAttachmentFromBuffer']>
     >[] = [];
     for (const attachment of attachments) {
       try {
-        created.push(
-          await this.attachmentService.createTicketAttachmentFromBuffer(
-            ticketId,
-            {
-              originalName: attachment.fileName,
-              contentType: attachment.contentType,
-              buffer: attachment.buffer,
-            },
-            actorId,
-            messageId,
-          ),
+        const stored = await this.attachmentService.createTicketAttachmentFromBuffer(
+          ticketId,
+          {
+            originalName: attachment.fileName,
+            contentType: attachment.contentType,
+            buffer: attachment.buffer,
+          },
+          actorId,
+          messageId,
         );
+        created.push(stored);
+        // ⚠️ CARD 1.129 FAULT B. Only a file the BODY referred to as `cid:`
+        // carries a contentId, so this stays empty for ordinary attachments -
+        // which is every file this platform has ever received bar the pasted
+        // ones.
+        if (attachment.contentId) {
+          inlineImages.push({
+            contentId: attachment.contentId,
+            attachmentId: stored.id,
+            fileName: attachment.fileName,
+          });
+        }
       } catch (error) {
         failures.push({
           fileName: attachment.fileName,
@@ -692,7 +811,93 @@ export class InboundEmailService {
       }),
     );
 
-    return failures;
+    return { rejected: failures, inlineImages };
+  }
+
+  /**
+   * Put the pasted images back where the sender had them (card 1.129, fault B).
+   *
+   * The body was stored carrying `[[cid:...]]` markers, because at that moment
+   * the files had no ids. Now they do, so each marker becomes the SAME
+   * `<img data-attachment-id>` the web composer writes - which `MessageBody`
+   * already hydrates, and `redaction-caveat.ts` already counts. Nothing new
+   * renders it.
+   *
+   * ⚠️ CALLED EVEN WHEN NOTHING WAS STORED, and that is the point. A marker
+   * left in place is `[[cid:abc]]` in front of a requester, which is worse than
+   * the missing picture it stands for. Anything unresolved is removed, leaving
+   * exactly what the body looked like before this card.
+   *
+   * ⚠️ ONE UPDATE, AND ONLY WHEN THE TEXT ACTUALLY CHANGED. A body with no
+   * markers - every message this platform has ever received bar the pasted
+   * ones - costs a string scan and no database write.
+   *
+   * @param messageId The stored message, or undefined when there is none.
+   * @param inlineImages The files the body referenced, now with ids.
+   */
+  private async resolveInlineImageMarkers(
+    messageId: string | undefined,
+    inlineImages: StoredInlineImage[],
+  ): Promise<void> {
+    if (!messageId) {
+      return;
+    }
+    const message = await this.prisma.ticketMessage.findUnique({
+      where: { id: messageId },
+      select: { body: true },
+    });
+    if (!message?.body) {
+      return;
+    }
+    const byContentId = new Map(
+      inlineImages.map((image) => [image.contentId, image]),
+    );
+    const resolved = message.body.replace(
+      INLINE_IMAGE_MARKER.findAll(),
+      (_marker, contentId: string) => {
+        const image = byContentId.get(contentId);
+        if (!image) {
+          return '';
+        }
+        return `<img data-attachment-id="${image.attachmentId}" alt="${escapeAttachmentAlt(image.fileName)}">`;
+      },
+    );
+    if (resolved === message.body) {
+      return;
+    }
+    await this.prisma.ticketMessage.update({
+      where: { id: messageId },
+      data: { body: resolved },
+    });
+  }
+
+  /**
+   * The same markers, for a body that will be read as TEXT (card 1.129).
+   *
+   * A new ticket's first email becomes the ticket description, which is
+   * rendered as plain text - so a marker there becomes the file's NAME rather
+   * than an image element. Unknown markers are removed.
+   *
+   * @param body The flattened email body, possibly carrying markers.
+   * @param attachments The files normalized from the same email.
+   * @returns The body with every marker resolved or removed.
+   */
+  private describeInlineImageMarkers(
+    body: string,
+    attachments: NormalizedInboundAttachment[],
+  ): string {
+    const byContentId = new Map(
+      attachments
+        .filter((attachment) => Boolean(attachment.contentId))
+        .map((attachment) => [attachment.contentId as string, attachment]),
+    );
+    return body.replace(
+      INLINE_IMAGE_MARKER.findAll(),
+      (_marker, contentId: string) => {
+        const attachment = byContentId.get(contentId);
+        return attachment ? `[image: ${attachment.fileName}]` : '';
+      },
+    );
   }
 
   /**
@@ -838,6 +1043,9 @@ export class InboundEmailService {
         contentType,
         sizeBytes: buffer.length,
         buffer,
+        // Card 1.129 fault B: absent for every attachment that is not a
+        // pasted, body-referenced image.
+        ...(attachment.contentId ? { contentId: attachment.contentId } : {}),
       });
     }
 

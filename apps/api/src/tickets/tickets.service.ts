@@ -1576,7 +1576,32 @@ export class TicketsService {
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: { author: true },
+      include: {
+        author: true,
+        // ⚠️ CARD 1.129 FAULT A. Until now the API returned no attachment data
+        // per message, so the conversation could not have shown a file even if
+        // it wanted to - the only signal an agent had that a reply carried one
+        // was the Attachments tab counter changing, which says something
+        // arrived but not what, and not on which message.
+        //
+        // ⚠️ CARD 1.83 IS ALREADY SATISFIED HERE AND IS NOT RESTATED. A reader
+        // who may not see internal notes never receives the MESSAGE (the
+        // `where` above narrows to PUBLIC), so its files cannot come back with
+        // it. Adding a second copy of that rule is precisely how the two drift
+        // apart - which is what the comment above the filter says.
+        //
+        // ⚠️ SELECTED, NOT INCLUDED WHOLE: `storageKey` names the blob and has
+        // no business in a message payload.
+        attachments: {
+          select: {
+            id: true,
+            fileName: true,
+            contentType: true,
+            sizeBytes: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
 
     const hasMore = messages.length > limit;

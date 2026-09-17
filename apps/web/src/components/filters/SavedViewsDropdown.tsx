@@ -6,6 +6,7 @@ import {
   fetchSavedViews,
   type SavedViewRecord,
 } from "../../api/client";
+import { TICKET_VIEW_FILTERS } from "../../hooks/ticket-view-filters";
 import type { TicketFilters } from "../../types";
 
 export function SavedViewsDropdown({
@@ -48,57 +49,17 @@ export function SavedViewsDropdown({
   function applyView(view: SavedViewRecord) {
     const raw = view.filters as Record<string, unknown>;
     if (!raw || typeof raw !== "object") return;
-    const partial: Partial<TicketFilters> = {
-      statusGroup: raw.statusGroup as TicketFilters["statusGroup"],
-      statuses: Array.isArray(raw.statuses) ? (raw.statuses as string[]) : [],
-      priorities: Array.isArray(raw.priorities)
-        ? (raw.priorities as string[])
-        : [],
-      teamIds: Array.isArray(raw.teamIds) ? (raw.teamIds as string[]) : [],
-      assigneeIds: Array.isArray(raw.assigneeIds)
-        ? (raw.assigneeIds as string[])
-        : [],
-      requesterIds: Array.isArray(raw.requesterIds)
-        ? (raw.requesterIds as string[])
-        : [],
-      slaStatus: Array.isArray(raw.slaStatus)
-        ? (raw.slaStatus as TicketFilters["slaStatus"])
-        : [],
-      createdFrom: typeof raw.createdFrom === "string" ? raw.createdFrom : "",
-      createdTo: typeof raw.createdTo === "string" ? raw.createdTo : "",
-      updatedFrom: typeof raw.updatedFrom === "string" ? raw.updatedFrom : "",
-      updatedTo: typeof raw.updatedTo === "string" ? raw.updatedTo : "",
-      dueFrom: typeof raw.dueFrom === "string" ? raw.dueFrom : "",
-      dueTo: typeof raw.dueTo === "string" ? raw.dueTo : "",
-      q: typeof raw.q === "string" ? raw.q : "",
-      scope: (raw.scope as TicketFilters["scope"]) ?? "all",
-      sort: (raw.sort as TicketFilters["sort"]) ?? "updatedAt",
-      order: (raw.order as TicketFilters["order"]) ?? "desc",
-    };
-    onApplyFilters(partial);
+    // ⚠️ CARD 1.127: THIS HAND-WROTE ITS OWN FIELD LIST AND SO DID THE SAVE,
+    // six lines below, and so did `filtersForPersistence` in SaveViewButton -
+    // three copies that had all drifted from the URL builder's. Fixing only the
+    // save would not have fixed the bug: `applyView` dropped the tag again on
+    // the way back in.
+    onApplyFilters(TICKET_VIEW_FILTERS.toApplied(raw));
     setOpen(false);
   }
 
   function filtersToPayload(filters: TicketFilters): Record<string, unknown> {
-    return {
-      statusGroup: filters.statusGroup,
-      statuses: filters.statuses,
-      priorities: filters.priorities,
-      teamIds: filters.teamIds,
-      assigneeIds: filters.assigneeIds,
-      requesterIds: filters.requesterIds,
-      slaStatus: filters.slaStatus,
-      createdFrom: filters.createdFrom || undefined,
-      createdTo: filters.createdTo || undefined,
-      updatedFrom: filters.updatedFrom || undefined,
-      updatedTo: filters.updatedTo || undefined,
-      dueFrom: filters.dueFrom || undefined,
-      dueTo: filters.dueTo || undefined,
-      q: filters.q || undefined,
-      scope: filters.scope,
-      sort: filters.sort,
-      order: filters.order,
-    };
+    return TICKET_VIEW_FILTERS.toPayload(filters);
   }
 
   async function handleSave() {

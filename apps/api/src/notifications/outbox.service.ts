@@ -46,6 +46,14 @@ export type EmailOutboxMetadata = {
 
 export type EmailOutboxContent = {
   html?: string | null;
+  /**
+   * Images the HTML refers to as `src="cid:…"` (card 1.130).
+   *
+   * ⚠️ IDS ONLY. The bytes are read at send time by the processor - a 2.8 MB
+   * screenshot is ~3.8 MB of base64 and this is a JSON column written once per
+   * recipient.
+   */
+  inlineImages?: { attachmentId: string; cid: string }[];
 };
 
 /** How much mail is waiting, stuck, sent or given up on. Numbers only. */
@@ -413,8 +421,16 @@ export class OutboxService {
     }
 
     if (emailContent?.html) {
+      // ⚠️ CARD 1.130 ADDED THE SECOND FIELD, AND THIS LINE IS WHY IT NEEDED A
+      // TEST. The envelope hand-copies the content shape, so `inlineImages`
+      // was silently dropped here while every other layer carried it - the
+      // exact failure card 1.127 exists for, one file over. Spread it rather
+      // than naming each field, so the next one cannot be forgotten.
       envelope.content = {
         html: emailContent.html,
+        ...(emailContent.inlineImages && emailContent.inlineImages.length > 0
+          ? { inlineImages: emailContent.inlineImages }
+          : {}),
       };
     }
 

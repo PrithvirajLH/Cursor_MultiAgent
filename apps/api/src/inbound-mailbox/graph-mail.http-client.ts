@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  GraphAttachmentContent,
   GraphAttachmentMeta,
   GraphDeltaPage,
   GraphMailClient,
@@ -15,6 +16,21 @@ const PROCESSED_FOLDER = 'Processed';
 const PAGE_SIZE = 50;
 /** Give up on a single Graph call rather than wedging the poll. */
 const REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * Graph's `contentId`, as the body's `cid:` reference spells it.
+ *
+ * Strips the angle brackets of RFC 2392's `<id@host>` form, which Graph passes
+ * through from the original header. Anything blank comes back null, so a
+ * missing id can never accidentally match a missing reference.
+ */
+function normaliseContentId(raw: unknown): string | null {
+  if (typeof raw !== 'string') {
+    return null;
+  }
+  const trimmed = raw.trim().replace(/^<|>$/g, '').trim();
+  return trimmed === '' ? null : trimmed;
+}
 
 type TokenCache = { token: string; expiresAt: number };
 
@@ -164,11 +180,21 @@ export class GraphMailHttpClient extends GraphMailClient {
     // KEPT, because a body with no content and a usable preview is still worth
     // showing; it is just written so it says so.
     const bodyText = selectBodyText(body, item.bodyPreview);
+    // ⚠️ CARD 1.129 FAULT B: the same content, BEFORE the conversion above
+    // threw the `cid:` references away. Kept only for mapping a pasted image
+    // back to its place in the sentence; nothing stores it.
+    const bodyContentType =
+      typeof body?.contentType === 'string' ? body.contentType.toLowerCase() : '';
+    const bodyHtml =
+      bodyContentType === 'html' && typeof body?.content === 'string'
+        ? body.content
+        : null;
     return {
       id,
       internetMessageId,
       subject: typeof item.subject === 'string' ? item.subject : '(no subject)',
       bodyText,
+      bodyHtml,
       from: this.toRecipient(item.from) ?? { address: '' },
       toRecipients: this.toRecipients(item.toRecipients),
       ccRecipients: this.toRecipients(item.ccRecipients),
@@ -313,18 +339,31 @@ export class GraphMailHttpClient extends GraphMailClient {
     mailbox: string,
     messageId: string,
     attachmentId: string,
-  ): Promise<string> {
+  ): Promise<GraphAttachmentContent> {
     const url =
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailbox)}` +
       `/messages/${encodeURIComponent(messageId)}` +
       `/attachments/${encodeURIComponent(attachmentId)}`;
-    const payload = await this.request<{ contentBytes?: unknown }>(url, {
+    const payload = await this.request<{
+      contentBytes?: unknown;
+      contentId?: unknown;
+    }>(url, {
       method: 'GET',
     });
     if (typeof payload.contentBytes !== 'string' || !payload.contentBytes) {
       throw new Error('Graph returned no content for the attachment');
     }
-    return payload.contentBytes;
+    return {
+      contentBytes: payload.contentBytes,
+      // ⚠️ CARD 1.129 FAULT B. Free: the plain GET above already returns the
+      // whole resource, so this is read from a response that was paid for.
+      // ⚠️ THE ANGLE BRACKETS COME OFF HERE. Graph returns the raw
+      // `Content-ID` header, which by RFC 2392 is often `<abc@def>`, while the
+      // body refers to it as `src="cid:abc@def"`. Comparing the two without
+      // this never matches, and never matching looks exactly like "the sender
+      // did not paste an image".
+      contentId: normaliseContentId(payload.contentId),
+    };
   }
 
   /** One Graph call, with a bearer token and a timeout. Throws on failure. */

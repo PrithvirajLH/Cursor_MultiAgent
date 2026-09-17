@@ -242,6 +242,12 @@ export const RichTextEditor = forwardRef<
         img.classList.remove("att-uploading");
         if (attachmentId) {
           img.setAttribute("data-attachment-id", attachmentId);
+          // ⚠️ CARD 1.129 FAULT C. The temp marker used to survive the upload
+          // and go into the stored body forever - and out to the requester, in
+          // the email the owner screenshotted. It is the PRE-upload handle and
+          // `data-attachment-id` has replaced it; the only reader is the
+          // selector three lines above, which has already found this element.
+          img.removeAttribute("data-temp-id");
           img.style.opacity = "1";
           img.style.filter = "none";
         } else {

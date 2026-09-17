@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AiModule } from '../ai/ai.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { GraphMailClient } from './graph-mail.client';
@@ -15,7 +16,13 @@ import { InboundMailboxService } from './inbound-mailbox.service';
  * `Mail.ReadWrite` permission existed.
  */
 @Module({
-  imports: [ConfigModule, NotificationsModule, TicketsModule],
+  // ⚠️ `AiModule` IS LAST, AND CARD 1.63 CHECKED FOR A CYCLE BEFORE ADDING IT.
+  // `AiModule` imports `forwardRef(() => TicketsModule)` and `KbModule`, and
+  // nothing in that subtree reaches back here - only `app.module.ts` and
+  // `operations` import this module. Card 1.103 spent a batch breaking a cycle
+  // that began exactly like this edge, so `app.module.boot.spec.ts` compiling
+  // the graph is the check that matters.
+  imports: [ConfigModule, NotificationsModule, TicketsModule, AiModule],
   providers: [
     InboundMailboxService,
     { provide: GraphMailClient, useClass: GraphMailHttpClient },

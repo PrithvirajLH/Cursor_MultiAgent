@@ -35,6 +35,20 @@ export class InboundEmailAttachmentDto {
   @MinLength(1)
   contentBase64?: string;
 
+  /**
+   * The sender's `Content-ID` for a pasted image (card 1.129, fault B).
+   *
+   * Present only for a file the body referenced as `src="cid:..."`, which is
+   * what tells the ingest path this file belongs INSIDE the message rather than
+   * merely alongside it. Absent for every ordinary attachment, and absent for
+   * every file that arrived before this card.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  contentId?: string;
+
   @IsOptional()
   @IsUrl({
     protocols: ['https'],

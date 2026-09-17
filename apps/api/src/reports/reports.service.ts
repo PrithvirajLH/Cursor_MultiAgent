@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
@@ -107,7 +108,7 @@ export class ReportsService {
    * sees platform-wide, and any other role is denied by scopeReportQuery.
    */
   async getAiAccuracy(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     return this.aiAccuracy.getReport(
       fromDate,
@@ -135,19 +136,41 @@ export class ReportsService {
    * Scope report query by role:
    * - LEAD: scope to the lead's team (user.teamId from membership).
    * - TEAM_ADMIN: scope to the admin's primary team (user.primaryTeamId).
-   * - OWNER: platform-wide; ignore any teamId so SLA/reports are across all teams.
+   * - OWNER: platform-wide by default, or the team they explicitly asked for.
    *
    * Fails closed: any role not handled above is denied rather than returning an
    * unscoped query. `ReportsController` already gates on `LeadOrAdminGuard`, but
    * this method must not depend on that guard staying in place — an unscoped
    * report would expose every team's ticket data.
    *
+   * ⚠️ THAT REASONING IS ABOUT NOT RETURNING AN UNSCOPED QUERY, AND IT STILL
+   * HOLDS. Card 1.81 changed only the OWNER branch, and honouring an owner's
+   * explicit filter NARROWS - it is the opposite direction from the leak this
+   * paragraph guards against.
+   *
+   * ⚠️ CARD 1.81: THE OWNER BRANCH USED TO `delete rest.teamId`. So an owner
+   * picked HR on the Reports page and got platform-wide numbers under an HR
+   * heading - and the EXPORT was labelled HR too, which is the half that leaves
+   * the screen and can mislead somebody who was not there when it was run.
+   * Decided by the owner 2026-09-16: honour the filter. Hiding the control for
+   * owners was offered and declined.
+   *
+   * ⚠️ THE LEAD AND TEAM_ADMIN BRANCHES ARE UNCHANGED AND MUST STAY THAT WAY.
+   * They pin `teamId` FROM THE USER, overwriting whatever was asked for, and
+   * that is the actual security boundary in this method.
+   *
+   * ⚠️ ASYNC ONLY BECAUSE OF THE VALIDATION. An owner may send any string, and
+   * an unknown id must be refused rather than producing an empty report that
+   * reads exactly like "no tickets this month". The lookup happens only on the
+   * one branch that can carry an untrusted id.
+   *
    * @throws ForbiddenException when the role has no defined report scope.
+   * @throws NotFoundException when an owner names a team that does not exist.
    */
-  private scopeReportQuery(
+  private async scopeReportQuery(
     query: ReportQueryDto,
     user: AuthUser,
-  ): ReportQueryDto {
+  ): Promise<ReportQueryDto> {
     if (user.role === UserRole.TEAM_ADMIN) {
       if (!user.primaryTeamId) {
         throw new ForbiddenException(
@@ -163,9 +186,16 @@ export class ReportsService {
       return { ...query, teamId: user.teamId };
     }
     if (user.role === UserRole.OWNER) {
-      const rest = { ...query };
-      delete rest.teamId;
-      return rest;
+      if (!query.teamId) {
+        return { ...query };
+      }
+      const exists = await this.prisma.team.count({
+        where: { id: query.teamId },
+      });
+      if (exists === 0) {
+        throw new NotFoundException('Team not found');
+      }
+      return { ...query, teamId: query.teamId };
     }
     throw new ForbiddenException(
       'Reports are restricted to owners, team administrators, and leads',
@@ -488,7 +518,7 @@ export class ReportsService {
   }
 
   async getTicketVolume(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
       scoped.from,
       scoped.to,
@@ -540,7 +570,7 @@ export class ReportsService {
   }
 
   async getSlaCompliance(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
@@ -623,7 +653,7 @@ export class ReportsService {
    * own met/breached counts and compliance %.
    */
   async getSlaComplianceByTeam(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
@@ -714,7 +744,7 @@ export class ReportsService {
   }
 
   async getSlaComplianceByPriority(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
@@ -795,7 +825,7 @@ export class ReportsService {
   }
 
   async getResolutionTime(query: ResolutionTimeQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
@@ -864,7 +894,7 @@ export class ReportsService {
   }
 
   async getTicketsByStatus(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
     const groups = await this.prisma.ticket.groupBy({
@@ -882,7 +912,7 @@ export class ReportsService {
   }
 
   async getTicketsByPriority(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
     const groups = await this.prisma.ticket.groupBy({
@@ -900,7 +930,7 @@ export class ReportsService {
   }
 
   async getAgentPerformance(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
@@ -969,7 +999,7 @@ export class ReportsService {
   }
 
   async getAgentWorkload(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const statusText = Prisma.raw('t."status"::text');
     const conditions: Prisma.Sql[] = [
       Prisma.sql`t."assigneeId" IS NOT NULL`,
@@ -1041,7 +1071,7 @@ export class ReportsService {
   }
 
   async getTicketsByAge(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const statusText = Prisma.raw('t."status"::text');
     const dateField =
@@ -1114,7 +1144,7 @@ export class ReportsService {
   }
 
   async getReopenRate(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
       scoped.from,
       scoped.to,
@@ -1181,7 +1211,7 @@ export class ReportsService {
   }
 
   async getCsatTrend(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
       scoped.from,
       scoped.to,
@@ -1239,7 +1269,7 @@ export class ReportsService {
   }
 
   async getCsatDrivers(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const ratingExpr = this.csatRatingSql('e');
     const conditions: Prisma.Sql[] = [
@@ -1294,7 +1324,7 @@ export class ReportsService {
   }
 
   async getCsatLowTags(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const ratingExpr = this.csatRatingSql('e');
     const conditions: Prisma.Sql[] = [
@@ -1349,7 +1379,7 @@ export class ReportsService {
   }
 
   async getSlaBreaches(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const evaluationAt = this.reportEvaluationAt(toEndExclusive);
     const dateField =
@@ -1438,7 +1468,7 @@ export class ReportsService {
   }
 
   async getChannelBreakdown(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const where = this.reportWhere(scoped, fromDate, toEndExclusive, user);
     const groups = await this.prisma.ticket.groupBy({
@@ -1473,7 +1503,7 @@ export class ReportsService {
    * to avoid the N+1 of groupBy + separate category fetch.
    */
   async getTicketsByCategory(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
@@ -1533,7 +1563,7 @@ export class ReportsService {
   }
 
   async getTeamSummary(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
@@ -1634,7 +1664,7 @@ export class ReportsService {
    * team, a TEAM_ADMIN their primary team, an OWNER the platform.
    */
   async getFirstContactResolution(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const conditions: Prisma.Sql[] = [
       Prisma.sql`t."resolvedAt" >= ${fromDate}`,
@@ -1690,7 +1720,7 @@ export class ReportsService {
    * headline figure.
    */
   async getReassignmentCount(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const dateField =
       scoped.dateField === 'updatedAt' ? 'updatedAt' : 'createdAt';
@@ -1754,7 +1784,7 @@ export class ReportsService {
    * measurable time anywhere.
    */
   async getTimeInStatus(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive } = this.dateRange(scoped.from, scoped.to);
     const conditions: Prisma.Sql[] = [
       Prisma.sql`e."type" = 'TICKET_STATUS_CHANGED'`,
@@ -1809,7 +1839,7 @@ export class ReportsService {
   }
 
   async getTransfers(query: ReportQueryDto, user: AuthUser) {
-    const scoped = this.scopeReportQuery(query, user);
+    const scoped = await this.scopeReportQuery(query, user);
     const { fromDate, toEndExclusive, toDateInclusive } = this.dateRange(
       scoped.from,
       scoped.to,

@@ -8,7 +8,10 @@ import { disconnectPrisma, getPrisma } from '../utils/prisma';
 import { resetTestDb } from '../utils/reset-test-db';
 import { createTestApp } from '../utils/test-app';
 import { InboundMailboxService } from '../../src/inbound-mailbox/inbound-mailbox.service';
+import { AiService } from '../../src/ai/ai.service';
+import type { InboundDepartmentRoute } from '../../src/ai/types/pipeline.types';
 import {
+  GraphAttachmentContent,
   GraphDeltaPage,
   GraphMailClient,
   GraphAttachmentMeta,
@@ -16,6 +19,23 @@ import {
 } from '../../src/inbound-mailbox/graph-mail.client';
 
 const MAILBOX = 'helpdesk@company.com';
+
+/**
+ * A stand-in for the classifier (card 1.63).
+ *
+ * ⚠️ IT DECLINES BY DEFAULT, so every test written before this card still
+ * describes a world where the AI does nothing - which is also production's
+ * world until the model is reachable. A test that wants routing sets `next`.
+ */
+class ScriptedAi {
+  next: InboundDepartmentRoute = { routed: false, reason: 'pipeline_disabled' };
+  calls = 0;
+
+  classifyInboundDepartment(): Promise<InboundDepartmentRoute> {
+    this.calls += 1;
+    return Promise.resolve(this.next);
+  }
+}
 
 /** Scripted Graph. The ONLY thing faked in this file. */
 class ScriptedGraph extends GraphMailClient {
@@ -40,17 +60,23 @@ class ScriptedGraph extends GraphMailClient {
     return Promise.resolve(this.attachmentsByMessage.get(messageId) ?? []);
   }
 
+  /** Card 1.129: the `contentId` a pasted image carries, per attachment id. */
+  contentIdsByAttachment = new Map<string, string>();
+
   fetchAttachmentContent(
     _mailbox: string,
     _messageId: string,
     attachmentId: string,
-  ): Promise<string> {
+  ): Promise<GraphAttachmentContent> {
     this.contentFetches.push(attachmentId);
     const content = this.contentByAttachment.get(attachmentId);
     if (content === undefined) {
       return Promise.reject(new Error('no scripted content'));
     }
-    return Promise.resolve(content);
+    return Promise.resolve({
+      contentBytes: content,
+      contentId: this.contentIdsByAttachment.get(attachmentId) ?? null,
+    });
   }
 
   moveToProcessed(_mailbox: string, messageId: string): Promise<void> {
@@ -73,6 +99,7 @@ function message(partial: Partial<GraphMailMessage> = {}): GraphMailMessage {
     internetMessageId: `<${Math.random().toString(36).slice(2)}@sender.test>`,
     subject: 'A question about my payslip',
     bodyText: 'The number looks wrong.',
+    bodyHtml: null,
     from: { address: 'outsider@company.com', name: 'Out Sider' },
     toRecipients: [{ address: `helpdesk+payroll@company.com` }],
     ccRecipients: [],
@@ -96,6 +123,7 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
   let app: INestApplication;
   let worker: InboundMailboxService;
   let graph: ScriptedGraph;
+  let ai: ScriptedAi;
   let previousEnv: Record<string, string | undefined>;
 
   beforeAll(async () => {
@@ -108,8 +136,12 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
     process.env.INBOUND_MAILBOX_ENABLED = 'true';
     process.env.INBOUND_MAILBOX_ADDRESS = MAILBOX;
     graph = new ScriptedGraph();
+    ai = new ScriptedAi();
     app = await createTestApp({
-      overrideProviders: [{ provide: GraphMailClient, useValue: graph }],
+      overrideProviders: [
+        { provide: GraphMailClient, useValue: graph },
+        { provide: AiService, useValue: ai },
+      ],
     });
     worker = app.get(InboundMailboxService);
   });
@@ -129,6 +161,8 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
   beforeEach(async () => {
     graph.pages = [];
     graph.moved = [];
+    ai.next = { routed: false, reason: 'pipeline_disabled' };
+    ai.calls = 0;
     await prisma.inboundMailboxCursor.deleteMany({});
   });
 
@@ -150,6 +184,102 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
     expect(ticket.assignedTeamId).toBe(fixtureTeamIds.hr);
     expect(ticket.channel).toBe('EMAIL');
     expect(graph.moved).toEqual([mail.id]);
+  });
+
+  describe('the AI routes mail nobody addressed (card 1.63)', () => {
+    /** A bare helpdesk address: no suffix, so nothing else decides the team. */
+    const bare = (subject: string) =>
+      message({ subject, toRecipients: [{ address: MAILBOX }] });
+
+    it('⚠️ an unaddressed email lands on the team the AI named, and SAYS SO', async () => {
+      // THE ASSERTION THIS CARD EXISTS FOR, end to end: the real ingestion
+      // path, the real database, the real ticket.
+      ai.next = {
+        routed: true,
+        teamId: fixtureTeamIds.hr,
+        teamName: 'HR',
+        confidence: 0.93,
+        thresholdUsed: 0.7,
+      };
+      const mail = bare(`AI routed ${Date.now()}`);
+      graph.pages = [{ messages: [mail], deltaLink: 'delta-ai-1' }];
+
+      const summary = await worker.runOnce();
+
+      expect(summary.ingested).toBe(1);
+      expect(ai.calls).toBe(1);
+      const ticket = await prisma.ticket.findFirstOrThrow({
+        where: { subject: mail.subject },
+        select: { id: true, assignedTeamId: true },
+      });
+      expect(ticket.assignedTeamId).toBe(fixtureTeamIds.hr);
+
+      // ⚠️ AND IT IS AUDITABLE. Without the event nobody can ever tell how
+      // often the classifier is right, which is the number that decides
+      // whether the threshold is set correctly.
+      const event = await prisma.ticketEvent.findFirstOrThrow({
+        where: { ticketId: ticket.id, type: 'TICKET_ROUTED_BY_AI' },
+        select: { payload: true },
+      });
+      expect(event.payload).toMatchObject({
+        teamId: fixtureTeamIds.hr,
+        teamName: 'HR',
+        confidence: 0.93,
+        thresholdUsed: 0.7,
+      });
+    });
+
+    it('⚠️ below the threshold it lands unrouted, with no AI event', async () => {
+      // NON-VACUITY, and the behaviour this card promised not to change. There
+      // is no triage team in this system and this card does not invent one.
+      ai.next = {
+        routed: false,
+        reason: 'below_threshold',
+        confidence: 0.3,
+        thresholdUsed: 0.7,
+      };
+      const mail = bare(`AI declined ${Date.now()}`);
+      graph.pages = [{ messages: [mail], deltaLink: 'delta-ai-2' }];
+
+      const summary = await worker.runOnce();
+
+      expect(summary.ingested).toBe(1);
+      const ticket = await prisma.ticket.findFirstOrThrow({
+        where: { subject: mail.subject },
+        select: { id: true, assignedTeamId: true },
+      });
+      expect(ticket.assignedTeamId).toBeNull();
+      const events = await prisma.ticketEvent.count({
+        where: { ticketId: ticket.id, type: 'TICKET_ROUTED_BY_AI' },
+      });
+      expect(events).toBe(0);
+    });
+
+    it('⚠️ a plus-addressed email is never sent to the classifier', async () => {
+      // 367 of 370 tickets arrive this way (card 1.19). An explicit department
+      // beats a classifier, and must not cost a model call either.
+      ai.next = {
+        routed: true,
+        teamId: fixtureTeamIds.hr,
+        teamName: 'HR',
+        confidence: 0.99,
+        thresholdUsed: 0.7,
+      };
+      const mail = message({
+        subject: `Plus addressed ${Date.now()}`,
+        toRecipients: [{ address: 'helpdesk+it@company.com' }],
+      });
+      graph.pages = [{ messages: [mail], deltaLink: 'delta-ai-3' }];
+
+      await worker.runOnce();
+
+      expect(ai.calls).toBe(0);
+      const ticket = await prisma.ticket.findFirstOrThrow({
+        where: { subject: mail.subject },
+        select: { assignedTeamId: true },
+      });
+      expect(ticket.assignedTeamId).toBe(fixtureTeamIds.it);
+    });
   });
 
   it('⚠️ emailed files become real attachments, minus the signature logo', async () => {
@@ -339,6 +469,137 @@ describe('Inbound mailbox worker, end to end (card 1.24)', () => {
       where: { ticketId: ticket.id },
     });
     expect(after).toBe(before + 1);
+  });
+
+  it('⚠️ a pasted image lands IN the reply, where the sender put it (card 1.129)', async () => {
+    // Fault B. The owner pasted a screenshot mid-sentence; it arrived as a file
+    // on the ticket and the body had no trace of where it had been, because
+    // card 1.62's conversion drops `<img>` and the `cid:` reference with it.
+    const first = message({ subject: `Inline paste root ${Date.now()}` });
+    graph.pages = [{ messages: [first], deltaLink: 'delta-inline-1' }];
+    await worker.runOnce();
+    const ticket = await prisma.ticket.findFirstOrThrow({
+      where: { subject: first.subject },
+      select: { id: true },
+    });
+    const thread = await prisma.ticketEmailThread.findFirstOrThrow({
+      where: { ticketId: ticket.id },
+      select: { replyToken: true },
+    });
+
+    // ⚠️ A REAL PNG, NOT A STRING PRETENDING TO BE ONE. `ticket-attachment.
+    // service` matches magic bytes against the declared contentType, so text
+    // labelled `image/png` is refused and the file never lands - which reads
+    // exactly like the inline mapping having failed. It cost this test two red
+    // runs before the cause was the fixture rather than the code.
+    const pasted = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const reply = message({
+      subject: 'Re: Inline paste root',
+      toRecipients: [
+        { address: `helpdesk+ticket-${thread.replyToken}@company.com` },
+      ],
+      from: { address: 'outsider@company.com', name: 'Out Sider' },
+      bodyText: ['The error looks like this:', '', 'Can you fix it?'].join('\n'),
+      bodyHtml:
+        '<html><body><p>The error looks like this:</p>' +
+        '<p><img src="cid:paste@outlook" alt="screenshot.png"></p>' +
+        '<p>Can you fix it?</p></body></html>',
+      hasAttachments: false,
+    });
+    graph.attachmentsByMessage.set(reply.id, [
+      {
+        id: 'att-inline',
+        name: 'screenshot.png',
+        contentType: 'image/png',
+        // ⚠️ THE METADATA SIZE IS WHAT `isSignatureImage` JUDGES, not the
+        // content's. Below `INBOUND_INLINE_IMAGE_MIN_BYTES` this is discarded
+        // as a signature logo before it is ever downloaded - which the test
+        // below this one relies on, and which cost this one a red run first.
+        sizeBytes: 212 * 1024,
+        isInline: true,
+      },
+    ]);
+    graph.contentByAttachment.set('att-inline', pasted.toString('base64'));
+    graph.contentIdsByAttachment.set('att-inline', 'paste@outlook');
+    graph.pages = [{ messages: [reply], deltaLink: 'delta-inline-2' }];
+    await worker.runOnce();
+
+    const stored = await prisma.ticketMessage.findFirstOrThrow({
+      where: { ticketId: ticket.id, body: { contains: 'looks like this' } },
+      select: { id: true, body: true },
+    });
+    const attachment = await prisma.attachment.findFirstOrThrow({
+      where: { ticketId: ticket.id, fileName: { contains: 'screenshot' } },
+      select: { id: true, messageId: true },
+    });
+
+    // The image is IN the message, as the same markup the web composer writes -
+    // so `MessageBody` hydrates it with no new rendering code.
+    expect(stored.body).toContain(`<img data-attachment-id="${attachment.id}"`);
+    // And in its place: after the first sentence, before the second.
+    expect(stored.body.indexOf('<img')).toBeGreaterThan(
+      stored.body.indexOf('looks like this'),
+    );
+    expect(stored.body.indexOf('<img')).toBeLessThan(
+      stored.body.indexOf('Can you fix it'),
+    );
+    // ⚠️ NO MARKER SURVIVES. An unresolved `[[cid:...]]` in front of a
+    // requester is worse than the missing picture it stands for.
+    expect(stored.body).not.toContain('[[cid:');
+    // Card 1.121's link still holds, which is what lets card 1.83 work at all.
+    expect(attachment.messageId).toBe(stored.id);
+  });
+
+  it('⚠️ an inline image that was NOT kept leaves the body exactly as before (card 1.129)', async () => {
+    // A signature logo is discarded before it is ever downloaded, so it has no
+    // contentId to match - and the body must come back as card 1.62 made it,
+    // with no marker and no trace.
+    const first = message({ subject: `Logo only root ${Date.now()}` });
+    graph.pages = [{ messages: [first], deltaLink: 'delta-logo-1' }];
+    await worker.runOnce();
+    const ticket = await prisma.ticket.findFirstOrThrow({
+      where: { subject: first.subject },
+      select: { id: true },
+    });
+    const thread = await prisma.ticketEmailThread.findFirstOrThrow({
+      where: { ticketId: ticket.id },
+      select: { replyToken: true },
+    });
+
+    const reply = message({
+      subject: 'Re: Logo only root',
+      toRecipients: [
+        { address: `helpdesk+ticket-${thread.replyToken}@company.com` },
+      ],
+      from: { address: 'outsider@company.com', name: 'Out Sider' },
+      bodyText: 'Thanks for the update.',
+      bodyHtml:
+        '<html><body><p>Thanks for the update.</p>' +
+        '<img src="cid:logo@corp" alt="logo.png"></body></html>',
+    });
+    graph.attachmentsByMessage.set(reply.id, [
+      {
+        id: 'att-logo',
+        name: 'logo.png',
+        contentType: 'image/png',
+        // Under the inline floor, so `isSignatureImage` discards it.
+        sizeBytes: 900,
+        isInline: true,
+      },
+    ]);
+    graph.pages = [{ messages: [reply], deltaLink: 'delta-logo-2' }];
+    await worker.runOnce();
+
+    const stored = await prisma.ticketMessage.findFirstOrThrow({
+      where: { ticketId: ticket.id, body: { contains: 'Thanks for the update' } },
+      select: { body: true },
+    });
+    expect(stored.body).not.toContain('[[cid:');
+    expect(stored.body).not.toContain('<img');
+    expect(stored.body).not.toContain('logo.png');
   });
 
   it('⚠️ the reply address is honoured when it is only in CC', async () => {

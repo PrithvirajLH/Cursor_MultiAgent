@@ -237,4 +237,56 @@ describe('internal-note attachments are not for the requester (card 1.83)', () =
     expect(JSON.stringify(seen.body)).not.toContain('about-them.txt');
     expect(fixtureUserIds.agent).toBeTruthy();
   });
+
+  /**
+   * Card 1.129 fault A, on the fixture card 1.83 already built.
+   *
+   * The owner asked how an agent is supposed to know a reply carried a file.
+   * Until now `listMessages` returned `include: { author: true }` and nothing
+   * else, so the answer was the Attachments tab counter changing - which says
+   * something arrived, not what, and not on which message.
+   */
+  const messagesAs = async (email: string) => {
+    const res = await request(server)
+      .get(`/api/tickets/${ticketId}/messages`)
+      .set(authHeader(email))
+      .expect(200);
+    return res.body as {
+      data: {
+        id: string;
+        type: string;
+        attachments?: { id: string; fileName: string; sizeBytes: number }[];
+      }[];
+    };
+  };
+
+  it('names the file on the message it arrived on (card 1.129)', async () => {
+    const body = await messagesAs(fixtureEmails.agent);
+    const publicMessage = body.data.find(
+      (message) => message.type === MessageType.PUBLIC,
+    );
+    expect(publicMessage?.attachments).toEqual([
+      expect.objectContaining({
+        id: publicFileId,
+        fileName: 'shared-with-requester.txt',
+      }),
+    ]);
+    // The legacy file belongs to no message and must not be attributed to one.
+    expect(JSON.stringify(body)).not.toContain('uploaded-before-this-card.txt');
+    // ⚠️ `storageKey` names the blob and has no business in a message payload.
+    expect(JSON.stringify(body)).not.toContain('storageKey');
+  });
+
+  it('⚠️ the requester’s copy of the list carries neither the internal note nor its file', async () => {
+    // The rule is INHERITED from the message filter rather than restated: a
+    // reader who may not see internal notes never receives the message, so its
+    // files cannot come back attached to one. Asserted on the whole serialised
+    // listing, for the reason at the top of this file.
+    const body = await messagesAs(fixtureEmails.requester);
+    expect(JSON.stringify(body)).not.toContain('private-screenshot.txt');
+    expect(JSON.stringify(body)).not.toContain(internalFileId);
+    // Non-vacuity: the public file IS there, so this is not passing because
+    // the list came back empty.
+    expect(JSON.stringify(body)).toContain('shared-with-requester.txt');
+  });
 });

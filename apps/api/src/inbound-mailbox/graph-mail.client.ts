@@ -23,6 +23,29 @@ export type GraphAttachmentMeta = {
 };
 
 /**
+ * One attachment's downloaded content (card 1.129, fault B).
+ *
+ * ⚠️ `contentId` COSTS NOTHING EXTRA AND IS WHY THIS IS AN OBJECT. The download
+ * is already a plain `GET /attachments/{id}` with no `$select` - card 1.119
+ * proved that shape works and that a `$select` on a derived property does not -
+ * so the full resource comes back either way and `contentId` is simply read off
+ * the response that was already paid for. Asking Graph for it separately, or
+ * adding it to `listAttachments`' `$select`, would mean either a second call or
+ * a `microsoft.graph.fileAttachment/` cast that has never been tested against
+ * the collection endpoint.
+ */
+export type GraphAttachmentContent = {
+  /** Base64, exactly as Graph returned it. */
+  contentBytes: string;
+  /**
+   * The `Content-ID` header the sender's client wrote, as `cid:` in the body
+   * refers to it - WITHOUT the angle brackets Graph sometimes includes. Null
+   * for an ordinary attached file, which is most of them.
+   */
+  contentId: string | null;
+};
+
+/**
  * One mail message, reduced to what ingestion needs.
  *
  * Deliberately NOT Graph's own shape. The worker and its tests speak this
@@ -36,6 +59,20 @@ export type GraphMailMessage = {
   internetMessageId: string;
   subject: string;
   bodyText: string;
+  /**
+   * The body as Graph sent it, when Graph sent HTML (card 1.129, fault B).
+   *
+   * ⚠️ CARD 1.62 FLATTENS `bodyText` AT THIS BOUNDARY AND THAT DECISION STANDS.
+   * This is the same content BEFORE that conversion, kept for one reason: the
+   * `src="cid:..."` references live in it, and they are the only record of
+   * WHERE in the sentence a pasted screenshot belonged. `htmlToText` drops the
+   * `<img>` with every other tag, so by the time anything downstream sees the
+   * body the position is gone.
+   *
+   * ⚠️ NOTHING STORES THIS. It exists so the worker can map `cid:` to a file
+   * it has just ingested; the body that reaches the database is still text.
+   */
+  bodyHtml: string | null;
   from: GraphRecipient;
   toRecipients: GraphRecipient[];
   ccRecipients: GraphRecipient[];
@@ -139,7 +176,7 @@ export abstract class GraphMailClient {
     mailbox: string,
     messageId: string,
     attachmentId: string,
-  ): Promise<string>;
+  ): Promise<GraphAttachmentContent>;
 
   /** Whether the client has the configuration it needs to reach Graph. */
   abstract isConfigured(): boolean;

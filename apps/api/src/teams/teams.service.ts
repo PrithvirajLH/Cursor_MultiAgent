@@ -258,11 +258,15 @@ export class TeamsService {
 
     const member = await this.prisma.teamMember.findUnique({
       where: { id: memberId },
+      // Card 1.126 needs the member's own role to decide, and `userId` alone
+      // cannot answer "is this another team admin".
+      include: { user: { select: { id: true, role: true } } },
     });
 
     if (!member || member.teamId !== teamId) {
       throw new NotFoundException('Team member not found');
     }
+    this.ensureMemberIsRemovableBy(user, member);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.teamMember.delete({ where: { id: memberId } });
@@ -278,6 +282,65 @@ export class TeamsService {
       actor: user,
     });
     return { id: memberId };
+  }
+
+  /**
+   * May THIS actor remove THIS person (card 1.126)?
+   *
+   * ⚠️ REPORTED LIVE FROM PRODUCTION. The owner held TEAM_ADMIN, removed their
+   * own account from Payroll, and then could not get back in - and named the
+   * missing rule themselves: *"team admin cannot remove another team admin or
+   * himself"*.
+   *
+   * ⚠️ `removeMember` HAD NO GUARD AT ALL beyond "may you manage this team".
+   * The whole method was: permission gate, find the row, delete it, sync the
+   * role. So a TEAM_ADMIN could remove themselves, remove a peer, or empty a
+   * team completely.
+   *
+   * ⚠️ THIS IS A DIFFERENT QUESTION FROM `ensureTeamAdminOrOwner` and is
+   * deliberately not folded into it. That one answers *"may you manage this
+   * team"*; this answers *"may you remove THIS PERSON"*. An actor can pass the
+   * first and fail the second.
+   *
+   * ✅ **THE CODEBASE ALREADY SOLVED THIS SHAPE ONE FILE OVER** -
+   * `users.service.ts:203-212` forbids an OWNER demoting themselves and forbids
+   * demoting the last active owner. The reasoning was there; it had never been
+   * carried across to team membership. The exception types mirror it too:
+   * `BadRequest` for doing it to yourself, `Forbidden` for doing it to someone
+   * else.
+   *
+   * ⚠️ AN OWNER IS EXEMPT FROM BOTH RULES, BY DESIGN. Somebody has to be able
+   * to remove a team admin, and an owner is the only role that can - which is
+   * exactly the way out this refusal points at.
+   *
+   * ⚠️ **THE LAST MEMBER OF A TEAM IS DELIBERATELY NOT BLOCKED.** An empty team
+   * still receives auto-assigned tickets with nobody to take them, which is a
+   * real hazard - but refusing it *here* would be a guarantee this method
+   * cannot keep: deactivating a user and changing their role both empty a team
+   * by other routes, neither of which passes through here. A guard that can be
+   * walked around is worse than none, because it reads like protection. The
+   * auto-assignment hazard is recorded on the board instead.
+   *
+   * @param actor The signed-in user asking to remove somebody.
+   * @param member The membership row, with its user's role.
+   */
+  private ensureMemberIsRemovableBy(
+    actor: AuthUser,
+    member: { userId: string; user: { role: UserRole } },
+  ) {
+    if (actor.role === UserRole.OWNER) {
+      return;
+    }
+    if (member.userId === actor.id) {
+      throw new BadRequestException(
+        'You cannot remove yourself from a team you administer. Ask an owner to do it.',
+      );
+    }
+    if (member.user.role === UserRole.TEAM_ADMIN) {
+      throw new ForbiddenException(
+        'You cannot remove another team admin. Ask an owner to do it.',
+      );
+    }
   }
 
   private ensureOwner(user: AuthUser) {
@@ -349,6 +412,25 @@ export class TeamsService {
       userRole === UserRole.TEAM_ADMIN
     ) {
       return;
+    }
+    // ⚠️ CARD 1.126 §1b: THE RULE IS UNCHANGED, THE DEAD END IS NOT.
+    //
+    // An OWNER cannot hold a TeamMember row, and that is deliberate rather than
+    // an oversight - `users.service.ts:237` nulls `primaryTeamId` when somebody
+    // is promoted to OWNER, and card 1.110's exemption at
+    // `tickets.service.ts:2725` records that "OWNERs have global write access
+    // and aren't required to hold an explicit TeamMember record".
+    //
+    // ⚠️ THE TRAP IS THAT IT IS ONE-WAY AND SILENT. A TEAM_ADMIN later promoted
+    // to OWNER loses their membership and can never regain it - not by their
+    // own hand, not by another owner's - and the old message offered no way
+    // forward at all, which is what the owner hit. It now says why, so a person
+    // reading it knows there is nothing to fix.
+    if (userRole === UserRole.OWNER) {
+      throw new ForbiddenException(
+        'Owners already have access to every team and cannot be added as a member. ' +
+          'To give someone a team, set their role to team admin, lead or agent first.',
+      );
     }
     throw new ForbiddenException(
       'Only employee, agent, lead, or team admin users can be added as team members',

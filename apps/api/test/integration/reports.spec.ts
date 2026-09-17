@@ -299,9 +299,13 @@ describe('Reports', () => {
   });
 
   describe('team-scoped endpoints accept a valid teamId for OWNER', () => {
-    // OWNER is platform-wide and the service deletes teamId from the query, but
-    // it must still be a *valid* (well-formed UUID) param: a bad value would be
-    // rejected by the ValidationPipe (400) before reaching the service.
+    // ⚠️ THIS COMMENT WAS INVERTED BY CARD 1.81 RATHER THAN DELETED, so the
+    // change stays visible. It used to read "OWNER is platform-wide and the
+    // service DELETES teamId from the query" - which was true, and was the bug:
+    // an owner picked HR and got platform-wide numbers under an HR heading.
+    // The owner's filter is now honoured; see the describe block at the end of
+    // this file. It must still be a well-formed UUID or the ValidationPipe
+    // rejects it with 400 before the service is reached.
     const teamScoped = [
       '/api/reports/sla-compliance-by-team',
       '/api/reports/team-summary',
@@ -352,5 +356,118 @@ describe('Reports', () => {
           .expect(403);
       });
     }
+  });
+
+  /**
+   * Card 1.81 — an owner picks a team on the Reports page and gets that team's
+   * numbers.
+   *
+   * ⚠️ DECIDED BY THE OWNER 2026-09-16: honour the filter. Hiding the control
+   * for owners was the alternative and was declined.
+   *
+   * ⚠️ THE EXPORT IS THE HALF THAT MATTERS MOST. A wrong number on screen is
+   * seen by the person who ran it; a CSV labelled HR full of platform-wide rows
+   * leaves the building.
+   */
+  describe("an OWNER's team filter is honoured (card 1.81)", () => {
+    // ⚠️ NOT `recentRange`. Its `to` is captured when this MODULE loads, which
+    // is before the fixtures below are created - so tickets raised in
+    // `beforeAll` fall outside the window and every assertion here came back
+    // an empty array. Two of these tests then passed VACUOUSLY. Leaving `to`
+    // off makes the range end at request time instead.
+    const range = { from: FROM.toISOString() };
+    type TeamSummaryRow = { id: string; name: string; total: number };
+    const teamRows = (body: unknown): TeamSummaryRow[] =>
+      ((body as { data?: TeamSummaryRow[] }).data ?? []).filter(
+        (row) => row.id !== 'unassigned',
+      );
+
+    beforeAll(async () => {
+      // Deterministic data on TWO teams, so "narrowed" is observable rather
+      // than inferred from whatever the seed happens to hold.
+      const raise = (assignedTeamId: string, subject: string) =>
+        request(server)
+          .post('/api/tickets')
+          .set(authHeader(fixtureEmails.requester))
+          .send({
+            subject,
+            description: 'card 1.81 fixture',
+            priority: 'SEV3',
+            channel: 'PORTAL',
+            assignedTeamId,
+          })
+          .expect(201);
+      await raise(fixtureTeamIds.it, 'card 1.81 IT one');
+      await raise(fixtureTeamIds.it, 'card 1.81 IT two');
+      await raise(fixtureTeamIds.hr, 'card 1.81 HR one');
+    });
+
+    it('⚠️ picking a team returns THAT team, not the platform', async () => {
+      // THE ASSERTION THIS CARD EXISTS FOR.
+      const res = await request(server)
+        .get('/api/reports/team-summary')
+        .query({ ...range, teamId: fixtureTeamIds.hr })
+        .set(authHeader(fixtureEmails.owner))
+        .expect(200);
+
+      const rows = teamRows(res.body);
+      expect(rows.map((row) => row.id)).toEqual([fixtureTeamIds.hr]);
+    });
+
+    it('⚠️ and with no team it is still platform-wide', async () => {
+      // NON-VACUITY, and the one most likely to break: a fix that always
+      // narrows would pass the test above and silently shrink every owner
+      // report that has no filter on it.
+      const res = await request(server)
+        .get('/api/reports/team-summary')
+        .query(range)
+        .set(authHeader(fixtureEmails.owner))
+        .expect(200);
+
+      const ids = teamRows(res.body).map((row) => row.id);
+      expect(ids).toContain(fixtureTeamIds.it);
+      expect(ids).toContain(fixtureTeamIds.hr);
+    });
+
+    it('⚠️ a LEAD still cannot widen their scope by naming another team', async () => {
+      // THE SECURITY TEST. The LEAD and TEAM_ADMIN branches pin teamId FROM THE
+      // USER, overwriting whatever was asked for, and that is the real boundary
+      // in `scopeReportQuery`. Card 1.81 changed only the OWNER branch.
+      const res = await request(server)
+        .get('/api/reports/team-summary')
+        .query({ ...range, teamId: fixtureTeamIds.hr })
+        .set(authHeader(fixtureEmails.lead))
+        .expect(200);
+
+      const ids = teamRows(res.body).map((row) => row.id);
+      expect(ids).not.toContain(fixtureTeamIds.hr);
+      expect(ids.every((id) => id === fixtureTeamIds.it)).toBe(true);
+    });
+
+    it('refuses a team that does not exist instead of reporting nothing', async () => {
+      // An empty report reads exactly like "no tickets this month", which is a
+      // worse answer than an error.
+      await request(server)
+        .get('/api/reports/team-summary')
+        .query({
+          ...recentRange,
+          teamId: '00000000-0000-4000-8000-000000000000',
+        })
+        .set(authHeader(fixtureEmails.owner))
+        .expect(404);
+    });
+
+    it('⚠️ the export carries the same scope as the screen', async () => {
+      const res = await request(server)
+        .get('/api/reports/team-summary/export.csv')
+        .query({ ...range, teamId: fixtureTeamIds.hr })
+        .set(authHeader(fixtureEmails.owner))
+        .expect(200);
+
+      const csv = res.text;
+      expect(csv).toContain('HR');
+      // The IT team's rows must not be in a file labelled HR.
+      expect(csv).not.toContain('IT Service Desk');
+    });
   });
 });

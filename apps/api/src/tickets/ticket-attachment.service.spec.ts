@@ -3,6 +3,7 @@ import { AttachmentScanStatus } from '@prisma/client';
 import { AccessControlService } from '../common/access-control.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TicketAttachmentService } from './ticket-attachment.service';
+import { AttachmentStorageService } from '../common/attachment-storage.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 
 type MockPrisma = {
@@ -34,6 +35,10 @@ describe('TicketAttachmentService — orphan cleanup (BUG-02)', () => {
       config as unknown as ConfigService,
       new AccessControlService(),
       {} as unknown as TicketRealtimeService,
+      // ⚠️ CARD 1.130: the bytes moved to `common/`, the rules did not. A REAL
+      // instance on the same config, so these tests still exercise the actual
+      // local-disk path rather than a stub that could agree with a mistake.
+      new AttachmentStorageService(config as unknown as ConfigService),
     );
   });
 

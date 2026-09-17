@@ -26,6 +26,9 @@ import {
   classifyInboundAddress,
   RecipientCandidate,
 } from './classify-inbound-address.util';
+import { buildBodyTextWithInlineMarkers } from './body-text-with-inline-markers.util';
+import { AiService } from '../ai/ai.service';
+import type { InboundDepartmentRoute } from '../ai/types/pipeline.types';
 
 /**
  * How often to poll when the switch is on.
@@ -95,6 +98,7 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
     private readonly graph: GraphMailClient,
     private readonly inboundEmail: InboundEmailService,
     private readonly ticketEmailThreads: TicketEmailThreadService,
+    private readonly ai: AiService,
   ) {}
 
   /** `INBOUND_MAILBOX_ENABLED`. Off unless explicitly "true". */
@@ -284,6 +288,27 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
         `Inbound mail carried an unusable suffix "${addressing.suffix}"; ingesting unrouted`,
       );
     }
+    // ⚠️ CARD 1.63. THE COMMENT ABOVE IS THIS CARD'S OWN JUSTIFICATION AND IS
+    // KEPT RATHER THAN REPLACED: *"guessing here would put one department's
+    // mail in front of another"*. **The AI is not a guess.** It is a classifier
+    // behind the same deterministic confidence gate the chat intake uses, and
+    // below that gate it declines - at which point the three paths above still
+    // do exactly what they did before: ingest unrouted, into Unassigned.
+    //
+    // ⚠️ ONLY WHEN NOTHING ELSE DECIDED. A plus-addressed email never reaches
+    // this line, which is deliberate: card 1.19 has Power Automate supply an
+    // explicit department slug and 367 of 370 tickets arrive that way. An
+    // explicit address beats a classifier every time.
+    const aiRouting = assignedTeamId
+      ? null
+      : await this.classifyUnroutedMail(message);
+    if (aiRouting?.routed) {
+      assignedTeamId = aiRouting.teamId;
+      this.logger.log(
+        `Inbound mail routed by the AI to "${aiRouting.teamName}" ` +
+          `(${aiRouting.confidence.toFixed(2)} vs ${aiRouting.thresholdUsed.toFixed(2)})`,
+      );
+    }
     // Every surviving kind carries the address we matched; `none` returned
     // above. The ingestion path pulls the reply token out of this field, so it
     // has to be OUR address rather than whatever sorted first in `To`.
@@ -299,6 +324,9 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.inboundEmail.ingestInboundEmailMessage(payload, {
         assignedTeamId,
+        // Only when the AI actually decided it. Everything else carries no
+        // routing record, exactly as before.
+        ...(aiRouting?.routed ? { aiRouting } : {}),
       });
       summary.ingested += 1;
     } catch (error) {
@@ -403,22 +431,27 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
       try {
-        const contentBase64 = await this.graph.fetchAttachmentContent(
-          mailbox,
-          message.id,
-          attachment.id,
-        );
+        const { contentBytes, contentId } =
+          await this.graph.fetchAttachmentContent(
+            mailbox,
+            message.id,
+            attachment.id,
+          );
         out.push({
           fileName: attachment.name,
           contentType: attachment.contentType,
+          // ⚠️ CARD 1.129 FAULT B. Free - it comes back on the download that
+          // was already happening - and it is the only thing that can tie this
+          // file to the place in the sentence the sender pasted it.
+          ...(contentId === null ? {} : { contentId }),
           // ⚠️ THE DECODED LENGTH, NOT GRAPH'S `size`. `sizeBytes` means "the
           // size of the file I am handing you", and the normalizer checks it
           // for an EXACT match to catch a truncated download. Graph's `size` is
           // the wire size - base64 and MIME overhead included - so passing it
           // rejected every single attachment with "expected N bytes, got M".
           // The check is right; the caller was wrong.
-          sizeBytes: Buffer.byteLength(contentBase64, 'base64'),
-          contentBase64,
+          sizeBytes: Buffer.byteLength(contentBytes, 'base64'),
+          contentBase64: contentBytes,
         });
       } catch (error) {
         this.logger.warn(
@@ -460,12 +493,65 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
     ];
   }
 
+  /**
+   * Ask the AI which team an unaddressed email belongs to (card 1.63).
+   *
+   * ⚠️ NEVER THROWS, AND NEVER LOSES THE MAIL. `classifyInboundDepartment`
+   * already swallows its own failures, and this adds nothing that can throw -
+   * because the one outcome this card must not have is an email lost to a
+   * classifier being slow or unavailable.
+   *
+   * The subject is included with the body on purpose: on a short email it is
+   * often the only sentence that names the department at all.
+   *
+   * @param message The Graph message being ingested.
+   * @returns The routing decision, or null when there is nothing to classify.
+   */
+  private async classifyUnroutedMail(
+    message: GraphMailMessage,
+  ): Promise<InboundDepartmentRoute | null> {
+    const text = [message.subject, message.bodyText]
+      .map((part) => (typeof part === 'string' ? part.trim() : ''))
+      .filter((part) => part !== '')
+      .join('\n\n');
+    if (text === '') {
+      return null;
+    }
+    // ⚠️ THE CATCH IS DEFENCE IN DEPTH AND IS NOT REDUNDANT.
+    // `classifyInboundDepartment` already swallows its own failures, but the
+    // guarantee that matters here - an email is never lost to a classifier -
+    // belongs to THIS path, not to a promise made in another file that a later
+    // refactor could quietly withdraw.
+    return this.ai.classifyInboundDepartment(text).catch((error: unknown) => {
+      this.logger.warn(
+        `Inbound classification threw; ingesting unrouted: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    });
+  }
+
   /** Graph's message in the shape the ingestion path already accepts. */
   private toIngestPayload(
     message: GraphMailMessage,
     matchedAddress: string | undefined,
     attachments: InboundEmailAttachmentDto[],
   ): IngestInboundEmailDto {
+    // ⚠️ CARD 1.129 FAULT B. Null unless this message genuinely pasted an image
+    // that was also kept, in which case the body carries a marker where the
+    // picture sat. Every other message keeps card 1.62's text byte for byte -
+    // including one whose only inline image was a signature logo, because a
+    // discarded logo has no `contentId` here to match.
+    const storedContentIds = new Set(
+      attachments
+        .map((attachment) => attachment.contentId)
+        .filter((contentId): contentId is string => Boolean(contentId)),
+    );
+    const bodyWithInlineImages = buildBodyTextWithInlineMarkers(
+      message.bodyHtml,
+      storedContentIds,
+    );
     return {
       fromEmail: message.from.address,
       fromName: message.from.name ?? undefined,
@@ -488,7 +574,7 @@ export class InboundMailboxService implements OnModuleInit, OnModuleDestroy {
             address !== message.from.address.trim().toLowerCase(),
         ),
       subject: message.subject,
-      body: message.bodyText,
+      body: bodyWithInlineImages ?? message.bodyText,
       messageId: message.internetMessageId,
       inReplyTo: message.inReplyTo ?? undefined,
       references: message.references ?? undefined,

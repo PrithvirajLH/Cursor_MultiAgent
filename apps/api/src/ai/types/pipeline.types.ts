@@ -43,6 +43,37 @@ export interface ClassificationResult {
   reasoning: string;
 }
 
+/**
+ * What classifying an unrouted inbound email decided (card 1.63).
+ *
+ * ⚠️ DELIBERATELY NOT A `ClassificationResult`. The caller is the mailbox
+ * worker, which needs one question answered - *"which team, if any"* - and has
+ * no business knowing about intents, categories or alternative departments. A
+ * narrow return type is also what keeps the AI out of the ingest path's
+ * decisions: everything below the gate collapses to `routed: false`, and the
+ * worker does exactly what it did before this card.
+ */
+export type InboundDepartmentRoute =
+  | {
+      routed: true;
+      teamId: string;
+      teamName: string;
+      confidence: number;
+      thresholdUsed: number;
+    }
+  | {
+      routed: false;
+      /** Why, for the log and for the ticket event. Never a guess. */
+      reason:
+        | 'pipeline_disabled'
+        | 'below_threshold'
+        | 'multi_department'
+        | 'unknown_department'
+        | 'error';
+      confidence?: number;
+      thresholdUsed?: number;
+    };
+
 // ─── Agent 3: Confidence Gate Output ─────────────────────────────────────────
 
 export interface ConfidenceResult {

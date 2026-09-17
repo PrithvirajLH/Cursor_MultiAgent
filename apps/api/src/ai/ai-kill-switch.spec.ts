@@ -67,6 +67,19 @@ describe('the AI pipeline can be switched off (card 1.106)', () => {
     expect((result as { reason: string }).reason).toMatch(/switched off/i);
   });
 
+  it('⚠️ the switch covers inbound classification too (card 1.63)', async () => {
+    // Card 1.63 gave the AI a SECOND way in - classifying an unrouted email -
+    // and an off switch that only covers one of them is not an off switch.
+    // Same assertion as above: the client is never called.
+    const { service, runAgent } = build('false');
+    const result = await service.classifyInboundDepartment(
+      'my paycheck is missing overtime',
+    );
+
+    expect(runAgent).not.toHaveBeenCalled();
+    expect(result).toEqual({ routed: false, reason: 'pipeline_disabled' });
+  });
+
   it('⚠️ unset: the pipeline runs exactly as before', async () => {
     // THE NON-VACUITY HALF, and the one that would hurt most if wrong: a fix
     // that disables the pipeline for everyone passes every assertion above.

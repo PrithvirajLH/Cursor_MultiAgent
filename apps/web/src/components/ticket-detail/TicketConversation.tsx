@@ -6,7 +6,12 @@ import {
   type RefObject,
 } from "react";
 import { Loader2, Paperclip, Send, Shield } from "lucide-react";
-import type { TicketDetail, TicketMessage, UserRef } from "../../api/client";
+import type {
+  MessageAttachment,
+  TicketDetail,
+  TicketMessage,
+  UserRef,
+} from "../../api/client";
 import { MessageBody } from "../MessageBody";
 import { MessageContextMenu } from "./MessageContextMenu";
 import { copyToClipboard } from "../../utils/clipboard";
@@ -104,6 +109,37 @@ function isImageOnlyBody(body: string): boolean {
     .replace(/&nbsp;/gi, " ")
     .trim();
   return withoutImgs.length === 0;
+}
+
+/**
+ * The files to show as chips under a message (card 1.129, fault A).
+ *
+ * ⚠️ AN IMAGE ALREADY DRAWN IN THE BODY DOES NOT GET A CHIP. A screenshot
+ * pasted in the composer is stored as `<img data-attachment-id="...">` and
+ * `MessageBody` hydrates it in place, so the picture is already on screen -
+ * a chip beside it would name the same file twice. Everything else gets one:
+ * an emailed file, a document, an image the body never referenced.
+ *
+ * @param message The message being rendered.
+ * @returns The attachments that are not already visible in the body.
+ */
+function chipAttachments(message: ConversationMessage): MessageAttachment[] {
+  const attachments = message.attachments ?? [];
+  const body = message.body ?? "";
+  return attachments.filter(
+    (attachment) => !body.includes(`data-attachment-id="${attachment.id}"`),
+  );
+}
+
+/**
+ * The same one-decimal KB the Attachments tab uses, so one file reads
+ * identically in both places.
+ *
+ * @param sizeBytes The stored byte count.
+ * @returns A short human-readable size.
+ */
+function formatAttachmentSize(sizeBytes: number): string {
+  return `${(sizeBytes / 1024).toFixed(1)} KB`;
 }
 
 /**
@@ -229,8 +265,6 @@ export const TicketConversation = memo(function TicketConversation({
   canRedactMessage,
 }: TicketConversationProps) {
   void ticket;
-  void onAttachmentDownload;
-  void onAttachmentView;
 
   // ⚠️ CARD 1.73. The owner asked for the per-message actions on right-click.
   // `messageMenu` holds the pointer position and the message; the same state
@@ -399,6 +433,9 @@ export const TicketConversation = memo(function TicketConversation({
             // Image-only messages (just attachment image(s), no real text) render
             // without the colored bubble — the image is the visual element.
             const isImageOnly = isImageOnlyBody(message.body);
+            // Card 1.129 fault B: an image drawn INSIDE the body, whether it
+            // was pasted in the composer or arrived on an email.
+            const hasInlineImage = /data-attachment-id=/.test(message.body);
 
             return (
               <div key={message.id}>
@@ -515,7 +552,17 @@ export const TicketConversation = memo(function TicketConversation({
                         <span className="italic opacity-70">
                           {message.body}
                         </span>
-                      ) : !isImageOnly && message.body.includes("\n") ? (
+                      ) : !isImageOnly &&
+                        !hasInlineImage &&
+                        message.body.includes("\n") ? (
+                        // ⚠️ CARD 1.129 FAULT B ADDED `hasInlineImage`, AND
+                        // WITHOUT IT THE FIX WOULD HAVE SHIPPED BROKEN. An
+                        // emailed reply is multi-line, so it took this branch
+                        // and rendered as RAW TEXT - which is right for the
+                        // plain body card 1.62 produces, and would have printed
+                        // the `<img data-attachment-id>` of a pasted screenshot
+                        // to the agent as visible markup. The same fault as
+                        // fault C, one screen over.
                         <pre className="w-full whitespace-pre-wrap break-words text-sm">
                           {message.body}
                         </pre>
@@ -527,6 +574,50 @@ export const TicketConversation = memo(function TicketConversation({
                         />
                       )}
                     </div>
+                    {/*
+                      Card 1.129 fault A. The owner's question was "how will an
+                      agent know that they attached a file? there is no
+                      indication apart from number increase on attachment".
+                      Under the bubble, on the message that carried them.
+
+                      An image opens in a tab and anything else downloads,
+                      which is the split the Attachments tab already makes -
+                      both handlers were already passed to this component and
+                      had no reader until now.
+                    */}
+                    {chipAttachments(message).length > 0 ? (
+                      <div
+                        data-message-attachments="true"
+                        className={`mt-1 flex max-w-full flex-wrap gap-1.5 ${
+                          isCurrentUser ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        {chipAttachments(message).map((attachment) => (
+                          <button
+                            key={attachment.id}
+                            type="button"
+                            onClick={() =>
+                              attachment.contentType.startsWith("image/")
+                                ? onAttachmentView(attachment.id)
+                                : onAttachmentDownload(
+                                    attachment.id,
+                                    attachment.fileName,
+                                  )
+                            }
+                            title={`${attachment.fileName} — ${formatAttachmentSize(attachment.sizeBytes)}`}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-foreground shadow-sm transition-colors hover:border-primary hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          >
+                            <Paperclip className="h-3 w-3 shrink-0" />
+                            <span className="max-w-[180px] truncate">
+                              {attachment.fileName}
+                            </span>
+                            <span className="shrink-0 text-muted-foreground">
+                              {formatAttachmentSize(attachment.sizeBytes)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     {/*
                       Card 1.11, and card 1.73 moved its conclusion without
                       discarding its reasoning. The note here said the control

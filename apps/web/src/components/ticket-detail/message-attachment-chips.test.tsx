@@ -1,0 +1,210 @@
+import { describe, expect, it, vi } from "vitest";
+import { createRef } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import type { TicketDetail, TicketMessage, UserRef } from "../../api/client";
+import { TicketConversation } from "./TicketConversation";
+import type { TicketConversationProps } from "./TicketConversation";
+import type { RichTextEditorRef } from "../RichTextEditor";
+
+/**
+ * Card 1.129, fault A — the owner's question was "how will an agent know that
+ * they attached a file? there is no indication apart from number increase on
+ * attachment".
+ *
+ * ⚠️ THIS COULD NOT HAVE BEEN WRITTEN BEFORE 2026-09-16. `listMessages`
+ * returned no attachment data at all, and `Attachment.messageId` was NULL on
+ * every row until card 1.121 linked it - so there was nothing to render and
+ * nothing to render it from.
+ */
+
+// MessageBody sanitises through DOMPurify, which needs a real DOM; this suite
+// runs in vitest's node environment like the rest of the web tests. The chips
+// are what is under test, not the sanitiser.
+vi.mock("../MessageBody", () => ({
+  MessageBody: ({ body }: { body: string }) => <span>{body}</span>,
+}));
+
+const CURRENT = "agent@company.com";
+
+type ConversationMessage = TicketMessage & {
+  localStatus?: "sending" | "sent" | "failed";
+};
+
+function message(
+  overrides: Partial<ConversationMessage> = {},
+): ConversationMessage {
+  return {
+    id: "m1",
+    body: "Here you go.",
+    type: "PUBLIC",
+    createdAt: "2026-09-16T10:00:00.000Z",
+    author: { id: "u-agent", email: CURRENT, displayName: "Ada Agent" },
+    ...overrides,
+  } as ConversationMessage;
+}
+
+function ticket(): TicketDetail {
+  return {
+    id: "t-1",
+    number: 7,
+    displayId: "PA_20260916_007",
+    subject: "Missing overtime",
+    status: "NEW",
+    priority: "SEV3",
+    createdAt: "2026-09-16T09:00:00.000Z",
+    updatedAt: "2026-09-16T09:00:00.000Z",
+    assignee: null,
+  } as TicketDetail;
+}
+
+function render(overrides: Partial<TicketConversationProps> = {}): string {
+  const props: TicketConversationProps = {
+    ticket: ticket(),
+    messages: [],
+    messagesHasMore: false,
+    messagesLoading: false,
+    messagesError: null,
+    currentEmail: CURRENT,
+    messageType: "PUBLIC",
+    setMessageType: () => {},
+    messageBody: "",
+    onMessageBodyChange: () => {},
+    onMessageInputBlur: () => {},
+    canManage: true,
+    canUpload: true,
+    onReply: () => {},
+    onLoadMore: () => {},
+    onRetryLoad: () => {},
+    onAttachmentUpload: () => {},
+    onAttachmentDownload: () => {},
+    onAttachmentView: () => {},
+    attachmentUploading: false,
+    attachmentError: null,
+    typingUsers: [],
+    showJumpToLatest: false,
+    messageInputRef: createRef<RichTextEditorRef | null>(),
+    attachmentInputRef: createRef<HTMLInputElement | null>(),
+    conversationListRef: createRef<HTMLDivElement | null>(),
+    users: [] as UserRef[],
+    cannedVariables: {},
+    onScrollToLatest: () => {},
+    ...overrides,
+  };
+  return renderToStaticMarkup(<TicketConversation {...props} />);
+}
+
+/** The chip row carries a stable attribute so these tests do not read styling. */
+function chipRowCount(html: string): number {
+  return html.split('data-message-attachments="true"').length - 1;
+}
+
+describe("1.129 fault A — a message says which files came with it", () => {
+  it("names every file on the message that carried it", () => {
+    const html = render({
+      messages: [
+        message({
+          attachments: [
+            {
+              id: "a-1",
+              fileName: "timesheet.pdf",
+              contentType: "application/pdf",
+              sizeBytes: 20480,
+            },
+            {
+              id: "a-2",
+              fileName: "punch-detail.csv",
+              contentType: "text/csv",
+              sizeBytes: 1024,
+            },
+          ],
+        }),
+      ],
+    });
+
+    expect(chipRowCount(html)).toBe(1);
+    expect(html).toContain("timesheet.pdf");
+    expect(html).toContain("punch-detail.csv");
+    // The size is the point of the chip as much as the name: it is how an
+    // agent tells the file they asked for from a 4 KB signature crop.
+    expect(html).toContain("20.0 KB");
+    expect(html).toContain("1.0 KB");
+  });
+
+  it("renders no row at all when the message carried nothing", () => {
+    const html = render({ messages: [message({ attachments: [] })] });
+
+    expect(chipRowCount(html)).toBe(0);
+  });
+
+  it("shows nothing for a message stored before attachments were linked", () => {
+    // Every row before 2026-09-16 has `messageId = NULL`, so the API sends no
+    // `attachments` key at all. An empty chip row here would put a permanent
+    // blank strip under most of the conversation's history.
+    const html = render({ messages: [message()] });
+
+    expect(chipRowCount(html)).toBe(0);
+  });
+
+  it("⚠️ renders a multi-line emailed body through MessageBody once it has an image", () => {
+    // Fault B. An emailed reply is multi-line, so it took the raw-text branch -
+    // right for the plain body card 1.62 produces, and fatal for a pasted
+    // screenshot, whose <img> would have been printed to the agent as markup.
+    const emailed = [
+      "The error looks like this:",
+      "",
+      '<img data-attachment-id="a-img" alt="screenshot.png">',
+      "",
+      "Can you fix it?",
+    ].join(String.fromCharCode(10));
+    const html = render({ messages: [message({ body: emailed })] });
+
+    // ⚠️ ASSERTED ON THE BRANCH, NOT ON THE MARKUP. `MessageBody` is mocked
+    // here (it needs a real DOM for DOMPurify), so what it renders proves
+    // nothing - but WHICH branch ran is exactly the bug: the <pre> one prints
+    // the body as text, and is what would have shown the agent an <img> tag.
+    expect(html).not.toContain("<pre");
+  });
+
+  it("keeps the raw-text branch for a multi-line body with no image", () => {
+    // Non-vacuity: this is the branch the fix above had to leave alone, and it
+    // is what keeps an emailed body's line breaks exactly as they arrived.
+    const plain = ["Line one.", "", "Line two."].join(String.fromCharCode(10));
+    const html = render({ messages: [message({ body: plain })] });
+
+    expect(html).toContain("<pre");
+  });
+
+  it("does not chip an image the body already draws", () => {
+    // A pasted screenshot is stored as <img data-attachment-id="..."> and
+    // hydrated in place, so it is already on screen. The document beside it is
+    // not, and still gets a chip.
+    const html = render({
+      messages: [
+        message({
+          body: 'See below. <img data-attachment-id="a-img" alt="screenshot.png">',
+          attachments: [
+            {
+              id: "a-img",
+              fileName: "screenshot.png",
+              contentType: "image/png",
+              sizeBytes: 13307,
+            },
+            {
+              id: "a-doc",
+              fileName: "policy.pdf",
+              contentType: "application/pdf",
+              sizeBytes: 51200,
+            },
+          ],
+        }),
+      ],
+    });
+
+    // Matched on the chip's own truncating span, not on the bare name: the
+    // alt text puts "screenshot.png" in the body too, so a looser assertion
+    // would pass with the filter removed.
+    expect(chipRowCount(html)).toBe(1);
+    expect(html).toContain('truncate">policy.pdf');
+    expect(html).not.toContain('truncate">screenshot.png');
+  });
+});

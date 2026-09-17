@@ -125,3 +125,9 @@ SQL_Migration_Guide.pdf
 
 # Destructive local DB wipe helper — never commit
 apps/api/cleanup-db.cjs
+
+# Attachment files written at runtime. Never commit these: on a healthcare
+# desk an upload can be anything, and two of this repo's remotes are public.
+# Two files from the sprint-3 era are already tracked and are a separate
+# decision - ignoring the directory stops any NEW one arriving (2026-09-17).
+apps/api/uploads/

@@ -4,6 +4,7 @@ import { Bookmark, Check } from "lucide-react";
 import { createSavedView } from "../api/client";
 import { useAuthSession } from "../hooks/useAuthSession";
 import { canShareViewWithTeam } from "./shell/can-share-view-with-team";
+import { TICKET_VIEW_FILTERS } from "../hooks/ticket-view-filters";
 import type { TicketFilters } from "../types";
 
 interface SaveViewButtonProps {
@@ -146,25 +147,15 @@ export function SaveViewButton({ filters, disabled = false }: SaveViewButtonProp
 
 /**
  * Strip empty / default fields and pagination so the persisted view is portable.
+ *
+ * ⚠️ CARD 1.127: THIS USED TO HAND-WRITE ITS OWN FIELD LIST, and the list had
+ * drifted from the URL builder's - `tags`, `resolvedFrom` and `resolvedTo` were
+ * missing, so a tag filter that worked on screen was silently discarded the
+ * moment the owner pressed Save view. The save succeeded; the filter was gone.
+ * The fields now live in ONE place, with a test that fails when the URL layer
+ * learns a field this does not.
  */
 function filtersForPersistence(f: TicketFilters): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (f.statusGroup && f.statusGroup !== "all") out.statusGroup = f.statusGroup;
-  if (f.statuses?.length) out.statuses = f.statuses;
-  if (f.priorities?.length) out.priorities = f.priorities;
-  if (f.teamIds?.length) out.teamIds = f.teamIds;
-  if (f.assigneeIds?.length) out.assigneeIds = f.assigneeIds;
-  if (f.requesterIds?.length) out.requesterIds = f.requesterIds;
-  if (f.slaStatus?.length) out.slaStatus = f.slaStatus;
-  if (f.createdFrom) out.createdFrom = f.createdFrom;
-  if (f.createdTo) out.createdTo = f.createdTo;
-  if (f.updatedFrom) out.updatedFrom = f.updatedFrom;
-  if (f.updatedTo) out.updatedTo = f.updatedTo;
-  if (f.dueFrom) out.dueFrom = f.dueFrom;
-  if (f.dueTo) out.dueTo = f.dueTo;
-  if (f.q?.trim()) out.q = f.q.trim();
-  if (f.scope && f.scope !== "all") out.scope = f.scope;
-  if (f.sort && f.sort !== "updatedAt") out.sort = f.sort;
-  if (f.order && f.order !== "desc") out.order = f.order;
-  return out;
+  return TICKET_VIEW_FILTERS.toPersisted(f);
 }
+

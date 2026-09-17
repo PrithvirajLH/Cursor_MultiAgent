@@ -155,6 +155,16 @@ export class EmailService {
     threadTopic?: string;
     /** Stable per-ticket ConversationIndex (card 1.66). */
     threadIndex?: string;
+    /**
+     * Images the HTML body refers to as `src="cid:…"` (card 1.130).
+     *
+     * ⚠️ PASSED TO NODEMAILER UNTOUCHED. Every decision about WHICH files may
+     * travel - the internal-note rule, the AV gate, the size ceilings - was
+     * made by `InlineEmailImagesService` before this point. This class's job is
+     * the transport, and re-deciding here would be a second opinion that could
+     * disagree.
+     */
+    attachments?: { filename: string; content: Buffer; cid: string }[];
   }) {
     if (!this.transporter) {
       throw new Error('SMTP not configured');
@@ -233,6 +243,23 @@ export class EmailService {
       messageId: payload.messageId,
       inReplyTo: payload.inReplyTo,
       references: payload.references,
+      // ⚠️ CARD 1.130. `cid` is what makes these INLINE rather than a list of
+      // files at the bottom: the HTML above refers to each one as
+      // `src="cid:…"`, and nodemailer sets Content-ID and
+      // `Content-Disposition: inline` from it.
+      //
+      // ⚠️ Spread only when present, so every email that carries no image
+      // produces byte-identical output to before this card.
+      ...(payload.attachments && payload.attachments.length > 0
+        ? {
+            attachments: payload.attachments.map((attachment) => ({
+              filename: attachment.filename,
+              content: attachment.content,
+              cid: attachment.cid,
+              contentDisposition: 'inline' as const,
+            })),
+          }
+        : {}),
       headers: {
         // ⚠️ CARD 1.66. THESE TWO ARE WHY OUTLOOK THREADS, NOT `References`.
           //

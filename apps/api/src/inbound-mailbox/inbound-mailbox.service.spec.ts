@@ -4,7 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InboundEmailService } from '../tickets/inbound-email.service';
 import { TicketEmailThreadService } from '../notifications/ticket-email-thread.service';
 import { InboundMailboxService } from './inbound-mailbox.service';
+import { AiService } from '../ai/ai.service';
 import {
+  GraphAttachmentContent,
   GraphDeltaPage,
   GraphMailClient,
   GraphAttachmentMeta,
@@ -19,6 +21,7 @@ function message(partial: Partial<GraphMailMessage> = {}): GraphMailMessage {
     internetMessageId: '<rfc-1@sender.com>',
     subject: 'Payroll question',
     bodyText: 'Body',
+    bodyHtml: null,
     from: { address: 'requester@company.com', name: 'A Requester' },
     toRecipients: [{ address: 'helpdesk+payroll@csnhc.com' }],
     ccRecipients: [],
@@ -66,17 +69,23 @@ class FakeGraph extends GraphMailClient {
     return Promise.resolve(this.attachmentsByMessage.get(messageId) ?? []);
   }
 
+  /** Card 1.129: the `contentId` a pasted image carries, per attachment id. */
+  contentIdsByAttachment = new Map<string, string>();
+
   fetchAttachmentContent(
     _mailbox: string,
     messageId: string,
     attachmentId: string,
-  ): Promise<string> {
+  ): Promise<GraphAttachmentContent> {
     this.contentFetches.push({ messageId, attachmentId });
     if (this.contentShouldThrow) {
       return Promise.reject(new Error('Graph download failed'));
     }
     // Four base64 characters per three bytes: 12 chars -> 9 bytes decoded.
-    return Promise.resolve(Buffer.from('nine bytes').toString('base64'));
+    return Promise.resolve({
+      contentBytes: Buffer.from('nine bytes').toString('base64'),
+      contentId: this.contentIdsByAttachment.get(attachmentId) ?? null,
+    });
   }
 
   fetchDelta(_mailbox: string, link: string | null): Promise<GraphDeltaPage> {
@@ -140,6 +149,9 @@ function build(
   env: Record<string, string | undefined>,
   ingest = jest.fn().mockResolvedValue({ threaded: false }),
   store = makeCursorStore(),
+  classify: jest.Mock = jest
+    .fn()
+    .mockResolvedValue({ routed: false, reason: 'pipeline_disabled' }),
 ) {
   const config = { get: (key: string) => env[key] } as unknown as ConfigService;
   const inboundEmail = {
@@ -148,14 +160,22 @@ function build(
   const threads = {
     getBaseReplyToAddress: () => MAILBOX,
   } as unknown as TicketEmailThreadService;
+  // ⚠️ CARD 1.63: the classifier DECLINES by default in these tests, so every
+  // existing case still describes a world where the AI does nothing - which is
+  // also production's world until `AI_PIPELINE_ENABLED` is on and the model is
+  // reachable. A test that wants routing opts in with `classify`.
+  const ai = {
+    classifyInboundDepartment: classify,
+  } as unknown as AiService;
   const service = new InboundMailboxService(
     store.prisma,
     config,
     graph,
     inboundEmail,
     threads,
+    ai,
   );
-  return { service, ingest, store };
+  return { service, ingest, store, classify };
 }
 
 const ON = { INBOUND_MAILBOX_ENABLED: 'true' };
@@ -616,6 +636,117 @@ describe('InboundMailboxService (card 1.24)', () => {
       expect(summary.ingested).toBe(1);
       expect(ingest.mock.calls[0][1]).toEqual({ assignedTeamId: null });
       expect(warnSpy).toHaveBeenCalled();
+    });
+
+    describe('the AI routes mail nobody addressed (card 1.63)', () => {
+      /** A bare helpdesk address: no department suffix, so nothing decides. */
+      const bare = () =>
+        message({ toRecipients: [{ address: MAILBOX }] });
+
+      const ROUTED = {
+        routed: true,
+        teamId: 'team-hr',
+        teamName: 'HR',
+        confidence: 0.91,
+        thresholdUsed: 0.7,
+      };
+
+      it('⚠️ an unaddressed email lands on the team the AI names', async () => {
+        // THE ASSERTION THIS CARD EXISTS FOR.
+        const graph = new FakeGraph([
+          { messages: [bare()], deltaLink: 'delta-1' },
+        ]);
+        const classify = jest.fn().mockResolvedValue(ROUTED);
+        const { service, ingest } = build(graph, ON, undefined, undefined, classify);
+
+        await service.runOnce();
+
+        expect(classify).toHaveBeenCalledTimes(1);
+        expect(ingest.mock.calls[0][1]).toEqual({
+          assignedTeamId: 'team-hr',
+          aiRouting: ROUTED,
+        });
+      });
+
+      it('⚠️ below the threshold it lands unrouted, exactly as before', async () => {
+        // NON-VACUITY. No fallback team is invented; today's behaviour IS the
+        // answer when the classifier is not confident.
+        const graph = new FakeGraph([
+          { messages: [bare()], deltaLink: 'delta-1' },
+        ]);
+        const classify = jest.fn().mockResolvedValue({
+          routed: false,
+          reason: 'below_threshold',
+          confidence: 0.4,
+          thresholdUsed: 0.7,
+        });
+        const { service, ingest } = build(graph, ON, undefined, undefined, classify);
+
+        const summary = await service.runOnce();
+
+        expect(summary.ingested).toBe(1);
+        expect(ingest.mock.calls[0][1]).toEqual({ assignedTeamId: null });
+      });
+
+      it('⚠️ the AI throwing still creates the ticket', async () => {
+        // THE MOST IMPORTANT TEST HERE. An email must never be lost to a
+        // classifier being slow, rate-limited or broken - card 1.105's
+        // principle, one layer up. Asserted on the mail being INGESTED, not
+        // merely on no exception escaping.
+        const graph = new FakeGraph([
+          { messages: [bare()], deltaLink: 'delta-1' },
+        ]);
+        const classify = jest
+          .fn()
+          .mockRejectedValue(new Error('Foundry timed out'));
+        const { service, ingest } = build(graph, ON, undefined, undefined, classify);
+
+        const summary = await service.runOnce();
+
+        expect(summary.ingested).toBe(1);
+        expect(summary.failed).toBe(0);
+        expect(ingest.mock.calls[0][1]).toEqual({ assignedTeamId: null });
+      });
+
+      it('⚠️ a plus-addressed email never calls the classifier at all', async () => {
+        // Card 1.19 has Power Automate supply an explicit department slug, and
+        // 367 of 370 tickets arrive that way. An explicit address beats a
+        // classifier every time - and must not cost a model call either.
+        const graph = new FakeGraph([
+          { messages: [message()], deltaLink: 'delta-1' },
+        ]);
+        const classify = jest.fn().mockResolvedValue(ROUTED);
+        const { service, ingest } = build(graph, ON, undefined, undefined, classify);
+
+        await service.runOnce();
+
+        expect(classify).not.toHaveBeenCalled();
+        expect(ingest.mock.calls[0][1]).toEqual({
+          assignedTeamId: 'team-payroll',
+        });
+      });
+
+      it('an empty email is not sent to the classifier', async () => {
+        const graph = new FakeGraph([
+          {
+            messages: [
+              message({
+                toRecipients: [{ address: MAILBOX }],
+                subject: '',
+                bodyText: '',
+              }),
+            ],
+            deltaLink: 'delta-1',
+          },
+        ]);
+        const classify = jest.fn().mockResolvedValue(ROUTED);
+        const { service, ingest } = build(graph, ON, undefined, undefined, classify);
+
+        await service.runOnce();
+
+        expect(classify).not.toHaveBeenCalled();
+        expect(ingest.mock.calls[0][1]).toEqual({ assignedTeamId: null });
+      });
     });
 
     it('a Graph failure is reported rather than thrown', async () => {

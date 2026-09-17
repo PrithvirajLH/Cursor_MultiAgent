@@ -78,7 +78,60 @@ describe('fetchAttachmentContent URL (card 1.119)', () => {
       MESSAGE_ID,
       ATTACHMENT_ID,
     );
-    expect(content).toBe('aGVsbG8=');
+    expect(content.contentBytes).toBe('aGVsbG8=');
+  });
+
+  describe('the contentId that rides along (card 1.129, fault B)', () => {
+    // ⚠️ IT COSTS NOTHING. The plain GET above already returns the whole
+    // resource, so this is read off a response that was paid for - which is
+    // why it is here and not in `listAttachments`' `$select`, where it would
+    // need a `microsoft.graph.fileAttachment/` cast that has never been tested
+    // against the collection endpoint. Card 1.119 is what that costs when it
+    // is wrong: every download 400ing, silently.
+    const respondWith = (payload: Record<string, unknown>) => {
+      jest
+        .spyOn(
+          client as unknown as {
+            request: (url: string, init: unknown) => unknown;
+          },
+          'request',
+        )
+        .mockImplementation(async () => payload);
+    };
+
+    it('strips the angle brackets a Content-ID header carries', async () => {
+      // RFC 2392: the header is `<id@host>` and the body says `cid:id@host`.
+      // Comparing them without this never matches, and never matching looks
+      // exactly like "the sender did not paste an image".
+      respondWith({ contentBytes: 'aGVsbG8=', contentId: '<abc123@outlook>' });
+      const content = await client.fetchAttachmentContent(
+        MAILBOX,
+        MESSAGE_ID,
+        ATTACHMENT_ID,
+      );
+      expect(content.contentId).toBe('abc123@outlook');
+    });
+
+    it('is null for an ordinary attached file', async () => {
+      respondWith({ contentBytes: 'aGVsbG8=' });
+      const content = await client.fetchAttachmentContent(
+        MAILBOX,
+        MESSAGE_ID,
+        ATTACHMENT_ID,
+      );
+      expect(content.contentId).toBeNull();
+    });
+
+    it('is null rather than empty when Graph sends a blank one', async () => {
+      // An empty id must never match an empty reference.
+      respondWith({ contentBytes: 'aGVsbG8=', contentId: '  <>  ' });
+      const content = await client.fetchAttachmentContent(
+        MAILBOX,
+        MESSAGE_ID,
+        ATTACHMENT_ID,
+      );
+      expect(content.contentId).toBeNull();
+    });
   });
 
   it('refuses an empty body rather than storing a zero-byte file', async () => {

@@ -19,7 +19,6 @@ const ACTOR = {
   role: 'AGENT',
 } as unknown as AuthUser;
 
-const SENT_AT = new Date('2026-09-02T15:02:00.000Z');
 
 /** The two builders are private; the rest of the service is not exercised here. */
 type Bodies = {
@@ -27,13 +26,18 @@ type Bodies = {
     ticket: typeof TICKET,
     actor: AuthUser,
     messageBody: string,
-    sentAt?: Date,
+    // ⚠️ CARD 1.130 REMOVED A DEAD ARGUMENT FROM THIS TYPE. It used to declare
+    // a fourth `sentAt?: Date` and every call passed one - but card 1.68 took
+    // the timestamp out of the body long ago, so the real method has had three
+    // parameters for months and the fourth went nowhere. It stopped being
+    // harmless the moment a real fourth parameter existed: the Date arrived as
+    // `inlineImages` and every test in this file failed at once.
+    inlineImages?: { attachmentId: string; cid: string }[],
   ) => string;
   buildPublicReplyTextBody: (
     ticket: typeof TICKET,
     actor: AuthUser,
     messageBody: string,
-    sentAt?: Date,
   ) => string;
 };
 
@@ -54,11 +58,14 @@ function buildBodies(): Bodies {
   return service as unknown as Bodies;
 }
 
-const html = (message: string, actor: AuthUser = ACTOR) =>
-  buildBodies().buildPublicReplyHtmlBody(TICKET, actor, message, SENT_AT);
+const html = (
+  message: string,
+  actor: AuthUser = ACTOR,
+  inlineImages?: { attachmentId: string; cid: string }[],
+) => buildBodies().buildPublicReplyHtmlBody(TICKET, actor, message, inlineImages);
 
 const text = (message: string, actor: AuthUser = ACTOR) =>
-  buildBodies().buildPublicReplyTextBody(TICKET, actor, message, SENT_AT);
+  buildBodies().buildPublicReplyTextBody(TICKET, actor, message);
 
 const MESSAGE =
   'Thanks Dana — so 08-31 is right but the punch is missing. Can you send a corrected timesheet?';
@@ -203,6 +210,139 @@ describe('the reply email body', () => {
       // the timestamp because every client already shows when the message
       // arrived, in the reader's own zone - ours restated it in UTC, worse.
       expect(line).not.toContain('&middot;');
+    });
+  });
+
+  describe('card 1.129 fault C - what the requester actually receives', () => {
+    // The body measured on a real outbound email, 2026-09-16. The owner
+    // screenshotted their inbox: this arrived as literal text.
+    const PASTED =
+      '<img data-temp-id="6bdd3f50-1111-4222-8333-444455556666" ' +
+      'alt="image.png" class="" ' +
+      'data-attachment-id="324e680b-1111-4222-8333-444455556666">see the img';
+
+    it('⚠️ sends no markup of any kind to the requester', () => {
+      for (const rendered of [html(PASTED), text(PASTED)]) {
+        expect(rendered).not.toContain('data-attachment-id');
+        expect(rendered).not.toContain('data-temp-id');
+        expect(rendered).not.toContain('<img');
+        // The old HTML half escaped the tag rather than dropping it, which is
+        // how the markup was visible in a client that renders HTML.
+        expect(rendered).not.toContain('&lt;img');
+      }
+    });
+
+    it('keeps the words that were around the image, and names the image', () => {
+      expect(html(PASTED)).toContain('see the img');
+      expect(text(PASTED)).toContain('see the img');
+      // Not a silent gap: a sentence reading "the error looks like this:" needs
+      // something after the colon.
+      expect(html(PASTED)).toContain('[image: image.png]');
+      expect(text(PASTED)).toContain('[image: image.png]');
+    });
+
+    it('⚠️ keeps the inbox preview clean too', () => {
+      // The preheader is built from the earliest text in the body, so the
+      // markup was in the inbox LIST, before anyone opened anything.
+      const line = html(PASTED)
+        .split(/\r?\n/)
+        .find((row) => row.includes('mso-hide:all')) as string;
+      expect(line).not.toContain('data-attachment-id');
+      expect(line).not.toContain('data-temp-id');
+      expect(line).not.toContain('&lt;img');
+      // What it says instead: the picture named, then the sentence.
+      expect(line).toContain('[image: image.png]see the img');
+    });
+
+    it("an agent's formatting arrives as formatting, not as tags", () => {
+      // ⚠️ THIS IS WIDER THAN THE PASTED IMAGE. Every multi-line or formatted
+      // reply was escaped, so bold, lists and links all reached the requester
+      // as visible markup. The image is only the case somebody screenshotted.
+      const formatted =
+        '<p>Hi Dana,</p><p>The punch is <strong>missing</strong>.</p>';
+      const rendered = html(formatted);
+      expect(rendered).toContain('<strong>missing</strong>');
+      expect(rendered).not.toContain('&lt;strong&gt;');
+      expect(text(formatted)).toContain('The punch is missing.');
+      expect(text(formatted)).not.toContain('<p>');
+    });
+
+    it('⚠️ is default-deny: a script inside a formatted body goes with its contents', () => {
+      // The body is not trusted markup - anything holding a token can POST one.
+      const hostile = '<p>hello</p><script>alert("x")</script>';
+      const rendered = html(hostile);
+      expect(rendered).toContain('<p>hello</p>');
+      expect(rendered).not.toContain('<script');
+      expect(rendered).not.toContain('alert');
+    });
+
+    it('⚠️ drops a javascript: link and every event attribute', () => {
+      const hostile =
+        '<p onclick="steal()"><a href="javascript:alert(1)">click</a></p>';
+      const rendered = html(hostile);
+      expect(rendered).not.toContain('javascript:');
+      expect(rendered).not.toContain('onclick');
+      expect(rendered).not.toContain('steal');
+      // The words survive; only the trap is removed.
+      expect(rendered).toContain('click');
+    });
+
+    it('keeps a real link, with the attributes a mail client needs', () => {
+      const withLink =
+        '<p>See <a href="https://tickets.csnhc.com/t/1" title="x">the ticket</a>.</p>';
+      const rendered = html(withLink);
+      expect(rendered).toContain('href="https://tickets.csnhc.com/t/1"');
+      expect(rendered).toContain('rel="noopener noreferrer"');
+      // Every other attribute is dropped, including ones that look harmless.
+      expect(rendered).not.toContain('title=');
+    });
+  });
+
+  describe('card 1.130 - the image actually travels', () => {
+    const ID = '324e680b-1111-4222-8333-444455556666';
+    const PASTED = `<img alt="screenshot.png" data-attachment-id="${ID}">see the img`;
+    const CARRIED = [{ attachmentId: ID, cid: `${ID}@csnhc.com` }];
+
+    it('⚠️ draws the image when its bytes are travelling with the email', () => {
+      // THE ASSERTION THIS CARD EXISTS FOR. `cid:` and not a URL: a link to
+      // /api/attachments/:id sits behind Easy Auth and the app's own guard, and
+      // most clients block remote images anyway.
+      const rendered = html(PASTED, ACTOR, CARRIED);
+
+      expect(rendered).toContain(`<img src="cid:${ID}@csnhc.com"`);
+      expect(rendered).toContain('alt="screenshot.png"');
+      expect(rendered).toContain('max-width:100%');
+      // Card 1.129's guarantees still hold: no internal marker reaches anybody.
+      expect(rendered).not.toContain('data-attachment-id');
+      expect(rendered).not.toContain('data-temp-id');
+      expect(rendered).toContain('see the img');
+    });
+
+    it('⚠️ names it instead when the bytes are NOT travelling', () => {
+      // NON-VACUITY, and the normal path for anything the email declined to
+      // carry: a file on an internal note, one over the ceiling, one the AV
+      // gate refuses, one that could not be read. Card 1.129's behaviour.
+      const rendered = html(PASTED);
+
+      expect(rendered).not.toContain('cid:');
+      expect(rendered).toContain('[image: screenshot.png]');
+    });
+
+    it('names it when a DIFFERENT attachment is the one travelling', () => {
+      // The map is keyed by attachment id, so an unrelated image on the same
+      // email cannot lend this one a cid.
+      const rendered = html(PASTED, ACTOR, [
+        { attachmentId: 'some-other-file', cid: 'other@csnhc.com' },
+      ]);
+
+      expect(rendered).not.toContain('cid:');
+      expect(rendered).toContain('[image: screenshot.png]');
+    });
+
+    it('⚠️ the TEXT half still names it, because text cannot show a picture', () => {
+      expect(text(PASTED)).toContain('[image: screenshot.png]');
+      expect(text(PASTED)).not.toContain('cid:');
+      expect(text(PASTED)).not.toContain('<img');
     });
   });
 

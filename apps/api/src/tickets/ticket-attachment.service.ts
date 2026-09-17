@@ -18,6 +18,8 @@ import { Readable } from 'stream';
 import { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { decideAttachmentDownload } from '../common/attachment-download-gate.util';
+import { AttachmentStorageService } from '../common/attachment-storage.service';
 import { TicketRealtimeService } from './ticket-realtime.service';
 import { UpdateAttachmentScanDto } from './dto/update-attachment-scan.dto';
 import { parsePositiveInt } from '../common/config.utils';
@@ -40,6 +42,7 @@ export class TicketAttachmentService {
     private readonly config: ConfigService,
     private readonly accessControl: AccessControlService,
     private readonly ticketRealtime: TicketRealtimeService,
+    private readonly storage: AttachmentStorageService,
   ) {}
 
   // ——— File upload security ———
@@ -432,20 +435,20 @@ export class TicketAttachmentService {
   }
 
   // ——— Storage ———
+  //
+  // ⚠️ CARD 1.130 MOVED THE BYTES, NOT THE RULES. Every method below now
+  // forwards to `AttachmentStorageService` in `common/`, because an email can
+  // carry a file out of the building and `EmailProcessorService` cannot reach
+  // into `TicketsModule` without closing a module cycle. The signatures are
+  // unchanged, so every caller of this service is untouched - and there is
+  // still exactly ONE implementation of each.
 
   resolveAttachmentPath(storageKey: string) {
-    const baseDir =
-      this.config.get<string>('ATTACHMENTS_DIR') ??
-      path.join(process.cwd(), 'uploads');
-    return path.join(baseDir, storageKey);
+    return this.storage.resolveAttachmentPath(storageKey);
   }
 
   isAzureBlobStorageEnabled(): boolean {
-    const connectionString = this.config.get<string>(
-      'AZURE_STORAGE_CONNECTION_STRING',
-    );
-    const containerName = this.config.get<string>('AZURE_STORAGE_CONTAINER');
-    return Boolean(connectionString && containerName);
+    return this.storage.isAzureBlobStorageEnabled();
   }
 
   async saveAttachmentFile(
@@ -453,28 +456,11 @@ export class TicketAttachmentService {
     buffer: Buffer,
     contentType: string,
   ): Promise<void> {
-    if (this.isAzureBlobStorageEnabled()) {
-      await this.saveAttachmentFileToAzureBlob(storageKey, buffer, contentType);
-      return;
-    }
-
-    const filePath = this.resolveAttachmentPath(storageKey);
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, buffer);
+    return this.storage.saveAttachmentFile(storageKey, buffer, contentType);
   }
 
   async getAttachmentReadStream(storageKey: string): Promise<Readable> {
-    if (this.isAzureBlobStorageEnabled()) {
-      return this.getAttachmentReadStreamFromAzureBlob(storageKey);
-    }
-
-    const filePath = this.resolveAttachmentPath(storageKey);
-    try {
-      await fs.access(filePath);
-    } catch {
-      throw new NotFoundException('Attachment file missing');
-    }
-    return createReadStream(filePath);
+    return this.storage.getAttachmentReadStream(storageKey);
   }
 
   /**
@@ -485,63 +471,7 @@ export class TicketAttachmentService {
    * mask the original error.
    */
   async deleteAttachmentFile(storageKey: string): Promise<void> {
-    try {
-      if (this.isAzureBlobStorageEnabled()) {
-        const containerClient = this.getAzureContainerClient();
-        await containerClient.getBlockBlobClient(storageKey).deleteIfExists();
-        return;
-      }
-
-      const filePath = this.resolveAttachmentPath(storageKey);
-      await fs.rm(filePath, { force: true });
-    } catch (err) {
-      this.logger.error(
-        `Failed to delete orphaned attachment file "${storageKey}"`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    }
-  }
-
-  /**
-   * Lazily build and cache the Azure Blob container client. The
-   * BlobServiceClient/ContainerClient are reused across calls and the
-   * container is created at most once via a cached one-shot promise (PERF-01).
-   */
-  private getAzureContainerClient(): ContainerClient {
-    if (this.azureContainerClient) {
-      return this.azureContainerClient;
-    }
-
-    const connectionString = this.config.get<string>(
-      'AZURE_STORAGE_CONNECTION_STRING',
-    );
-    const containerName = this.config.get<string>('AZURE_STORAGE_CONTAINER');
-    if (!connectionString || !containerName) {
-      throw new Error('Azure Blob Storage is not configured');
-    }
-
-    const blobServiceClient =
-      BlobServiceClient.fromConnectionString(connectionString);
-    this.azureContainerClient =
-      blobServiceClient.getContainerClient(containerName);
-    return this.azureContainerClient;
-  }
-
-  /** Ensure the Azure container exists exactly once for this service instance. */
-  private async ensureAzureContainer(
-    containerClient: ContainerClient,
-  ): Promise<void> {
-    if (!this.azureContainerEnsured) {
-      this.azureContainerEnsured = containerClient
-        .createIfNotExists()
-        .then(() => undefined)
-        .catch((err) => {
-          // Reset so a transient failure can be retried on the next upload.
-          this.azureContainerEnsured = null;
-          throw err;
-        });
-    }
-    await this.azureContainerEnsured;
+    return this.storage.deleteAttachmentFile(storageKey);
   }
 
   async saveAttachmentFileToAzureBlob(
@@ -549,58 +479,29 @@ export class TicketAttachmentService {
     buffer: Buffer,
     contentType: string,
   ): Promise<void> {
-    const containerClient = this.getAzureContainerClient();
-    await this.ensureAzureContainer(containerClient);
-    const blockBlobClient = containerClient.getBlockBlobClient(storageKey);
-    await blockBlobClient.uploadData(buffer, {
-      blobHTTPHeaders: { blobContentType: contentType },
-    });
+    return this.storage.saveAttachmentFileToAzureBlob(
+      storageKey,
+      buffer,
+      contentType,
+    );
   }
 
   async getAttachmentReadStreamFromAzureBlob(
     storageKey: string,
   ): Promise<Readable> {
-    const containerClient = this.getAzureContainerClient();
-    const blobClient = containerClient.getBlobClient(storageKey);
-    const exists = await blobClient.exists();
-    if (!exists) {
-      throw new NotFoundException('Attachment file missing');
-    }
-    const response = await blobClient.download();
-    const responseBody = response.readableStreamBody;
-    if (!responseBody) {
-      throw new NotFoundException('Attachment file missing');
-    }
-
-    if (this.isNodeReadableStream(responseBody)) {
-      return responseBody;
-    }
-
-    if (this.isWebReadableStream(responseBody)) {
-      return Readable.fromWeb(responseBody);
-    }
-
-    throw new Error('Unsupported Azure Blob response stream type');
+    return this.storage.getAttachmentReadStreamFromAzureBlob(storageKey);
   }
 
   isNodeReadableStream(value: unknown): value is Readable {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      typeof (value as NodeJS.ReadableStream).pipe === 'function'
-    );
+    return this.storage.isNodeReadableStream(value);
   }
 
   isWebReadableStream(
     value: unknown,
   ): value is import('stream/web').ReadableStream {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      typeof (value as import('stream/web').ReadableStream).getReader ===
-        'function'
-    );
+    return this.storage.isWebReadableStream(value);
   }
+
 
   // ——— Security & Validation ———
 
@@ -629,37 +530,20 @@ export class TicketAttachmentService {
     }
   }
 
+  /**
+   * ⚠️ CARD 1.130 MOVED THE RULE, NOT THE BEHAVIOUR. The decision now lives in
+   * `common/attachment-download-gate.util.ts` because an email can carry a file
+   * out of the building too, and the same question answered in two places is
+   * how the two drift. Every message and every branch is unchanged.
+   */
   assertAttachmentDownloadAllowed(scanStatus: AttachmentScanStatus) {
-    // Bypass the AV gate when ATTACHMENT_SCAN_ENABLED=false. Used until the
-    // scanner webhook is wired up so PENDING attachments are still downloadable.
-    // INFECTED still blocks unconditionally — that's an explicit positive signal
-    // and ignoring it would mean serving known-bad files.
-    const scanEnabled =
-      (this.config.get<string>('ATTACHMENT_SCAN_ENABLED') ?? 'true') === 'true';
-
-    if (scanStatus === AttachmentScanStatus.CLEAN) {
-      return;
-    }
-
-    if (scanStatus === AttachmentScanStatus.INFECTED) {
-      throw new ForbiddenException(
-        'Attachment was flagged as infected and cannot be downloaded',
-      );
-    }
-
-    if (!scanEnabled) {
-      return;
-    }
-
-    if (scanStatus === AttachmentScanStatus.PENDING) {
-      throw new ForbiddenException(
-        'Attachment scan is still pending; download is blocked',
-      );
-    }
-
-    throw new ForbiddenException(
-      'Attachment scan failed; download is blocked until the file is rescanned',
+    const decision = decideAttachmentDownload(
+      scanStatus,
+      (this.config.get<string>('ATTACHMENT_SCAN_ENABLED') ?? 'true') === 'true',
     );
+    if (!decision.allowed) {
+      throw new ForbiddenException(decision.reason);
+    }
   }
 
   getAttachmentMaxBytes() {

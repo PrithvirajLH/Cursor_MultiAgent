@@ -12,6 +12,9 @@ import { ticketLink } from './ticket-link.util';
 import { EmailQueueService } from './email-queue.service';
 import { EmailSuppressionService } from './email-suppression.service';
 import { resolveOutboundRecipients } from './outbound-recipients.util';
+import { renderMessageBodyEmailHtml } from './message-body-email-html.util';
+import { inlineAttachmentIds } from '../tickets/inline-attachment-ids.util';
+import { messageBodyToEmailText } from './message-body-email-text.util';
 import { isStaffRole } from './is-staff-role.util';
 import { canManageOtherFollowers } from '../common/can-manage-followers.util';
 import type { MessageRecipientsPreview } from './message-recipients-preview.type';
@@ -993,6 +996,23 @@ export class NotificationsService {
       (address) => address.toLowerCase() !== toCandidate.address.toLowerCase(),
     );
     const emailContext = await this.buildTicketEmailContext(ticket);
+    // ⚠️ CARD 1.130. The ids the agent's body pasted, each given a `cid` so the
+    // HTML can point at a part the processor will attach.
+    //
+    // ⚠️ IDS TRAVEL, BYTES DO NOT. A 2.8 MB screenshot is ~3.8 MB of base64,
+    // and the outbox payload is a JSON column written once per recipient. The
+    // files are read at send time instead.
+    //
+    // ⚠️ NOTHING IS VALIDATED HERE, DELIBERATELY. `inlineAttachmentIds` parses
+    // text an agent authored and its own doc says a caller must scope by
+    // ticket; `InlineEmailImagesService` does exactly that, and refuses a file
+    // on an internal note, one the AV gate blocks, and one over the ceiling.
+    const inlineImages = inlineAttachmentIds(message.body).map(
+      (attachmentId) => ({
+        attachmentId,
+        cid: `${attachmentId}@${this.replyAddressDomain()}`,
+      }),
+    );
     await this.createAndEnqueueEmail(toCandidate.address, toCandidate.userId, {
       eventType: 'MESSAGE_ADDED',
       subject: emailContext.subject,
@@ -1008,7 +1028,15 @@ export class NotificationsService {
       },
       emailMetadata: { ...emailContext.emailMetadata, cc },
       emailContent: {
-        html: this.buildPublicReplyHtmlBody(ticket, actor, message.body),
+        html: this.buildPublicReplyHtmlBody(
+          ticket,
+          actor,
+          message.body,
+          inlineImages,
+        ),
+        // Only when there is something to carry, so every other email's
+        // payload keeps exactly the shape it had.
+        ...(inlineImages.length > 0 ? { inlineImages } : {}),
       },
     });
   }
@@ -1099,6 +1127,19 @@ export class NotificationsService {
     await this.emailQueue.enqueue(outbox.id);
   }
 
+  /**
+   * The domain a `cid` is qualified with (card 1.130).
+   *
+   * RFC 2392 wants a globally unique id, and the desk's own sending domain is
+   * the honest one to use. Taken from the configured reply address rather than
+   * hardcoded, so it follows the mailbox rather than drifting from it.
+   */
+  private replyAddressDomain(): string {
+    const address = this.ticketEmailThreads.getBaseReplyToAddress();
+    const domain = address.split('@')[1]?.trim();
+    return domain && domain !== '' ? domain : 'tickets.local';
+  }
+
   private buildTicketEmailContext(ticket: {
     id: string;
     displayId: string | null;
@@ -1135,7 +1176,10 @@ export class NotificationsService {
     return [
       actor.displayName || actor.email,
       '',
-      messageBody,
+      // ⚠️ CARD 1.129 FAULT C. This was the stored body verbatim, so a body the
+      // composer had written as HTML reached the requester as raw markup - the
+      // exact mirror of card 1.62, running outbound.
+      messageBodyToEmailText(messageBody),
     ].join('\n');
   }
 
@@ -1168,15 +1212,25 @@ export class NotificationsService {
     },
     actor: AuthUser,
     messageBody: string,
+    inlineImages: { attachmentId: string; cid: string }[] = [],
   ) {
     const actorName = this.escapeHtml(actor.displayName || actor.email);
-    const escapedMessage = this.escapeHtml(messageBody).replace(
-      /\n/g,
-      '<br />',
+    // ⚠️ CARD 1.129 FAULT C. This was `escapeHtml(messageBody)`, which showed
+    // an agent's own formatting to the requester as visible tags. It is NOT
+    // simply unescaped now - the renderer is default-deny and drops everything
+    // it does not recognise, because a stored body is not trusted markup.
+    const renderedMessage = renderMessageBodyEmailHtml(
+      messageBody,
+      new Map(inlineImages.map((image) => [image.attachmentId, image.cid])),
     );
     // Escaped like everything else. Easy to forget precisely because it is
     // invisible, which is why there is a test for it.
-    const preheader = this.escapeHtml(this.buildPreheader(messageBody));
+    // ⚠️ AND FLATTENED FIRST (card 1.129): the preview is built from the
+    // earliest text a client finds, so markup here put
+    // `<img data-attachment-id=...` in the inbox list itself.
+    const preheader = this.escapeHtml(
+      this.buildPreheader(messageBodyToEmailText(messageBody)),
+    );
 
     return [
       '<!DOCTYPE html>',
@@ -1199,7 +1253,7 @@ export class NotificationsService {
       '                  <tr>',
       '                    <td style="border-left:4px solid #2563eb;padding:2px 0 2px 16px;">',
       `                      <div style="font-size:12px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;margin-bottom:8px;">${actorName}</div>`,
-      `                      <div style="font-size:16px;line-height:1.7;color:#111827;">${escapedMessage}</div>`,
+      `                      <div style="font-size:16px;line-height:1.7;color:#111827;">${renderedMessage}</div>`,
       '                    </td>',
       '                  </tr>',
       '                </table>',

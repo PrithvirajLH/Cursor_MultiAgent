@@ -675,8 +675,19 @@ export function TeamPage({
     try {
       await removeTeamMember(selectedTeamId, member.id);
       setMembers((prev) => prev.filter((item) => item.id !== member.id));
-    } catch {
-      setActionError("Unable to remove team member.");
+    } catch (err) {
+      // ⚠️ CARD 1.126: THE SERVER'S SENTENCE, NOT A GENERIC ONE. This was a
+      // bare `catch` that replaced every refusal with "Unable to remove team
+      // member." - so the new guard's *"You cannot remove yourself from a team
+      // you administer. Ask an owner to do it."* would have reached the screen
+      // as a dead end, which is **exactly** what commit `2fed472` exists to
+      // stop. `handleRoleChange` six functions above already does this; the
+      // rule was written and never carried across.
+      setActionError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Unable to remove team member.",
+      );
     } finally {
       setActionLoading(false);
     }
@@ -1094,6 +1105,27 @@ export function TeamPage({
                     <span className="text-sm text-muted-foreground">Loading...</span>
                   ) : null}
                 </div>
+                {/*
+                  ⚠️ CARD 1.126. `actionError` HAD EXACTLY ONE RENDER SITE, AND
+                  IT WAS INSIDE THE ADD-MEMBER PANEL - a block that is only on
+                  screen while somebody is adding someone. So every failure from
+                  the members list itself, REMOVE included, set an error that
+                  had nowhere to appear: the row simply stayed put and the app
+                  said nothing at all.
+
+                  Found by opening the page. The refusal was correct at the API,
+                  correct in `handleRemove`, and invisible - which is the same
+                  ending as commit `2fed472` reached by a different route.
+                */}
+                {actionError ? (
+                  <div
+                    role="alert"
+                    className="mb-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                  >
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{actionError}</span>
+                  </div>
+                ) : null}
                 <div className="space-y-3">
                   {loadingMembers ? (
                     <>

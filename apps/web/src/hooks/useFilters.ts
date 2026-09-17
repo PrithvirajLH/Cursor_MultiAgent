@@ -32,7 +32,15 @@ function parseDate(value: string | null): string {
 
 const DEFAULT_PAGE_SIZE = 50;
 
-function parseFilters(
+/**
+ * ⚠️ EXPORTED FOR ONE REASON (card 1.127): it is the only RUNTIME enumeration
+ * of what a ticket filter is. It builds the whole object literal, so
+ * `Object.keys(parseFilters(new URLSearchParams()))` is the real field list -
+ * and `ticket-view-filters.test.ts` diffs the saved-view catalogue against it.
+ * A hand-written list in the test would just be a seventh copy of the thing
+ * that keeps drifting.
+ */
+export function parseFilters(
   searchParams: URLSearchParams,
   presetScope?: TicketScope,
   presetStatus?: StatusFilter,

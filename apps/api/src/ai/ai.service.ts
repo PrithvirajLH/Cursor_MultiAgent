@@ -27,6 +27,7 @@ import type {
   StepResult,
   DebugPipelineResult,
   AiAnalysis,
+  InboundDepartmentRoute,
 } from './types/pipeline.types';
 
 @Injectable()
@@ -256,6 +257,83 @@ export class AiService {
       status: 'disabled',
       reason: 'The AI pipeline is switched off.',
     };
+  }
+
+  /**
+   * Which team should this email go to, if any (card 1.63)?
+   *
+   * ⚠️ CLASSIFY ONLY. IT CREATES NOTHING. The ticket for an inbound email is
+   * created by `ingestInboundEmailMessage`, so calling
+   * `classifyAndCreateTicket` here would build a second ticket and throw half
+   * of it away. This runs steps 1 and 2 of the same pipeline and then the same
+   * deterministic gate, and returns a team id.
+   *
+   * ⚠️ THE TOOL CONTEXT CARRIES NO USER, AND THAT IS HONEST RATHER THAN
+   * CONVENIENT. There is no signed-in caller: an email arrived. `user: null` is
+   * the shape the MCP transport already uses, and `create_ticket` refuses on it
+   * - which is exactly right, because nothing here may create anything.
+   * `subjectId` is empty for the same reason: at this point the sender may not
+   * even be a user yet, so the user tools find no history. That is true, and
+   * inventing a service identity to satisfy a type is what the comment on
+   * `ToolCallContext.user` warns against.
+   *
+   * ⚠️ IT NEVER THROWS. An email must not be lost because a classifier was
+   * slow, rate-limited or wrong - card 1.105's principle one layer up. Every
+   * failure returns `routed: false`, and the caller then does exactly what it
+   * did before this card existed: ingest the mail unrouted, into Unassigned.
+   *
+   * ⚠️ NO FALLBACK TEAM IS INVENTED. Below the threshold the right answer is
+   * today's answer. There is no triage team in this system and this card does
+   * not create one.
+   *
+   * @param text The email's subject and body, as the sender wrote them.
+   * @returns The team to route to, or why not.
+   */
+  async classifyInboundDepartment(text: string): Promise<InboundDepartmentRoute> {
+    // ⚠️ FIRST STATEMENT, for the reason `classifyAndCreateTicket` gives: a
+    // kill switch that still burns a Foundry call is not a kill switch. Card
+    // 1.106 - the off switch has to turn this off too, or it is not an off
+    // switch.
+    if (!this.isPipelineEnabled()) {
+      return { routed: false, reason: 'pipeline_disabled' };
+    }
+    const toolContext: ToolCallContext = { user: null, subjectId: '' };
+    try {
+      const intent = await this.extractIntent(text, toolContext);
+      const classification = await this.classifyDepartment(intent, toolContext);
+      const decision = await this.confidenceGate.evaluate(classification);
+      if (!decision.passed) {
+        this.logger.log(
+          `Inbound classification did not route: ${decision.reason} ` +
+            `(${decision.overallConfidence.toFixed(2)} vs ${decision.thresholdUsed.toFixed(2)})`,
+        );
+        return {
+          routed: false,
+          reason:
+            decision.reason === 'multi_department'
+              ? 'multi_department'
+              : decision.reason === 'unknown_department'
+                ? 'unknown_department'
+                : 'below_threshold',
+          confidence: decision.overallConfidence,
+          thresholdUsed: decision.thresholdUsed,
+        };
+      }
+      return {
+        routed: true,
+        teamId: classification.department.id,
+        teamName: classification.department.name,
+        confidence: decision.overallConfidence,
+        thresholdUsed: decision.thresholdUsed,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Inbound classification failed; the mail will be ingested unrouted: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      return { routed: false, reason: 'error' };
+    }
   }
 
   async classifyAndCreateTicket(
