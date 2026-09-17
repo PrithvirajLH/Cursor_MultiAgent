@@ -21,7 +21,11 @@ import type { RichTextEditorRef } from "../RichTextEditor";
 // runs in vitest's node environment like the rest of the web tests. The chips
 // are what is under test, not the sanitiser.
 vi.mock("../MessageBody", () => ({
-  MessageBody: ({ body }: { body: string }) => <span>{body}</span>,
+  // `className` is surfaced because card 1.133 is a fault in what the CALLER
+  // passes, not in what MessageBody does with it.
+  MessageBody: ({ body, className }: { body: string; className?: string }) => (
+    <span data-mb-class={className}>{body}</span>
+  ),
 }));
 
 const CURRENT = "agent@company.com";
@@ -206,5 +210,55 @@ describe("1.129 fault A — a message says which files came with it", () => {
     expect(chipRowCount(html)).toBe(1);
     expect(html).toContain('truncate">policy.pdf');
     expect(html).not.toContain('truncate">screenshot.png');
+  });
+});
+
+/**
+ * Card 1.133 — the layout half.
+ *
+ * Card 1.129 sent mixed bodies (a sentence, a pasted screenshot, a signature)
+ * to `MessageBody` for the first time, still wearing `flex w-full items-center`
+ * — a class written when every body rendered as ONE line. `display:flex` makes
+ * each block child a flex ITEM, so the three stacked blocks rendered as three
+ * COLUMNS side by side. Measured on a real reply, 2026-09-17.
+ */
+describe("1.133 — a mixed body renders in normal flow", () => {
+  const MIXED = [
+    "Yes I am still seeing this error, when I login",
+    "",
+    '<img data-attachment-id="a-img" alt="image.png">',
+    "",
+    "Thank you,",
+    "Prithviraj Hulgur",
+  ].join(String.fromCharCode(10));
+
+  it("⚠️ does not lay text, picture and signature out as a flex row", () => {
+    const html = render({ messages: [message({ body: MIXED })] });
+    expect(html).not.toContain("flex w-full items-center");
+  });
+
+  it("keeps the flex row for an ordinary one-line message", () => {
+    // Non-vacuity: this is what the class was written for, and the fix has to
+    // leave it alone. A single line has exactly one block to centre.
+    const html = render({ messages: [message({ body: "Sure, on it." })] });
+    expect(html).toContain("flex w-full items-center");
+  });
+
+  it("⚠️ a body still waiting for its picture is not printed as raw text", () => {
+    // The pending placeholder arrives over the socket before the file has an
+    // id. If `hasInlineImage` did not recognise it, this multi-line body would
+    // take the <pre> branch and show the agent the <img> tag itself - the
+    // exact fault card 1.129 fixed, returning under a second spelling.
+    const pending = [
+      "Yes I am still seeing this error, when I login",
+      "",
+      '<img data-attachment-pending="1" alt="image">',
+      "",
+      "Thank you,",
+    ].join(String.fromCharCode(10));
+    const html = render({ messages: [message({ body: pending })] });
+
+    expect(html).not.toContain("<pre");
+    expect(html).not.toContain("flex w-full items-center");
   });
 });

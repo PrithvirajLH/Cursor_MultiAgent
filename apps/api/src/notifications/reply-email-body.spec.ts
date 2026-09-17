@@ -250,8 +250,34 @@ describe('the reply email body', () => {
       expect(line).not.toContain('data-attachment-id');
       expect(line).not.toContain('data-temp-id');
       expect(line).not.toContain('&lt;img');
-      // What it says instead: the picture named, then the sentence.
-      expect(line).toContain('[image: image.png]see the img');
+      // ⚠️ CARD 1.136: AND NOT THE PICTURE EITHER. Card 1.129 left the
+      // placeholder standing here, so the owner's inbox list read
+      // `[image: image.png]Are you still getting this...` - the preview spent
+      // its opening characters, the only ones anybody reads, on a filename
+      // that is almost always `image.png`. Right in the text PART, which is
+      // the whole message for a client that will not render HTML; wrong in a
+      // one-line preview.
+      expect(line).not.toContain('[image:');
+      expect(line).toContain('see the img');
+    });
+
+    it('⚠️ but an image-only message keeps its name in the preview', () => {
+      // Strip the picture from a message that is nothing but a picture and the
+      // preheader is empty, at which point the client previews whatever text
+      // it finds next - our own hidden layout. A filename beats that.
+      const imageOnly =
+        '<img alt="scan.png" data-attachment-id="324e680b-1111-4222-8333-444455556666">';
+      const line = html(imageOnly)
+        .split(/\r?\n/)
+        .find((row) => row.includes('mso-hide:all')) as string;
+      expect(line).toContain('[image: scan.png]');
+    });
+
+    it('⚠️ the text part puts the picture on its own line', () => {
+      // `<img>` is inline, so the straight swap welded the name to the next
+      // word: `[image: image.png]see the img`. The HTML half draws the same
+      // picture as display:block; the two should not disagree.
+      expect(text(PASTED)).toContain('[image: image.png]\nsee the img');
     });
 
     it("an agent's formatting arrives as formatting, not as tags", () => {

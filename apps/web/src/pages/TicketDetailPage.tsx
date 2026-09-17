@@ -643,12 +643,27 @@ export function TicketDetailPage({
   const appendRealtimeMessage = useCallback(
     (payload: RealtimeTicketMessagePayload) => {
       const incoming = toTicketMessage(payload);
-      if (seenRealtimeMessageIdsRef.current.has(incoming.id)) {
-        return false;
-      }
       let appended = false;
       setMessages((prev) => {
-        if (prev.some((message) => message.id === incoming.id)) {
+        const index = prev.findIndex((message) => message.id === incoming.id);
+        if (index >= 0) {
+          // ⚠️ CARD 1.135: A SECOND PUSH FOR A MESSAGE WE ALREADY HOLD IS AN
+          // UPDATE, NOT A DUPLICATE. An emailed image is announced before its
+          // file has an id, so the body arrives with a loading placeholder and
+          // the real `<img data-attachment-id>` follows a moment later. This
+          // used to return early and the placeholder stayed until a reload.
+          // Only the body is taken: `localStatus` and anything else the local
+          // send flow put on the row belongs to this client.
+          if (prev[index].body === incoming.body) {
+            return prev;
+          }
+          const next = [...prev];
+          next[index] = { ...prev[index], body: incoming.body };
+          return next;
+        }
+        // Consulted only on the append path, so a message that was seen and is
+        // no longer in the list still does not come back.
+        if (seenRealtimeMessageIdsRef.current.has(incoming.id)) {
           return prev;
         }
         appended = true;

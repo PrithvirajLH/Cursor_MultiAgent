@@ -460,6 +460,7 @@ export class InboundEmailService {
           // unresolved marker is worse than a missing picture: it is `[[cid:...]]`
           // in front of a requester. This removes any that are left.
           await this.resolveInlineImageMarkers(
+            existing.id,
             inboundMessage?.id,
             replyAttachOutcome.inlineImages,
           );
@@ -836,6 +837,7 @@ export class InboundEmailService {
    * @param inlineImages The files the body referenced, now with ids.
    */
   private async resolveInlineImageMarkers(
+    ticketId: string,
     messageId: string | undefined,
     inlineImages: StoredInlineImage[],
   ): Promise<void> {
@@ -844,7 +846,14 @@ export class InboundEmailService {
     }
     const message = await this.prisma.ticketMessage.findUnique({
       where: { id: messageId },
-      select: { body: true },
+      // ⚠️ CARD 1.135 WIDENED THIS SELECT so the push below can carry the whole
+      // message. Body alone was enough while this only wrote to the database.
+      select: {
+        body: true,
+        type: true,
+        createdAt: true,
+        author: { select: { id: true, email: true, displayName: true } },
+      },
     });
     if (!message?.body) {
       return;
@@ -869,6 +878,29 @@ export class InboundEmailService {
       where: { id: messageId },
       data: { body: resolved },
     });
+    // ⚠️ CARD 1.135: SAY SO, OR THE PLACEHOLDER NEVER BECOMES THE PICTURE.
+    // `addMessage` already pushed this message - carrying markers, which
+    // `toRealtimeMessagePayload` now shows as a loading skeleton. That push is
+    // the last word anyone with the ticket OPEN gets, so without a second one
+    // the skeleton sits there until they reload the page. The web treats a
+    // message it already holds as an update rather than a duplicate.
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'message_added',
+        actorId: message.author?.id ?? null,
+        message:
+          message.type === MessageType.PUBLIC && message.author
+            ? this.ticketRealtime.toRealtimeMessagePayload({
+                id: messageId,
+                body: resolved,
+                type: message.type,
+                createdAt: message.createdAt,
+                author: message.author,
+              })
+            : null,
+      }),
+    );
   }
 
   /**

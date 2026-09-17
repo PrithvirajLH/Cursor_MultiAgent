@@ -45,6 +45,10 @@ const ALLOWED_ATTR = [
   "src",
   "alt",
   "data-attachment-id",
+  // Card 1.135: the placeholder an emailed image wears between "the message
+  // arrived" and "the file has an id". Without it here DOMPurify strips the
+  // attribute and the skeleton renders as a broken image instead.
+  "data-attachment-pending",
   "width",
   "height",
 ];

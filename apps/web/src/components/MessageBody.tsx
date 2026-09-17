@@ -39,7 +39,40 @@ export function MessageBody({
       setLightbox({ src: img.src, alt: img.alt });
     };
 
+    // Card 1.135. An emailed image is announced over the socket before its file
+    // has an id, so the body arrives carrying a placeholder instead of a real
+    // `data-attachment-id`. Draw the box it will occupy rather than a gap: the
+    // text below must not jump when the picture resolves a moment later.
+    //
+    // ⚠️ A TRANSPARENT src, NOT AN ABSENT ONE. An <img> with no src renders as
+    // a broken-image icon with its alt text beside it, which is exactly the
+    // "something is wrong" look this is here to avoid.
+    const drawPending = () => {
+      const pending = root.querySelectorAll<HTMLImageElement>(
+        "img[data-attachment-pending]",
+      );
+      for (const img of pending) {
+        if (img.classList.contains("att-pending")) continue;
+        img.classList.add("att-pending", "animate-pulse");
+        img.src =
+          "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        img.alt = "";
+        img.title = "Image loading…";
+        img.setAttribute("aria-label", "Image loading");
+        img.style.width = "min(240px, 100%)";
+        img.style.height = "160px";
+        img.style.display = "block";
+        img.style.marginTop = "6px";
+        img.style.borderRadius = "12px";
+        img.style.background =
+          "repeating-conic-gradient(rgba(120,120,120,0.10) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px";
+        img.style.boxShadow =
+          "0 1px 2px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.10)";
+      }
+    };
+
     const hydrate = () => {
+      drawPending();
       const imgs = root.querySelectorAll<HTMLImageElement>(
         "img[data-attachment-id]",
       );

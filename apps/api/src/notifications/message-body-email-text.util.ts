@@ -39,5 +39,10 @@ export function messageBodyToEmailText(body: string): string {
   if (!body || !containsHtmlMarkup(body)) {
     return body;
   }
-  return htmlToText(body.replace(IMAGE_TAG, (tag) => describeImage(tag)));
+  // ⚠️ ON ITS OWN LINE (card 1.136). `<img>` is an inline element, so a
+  // straight swap produced `[image: image.png]see the img` - the name welded
+  // to the next word, measured on a real reply. The HTML half draws the same
+  // picture as `display:block`, and the two halves should not disagree about
+  // whether a screenshot interrupts the sentence or sits under it.
+  return htmlToText(body.replace(IMAGE_TAG, (tag) => `\n${describeImage(tag)}\n`));
 }

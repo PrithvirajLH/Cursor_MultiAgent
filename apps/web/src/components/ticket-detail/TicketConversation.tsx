@@ -96,12 +96,25 @@ function deliveryLabel(
 }
 
 /**
+ * An image drawn inside a body: one that is stored (`data-attachment-id`) or
+ * one still being stored (`data-attachment-pending`, card 1.135).
+ *
+ * ⚠️ BOTH, EVERYWHERE THIS IS ASKED. The raw-text branch below is chosen on
+ * this test, and a body that failed it rendered its own `<img>` to the agent as
+ * visible markup - the fault card 1.129 had just fixed for the stored spelling
+ * would have come straight back for the pending one.
+ */
+const INLINE_IMAGE_ATTRIBUTE = /data-attachment-(?:id|pending)=/;
+
+/**
  * True when a message body contains only attachment image(s) and no real text —
  * used to render the message without the colored chat bubble (image is the bubble).
  */
 function isImageOnlyBody(body: string): boolean {
   if (!body) return false;
-  if (!/data-attachment-id=/.test(body)) return false;
+  // Card 1.135: a pending placeholder counts, so a picture that arrives alone
+  // does not start inside a bubble and then jump out of one when it resolves.
+  if (!INLINE_IMAGE_ATTRIBUTE.test(body)) return false;
   // Strip <img> tags and structural break/paragraph tags, then check for leftover text.
   const withoutImgs = body
     .replace(/<img\b[^>]*>/gi, "")
@@ -435,7 +448,7 @@ export const TicketConversation = memo(function TicketConversation({
             const isImageOnly = isImageOnlyBody(message.body);
             // Card 1.129 fault B: an image drawn INSIDE the body, whether it
             // was pasted in the composer or arrived on an email.
-            const hasInlineImage = /data-attachment-id=/.test(message.body);
+            const hasInlineImage = INLINE_IMAGE_ATTRIBUTE.test(message.body);
 
             return (
               <div key={message.id}>
@@ -570,7 +583,26 @@ export const TicketConversation = memo(function TicketConversation({
                         <MessageBody
                           body={message.body}
                           invert={isCurrentUser}
-                          className={isImageOnly ? "" : "flex w-full items-center"}
+                          // ⚠️ CARD 1.133: `hasInlineImage` DROPS THE FLEX ROW
+                          // TOO, and the branch above is why. Card 1.129 sent
+                          // mixed bodies - a sentence, a pasted screenshot, a
+                          // signature - here for the first time, still wearing
+                          // a class written for a body that renders as ONE
+                          // line. `display:flex` makes every block child a flex
+                          // ITEM, so the three stacked blocks became three
+                          // COLUMNS: the sentence, the picture and the
+                          // signature side by side, vertically centred.
+                          // Measured on a real reply, 2026-09-17.
+                          //
+                          // `items-center` only ever meant "centre the single
+                          // line"; there is nothing to centre once the body has
+                          // more than one block, and normal flow is what a
+                          // paragraph-image-paragraph body wants.
+                          className={
+                            isImageOnly || hasInlineImage
+                              ? ""
+                              : "flex w-full items-center"
+                          }
                         />
                       )}
                     </div>

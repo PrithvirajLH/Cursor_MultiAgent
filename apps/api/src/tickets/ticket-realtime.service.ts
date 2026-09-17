@@ -3,6 +3,7 @@ import { MessageType, Prisma, TeamRole, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
 import { stripQuotedReply } from '../notifications/quoted-reply.util';
+import { markInlineImagesPending } from './inline-image-placeholder.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   RealtimeService,
@@ -197,7 +198,11 @@ export class TicketRealtimeService {
       // ⚠️ Display only, exactly as on the fetch path: this transforms what is
       // SENT to a viewer, never what is stored. `TicketMessage.body` keeps the
       // whole thing, so nothing an audit needs is lost.
-      body: stripQuotedReply(message.body),
+      // ⚠️ CARD 1.135 ADDED THE SECOND TRANSFORM, FOR THE REASON ABOVE. The
+      // comment about two read paths was written for `stripQuotedReply` and
+      // then a marker walked into the identical trap. See
+      // `inline-image-placeholder.util.ts`.
+      body: markInlineImagesPending(stripQuotedReply(message.body)),
       type: message.type,
       createdAt: message.createdAt.toISOString(),
       author: {

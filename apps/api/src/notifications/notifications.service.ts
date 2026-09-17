@@ -15,6 +15,7 @@ import { resolveOutboundRecipients } from './outbound-recipients.util';
 import { renderMessageBodyEmailHtml } from './message-body-email-html.util';
 import { inlineAttachmentIds } from '../tickets/inline-attachment-ids.util';
 import { messageBodyToEmailText } from './message-body-email-text.util';
+import { messageBodyToPreheaderText } from './message-body-preheader-text.util';
 import { isStaffRole } from './is-staff-role.util';
 import { canManageOtherFollowers } from '../common/can-manage-followers.util';
 import type { MessageRecipientsPreview } from './message-recipients-preview.type';
@@ -1228,8 +1229,11 @@ export class NotificationsService {
     // ⚠️ AND FLATTENED FIRST (card 1.129): the preview is built from the
     // earliest text a client finds, so markup here put
     // `<img data-attachment-id=...` in the inbox list itself.
+    // ⚠️ AND WITHOUT THE PICTURES (card 1.136): flattening left `[image:
+    // image.png]` sitting in front of the sentence in the inbox list. Right in
+    // the text part, wrong here - see `message-body-preheader-text.util.ts`.
     const preheader = this.escapeHtml(
-      this.buildPreheader(messageBodyToEmailText(messageBody)),
+      this.buildPreheader(messageBodyToPreheaderText(messageBody)),
     );
 
     return [
