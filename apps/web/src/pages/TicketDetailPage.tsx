@@ -2052,8 +2052,10 @@ export function TicketDetailPage({
           type: "success",
         });
         notifyTicketAggregatesChanged();
-      } catch {
-        setActionError("Unable to update the follow-up date.");
+      } catch (error) {
+        // ⚠️ CARD 1.132 SWEEP. A bare `catch {}` here threw away whatever the
+        // server said and printed one sentence for every cause.
+        setActionError(handleApiError(error));
       } finally {
         setActionLoading(false);
       }
@@ -2204,9 +2206,14 @@ export function TicketDetailPage({
       setCopyToast({ message: "Ticket transferred.", type: "success" });
       notifyTicketAggregatesChanged();
       notifyTicketReportsChanged();
-    } catch {
-      setActionError("Unable to transfer ticket.");
-      setCopyToast({ message: "Unable to transfer ticket.", type: "error" });
+    } catch (error) {
+      // ⚠️ CARD 1.132 SWEEP, AND THE ONE MOST LIKELY TO BE HIDING SOMETHING.
+      // A transfer crosses a team boundary, so its refusals are permission
+      // sentences somebody needs to read - "No write access to transfer this
+      // ticket" names the reason, "Unable to transfer ticket." names nothing.
+      const message = handleApiError(error);
+      setActionError(message);
+      setCopyToast({ message, type: "error" });
     } finally {
       setActionLoading(false);
     }
