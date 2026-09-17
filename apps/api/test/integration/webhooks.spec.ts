@@ -41,6 +41,40 @@ describe('outbound webhooks (card 2.6)', () => {
     await disconnectPrisma();
   });
 
+  /**
+   * Wait for the rows a fire-and-forget emit is still writing.
+   *
+   * ⚠️ THE HTTP 201 RETURNS BEFORE THE OUTBOX ROW EXISTS, DELIBERATELY.
+   * `tickets.service.ts:2166` queues webhooks with `void this.webhooks.emit(...)`
+   * so a slow subscriber cannot hold up a requester's ticket - the comment
+   * there says "AFTER the write has committed" and means it. Reading the outbox
+   * on the next line therefore races an unawaited promise: it wins on an idle
+   * machine and loses under load.
+   *
+   * ⚠️ MEASURED, NOT GUESSED. A full 101-suite run on 2026-09-17 failed exactly
+   * one test - "retries to the attempt budget and then goes dead" - after 1,153
+   * seconds with worker memory recycling, and the same suite passed alone, and
+   * passed again beside two newly added suites. Nothing about webhooks had
+   * changed; the run had simply got slower.
+   *
+   * @param read The query for the rows the emit should produce.
+   * @param timeoutMs How long to keep asking before giving up and asserting.
+   * @returns The rows, or an empty list once the deadline passes.
+   */
+  async function waitForOutbox<T>(
+    read: () => Promise<T[]>,
+    timeoutMs = 5000,
+  ): Promise<T[]> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const rows = await read();
+      if (rows.length > 0 || Date.now() > deadline) {
+        return rows;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+
   const subscribe = async (url: string, events = ['ticket.created']) => {
     const res = await request(server)
       .post('/api/admin/webhooks')
@@ -129,10 +163,12 @@ describe('outbound webhooks (card 2.6)', () => {
         .expect(201);
       const ticketId = (ticket.body as { id: string }).id;
 
-      const rows = await getPrisma().notificationOutbox.findMany({
-        where: { channel: NotificationChannel.WEBHOOK, ticketId },
-        select: { body: true, toEmail: true, eventType: true },
-      });
+      const rows = await waitForOutbox(() =>
+        getPrisma().notificationOutbox.findMany({
+          where: { channel: NotificationChannel.WEBHOOK, ticketId },
+          select: { body: true, toEmail: true, eventType: true },
+        }),
+      );
       // ⚠️ EARLIER TESTS IN THIS FILE LEFT THEIR OWN SUBSCRIPTIONS ACTIVE, so
       // one ticket fans out to several rows. The first version of this asserted
       // `toEmail === created.url` on EVERY row and failed against a
@@ -197,14 +233,17 @@ describe('outbound webhooks (card 2.6)', () => {
         })
         .expect(201);
 
-      const queued = await getPrisma().notificationOutbox.findFirst({
-        where: {
-          channel: NotificationChannel.WEBHOOK,
-          toEmail: 'https://unreachable.invalid/hook',
-        },
-        select: { id: true },
-      });
-      expect(queued).not.toBeNull();
+      const queued = await waitForOutbox(() =>
+        getPrisma().notificationOutbox.findMany({
+          where: {
+            channel: NotificationChannel.WEBHOOK,
+            toEmail: 'https://unreachable.invalid/hook',
+          },
+          select: { id: true },
+          take: 1,
+        }),
+      );
+      expect(queued).toHaveLength(1);
 
       // Five attempts is MAX_EMAIL_OUTBOX_ATTEMPTS - the same budget email uses,
       // because this rides the same machinery rather than a second copy.
@@ -213,7 +252,7 @@ describe('outbound webhooks (card 2.6)', () => {
       }
 
       const row = await getPrisma().notificationOutbox.findUniqueOrThrow({
-        where: { id: (queued as { id: string }).id },
+        where: { id: queued[0].id },
         select: { status: true, attempts: true, lastError: true },
       });
       expect(row.status).toBe(OutboxStatus.FAILED);
