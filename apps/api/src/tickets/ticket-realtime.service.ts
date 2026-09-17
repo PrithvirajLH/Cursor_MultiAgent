@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { MessageType, Prisma, TeamRole, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/current-user.decorator';
 import { AccessControlService } from '../common/access-control.service';
-import { stripQuotedReply } from '../notifications/quoted-reply.util';
-import { markInlineImagesPending } from './inline-image-placeholder.util';
+import { messageBodyForViewer } from './message-body-for-viewer.util';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   RealtimeService,
@@ -202,11 +201,14 @@ export class TicketRealtimeService {
       // ⚠️ Display only, exactly as on the fetch path: this transforms what is
       // SENT to a viewer, never what is stored. `TicketMessage.body` keeps the
       // whole thing, so nothing an audit needs is lost.
-      // ⚠️ CARD 1.135 ADDED THE SECOND TRANSFORM, FOR THE REASON ABOVE. The
-      // comment about two read paths was written for `stripQuotedReply` and
-      // then a marker walked into the identical trap. See
-      // `inline-image-placeholder.util.ts`.
-      body: markInlineImagesPending(stripQuotedReply(message.body)),
+      // ⚠️ CARD 1.139 MADE THE TWO PATHS ONE FUNCTION. The comment above was
+      // written for `stripQuotedReply`, then a marker walked into the identical
+      // trap (card 1.135), and then card 1.139 found that marker transform had
+      // never reached the FETCH path either. A comment asking two call sites to
+      // agree had failed four times, so the rule now lives in exactly one
+      // place: `message-body-for-viewer.util.ts`. Add the next display rule
+      // there and both routes get it.
+      body: messageBodyForViewer(message.body),
       type: message.type,
       createdAt: message.createdAt.toISOString(),
       author: {
