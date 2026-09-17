@@ -118,7 +118,7 @@ describe('one message, both routes (card 1.139)', () => {
  */
 describe('both routes call the one function', () => {
   const source = (file: string) =>
-    readFileSync(join(__dirname, file), 'utf8');
+    readFileSync(join(__dirname, file), 'utf8').split('\r\n').join('\n');
 
   const ROUTES = ['tickets.service.ts', 'ticket-realtime.service.ts'];
 
@@ -150,8 +150,12 @@ describe('both routes call the one function', () => {
  * open is told something changed and receives no internal body.
  */
 describe('an internal note reaches neither route as a body', () => {
+  // ⚠️ NEWLINES NORMALISED, AND THAT IS NOT COSMETIC. These assertions span
+  // several lines, and `git checkout` rewrites a working copy with CRLF on this
+  // machine - so a spec that passed on its own failed in the full run minutes
+  // later, having touched nothing but line endings.
   const at = (file: string) =>
-    readFileSync(join(__dirname, file), 'utf8');
+    readFileSync(join(__dirname, file), 'utf8').split('\r\n').join('\n');
 
   it('⚠️ the message-added push carries a body only when PUBLIC', () => {
     expect(at('tickets.service.ts')).toContain(
