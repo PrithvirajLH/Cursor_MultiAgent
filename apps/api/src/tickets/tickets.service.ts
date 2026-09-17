@@ -26,6 +26,7 @@ import {
 } from '@prisma/client';
 import type { Express } from 'express';
 import { AuthUser } from '../auth/current-user.decorator';
+import { isStaffRole } from '../notifications/is-staff-role.util';
 import { toCsvRow } from '../common/csv.util';
 import { AccessControlService } from '../common/access-control.service';
 import { availableUserFilter } from './available-user-filter.util';
@@ -777,7 +778,7 @@ export class TicketsService {
       }),
     ]);
     const totalPages = includeTotal ? Math.ceil(total / pageSize) : 0;
-    const awaitingAgentReply = await this.awaitingAgentReplyByTicket(data);
+    const unreadReplies = await this.unreadReplyCountByTicket(data);
 
     return {
       data: data.map((ticket) => ({
@@ -786,7 +787,13 @@ export class TicketsService {
           ticket.status,
           ticket.assignee?.id ?? null,
         ),
-        awaitingAgentReply: awaitingAgentReply.get(ticket.id) ?? false,
+        // ⚠️ CARD 1.138 REPLACED `awaitingAgentReply` HERE. That field answered
+        // "who owes the next move" and stayed true after somebody had read the
+        // reply - which is the confusion the owner reported: you open the
+        // ticket, read it, and the queue still says a reply arrived. This one
+        // answers "is there something nobody has read", and goes to 0 the
+        // moment the ticket is opened.
+        unreadReplyCount: unreadReplies.get(ticket.id) ?? 0,
       })),
       meta: {
         page,
@@ -798,54 +805,113 @@ export class TicketsService {
   }
 
   /**
-   * Which of these tickets are waiting on US, because the requester spoke last
-   * (card 1.29 Gap B).
+   * Mark this ticket's replies as read by the desk (card 1.138).
    *
-   * ONE query for the whole page. `DISTINCT ON` gives exactly one row per
-   * ticket - the newest public message - so this is a single round trip
-   * whatever the page size, and it rides the existing
-   * `TicketMessage(ticketId, createdAt)` index. A per-row subquery would have
-   * been 20 extra queries per page for a badge.
+   * ⚠️ AN EXPLICIT WRITE, NOT A SIDE EFFECT OF `GET /tickets/:id`. That GET
+   * also runs when the REQUESTER opens their own ticket in the portal, and
+   * clearing there would let the person who sent the reply mark it read - the
+   * queue would go quiet with nobody on the desk having looked.
    *
-   * Only PUBLIC messages count. An agent's internal note is not a reply to the
-   * requester, so writing one must not clear the flag - otherwise the marker
-   * would vanish the moment somebody made a private observation.
+   * ⚠️ STAFF ONLY, FOR THE SAME REASON, AND SILENTLY. A requester hitting this
+   * is not an error - the page they loaded called it - so it returns the ticket
+   * unchanged rather than answering 403 and putting a red banner in front of
+   * somebody who did nothing wrong.
    *
-   * Deliberately derived rather than stored. The status is the wrong place to
-   * read this from: Gap A cannot move an unassigned ticket out of
-   * WAITING_ON_REQUESTER (IN_PROGRESS needs an assignee), so on exactly those
-   * tickets the status stays stale while this stays truthful.
+   * ⚠️ ACCESS IS CHECKED FIRST. Without it this would answer "does ticket X
+   * exist" to anyone holding a token, and would let them clear a queue signal
+   * on a ticket they cannot read.
+   *
+   * @param ticketId The ticket being opened.
+   * @param user Whoever opened it.
+   * @returns When it was marked seen, or null when the caller is not the desk.
    */
-  private async awaitingAgentReplyByTicket(
-    tickets: { id: string; requester?: { id: string } | null }[],
-  ): Promise<Map<string, boolean>> {
-    const result = new Map<string, boolean>();
+  async markRepliesSeen(ticketId: string, user: AuthUser) {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: {
+        id: ticketId,
+        ...this.accessControl.buildTicketAccessFilter(user, {
+          includeDeleted: true,
+        }),
+      },
+      select: { id: true },
+    });
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+    if (!isStaffRole(user.role)) {
+      return { id: ticketId, repliesSeenAt: null };
+    }
+    const seenAt = new Date();
+    await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: { repliesSeenAt: seenAt, repliesSeenById: user.id },
+    });
+    // Everyone else's queue goes quiet too, because this is per ticket.
+    await this.ticketRealtime.safeRealtime(() =>
+      this.ticketRealtime.emitTicketRealtimeEvent({
+        ticketId,
+        reason: 'replies_seen',
+        actorId: user.id,
+      }),
+    );
+    return { id: ticketId, repliesSeenAt: seenAt.toISOString() };
+  }
+
+  /**
+   * How many replies from OUTSIDE the desk nobody has read yet (card 1.138).
+   *
+   * ⚠️ THIS REPLACED `awaitingAgentReplyByTicket`, WHICH ANSWERED A DIFFERENT
+   * QUESTION. That one was "did the requester speak last" - true until an agent
+   * replied, and therefore still true after somebody had read the reply and
+   * decided it needed no answer. The owner reported exactly that: *"seen
+   * doesn't show up as reply received"*. This counts what is UNREAD, and
+   * `repliesSeenAt` takes it to zero the moment the ticket is opened.
+   *
+   * ⚠️ ONE QUERY FOR THE WHOLE PAGE, grouped - the same reasoning the method it
+   * replaced carried. A per-row subquery would be 20 extra queries per page for
+   * a badge, and it rides the existing `TicketMessage(ticketId, createdAt)`
+   * index.
+   *
+   * ⚠️ "OUTSIDE THE DESK" IS NOT `isStaffRole` ALONE, AND THAT IS THE SUBTLE
+   * PART. `isStaffRole` is `role !== EMPLOYEE`, so a requester who happens to
+   * be a LEAD - a payroll lead raising a ticket about her own pay, the case
+   * card 1.22 and card 1.83 both turn on - would have her replies counted as
+   * the desk's own and light nothing up. **Relationship beats rank**, exactly
+   * as card 1.83 settled it: the author counts when they are not staff OR they
+   * are this ticket's requester.
+   *
+   * Only PUBLIC messages count. An internal note is the desk talking to itself.
+   *
+   * @param tickets The page of tickets being returned.
+   * @returns Unread count per ticket id; absent means zero.
+   */
+  private async unreadReplyCountByTicket(
+    tickets: { id: string }[],
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
     const ids = tickets.map((ticket) => ticket.id);
     if (ids.length === 0) {
       return result;
     }
     const rows = await this.prisma.$queryRaw<
-      { ticketId: string; authorId: string }[]
+      { ticketId: string; unread: number }[]
     >`
-      SELECT DISTINCT ON (m."ticketId") m."ticketId", m."authorId"
+      SELECT m."ticketId", COUNT(*)::int AS unread
       FROM "TicketMessage" m
+      JOIN "Ticket" t ON t."id" = m."ticketId"
+      JOIN "User" u ON u."id" = m."authorId"
       WHERE m."ticketId" IN (${Prisma.join(ids)})
         AND (m."type")::text = ${MessageType.PUBLIC}
-      ORDER BY m."ticketId", m."createdAt" DESC
+        AND (t."repliesSeenAt" IS NULL OR m."createdAt" > t."repliesSeenAt")
+        AND ((u."role")::text = ${UserRole.EMPLOYEE} OR m."authorId" = t."requesterId")
+      GROUP BY m."ticketId"
     `;
-    const lastPublicAuthor = new Map(
-      rows.map((row) => [row.ticketId, row.authorId]),
-    );
-    for (const ticket of tickets) {
-      const requesterId = ticket.requester?.id ?? null;
-      const authorId = lastPublicAuthor.get(ticket.id) ?? null;
-      result.set(
-        ticket.id,
-        requesterId !== null && authorId !== null && authorId === requesterId,
-      );
+    for (const row of rows) {
+      result.set(row.ticketId, Number(row.unread));
     }
     return result;
   }
+
 
   /**
    * Returns ticket counts for the user; result is cached briefly (PERF-02, see

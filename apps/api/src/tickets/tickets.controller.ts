@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Headers,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -246,6 +247,22 @@ export class TicketsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.ticketsService.bulkPriority(payload, user);
+  }
+
+  /**
+   * The desk has looked at this ticket, so its replies are read (card 1.138).
+   *
+   * ⚠️ A POST, NOT A SIDE EFFECT ON THE GET. `GET /tickets/:id` also runs when
+   * the requester opens their own ticket in the portal; clearing there would
+   * let the sender of a reply mark it read.
+   */
+  @Post(':id/seen')
+  @HttpCode(200)
+  async markRepliesSeen(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.ticketsService.markRepliesSeen(id, user);
   }
 
   @Get(':id/messages')

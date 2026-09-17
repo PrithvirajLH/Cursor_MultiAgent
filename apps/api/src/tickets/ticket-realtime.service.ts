@@ -22,6 +22,10 @@ export type TicketRealtimeReason =
   // A link to another ticket was added or removed (card 1.6). Emitted on BOTH
   // tickets, because a link is visible from either end.
   | 'links_changed'
+  // Somebody on the desk opened the ticket, so its unread-reply indicator
+  // clears for everyone (card 1.138). Per ticket, not per person: the first
+  // person to look clears it for the team.
+  | 'replies_seen'
   | 'attachment_added'
   | 'attachment_scan_status_changed'
   | 'automation_rule_executed'

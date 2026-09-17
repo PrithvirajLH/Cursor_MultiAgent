@@ -382,6 +382,20 @@ model Ticket {
   completedAt        DateTime?
   deletedAt          DateTime?
   deletedById        String?
+  /// Card 1.138: when a member of the desk last OPENED this ticket, which is
+  /// what makes a reply "unread". Per ticket, not per person: the first person
+  /// to look clears it for the team, so two agents do not both chase one reply.
+  ///
+  /// NULL means nobody has opened it since the column existed - so every reply
+  /// from outside the desk counts, which is the right answer for a ticket
+  /// nobody has read.
+  repliesSeenAt      DateTime?
+  /// Who cleared it, so "why did this go quiet?" has an answer.
+  ///
+  /// ⚠️ DELIBERATELY NOT A RELATION. It is a breadcrumb for a human reading the
+  /// row, never joined on and never displayed, and an FK here would let a
+  /// deleted account block the one write that keeps the queue honest.
+  repliesSeenById    String?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 

@@ -332,58 +332,96 @@ describe('Awaiting reply — who owes the next move', () => {
         .set(authHeader(fixtureEmails.agent))
         .expect(200);
       const row = (
-        listed.body as { data: { id: string; awaitingAgentReply: boolean }[] }
+        listed.body as { data: { id: string; unreadReplyCount?: number }[] }
       ).data.find((t) => t.id === ticket.id);
-      expect(row?.awaitingAgentReply).toBe(true);
+      // ⚠️ CARD 1.138 CHANGED THE FIELD AND THE QUESTION. This asserted
+      // `awaitingAgentReply` - "the requester spoke last" - which stayed true
+      // after somebody had read the reply. The row now reports what is UNREAD.
+      // The claim being made here is unchanged: the list tells the truth on a
+      // ticket whose STATUS cannot move, because it is derived from messages.
+      expect(row?.unreadReplyCount).toBe(1);
     });
   });
 
-  describe('Gap B — the list says who owes the next move', () => {
-    async function awaitingFlag(ticketId: string): Promise<boolean | undefined> {
+  describe('Gap B — the list says what nobody has read (card 1.138)', () => {
+    /**
+     * ⚠️ REWRITTEN, NOT DELETED. This block asserted `awaitingAgentReply`:
+     * *"the requester spoke last, so the next move is ours"*. Card 1.138
+     * replaced it because it stayed true after somebody had read the reply -
+     * the owner's words were *"seen doesn't show up as reply received"*.
+     *
+     * ⚠️ ONE EXPECTATION GENUINELY INVERTS, AND THE OWNER DECIDED TO KEEP IT
+     * THAT WAY (2026-09-17). Under the old field an agent's public reply
+     * cleared the marker. Under this one it does NOT: only OPENING the ticket
+     * does.
+     *
+     * ✅ **It cannot show in the app.** Measured before the decision: exactly
+     * two callers reach `addMessage` - this API route, which the ticket page
+     * uses after opening the ticket, and the inbound email path, whose author
+     * is the requester. **No automation action and no macro posts a message**,
+     * so there is no way to answer a ticket without opening it.
+     *
+     * ⚠️ **The case to revisit is an auto-reply.** If an automation is ever
+     * given a "reply to the requester" action, every ticket it touches stays
+     * lit until a human opens it - a queue full of red on tickets a robot has
+     * already answered. That is arguably still correct, since nobody has read
+     * what the requester wrote; it is recorded here so the choice is made
+     * deliberately rather than discovered.
+     *
+     * Asserted in both directions so nobody "fixes" it back.
+     */
+    async function unreadCount(ticketId: string): Promise<number | undefined> {
       const res = await request(server)
         .get('/api/tickets')
         .set(authHeader(fixtureEmails.agent))
         .expect(200);
       return (
-        res.body as { data: { id: string; awaitingAgentReply: boolean }[] }
-      ).data.find((t) => t.id === ticketId)?.awaitingAgentReply;
+        res.body as { data: { id: string; unreadReplyCount?: number }[] }
+      ).data.find((t) => t.id === ticketId)?.unreadReplyCount;
     }
 
-    it('is false on a ticket with no messages at all', async () => {
+    it('is zero on a ticket with no messages at all', async () => {
       const ticket = await makeTicket({ status: TicketStatus.IN_PROGRESS });
-      expect(await awaitingFlag(ticket.id)).toBe(false);
+      expect(await unreadCount(ticket.id)).toBe(0);
     });
 
-    it('is true once the requester has spoken last', async () => {
+    it("counts the requester's reply once it arrives", async () => {
       const ticket = await makeTicket({ status: TicketStatus.IN_PROGRESS });
       await inboundReply(ticket.displayId);
-      expect(await awaitingFlag(ticket.id)).toBe(true);
+      expect(await unreadCount(ticket.id)).toBe(1);
     });
 
-    it('is false again once an agent replies publicly', async () => {
+    it('⚠️ goes to zero when the desk OPENS it, not when the desk replies', async () => {
+      // The inversion described above, asserted in both directions so the
+      // change is impossible to miss.
       const ticket = await makeTicket({ status: TicketStatus.IN_PROGRESS });
       await inboundReply(ticket.displayId);
-      expect(await awaitingFlag(ticket.id)).toBe(true);
+      expect(await unreadCount(ticket.id)).toBe(1);
+
       await request(server)
         .post(`/api/tickets/${ticket.id}/messages`)
         .set(authHeader(fixtureEmails.agent))
         .send({ body: 'Here is the answer.', type: 'PUBLIC' })
         .expect(201);
-      expect(await awaitingFlag(ticket.id)).toBe(false);
+      expect(await unreadCount(ticket.id)).toBe(1);
+
+      await request(server)
+        .post(`/api/tickets/${ticket.id}/seen`)
+        .set(authHeader(fixtureEmails.agent))
+        .expect(200);
+      expect(await unreadCount(ticket.id)).toBe(0);
     });
 
-    it('stays true when the agent only writes an INTERNAL note', async () => {
-      // An internal note is not a reply to the requester, so it must not clear
-      // the marker — otherwise a private observation makes the queue forget
-      // that somebody is still waiting on us.
+    it('an INTERNAL note never counts, whoever writes it', async () => {
+      // KEPT FROM CARD 1.29's REASONING: an internal note is the desk talking
+      // to itself, so it is not a reply and must not be counted as one.
       const ticket = await makeTicket({ status: TicketStatus.IN_PROGRESS });
-      await inboundReply(ticket.displayId);
       await request(server)
         .post(`/api/tickets/${ticket.id}/messages`)
         .set(authHeader(fixtureEmails.agent))
         .send({ body: 'Checking with payroll first.', type: 'INTERNAL' })
         .expect(201);
-      expect(await awaitingFlag(ticket.id)).toBe(true);
+      expect(await unreadCount(ticket.id)).toBe(0);
     });
   });
 

@@ -8,6 +8,10 @@ import {
   statusBadgeClass,
 } from "./ticket-detail/utils";
 import { formatStatus, formatTicketId } from "../utils/format";
+import {
+  UNREAD_REPLY_ROW_BAR,
+  UnreadReplyBadge,
+} from "./unread-reply-indicator";
 
 interface TicketDetailMidListProps {
   /** Ticket id of the row that should appear highlighted (the one currently open). */
@@ -117,6 +121,12 @@ function MidListRow({
           {formatTicketId(ticket)}
         </span>
         <span className="flex-1" />
+        {/*
+          ⚠️ CARD 1.138: THE SAME INDICATOR AS THE QUEUE TABLE, FROM THE SAME
+          COMPONENT. The owner asked for it in both places, and a second copy
+          of the markup here is how the two would drift.
+        */}
+        <UnreadReplyBadge count={ticket.unreadReplyCount ?? 0} />
         <span
           className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass(ticket.status)}`}
         >
@@ -150,6 +160,14 @@ function MidListRow({
     ? { boxShadow: "inset 3px 0 0 0 hsl(var(--primary))" }
     : undefined;
   const activeBg = isCurrent ? "bg-primary/[0.06]" : "";
+  // ⚠️ CARD 1.138. NOT ON THE CURRENT ROW, and that is deliberate rather than
+  // an oversight: the current row already carries its own inset bar in
+  // `activeStyle`, an inline style would win over this class anyway, and the
+  // ticket you are looking at is the one about to be marked read.
+  const unreadBar =
+    !isCurrent && (ticket.unreadReplyCount ?? 0) > 0
+      ? UNREAD_REPLY_ROW_BAR
+      : "";
 
   return (
     <li>
@@ -170,7 +188,7 @@ function MidListRow({
           onSelectTicket?.(ticket, { newTab: true });
         }}
         style={activeStyle}
-        className={`${baseClass} ${activeBg}`}
+        className={`${baseClass} ${activeBg} ${unreadBar}`}
       >
         {content}
       </button>

@@ -19,6 +19,10 @@ import {
   statusBadgeClass,
 } from "../utils/format";
 import { TicketContextMenu } from "./TicketContextMenu";
+import {
+  UNREAD_REPLY_ROW_BAR,
+  UnreadReplyBadge,
+} from "./unread-reply-indicator";
 import { useToast } from "../hooks/useToast";
 
 /**
@@ -227,6 +231,13 @@ export function TicketTableView({
                     : focused
                       ? "bg-white/[0.05]"
                       : "bg-transparent"
+                } ${
+                  // ⚠️ AFTER the selected class, so the red bar wins on a row
+                  // that is both: selection is also shown by the background,
+                  // an unread reply has nothing else to say it.
+                  (ticket.unreadReplyCount ?? 0) > 0
+                    ? UNREAD_REPLY_ROW_BAR
+                    : ""
                 }`}
               >
                 {showCheckbox ? (
@@ -259,14 +270,6 @@ export function TicketTableView({
                 <td className="px-6 py-4">
                   <div className="flex max-w-lg items-center gap-2">
                     {/*
-                      Card 1.29: the requester spoke last, so the next move is
-                      ours. Quiet enough to scan a column for, not a klaxon —
-                      and it comes off the row from the server, so it is still
-                      here after a reload. Sits inside the subject cell, which
-                      is already two lines tall, so the SEV / reference /
-                      status cells beside it do not move.
-                    */}
-                    {/*
                       Card 1.10: a follow-up that has come due and not yet been
                       cleared by the scheduler. Same quiet treatment as the
                       replied marker, in the same cell, so no column moves.
@@ -281,15 +284,15 @@ export function TicketTableView({
                         Follow-up
                       </span>
                     ) : null}
-                    {ticket.awaitingAgentReply ? (
-                      <span
-                        data-awaiting-agent-reply="true"
-                        title="The requester replied — this one is waiting on us"
-                        className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary"
-                      >
-                        Replied
-                      </span>
-                    ) : null}
+                    {/*
+                      ⚠️ CARD 1.138 REPLACED THE "REPLIED" PILL THAT WAS HERE.
+                      That one was quiet blue and meant "the requester spoke
+                      last" - so it stayed after somebody had read the reply,
+                      which is exactly the confusion the owner reported. This
+                      one means UNREAD and vanishes the moment anyone on the
+                      desk opens the ticket.
+                    */}
+                    <UnreadReplyBadge count={ticket.unreadReplyCount ?? 0} />
                     <p className="truncate text-sm font-semibold text-foreground leading-tight">
                       {ticket.subject}
                     </p>

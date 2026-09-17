@@ -50,7 +50,10 @@ function render(tickets: TicketRecord[]): string {
   );
 }
 
-const MARKER = 'data-awaiting-agent-reply="true"';
+/** The badge carries its count, so tests read the attribute, not the styling. */
+const MARKER = "data-unread-replies=";
+/** The red row bar, shared with the detail rail so the two cannot drift. */
+const BAR = "shadow-[inset_3px_0_0_0_theme(colors.red.500)]";
 
 describe("card 1.10 — the overdue follow-up badge", () => {
   const BADGE = 'data-follow-up-due="true"';
@@ -86,47 +89,67 @@ describe("card 1.10 — the overdue follow-up badge", () => {
   });
 });
 
-describe("the awaiting-reply row marker", () => {
-  it("renders when the server says the requester spoke last", () => {
-    const html = render([ticket({ awaitingAgentReply: true })]);
+describe("card 1.138 — the unread-reply indicator", () => {
+  /**
+   * ⚠️ REWRITTEN, NOT DELETED. This block used to assert the blue "Replied"
+   * pill, driven by `awaitingAgentReply` - *"the requester spoke last, so the
+   * next move is ours"*. That stayed true after somebody had read the reply,
+   * and the owner reported exactly that: *"seen doesn't show up as reply
+   * received"*. The question changed from WHOSE MOVE to WHAT IS UNREAD, so the
+   * assertions change with it - and the two that were really about the table
+   * rather than about card 1.29 are kept verbatim below.
+   */
+  it("renders the badge and the row bar when replies are unread", () => {
+    const html = render([ticket({ unreadReplyCount: 1 })]);
     expect(html).toContain(MARKER);
-    expect(html).toContain("Replied");
+    expect(html).toContain(BAR);
   });
 
-  it("does not render when the server says otherwise", () => {
-    expect(render([ticket({ awaitingAgentReply: false })])).not.toContain(
-      MARKER,
-    );
+  it("counts them, so two unread replies do not look like one", () => {
+    const html = render([ticket({ unreadReplyCount: 3 })]);
+    expect(html).toContain('data-unread-replies="3"');
+    expect(html).toContain(">3<");
   });
 
-  it("does not render when the field is absent", () => {
+  it("caps at 9+, so a neglected thread cannot widen the column", () => {
+    expect(render([ticket({ unreadReplyCount: 42 })])).toContain(">9+<");
+  });
+
+  it("renders nothing at zero", () => {
+    const html = render([ticket({ unreadReplyCount: 0 })]);
+    expect(html).not.toContain(MARKER);
+    expect(html).not.toContain(BAR);
+  });
+
+  it("renders nothing when the field is absent", () => {
     // An older API response, or a payload that never carried the field, must
-    // not produce a marker by accident.
+    // not put a red bar on every row.
     expect(render([ticket()])).not.toContain(MARKER);
   });
 
-  it("is driven ONLY by the payload, not by the status", () => {
-    // WAITING_ON_REQUESTER with the flag false is the case that matters: the
-    // status still says we are waiting on them, and the marker must agree with
-    // the messages rather than second-guessing from the status. If someone
-    // reimplements this client-side off `status`, this test fails.
+  it("⚠️ is driven ONLY by the payload, not by the status", () => {
+    // KEPT FROM CARD 1.29, because it is about this table rather than about
+    // that card. WAITING_ON_REQUESTER with nothing unread is the case that
+    // matters: the status still says we are waiting on them, and the row must
+    // agree with the messages rather than second-guessing from the status. If
+    // someone reimplements this client-side off `status`, this fails.
     const html = render([
       ticket({
         id: "t-waiting",
         status: "WAITING_ON_REQUESTER",
-        awaitingAgentReply: false,
+        unreadReplyCount: 0,
       }),
     ]);
     expect(html).not.toContain(MARKER);
   });
 
-  it("marks the flagged row and only the flagged row", () => {
+  it("marks the unread row and only the unread row", () => {
     const html = render([
-      ticket({ id: "t-a", subject: "AAA", awaitingAgentReply: true }),
-      ticket({ id: "t-b", subject: "BBB", awaitingAgentReply: false }),
+      ticket({ id: "t-a", subject: "AAA", unreadReplyCount: 1 }),
+      ticket({ id: "t-b", subject: "BBB", unreadReplyCount: 0 }),
     ]);
     expect(html.split(MARKER)).toHaveLength(2);
-    // The marker belongs to the flagged row, not merely present somewhere on
+    // The marker belongs to the unread row, not merely present somewhere on
     // the page. Anchored on the second row's checkbox label rather than on the
     // subject text, which also appears in the first row's own checkbox label.
     const markerAt = html.indexOf(MARKER);
@@ -135,8 +158,20 @@ describe("the awaiting-reply row marker", () => {
     expect(markerAt).toBeLessThan(secondRowAt);
   });
 
-  it("keeps the subject truncating, so the marker cannot widen the row", () => {
-    const html = render([ticket({ awaitingAgentReply: true })]);
+  it("keeps the subject truncating, so the badge cannot widen the row", () => {
+    const html = render([ticket({ unreadReplyCount: 1 })]);
     expect(html).toContain("truncate");
+  });
+
+  it("⚠️ the old \"Replied\" pill is gone", () => {
+    // The owner asked for it to be replaced, not joined. Two markers about the
+    // same conversation, one of which never clears, is the confusion this card
+    // exists to remove.
+    const html = render([
+      ticket({ unreadReplyCount: 1 }),
+      ticket({ id: "t-2", unreadReplyCount: 0 }),
+    ]);
+    expect(html).not.toContain("data-awaiting-agent-reply");
+    expect(html).not.toContain(">Replied<");
   });
 });

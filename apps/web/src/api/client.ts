@@ -371,14 +371,22 @@ export type TicketRecord = {
   deletedAt?: string | null;
   allowedTransitions?: string[];
   /**
-   * True when the last PUBLIC message on the ticket came from the requester,
-   * so the next move is ours (card 1.29).
+   * How many replies from outside the desk nobody has opened yet (card 1.138).
    *
-   * Computed on the server, per row, from the actual messages — not from the
+   * ⚠️ THIS REPLACED `awaitingAgentReply`, WHICH ANSWERED A DIFFERENT QUESTION.
+   * That field was "did the requester speak last" - still true after somebody
+   * had read the reply, which is the confusion the owner reported: you open the
+   * ticket, read it, and the queue still says a reply arrived. This one is
+   * UNREAD, and goes to 0 the moment anyone on the desk opens the ticket.
+   *
+   * Computed on the server, per row, from the actual messages - not from the
    * status, and not in the browser. A badge derived client-side would not
    * survive a reload, which is the entire point of showing it.
+   *
+   * Absent on an older API response, which reads as zero rather than as a
+   * permanent red bar on every row.
    */
-  awaitingAgentReply?: boolean;
+  unreadReplyCount?: number;
 };
 
 /**
@@ -1418,6 +1426,24 @@ export function setTicketCustomValues(
 
 export function fetchTicketById(id: string) {
   return apiFetch<TicketDetail>(`/tickets/${id}`);
+}
+
+/**
+ * Tell the server the desk has looked at this ticket (card 1.138).
+ *
+ * ⚠️ FIRE AND FORGET AT THE CALL SITE, BUT NOT SILENT HERE. The row is cleared
+ * optimistically the moment the page opens; if this fails the indicator comes
+ * back on the next list load, which is the honest outcome - a queue that says
+ * "read" when the server never recorded it would hide a reply for the whole
+ * team, and this is per-ticket.
+ *
+ * @param id The ticket that was opened.
+ */
+export function markTicketRepliesSeen(id: string) {
+  return apiFetch<{ id: string; repliesSeenAt: string | null }>(
+    `/tickets/${id}/seen`,
+    { method: "POST" },
+  );
 }
 
 export function fetchTicketMessages(

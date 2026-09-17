@@ -32,6 +32,7 @@ import {
   followTicket,
   fetchTeamMembers,
   fetchTicketById,
+  markTicketRepliesSeen,
   fetchTicketEvents,
   redactTicketMessage,
   fetchTicketMessages,
@@ -47,6 +48,7 @@ import {
   type TeamMember,
   type TeamRef,
   type TicketDetail,
+  type TicketRecord,
   type TicketEvent,
   type TicketMessage,
   type TicketPriority,
@@ -584,6 +586,89 @@ export function TicketDetailPage({
   const headerTitle = headerCtx?.title ?? "Ticket details";
   const currentUserId = headerCtx?.currentUser?.id ?? null;
 
+  /**
+   * The desk has opened this ticket, so its replies are read (card 1.138).
+   *
+   * ⚠️ OPTIMISTIC FIRST, THEN THE SERVER. The owner asked for the indicator to
+   * vanish the INSTANT the ticket opens, and a round trip is not instant - so
+   * the rail beside this page is patched in the cache before the POST goes out.
+   *
+   * ⚠️ THE REQUESTER'S OWN VISIT MUST NOT CLEAR IT, which is why the server
+   * ignores a non-staff caller rather than this page trying to decide. The
+   * page cannot know the rule as well as the service does, and two copies of
+   * it would drift.
+   *
+   * ⚠️ A FAILURE IS LEFT VISIBLE ON PURPOSE. If the POST does not land, the
+   * next list load shows the row lit again - which is honest. This is a
+   * per-ticket signal, so a queue that says "read" when the server never
+   * recorded it would hide a reply from the whole desk.
+   *
+   * @param id The ticket that was just opened.
+   */
+  const markRepliesSeen = useCallback(
+    (id: string) => {
+      queryClient.setQueriesData<{ data?: TicketRecord[] }>(
+        { queryKey: ["tickets-mid-list"] },
+        (previous) =>
+          previous?.data
+            ? {
+                ...previous,
+                data: previous.data.map((row) =>
+                  row.id === id ? { ...row, unreadReplyCount: 0 } : row,
+                ),
+              }
+            : previous,
+      );
+      void markTicketRepliesSeen(id)
+        .then(() => {
+          void queryClient.invalidateQueries({
+            queryKey: ["tickets-mid-list"],
+          });
+        })
+        .catch(() => {
+          // Best effort, and deliberately silent: an agent who opened a ticket
+          // did nothing wrong, and the row simply stays lit.
+          void queryClient.invalidateQueries({
+            queryKey: ["tickets-mid-list"],
+          });
+        });
+    },
+    [queryClient],
+  );
+
+  /**
+   * Mark the open ticket read again, but only if somebody is actually looking
+   * (card 1.138).
+   *
+   * Two callers, one rule:
+   * - a reply arrives while the ticket is open - it is on screen, so it is read;
+   * - the person comes BACK to a tab that lit up while they were away - the
+   *   message is on screen the moment they look, so it is read then.
+   *
+   * ⚠️ `visibilityState` IS THE WHOLE GUARD. Without it a tab left open
+   * overnight would swallow every reply that arrived, which is the exact
+   * failure this card was built to remove - only quieter, because nobody would
+   * ever see the row light up at all.
+   */
+  const markRepliesSeenIfWatching = useCallback(() => {
+    if (!ticketId) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+    markRepliesSeen(ticketId);
+  }, [markRepliesSeen, ticketId]);
+
+  // Coming back to the tab counts as looking. Without this, a reply that landed
+  // while the tab was hidden would keep the row lit even though the person is
+  // now reading it.
+  useEffect(() => {
+    if (!ticketId) return;
+    const onVisible = () => markRepliesSeenIfWatching();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [markRepliesSeenIfWatching, ticketId]);
+
+
   const [tabIndicator, setTabIndicator] = useState<{
     left: number;
     width: number;
@@ -928,6 +1013,7 @@ export function TicketDetailPage({
         // lookup above can still miss on the first display-id visit, which
         // costs a loading state and nothing else.
         queryClient.setQueryData(["ticket", detail.id], detail);
+        markRepliesSeen(detail.id);
         await Promise.all([
           loadMessagesPage(detail.id, true),
           loadEventsPage(detail.id, true),
@@ -1027,6 +1113,16 @@ export function TicketDetailPage({
         if (payload.message) {
           const appended = appendRealtimeMessage(payload.message);
           if (appended) {
+            // ⚠️ CARD 1.138: A REPLY THAT ARRIVES WHILE YOU ARE LOOKING AT THE
+            // TICKET IS READ. It has just been appended to the conversation on
+            // screen, so lighting the row up would be telling somebody about a
+            // message they are already reading.
+            //
+            // ⚠️ ONLY WHEN THE TAB IS GENUINELY VISIBLE. A tab left open
+            // overnight must still light up - that is the case the whole card
+            // exists for, and `visibilityState` is the difference between "in
+            // front of a person" and "open somewhere".
+            markRepliesSeenIfWatching();
             appendRealtimeEvent({
               id: `rt:msg:${payload.message.id}`,
               type: "MESSAGE_ADDED",
