@@ -106,13 +106,8 @@ import {
   type RealtimeAdminChangedEventPayload,
 } from "../realtime/events";
 import type { Role } from "../types";
-
-const ELIGIBLE_MEMBER_USER_ROLES = new Set([
-  "EMPLOYEE",
-  "AGENT",
-  "LEAD",
-  "TEAM_ADMIN",
-]);
+import { handleApiError } from "../utils/handleApiError";
+import { isEligibleTeamMemberUser } from "../utils/team-member-eligibility";
 
 function getRoleDropdownOptions(
   userRole: string | null | undefined,
@@ -598,8 +593,21 @@ export function TeamPage({
       setSelectedUserId("");
       setSelectedRole("AGENT");
       await loadMembers(selectedTeamId);
-    } catch {
-      setActionError("Unable to add team member.");
+    } catch (error) {
+      // ⚠️ CARD 1.132 2a. THE DEFECT THE OWNER HIT, AND A BARE CATCH THAT DID
+      // NOT EVEN BIND THE ERROR.
+      //
+      // The server refuses an add for at least five distinct reasons - the
+      // caller is not an admin of this team, the user does not exist, the user
+      // is deactivated, the user is an OWNER, the team role does not match the
+      // user's role - and every one of them arrived on screen as "Unable to add
+      // team member." So the owner who added another owner was told nothing,
+      // and the sentence card 1.126 wrote for exactly that moment was thrown
+      // away one line before it could be shown.
+      //
+      // ⚠️ CARD 1.126 FIXED THIS SAME DEFECT IN `handleRemoveMember`, TWENTY
+      // LINES BELOW, AND LEFT THIS ONE.
+      setActionError(handleApiError(error));
     } finally {
       setActionLoading(false);
     }
@@ -790,9 +798,10 @@ export function TeamPage({
 
   const eligibleUsers = useMemo(() => {
     if (!isAdmin) return [];
-    return allUsers.filter(
-      (user) => !user.role || ELIGIBLE_MEMBER_USER_ROLES.has(user.role),
-    );
+    // ⚠️ CARD 1.132 2b. FAIL CLOSED: NO ROLE MEANS NOT OFFERED. The rule and
+    // the reasoning live in `team-member-eligibility.ts`, so this page and its
+    // test read the same one.
+    return allUsers.filter(isEligibleTeamMemberUser);
   }, [allUsers, isAdmin]);
 
   const availableUsers = useMemo(() => {
