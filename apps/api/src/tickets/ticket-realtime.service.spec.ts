@@ -208,6 +208,9 @@ describe('TicketRealtimeService', () => {
         email: 'agent1@company.com',
         displayName: 'Agent One',
       },
+      // Card 1.137 added the field. This suite is about the AUDIENCE - who the
+      // push reaches - so the message carries no files.
+      attachments: [],
     };
 
     await service.emitTicketRealtimeEvent({

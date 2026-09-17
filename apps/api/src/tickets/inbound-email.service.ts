@@ -78,6 +78,16 @@ export type InboundAttachmentOutcome = {
   rejected: RejectedInboundAttachment[];
   /** Only the files the body referred to as `cid:`; usually empty. */
   inlineImages: StoredInlineImage[];
+  /**
+   * How many files were actually stored against the message (card 1.137).
+   *
+   * ⚠️ A COUNT RATHER THAN A SECOND QUERY. The push below has to know whether
+   * this message gained any files at all, and asking the database on every
+   * inbound email - nearly all of which carry none - would spend a read per
+   * message to learn "no". `inlineImages` cannot answer it: a paperclip
+   * document is stored and is not inline.
+   */
+  storedCount: number;
 };
 
 type InboundThreadTarget = {
@@ -463,6 +473,7 @@ export class InboundEmailService {
             existing.id,
             inboundMessage?.id,
             replyAttachOutcome.inlineImages,
+            replyAttachOutcome.storedCount,
           );
           await this.recordDroppedInboundAttachments(existing.id, [
             ...droppedAttachments,
@@ -758,7 +769,7 @@ export class InboundEmailService {
     messageId?: string,
   ): Promise<InboundAttachmentOutcome> {
     if (attachments.length === 0) {
-      return { rejected: [], inlineImages: [] };
+      return { rejected: [], inlineImages: [], storedCount: 0 };
     }
 
     // ⚠️ CARD 1.105, THE SECOND CLIFF. This was `Promise.all`, and
@@ -812,7 +823,7 @@ export class InboundEmailService {
       }),
     );
 
-    return { rejected: failures, inlineImages };
+    return { rejected: failures, inlineImages, storedCount: created.length };
   }
 
   /**
@@ -833,13 +844,21 @@ export class InboundEmailService {
    * markers - every message this platform has ever received bar the pasted
    * ones - costs a string scan and no database write.
    *
+   * ⚠️ CARD 1.137 GAVE IT A SECOND JOB, AND THE NAME NOW UNDERSTATES IT: it
+   * also tells anyone watching what the message finally holds. That belongs
+   * here rather than in a third push, because this is already the one place
+   * that runs after the files are stored and knows the final body - and a
+   * separate emit would be a fourth thing to keep in step with the other two.
+   *
    * @param messageId The stored message, or undefined when there is none.
    * @param inlineImages The files the body referenced, now with ids.
+   * @param storedCount How many files were stored against this message.
    */
   private async resolveInlineImageMarkers(
     ticketId: string,
     messageId: string | undefined,
     inlineImages: StoredInlineImage[],
+    storedCount: number,
   ): Promise<void> {
     if (!messageId) {
       return;
@@ -871,13 +890,35 @@ export class InboundEmailService {
         return `<img data-attachment-id="${image.attachmentId}" alt="${escapeAttachmentAlt(image.fileName)}">`;
       },
     );
-    if (resolved === message.body) {
+    // ⚠️ CARD 1.137 SPLIT THESE TWO DECISIONS APART, AND THAT IS THE FIX.
+    // A body with no markers needs no write, but it may still have gained a
+    // paperclip document that anyone watching should see - so "nothing to
+    // store" and "nothing to say" stopped being the same question.
+    if (resolved !== message.body) {
+      await this.prisma.ticketMessage.update({
+        where: { id: messageId },
+        data: { body: resolved },
+      });
+    }
+    if (resolved === message.body && storedCount === 0) {
+      // Nothing changed and nothing arrived: the push `addMessage` already sent
+      // is still the truth, and this is the common case - almost every inbound
+      // email is text.
       return;
     }
-    await this.prisma.ticketMessage.update({
-      where: { id: messageId },
-      data: { body: resolved },
-    });
+    const attachments =
+      storedCount === 0
+        ? []
+        : await this.prisma.attachment.findMany({
+            where: { messageId },
+            select: {
+              id: true,
+              fileName: true,
+              contentType: true,
+              sizeBytes: true,
+            },
+            orderBy: { createdAt: 'asc' },
+          });
     // ⚠️ CARD 1.135: SAY SO, OR THE PLACEHOLDER NEVER BECOMES THE PICTURE.
     // `addMessage` already pushed this message - carrying markers, which
     // `toRealtimeMessagePayload` now shows as a loading skeleton. That push is
@@ -897,6 +938,10 @@ export class InboundEmailService {
                 type: message.type,
                 createdAt: message.createdAt,
                 author: message.author,
+                // ⚠️ CARD 1.137. THE PUSH THAT MAKES A CHIP APPEAR WITHOUT A
+                // RELOAD. `addMessage` emitted this message before these files
+                // existed, so its payload carried none and could not have.
+                attachments,
               })
             : null,
       }),

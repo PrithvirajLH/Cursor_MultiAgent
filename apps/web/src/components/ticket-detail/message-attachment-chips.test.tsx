@@ -262,3 +262,58 @@ describe("1.133 — a mixed body renders in normal flow", () => {
     expect(html).not.toContain("flex w-full items-center");
   });
 });
+
+/**
+ * Card 1.137 — a file that arrives live gets its chip without a reload, and a
+ * picture still on its way does not get one at all.
+ */
+describe('1.137 — chips while the message is still settling', () => {
+  const PDF = {
+    id: 'a-9',
+    fileName: 'policy.pdf',
+    contentType: 'application/pdf',
+    sizeBytes: 4096,
+  };
+
+  it('⚠️ a body still showing a placeholder chips nothing', () => {
+    // THE FLICKER THIS CARD CHOSE TO REMOVE. `chipAttachments` hides a file
+    // the body already draws by finding its id in the body - and card 1.135's
+    // placeholder holds no id, so a pasted screenshot would chip for a moment
+    // and then vanish as the real <img data-attachment-id> replaced it.
+    const pending = [
+      'Here is the screenshot.',
+      '<img data-attachment-pending="1" alt="image">',
+    ].join(String.fromCharCode(10));
+    const html = render({
+      messages: [message({ body: pending, attachments: [PDF] })],
+    });
+
+    expect(chipRowCount(html)).toBe(0);
+  });
+
+  it('⚠️ and chips it once the picture has resolved', () => {
+    // NON-VACUITY, and the half that proves the suppression is temporary
+    // rather than a file quietly lost. The document was never drawn by the
+    // body, so once the placeholder is gone it must appear.
+    const resolved = [
+      'Here is the screenshot.',
+      '<img data-attachment-id="a-img" alt="image">',
+    ].join(String.fromCharCode(10));
+    const html = render({
+      messages: [message({ body: resolved, attachments: [PDF] })],
+    });
+
+    expect(chipRowCount(html)).toBe(1);
+    expect(html).toContain('policy.pdf');
+  });
+
+  it('a document on an ordinary live reply chips straight away', () => {
+    // The case the card was raised for: no image anywhere, so nothing to wait
+    // for.
+    const html = render({
+      messages: [message({ body: 'Here you go.', attachments: [PDF] })],
+    });
+
+    expect(chipRowCount(html)).toBe(1);
+  });
+});

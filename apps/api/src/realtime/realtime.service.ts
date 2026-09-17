@@ -53,6 +53,20 @@ export type TicketChangedPayload = {
       email: string;
       displayName: string;
     };
+    // ⚠️ CARD 1.137. THE SAME FOUR FIELDS `listMessages` SELECTS, AND NO MORE.
+    //
+    // `storageKey` names the blob and has no business in a message payload -
+    // the fetch path deliberately selects rather than includes for exactly that
+    // reason, and this is the copy that crosses a wire.
+    //
+    // Always present, empty when there are none, so the client never has to
+    // tell "no files" apart from "an older server".
+    attachments: {
+      id: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+    }[];
   } | null;
 };
 

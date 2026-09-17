@@ -721,6 +721,11 @@ export function TicketDetailPage({
         email: payload.author.email,
         displayName: payload.author.displayName,
       },
+      // ⚠️ CARD 1.137: THE CHIP CANNOT RENDER WHAT THE PAGE NEVER RECEIVED.
+      // `chipAttachments` reads `message.attachments ?? []`, so a live message
+      // silently had none and an agent was back to "a counter changed
+      // somewhere" - the signal card 1.129 was written to replace.
+      attachments: payload.attachments ?? [],
     }),
     [],
   );
@@ -739,11 +744,22 @@ export function TicketDetailPage({
           // used to return early and the placeholder stayed until a reload.
           // Only the body is taken: `localStatus` and anything else the local
           // send flow put on the row belongs to this client.
-          if (prev[index].body === incoming.body) {
+          // ⚠️ CARD 1.137 ADDED `attachments` TO THE COMPARISON AND THE COPY.
+          // The second push is now sent for a paperclip file even when the body
+          // did not change - that is the whole point of it - so comparing only
+          // the body would discard exactly the update this card sends.
+          const sameAttachments =
+            (prev[index].attachments ?? []).map((file) => file.id).join() ===
+            (incoming.attachments ?? []).map((file) => file.id).join();
+          if (prev[index].body === incoming.body && sameAttachments) {
             return prev;
           }
           const next = [...prev];
-          next[index] = { ...prev[index], body: incoming.body };
+          next[index] = {
+            ...prev[index],
+            body: incoming.body,
+            attachments: incoming.attachments,
+          };
           return next;
         }
         // Consulted only on the append path, so a message that was seen and is

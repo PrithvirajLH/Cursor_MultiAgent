@@ -181,6 +181,16 @@ export class TicketRealtimeService {
       email: string;
       displayName: string;
     };
+    // ⚠️ CARD 1.137: OPTIONAL BECAUSE THE FIRST PUSH GENUINELY HAS NONE.
+    // `addMessage` emits before `attachInboundEmailAttachments` has stored
+    // anything, so at that moment the files do not exist and an empty list is
+    // the truth. The second push, once they are stored, carries them.
+    attachments?: {
+      id: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+    }[];
   }): NonNullable<TicketChangedPayload['message']> {
     return {
       id: message.id,
@@ -216,6 +226,17 @@ export class TicketRealtimeService {
         email: message.author.email,
         displayName: message.author.displayName,
       },
+      // ⚠️ CARD 1.137. THE THIRD DISPLAY RULE THIS METHOD WAS FOUND MISSING.
+      // The Attachments tab counter went up live and the chip under the message
+      // - the thing card 1.129 built so an agent can see WHICH reply carried
+      // WHAT - waited for a reload. Mapped field by field rather than spread,
+      // so a column added to `Attachment` later cannot ride along onto a wire.
+      attachments: (message.attachments ?? []).map((attachment) => ({
+        id: attachment.id,
+        fileName: attachment.fileName,
+        contentType: attachment.contentType,
+        sizeBytes: attachment.sizeBytes,
+      })),
     };
   }
 

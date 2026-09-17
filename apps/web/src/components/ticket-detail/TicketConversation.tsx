@@ -139,6 +139,17 @@ function isImageOnlyBody(body: string): boolean {
 function chipAttachments(message: ConversationMessage): MessageAttachment[] {
   const attachments = message.attachments ?? [];
   const body = message.body ?? "";
+  // ⚠️ CARD 1.137: A BODY STILL SHOWING A PLACEHOLDER CHIPS NOTHING.
+  //
+  // The filter below drops a file the body already draws, by looking for its
+  // id. A message pushed while its images are still uploading carries card
+  // 1.135's placeholder instead - which holds no id - so every pasted
+  // screenshot would appear as a chip for a moment and then vanish as the real
+  // `<img data-attachment-id>` replaced it. A picture that flashes a file chip
+  // at you and takes it away reads as a bug, so wait the moment out.
+  if (body.includes("data-attachment-pending")) {
+    return [];
+  }
   return attachments.filter(
     (attachment) => !body.includes(`data-attachment-id="${attachment.id}"`),
   );

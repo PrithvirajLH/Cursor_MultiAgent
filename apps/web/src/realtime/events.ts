@@ -13,6 +13,20 @@ export type RealtimeTicketMessagePayload = {
     email: string;
     displayName: string;
   };
+  /**
+   * The files on this message (card 1.137).
+   *
+   * ⚠️ OPTIONAL HERE AND REQUIRED ON THE API SIDE, DELIBERATELY. These types
+   * are hand-written copies of the API's, so during a deploy the browser can be
+   * holding the new code while the server still sends the old payload - and a
+   * missing field must read as "no files", not crash the conversation.
+   */
+  attachments?: {
+    id: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+  }[];
 };
 
 /**
